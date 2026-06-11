@@ -44,3 +44,6 @@ app:
   content:
     blob-root: ${BLOB_ROOT:./data/blobs}
     max-upload-bytes: ${MAX_UPLOAD_BYTES:104857600}
+  channel:
+    internal-api-key: ${CHANNEL_INTERNAL_API_KEY:phase-4-local-channel-key}
+    delivery-worker-delay-ms: ${CHANNEL_DELIVERY_WORKER_DELAY_MS:5000}

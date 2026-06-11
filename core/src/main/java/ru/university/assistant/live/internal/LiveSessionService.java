@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.analytics.api.DomainEvent;
 import ru.university.assistant.analytics.api.EventBus;
+import ru.university.assistant.channel.api.ChannelFanoutApi;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.live.api.ChangeSlideRequest;
 import ru.university.assistant.live.api.JoinSessionRequest;
@@ -24,16 +25,19 @@ public class LiveSessionService {
     private final LiveSessionRepository sessions;
     private final EventBus events;
     private final LiveSessionPublisher publisher;
+    private final ChannelFanoutApi channelFanout;
 
     LiveSessionService(
             CourseAccessApi courseAccess,
             LiveSessionRepository sessions,
             EventBus events,
-            LiveSessionPublisher publisher) {
+            LiveSessionPublisher publisher,
+            ChannelFanoutApi channelFanout) {
         this.courseAccess = courseAccess;
         this.sessions = sessions;
         this.events = events;
         this.publisher = publisher;
+        this.channelFanout = channelFanout;
     }
 
     @Transactional
@@ -74,6 +78,7 @@ public class LiveSessionService {
         LiveSession after = sessions.updateSlide(courseId, sessionId, request.slideIdx());
         event(user, after, "session.slide_changed",
                 Map.of("from", before.currentSlideIdx(), "to", after.currentSlideIdx()));
+        channelFanout.sessionSlideChanged(after);
         publisher.publish("session.slide_changed", after);
         return after;
     }

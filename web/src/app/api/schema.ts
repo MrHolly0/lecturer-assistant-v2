@@ -589,6 +589,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/internal/v1/channels/{channelType}/capabilities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Register adapter capabilities. */
+    put: operations["registerChannelCapabilities"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/internal/v1/channels/{channelType}/outbox": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Long-poll outbound messages for an adapter. */
+    get: operations["pollChannelOutbox"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/internal/v1/channels/{channelType}/delivery-reports": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Report adapter delivery results. */
+    post: operations["reportChannelDelivery"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/internal/v1/channels/{channelType}/inbound": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Submit a normalized inbound event. */
+    post: operations["submitChannelInbound"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -854,6 +922,66 @@ export interface components {
     JoinSessionRequest: {
       joinCode: string;
     };
+    ChannelCapabilities: {
+      inlineButtons: boolean;
+      editMessage: boolean;
+      images: boolean;
+      maxTextLength: number;
+      maxButtonsPerRow: number;
+    };
+    /** @enum {string} */
+    OutboundPriority: "P0_INTERACTIVE" | "P1_ACTIVITY" | "P2_SLIDE" | "P3_BULK";
+    /** @enum {string} */
+    ReplyMode: "NEW" | "EDIT_LAST";
+    OutboundContent: {
+      /** @enum {string} */
+      type: "TEXT" | "IMAGE" | "DOCUMENT";
+      text?: string;
+      ref?: string;
+      caption?: string;
+    };
+    OutboundButton: {
+      text: string;
+      payload: string;
+    };
+    OutboundMessage: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      channelIdentityId: string;
+      externalUserId: string;
+      priority: components["schemas"]["OutboundPriority"];
+      content: components["schemas"]["OutboundContent"];
+      keyboard: components["schemas"]["OutboundButton"][][];
+      replyMode: components["schemas"]["ReplyMode"];
+      threadKey: string;
+    };
+    OutboxBatch: {
+      messages: components["schemas"]["OutboundMessage"][];
+    };
+    /** @enum {string} */
+    DeliveryStatus: "DELIVERED" | "FAILED";
+    DeliveryReport: {
+      /** Format: uuid */
+      messageId: string;
+      status: components["schemas"]["DeliveryStatus"];
+      adapterMessageId?: string;
+      errorMessage?: string;
+      latencyMs?: number;
+    };
+    DeliveryReportBatch: {
+      reports: components["schemas"]["DeliveryReport"][];
+    };
+    /** @enum {string} */
+    InboundKind: "COMMAND" | "TEXT" | "CALLBACK";
+    InboundEvent: {
+      externalUserId: string;
+      kind: components["schemas"]["InboundKind"];
+      text: string;
+      displayHint?: string;
+      /** Format: date-time */
+      occurredAt: string;
+    };
   };
   responses: never;
   parameters: {
@@ -863,6 +991,7 @@ export interface components {
     LectureId: string;
     SlideIndex: number;
     SessionId: string;
+    ChannelType: "telegram" | "vk" | "web" | "echo";
   };
   requestBodies: never;
   headers: never;
@@ -1878,6 +2007,103 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["LiveSession"];
         };
+      };
+    };
+  };
+  registerChannelCapabilities: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channelType: components["parameters"]["ChannelType"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChannelCapabilities"];
+      };
+    };
+    responses: {
+      /** @description Capabilities stored. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  pollChannelOutbox: {
+    parameters: {
+      query?: {
+        wait?: string;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        channelType: components["parameters"]["ChannelType"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Batch of messages claimed by the adapter. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OutboxBatch"];
+        };
+      };
+    };
+  };
+  reportChannelDelivery: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channelType: components["parameters"]["ChannelType"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DeliveryReportBatch"];
+      };
+    };
+    responses: {
+      /** @description Reports accepted. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  submitChannelInbound: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channelType: components["parameters"]["ChannelType"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InboundEvent"];
+      };
+    };
+    responses: {
+      /** @description Inbound event accepted. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

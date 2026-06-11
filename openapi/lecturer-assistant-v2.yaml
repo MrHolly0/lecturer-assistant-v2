@@ -736,12 +736,98 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveSession"
+  /internal/v1/channels/{channelType}/capabilities:
+    put:
+      operationId: registerChannelCapabilities
+      summary: Register adapter capabilities.
+      tags: [channel-internal]
+      parameters:
+        - $ref: "#/components/parameters/ChannelType"
+      security:
+        - internalApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelCapabilities"
+      responses:
+        "204":
+          description: Capabilities stored.
+  /internal/v1/channels/{channelType}/outbox:
+    get:
+      operationId: pollChannelOutbox
+      summary: Long-poll outbound messages for an adapter.
+      tags: [channel-internal]
+      parameters:
+        - $ref: "#/components/parameters/ChannelType"
+        - name: wait
+          in: query
+          schema:
+            type: string
+            default: 25s
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+      security:
+        - internalApiKey: []
+      responses:
+        "200":
+          description: Batch of messages claimed by the adapter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutboxBatch"
+  /internal/v1/channels/{channelType}/delivery-reports:
+    post:
+      operationId: reportChannelDelivery
+      summary: Report adapter delivery results.
+      tags: [channel-internal]
+      parameters:
+        - $ref: "#/components/parameters/ChannelType"
+      security:
+        - internalApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryReportBatch"
+      responses:
+        "204":
+          description: Reports accepted.
+  /internal/v1/channels/{channelType}/inbound:
+    post:
+      operationId: submitChannelInbound
+      summary: Submit a normalized inbound event.
+      tags: [channel-internal]
+      parameters:
+        - $ref: "#/components/parameters/ChannelType"
+      security:
+        - internalApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InboundEvent"
+      responses:
+        "202":
+          description: Inbound event accepted.
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    internalApiKey:
+      type: apiKey
+      in: header
+      name: X-Internal-Api-Key
   parameters:
     CourseId:
       name: courseId
@@ -785,6 +871,13 @@ components:
       schema:
         type: string
         format: uuid
+    ChannelType:
+      name: channelType
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [telegram, vk, web, echo]
   schemas:
     SystemInfo:
       type: object
@@ -1276,3 +1369,125 @@ components:
         joinCode:
           type: string
           minLength: 4
+    ChannelCapabilities:
+      type: object
+      required: [inlineButtons, editMessage, images, maxTextLength, maxButtonsPerRow]
+      properties:
+        inlineButtons:
+          type: boolean
+        editMessage:
+          type: boolean
+        images:
+          type: boolean
+        maxTextLength:
+          type: integer
+          minimum: 1
+        maxButtonsPerRow:
+          type: integer
+          minimum: 1
+    OutboundPriority:
+      type: string
+      enum: [P0_INTERACTIVE, P1_ACTIVITY, P2_SLIDE, P3_BULK]
+    ReplyMode:
+      type: string
+      enum: [NEW, EDIT_LAST]
+    OutboundContent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [TEXT, IMAGE, DOCUMENT]
+        text:
+          type: string
+        ref:
+          type: string
+        caption:
+          type: string
+    OutboundButton:
+      type: object
+      required: [text, payload]
+      properties:
+        text:
+          type: string
+        payload:
+          type: string
+    OutboundMessage:
+      type: object
+      required: [id, channelIdentityId, externalUserId, priority, content, keyboard, replyMode, threadKey]
+      properties:
+        id:
+          type: string
+          format: uuid
+        channelIdentityId:
+          type: string
+          format: uuid
+        externalUserId:
+          type: string
+        priority:
+          $ref: "#/components/schemas/OutboundPriority"
+        content:
+          $ref: "#/components/schemas/OutboundContent"
+        keyboard:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: "#/components/schemas/OutboundButton"
+        replyMode:
+          $ref: "#/components/schemas/ReplyMode"
+        threadKey:
+          type: string
+    OutboxBatch:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutboundMessage"
+    DeliveryStatus:
+      type: string
+      enum: [DELIVERED, FAILED]
+    DeliveryReport:
+      type: object
+      required: [messageId, status]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/DeliveryStatus"
+        adapterMessageId:
+          type: string
+        errorMessage:
+          type: string
+        latencyMs:
+          type: integer
+          minimum: 0
+    DeliveryReportBatch:
+      type: object
+      required: [reports]
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryReport"
+    InboundKind:
+      type: string
+      enum: [COMMAND, TEXT, CALLBACK]
+    InboundEvent:
+      type: object
+      required: [externalUserId, kind, text, occurredAt]
+      properties:
+        externalUserId:
+          type: string
+        kind:
+          $ref: "#/components/schemas/InboundKind"
+        text:
+          type: string
+        displayHint:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time

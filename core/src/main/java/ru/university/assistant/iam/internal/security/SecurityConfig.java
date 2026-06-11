@@ -39,6 +39,8 @@ class SecurityConfig {
                         .hasRole("ADMIN")
                         .requestMatchers("/api/v1/**")
                         .authenticated()
+                        .requestMatchers("/internal/v1/channels/**")
+                        .permitAll()
                         .requestMatchers("/ws/**")
                         .permitAll()
                         .anyRequest()

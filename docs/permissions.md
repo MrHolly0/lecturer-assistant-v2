@@ -52,6 +52,10 @@
 | Любая роль | `auth/change-password` | Сменить свой пароль | Только authenticated |
 | Любая роль | `identity/link-codes` | Создать код привязки канала | Только authenticated |
 | Любая роль | `identity/link` | Привязать внешний канал | По валидному одноразовому коду |
+| Адаптер канала | `/internal/v1/channels/{type}/capabilities` | Зарегистрировать возможности канала | Только валидный `X-Internal-Api-Key` |
+| Адаптер канала | `/internal/v1/channels/{type}/outbox` | Получить batch исходящих сообщений | Только валидный `X-Internal-Api-Key`, сообщения только своего `type` |
+| Адаптер канала | `/internal/v1/channels/{type}/delivery-reports` | Сообщить статус доставки | Только валидный `X-Internal-Api-Key` |
+| Адаптер канала | `/internal/v1/channels/{type}/inbound` | Передать нормализованное входящее событие | Только валидный `X-Internal-Api-Key` |
 
 Правила изоляции:
 
@@ -61,3 +65,4 @@
 - Refresh-token не читается JavaScript-кодом фронта и передается только cookie `la_refresh` на пути `/api/v1/auth`.
 - Файлы контента не отдаются по прямым blob-ссылкам: каждый slide image проходит через проверку доступа к курсу.
 - WebSocket `/ws/session/{id}` принимает JWT в STOMP `CONNECT` и не меняет доменное состояние сам.
+- Internal Channel SPI не принимает JWT и закрыт отдельным ключом адаптеров; внешний ID канала возвращается только там.

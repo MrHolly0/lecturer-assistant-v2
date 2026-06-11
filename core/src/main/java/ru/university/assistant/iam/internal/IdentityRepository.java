@@ -67,6 +67,19 @@ class IdentityRepository {
                 .single();
     }
 
+    Optional<ChannelIdentityResponse> findByExternalId(String channelType, String externalId) {
+        return jdbc.sql(
+                        """
+                        select id, person_id, channel_type, external_id, display_hint, linked_at
+                        from iam.channel_identities
+                        where channel_type = :channelType and external_id = :externalId
+                        """)
+                .param("channelType", channelType)
+                .param("externalId", externalId)
+                .query(this::mapIdentity)
+                .optional();
+    }
+
     private ChannelIdentityResponse mapIdentity(ResultSet resultSet, int rowNumber) throws SQLException {
         return new ChannelIdentityResponse(
                 resultSet.getObject("id", UUID.class),
