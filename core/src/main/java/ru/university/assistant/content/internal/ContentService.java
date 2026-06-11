@@ -1,0 +1,158 @@
+package ru.university.assistant.content.internal;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
+import ru.university.assistant.content.api.Attachment;
+import ru.university.assistant.content.api.CreateLectureRequest;
+import ru.university.assistant.content.api.ImportJob;
+import ru.university.assistant.content.api.Lecture;
+import ru.university.assistant.content.api.LectureDetails;
+import ru.university.assistant.content.api.SaveSlideNoteRequest;
+import ru.university.assistant.content.api.SlideDeck;
+import ru.university.assistant.content.api.SlideDeckDetails;
+import ru.university.assistant.content.api.SlideNote;
+import ru.university.assistant.iam.api.AuthenticatedUser;
+import ru.university.assistant.org.api.CourseAccessApi;
+import ru.university.assistant.shared.api.UuidV7;
+
+@Service
+public class ContentService {
+    private final CourseAccessApi courseAccess;
+    private final ContentRepository repository;
+    private final BlobStorage blobStorage;
+    private final SlideImportWorker worker;
+    private final ContentProperties properties;
+
+    ContentService(
+            CourseAccessApi courseAccess,
+            ContentRepository repository,
+            BlobStorage blobStorage,
+            SlideImportWorker worker,
+            ContentProperties properties) {
+        this.courseAccess = courseAccess;
+        this.repository = repository;
+        this.blobStorage = blobStorage;
+        this.worker = worker;
+        this.properties = properties;
+    }
+
+    @Transactional
+    public ImportJob startDeckImport(AuthenticatedUser user, UUID courseId, String title, MultipartFile file) {
+        courseAccess.requireManage(user, courseId);
+        if (file.isEmpty() || file.getSize() > properties.maxUploadBytes()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid upload size");
+        }
+        String cleanTitle = title == null || title.isBlank()
+                ? filenameWithoutExtension(file.getOriginalFilename())
+                : title.trim();
+        try {
+            StoredBlob source = blobStorage.store(
+                    file.getInputStream(), file.getOriginalFilename(), file.getContentType(), file.getSize());
+            ImportJob job = repository.createJob(UuidV7.generate(), courseId, source);
+            worker.process(job.id(), courseId, cleanTitle);
+            return job;
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot store uploaded file", exception);
+        }
+    }
+
+    public ImportJob getImportJob(AuthenticatedUser user, UUID courseId, UUID jobId) {
+        courseAccess.requireVisible(user, courseId);
+        return repository.findJob(courseId, jobId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Import job not found"));
+    }
+
+    public List<SlideDeck> listDecks(AuthenticatedUser user, UUID courseId) {
+        courseAccess.requireVisible(user, courseId);
+        return repository.listDecks(courseId);
+    }
+
+    public SlideDeckDetails getDeck(AuthenticatedUser user, UUID courseId, UUID deckId) {
+        courseAccess.requireVisible(user, courseId);
+        return repository.findDeck(courseId, deckId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
+    }
+
+    public BlobResource getSlideImage(AuthenticatedUser user, UUID courseId, UUID deckId, int slideIndex) {
+        courseAccess.requireVisible(user, courseId);
+        SlideRecord slide = repository.findSlideRecord(courseId, deckId, slideIndex)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Slide not found"));
+        return blobStorage.resource(slide.imageRef(), "image/png");
+    }
+
+    public SlideNote saveSlideNote(
+            AuthenticatedUser user, UUID courseId, UUID deckId, int slideIndex, SaveSlideNoteRequest request) {
+        courseAccess.requireManage(user, courseId);
+        SlideRecord slide = repository.findSlideRecord(courseId, deckId, slideIndex)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Slide not found"));
+        return repository.saveNote(slide.id(), request.content().trim());
+    }
+
+    public List<Lecture> listLectures(AuthenticatedUser user, UUID courseId) {
+        courseAccess.requireVisible(user, courseId);
+        return repository.listLectures(courseId);
+    }
+
+    @Transactional
+    public Lecture createLecture(AuthenticatedUser user, UUID courseId, CreateLectureRequest request) {
+        courseAccess.requireManage(user, courseId);
+        ensureDeckExists(courseId, request.deckId());
+        return repository.createLecture(
+                UuidV7.generate(), courseId, request.title().trim(), request.deckId(), user.id());
+    }
+
+    public LectureDetails getLecture(AuthenticatedUser user, UUID courseId, UUID lectureId) {
+        courseAccess.requireVisible(user, courseId);
+        return repository.findLecture(courseId, lectureId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lecture not found"));
+    }
+
+    @Transactional
+    public Lecture updateLecture(AuthenticatedUser user, UUID courseId, UUID lectureId, CreateLectureRequest request) {
+        courseAccess.requireManage(user, courseId);
+        ensureDeckExists(courseId, request.deckId());
+        return repository.updateLecture(courseId, lectureId, request.title().trim(), request.deckId());
+    }
+
+    @Transactional
+    public void archiveLecture(AuthenticatedUser user, UUID courseId, UUID lectureId) {
+        courseAccess.requireManage(user, courseId);
+        repository.archiveLecture(courseId, lectureId);
+    }
+
+    @Transactional
+    public Attachment addAttachment(AuthenticatedUser user, UUID courseId, UUID lectureId, MultipartFile file) {
+        courseAccess.requireManage(user, courseId);
+        getLecture(user, courseId, lectureId);
+        if (file.isEmpty() || file.getSize() > properties.maxUploadBytes()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid upload size");
+        }
+        try {
+            StoredBlob blob = blobStorage.store(
+                    file.getInputStream(), file.getOriginalFilename(), file.getContentType(), file.getSize());
+            return repository.addAttachment(UuidV7.generate(), lectureId, blob);
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot store attachment", exception);
+        }
+    }
+
+    private void ensureDeckExists(UUID courseId, UUID deckId) {
+        if (repository.findDeck(courseId, deckId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Deck does not belong to course");
+        }
+    }
+
+    private String filenameWithoutExtension(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return "Материалы";
+        }
+        int dot = filename.lastIndexOf('.');
+        return dot <= 0 ? filename : filename.substring(0, dot);
+    }
+}

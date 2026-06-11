@@ -313,6 +313,146 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/decks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List slide decks for a course. */
+    get: operations["listSlideDecks"];
+    put?: never;
+    /** Upload a presentation file and start a background import job. */
+    post: operations["importSlideDeck"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/import-jobs/{jobId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read slide deck import job status. */
+    get: operations["getImportJob"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/decks/{deckId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read one slide deck with slides. */
+    get: operations["getSlideDeck"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/decks/{deckId}/slides/{slideIndex}/image": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read rendered slide image. */
+    get: operations["getSlideImage"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/decks/{deckId}/slides/{slideIndex}/notes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Save lecturer notes for one slide. */
+    put: operations["saveSlideNote"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/lectures": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List lecture materials for a course. */
+    get: operations["listLectures"];
+    put?: never;
+    /** Create lecture material. */
+    post: operations["createLecture"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/lectures/{lectureId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read lecture material. */
+    get: operations["getLecture"];
+    /** Update lecture material. */
+    put: operations["updateLecture"];
+    post?: never;
+    /** Archive lecture material. */
+    delete: operations["deleteLecture"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/lectures/{lectureId}/attachments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Upload an arbitrary file attached to a lecture. */
+    post: operations["uploadLectureAttachment"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -453,10 +593,102 @@ export interface components {
       /** Format: date-time */
       bannedAt: string;
     };
+    ImportJob: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      courseId: string;
+      /** Format: uuid */
+      deckId?: string;
+      /** @enum {string} */
+      status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+      progressPercent: number;
+      sourceFilename: string;
+      errorMessage?: string;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    SlideDeck: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      courseId: string;
+      title: string;
+      version: number;
+      sourceFilename?: string;
+      slideCount: number;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    SlideDeckDetails: components["schemas"]["SlideDeck"] & {
+      slides: components["schemas"]["Slide"][];
+    };
+    Slide: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      deckId: string;
+      idx: number;
+      imageUrl: string;
+      textExtract?: string;
+      note?: components["schemas"]["SlideNote"];
+    };
+    SlideNote: {
+      /** Format: uuid */
+      slideId: string;
+      content: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    SaveSlideNoteRequest: {
+      content: string;
+    };
+    CreateLectureRequest: {
+      title: string;
+      /** Format: uuid */
+      deckId: string;
+      defaultSettings?: {
+        [key: string]: unknown;
+      };
+    };
+    Lecture: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      courseId: string;
+      title: string;
+      /** Format: uuid */
+      deckId: string;
+      archived: boolean;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    LectureDetails: components["schemas"]["Lecture"] & {
+      deck?: components["schemas"]["SlideDeck"];
+      attachments: components["schemas"]["Attachment"][];
+    };
+    Attachment: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      lectureId: string;
+      filename: string;
+      contentType: string;
+      /** Format: int64 */
+      sizeBytes: number;
+      /** Format: date-time */
+      createdAt: string;
+    };
   };
   responses: never;
   parameters: {
     CourseId: string;
+    DeckId: string;
+    JobId: string;
+    LectureId: string;
+    SlideIndex: number;
   };
   requestBodies: never;
   headers: never;
@@ -975,6 +1207,307 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["CourseBan"];
+        };
+      };
+    };
+  };
+  listSlideDecks: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Slide decks. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SlideDeck"][];
+        };
+      };
+    };
+  };
+  importSlideDeck: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "multipart/form-data": {
+          /** Format: binary */
+          file: string;
+          title: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Import job accepted. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ImportJob"];
+        };
+      };
+    };
+  };
+  getImportJob: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        jobId: components["parameters"]["JobId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Import job. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ImportJob"];
+        };
+      };
+    };
+  };
+  getSlideDeck: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        deckId: components["parameters"]["DeckId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Slide deck details. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SlideDeckDetails"];
+        };
+      };
+    };
+  };
+  getSlideImage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        deckId: components["parameters"]["DeckId"];
+        slideIndex: components["parameters"]["SlideIndex"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Slide image. */
+      200: {
+        headers: {
+          /** @description Long-lived immutable cache header. */
+          "Cache-Control"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "image/png": string;
+        };
+      };
+    };
+  };
+  saveSlideNote: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        deckId: components["parameters"]["DeckId"];
+        slideIndex: components["parameters"]["SlideIndex"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveSlideNoteRequest"];
+      };
+    };
+    responses: {
+      /** @description Saved note. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SlideNote"];
+        };
+      };
+    };
+  };
+  listLectures: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Lectures. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Lecture"][];
+        };
+      };
+    };
+  };
+  createLecture: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateLectureRequest"];
+      };
+    };
+    responses: {
+      /** @description Created lecture. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Lecture"];
+        };
+      };
+    };
+  };
+  getLecture: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        lectureId: components["parameters"]["LectureId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Lecture material. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LectureDetails"];
+        };
+      };
+    };
+  };
+  updateLecture: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        lectureId: components["parameters"]["LectureId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateLectureRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated lecture. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Lecture"];
+        };
+      };
+    };
+  };
+  deleteLecture: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        lectureId: components["parameters"]["LectureId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Lecture archived. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  uploadLectureAttachment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        lectureId: components["parameters"]["LectureId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "multipart/form-data": {
+          /** Format: binary */
+          file: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Uploaded attachment. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Attachment"];
         };
       };
     };

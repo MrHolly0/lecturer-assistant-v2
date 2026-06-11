@@ -1,0 +1,29 @@
+package ru.university.assistant.content.internal;
+
+import java.io.IOException;
+import java.util.List;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.stereotype.Component;
+
+@Component
+@ConditionalOnMissingBean(SlideConversionClient.class)
+class PlaceholderSlideConversionClient implements SlideConversionClient {
+    private static final byte[] PNG = java.util.Base64.getDecoder()
+            .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lQ5yYwAAAABJRU5ErkJggg==");
+
+    private final BlobStorage blobStorage;
+
+    PlaceholderSlideConversionClient(BlobStorage blobStorage) {
+        this.blobStorage = blobStorage;
+    }
+
+    @Override
+    public List<ConvertedSlide> convert(StoredBlob source, String outputPrefix) {
+        try {
+            StoredBlob image = blobStorage.storeBytes(PNG, "slide-1.png", "image/png");
+            return List.of(new ConvertedSlide(1, image.ref(), "Preview for " + source.filename()));
+        } catch (IOException exception) {
+            throw new IllegalStateException("Cannot create placeholder preview", exception);
+        }
+    }
+}

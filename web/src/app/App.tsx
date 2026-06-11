@@ -11,6 +11,7 @@ import { LoginPage } from "../pages/LoginPage";
 import { RegisterPage } from "../pages/RegisterPage";
 import { CoursesPage } from "../pages/CoursesPage";
 import { CoursePage } from "../pages/CoursePage";
+import { MaterialsPage } from "../pages/MaterialsPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { Layout } from "../widgets/Layout";
 
@@ -53,6 +54,11 @@ function CourseRoute() {
   return <CoursePage courseId={courseId ?? ""} />;
 }
 
+function MaterialsRoute() {
+  const { courseId } = useParams();
+  return <MaterialsPage courseId={courseId ?? ""} />;
+}
+
 const router = createHashRouter([
   {
     path: "/login",
@@ -76,6 +82,7 @@ const router = createHashRouter([
       { index: true, element: <Navigate to="/courses" replace /> },
       { path: "/courses", element: <CoursesPage /> },
       { path: "/courses/:courseId", element: <CourseRoute /> },
+      { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
       { path: "/admin/users", element: <AdminUsersPage /> }
     ]
   },

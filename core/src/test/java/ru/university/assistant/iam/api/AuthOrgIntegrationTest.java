@@ -57,6 +57,12 @@ class AuthOrgIntegrationTest {
         jdbc.sql(
                         """
                         truncate table
+                            content.attachments,
+                            live.lectures,
+                            content.slide_notes,
+                            content.slides,
+                            content.slide_decks,
+                            content.import_jobs,
                             iam.channel_identities,
                             iam.identity_link_codes,
                             iam.refresh_tokens,

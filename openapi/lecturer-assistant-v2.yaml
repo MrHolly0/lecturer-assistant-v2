@@ -376,6 +376,229 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CourseBan"
+  /courses/{courseId}/decks:
+    get:
+      operationId: listSlideDecks
+      summary: List slide decks for a course.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: Slide decks.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SlideDeck"
+    post:
+      operationId: importSlideDeck
+      summary: Upload a presentation file and start a background import job.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, title]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                title:
+                  type: string
+                  minLength: 2
+      responses:
+        "202":
+          description: Import job accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportJob"
+  /courses/{courseId}/import-jobs/{jobId}:
+    get:
+      operationId: getImportJob
+      summary: Read slide deck import job status.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Import job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportJob"
+  /courses/{courseId}/decks/{deckId}:
+    get:
+      operationId: getSlideDeck
+      summary: Read one slide deck with slides.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/DeckId"
+      responses:
+        "200":
+          description: Slide deck details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlideDeckDetails"
+  /courses/{courseId}/decks/{deckId}/slides/{slideIndex}/image:
+    get:
+      operationId: getSlideImage
+      summary: Read rendered slide image.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/DeckId"
+        - $ref: "#/components/parameters/SlideIndex"
+      responses:
+        "200":
+          description: Slide image.
+          headers:
+            Cache-Control:
+              description: Long-lived immutable cache header.
+              schema:
+                type: string
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+  /courses/{courseId}/decks/{deckId}/slides/{slideIndex}/notes:
+    put:
+      operationId: saveSlideNote
+      summary: Save lecturer notes for one slide.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/DeckId"
+        - $ref: "#/components/parameters/SlideIndex"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveSlideNoteRequest"
+      responses:
+        "200":
+          description: Saved note.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlideNote"
+  /courses/{courseId}/lectures:
+    get:
+      operationId: listLectures
+      summary: List lecture materials for a course.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: Lectures.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lecture"
+    post:
+      operationId: createLecture
+      summary: Create lecture material.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLectureRequest"
+      responses:
+        "201":
+          description: Created lecture.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lecture"
+  /courses/{courseId}/lectures/{lectureId}:
+    get:
+      operationId: getLecture
+      summary: Read lecture material.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/LectureId"
+      responses:
+        "200":
+          description: Lecture material.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LectureDetails"
+    put:
+      operationId: updateLecture
+      summary: Update lecture material.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/LectureId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLectureRequest"
+      responses:
+        "200":
+          description: Updated lecture.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lecture"
+    delete:
+      operationId: deleteLecture
+      summary: Archive lecture material.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/LectureId"
+      responses:
+        "204":
+          description: Lecture archived.
+  /courses/{courseId}/lectures/{lectureId}/attachments:
+    post:
+      operationId: uploadLectureAttachment
+      summary: Upload an arbitrary file attached to a lecture.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/LectureId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Uploaded attachment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Attachment"
 components:
   securitySchemes:
     bearerAuth:
@@ -390,6 +613,34 @@ components:
       schema:
         type: string
         format: uuid
+    DeckId:
+      name: deckId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    LectureId:
+      name: lectureId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SlideIndex:
+      name: slideIndex
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 0
   schemas:
     SystemInfo:
       type: object
@@ -639,5 +890,171 @@ components:
         reason:
           type: string
         bannedAt:
+          type: string
+          format: date-time
+    ImportJob:
+      type: object
+      required: [id, courseId, status, progressPercent, sourceFilename, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        deckId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, RUNNING, COMPLETED, FAILED]
+        progressPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+        sourceFilename:
+          type: string
+        errorMessage:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SlideDeck:
+      type: object
+      required: [id, courseId, title, version, slideCount, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        sourceFilename:
+          type: string
+        slideCount:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+    SlideDeckDetails:
+      allOf:
+        - $ref: "#/components/schemas/SlideDeck"
+        - type: object
+          required: [slides]
+          properties:
+            slides:
+              type: array
+              items:
+                $ref: "#/components/schemas/Slide"
+    Slide:
+      type: object
+      required: [id, deckId, idx, imageUrl]
+      properties:
+        id:
+          type: string
+          format: uuid
+        deckId:
+          type: string
+          format: uuid
+        idx:
+          type: integer
+          minimum: 0
+        imageUrl:
+          type: string
+        textExtract:
+          type: string
+        note:
+          $ref: "#/components/schemas/SlideNote"
+    SlideNote:
+      type: object
+      required: [slideId, content, updatedAt]
+      properties:
+        slideId:
+          type: string
+          format: uuid
+        content:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+    SaveSlideNoteRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          maxLength: 20000
+    CreateLectureRequest:
+      type: object
+      required: [title, deckId]
+      properties:
+        title:
+          type: string
+          minLength: 2
+        deckId:
+          type: string
+          format: uuid
+        defaultSettings:
+          type: object
+          additionalProperties: true
+    Lecture:
+      type: object
+      required: [id, courseId, title, deckId, archived, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        deckId:
+          type: string
+          format: uuid
+        archived:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    LectureDetails:
+      allOf:
+        - $ref: "#/components/schemas/Lecture"
+        - type: object
+          required: [attachments]
+          properties:
+            deck:
+              $ref: "#/components/schemas/SlideDeck"
+            attachments:
+              type: array
+              items:
+                $ref: "#/components/schemas/Attachment"
+    Attachment:
+      type: object
+      required: [id, lectureId, filename, contentType, sizeBytes, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        lectureId:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
+        createdAt:
           type: string
           format: date-time

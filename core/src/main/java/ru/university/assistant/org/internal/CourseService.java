@@ -12,6 +12,7 @@ import ru.university.assistant.iam.api.InvitationResponse;
 import ru.university.assistant.iam.api.PersonRole;
 import ru.university.assistant.org.api.BanCourseMemberRequest;
 import ru.university.assistant.org.api.Course;
+import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.org.api.CourseBan;
 import ru.university.assistant.org.api.CourseDetails;
 import ru.university.assistant.org.api.CourseMembershipApi;
@@ -24,7 +25,7 @@ import ru.university.assistant.org.api.StudyGroup;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
-public class CourseService implements CourseMembershipApi {
+public class CourseService implements CourseMembershipApi, CourseAccessApi {
     private final CourseRepository courses;
     private final InvitationApi invitations;
 
@@ -105,6 +106,16 @@ public class CourseService implements CourseMembershipApi {
         }
     }
 
+    @Override
+    public void requireVisible(AuthenticatedUser user, UUID courseId) {
+        visibleCourse(user, courseId);
+    }
+
+    @Override
+    public void requireManage(AuthenticatedUser user, UUID courseId) {
+        ensureManage(user, courseId);
+    }
+
     private Course visibleCourse(AuthenticatedUser user, UUID courseId) {
         Course course = courses.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
@@ -114,11 +125,7 @@ public class CourseService implements CourseMembershipApi {
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Course is not visible");
     }
 
-    private void requireVisible(AuthenticatedUser user, UUID courseId) {
-        visibleCourse(user, courseId);
-    }
-
-    private void requireManage(AuthenticatedUser user, UUID courseId) {
+    private void ensureManage(AuthenticatedUser user, UUID courseId) {
         if (user.role() == PersonRole.ADMIN) {
             return;
         }

@@ -57,6 +57,9 @@ export function CoursePage({ courseId }: { courseId: string }) {
         </Link>
         <h1>{course.title}</h1>
         {course.archived && <span className="badge badge--muted">архив</span>}
+        <Link to={`/courses/${courseId}/materials`} className="btn-primary">
+          Материалы
+        </Link>
       </div>
 
       <div className="tab-row">

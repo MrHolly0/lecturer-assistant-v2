@@ -28,12 +28,27 @@ services:
       REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-30}
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-true}
       REQUIRE_STRONG_JWT_SECRET: ${REQUIRE_STRONG_JWT_SECRET:-false}
+      BLOB_ROOT: /data/blobs
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-104857600}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-100MB}
+      APP_CONTENT_CONVERTER_URL: http://converter:8000
       SERVER_PORT: 8080
     ports:
       - "${CORE_PORT:-8080}:8080"
+    volumes:
+      - blob-data:/data/blobs
     depends_on:
       postgres:
         condition: service_healthy
+      converter:
+        condition: service_started
+
+  converter:
+    build:
+      context: .
+      dockerfile: deploy/converter/Dockerfile
+    volumes:
+      - blob-data:/data/blobs
 
   web:
     build:
@@ -46,3 +61,4 @@ services:
 
 volumes:
   postgres-data:
+  blob-data:

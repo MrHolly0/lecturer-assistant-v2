@@ -18,12 +18,6 @@ services:
     depends_on:
       - web
 
-  converter:
-    profiles: ["prod"]
-    image: libreoffice-converter-placeholder:phase-2
-    pull_policy: never
-    command: ["sh", "-c", "echo converter starts in phase 2 && sleep infinity"]
-
   prometheus:
     profiles: ["prod"]
     image: prom/prometheus:v2.54.1
