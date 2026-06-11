@@ -1,4 +1,11 @@
-import { useEffect, useState } from "react";
+import {
+  createHashRouter,
+  Navigate,
+  Outlet,
+  RouterProvider,
+  useParams,
+  useSearchParams
+} from "react-router-dom";
 import { AuthProvider, useAuth } from "./AuthContext";
 import { LoginPage } from "../pages/LoginPage";
 import { RegisterPage } from "../pages/RegisterPage";
@@ -7,67 +14,78 @@ import { CoursePage } from "../pages/CoursePage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { Layout } from "../widgets/Layout";
 
-type Route =
-  | { page: "login" }
-  | { page: "register"; code: string }
-  | { page: "courses" }
-  | { page: "course"; courseId: string }
-  | { page: "admin-users" };
-
-function parseRoute(): Route {
-  const hash = window.location.hash.replace(/^#\/?/, "") || "courses";
-  if (hash.startsWith("login")) return { page: "login" };
-  if (hash.startsWith("register")) {
-    const code = new URLSearchParams(hash.split("?")[1] ?? "").get("code") ?? "";
-    return { page: "register", code };
-  }
-  if (hash.startsWith("admin/users")) return { page: "admin-users" };
-  const courseMatch = /^courses\/([0-9a-f-]{36})/.exec(hash);
-  if (courseMatch) return { page: "course", courseId: courseMatch[1] };
-  return { page: "courses" };
+function LoadingScreen() {
+  return (
+    <div className="auth-shell">
+      <div className="muted" style={{ textAlign: "center" }}>
+        …
+      </div>
+    </div>
+  );
 }
 
-function Router() {
+function PublicOnly({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
-  const [route, setRoute] = useState<Route>(parseRoute);
+  if (loading) return <LoadingScreen />;
+  if (user) return <Navigate to="/courses" replace />;
+  return children;
+}
 
-  useEffect(() => {
-    const handler = () => setRoute(parseRoute());
-    window.addEventListener("hashchange", handler);
-    return () => window.removeEventListener("hashchange", handler);
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="auth-shell">
-        <div className="muted" style={{ textAlign: "center" }}>
-          …
-        </div>
-      </div>
-    );
-  }
-
-  if (!user && route.page !== "login" && route.page !== "register") {
-    window.location.hash = "#/login";
-    return null;
-  }
-
-  if (route.page === "login") return <LoginPage />;
-  if (route.page === "register") return <RegisterPage code={route.code} />;
+function ProtectedLayout() {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/login" replace />;
 
   return (
     <Layout>
-      {route.page === "courses" && <CoursesPage />}
-      {route.page === "course" && <CoursePage courseId={route.courseId} />}
-      {route.page === "admin-users" && <AdminUsersPage />}
+      <Outlet />
     </Layout>
   );
 }
 
+function RegisterRoute() {
+  const [searchParams] = useSearchParams();
+  return <RegisterPage code={searchParams.get("code") ?? ""} />;
+}
+
+function CourseRoute() {
+  const { courseId } = useParams();
+  return <CoursePage courseId={courseId ?? ""} />;
+}
+
+const router = createHashRouter([
+  {
+    path: "/login",
+    element: (
+      <PublicOnly>
+        <LoginPage />
+      </PublicOnly>
+    )
+  },
+  {
+    path: "/register",
+    element: (
+      <PublicOnly>
+        <RegisterRoute />
+      </PublicOnly>
+    )
+  },
+  {
+    element: <ProtectedLayout />,
+    children: [
+      { index: true, element: <Navigate to="/courses" replace /> },
+      { path: "/courses", element: <CoursesPage /> },
+      { path: "/courses/:courseId", element: <CourseRoute /> },
+      { path: "/admin/users", element: <AdminUsersPage /> }
+    ]
+  },
+  { path: "*", element: <Navigate to="/courses" replace /> }
+]);
+
 export function App() {
   return (
     <AuthProvider>
-      <Router />
+      <RouterProvider router={router} />
     </AuthProvider>
   );
 }

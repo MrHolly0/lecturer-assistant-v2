@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
 import { login, bootstrapAdmin } from "../app/api/auth-api";
 import { useAuth } from "../app/AuthContext";
 import { ApiError } from "../app/api/http";
@@ -9,6 +10,7 @@ type Mode = "login" | "bootstrap";
 
 export function LoginPage() {
   const { setUser } = useAuth();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,7 +21,7 @@ export function LoginPage() {
     mutationFn: () => login(email, password),
     onSuccess: (data) => {
       setUser(data.user);
-      window.location.hash = "#/courses";
+      navigate("/courses", { replace: true });
     },
     onError: (err) => {
       setError(
@@ -32,7 +34,7 @@ export function LoginPage() {
     mutationFn: () => bootstrapAdmin(displayName, email, password),
     onSuccess: (data) => {
       setUser(data.user);
-      window.location.hash = "#/courses";
+      navigate("/courses", { replace: true });
     },
     onError: (err) => {
       setError(
@@ -123,7 +125,7 @@ export function LoginPage() {
         </form>
 
         <p className="auth-hint">
-          Есть код приглашения? <a href="#/register">Зарегистрироваться</a>
+          Есть код приглашения? <Link to="/register">Зарегистрироваться</Link>
         </p>
       </div>
     </div>

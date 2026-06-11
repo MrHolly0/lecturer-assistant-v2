@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import type { components } from "../app/api/schema";
 import { createCourseInvitation, createStudyGroup, getCourse } from "../app/api/courses-api";
 
@@ -51,9 +52,9 @@ export function CoursePage({ courseId }: { courseId: string }) {
   return (
     <div className="page">
       <div className="page-header">
-        <a href="#/courses" className="breadcrumb">
+        <Link to="/courses" className="breadcrumb">
           ← Курсы
-        </a>
+        </Link>
         <h1>{course.title}</h1>
         {course.archived && <span className="badge badge--muted">архив</span>}
       </div>
@@ -156,9 +157,12 @@ export function CoursePage({ courseId }: { courseId: string }) {
               <span className="muted">
                 до {new Date(lastInvite.expiresAt).toLocaleDateString("ru-RU")}
               </span>
-              <a href={`#/register?code=${lastInvite.code}`} className="btn-ghost">
+              <Link
+                to={`/register?code=${encodeURIComponent(lastInvite.code)}`}
+                className="btn-ghost"
+              >
                 Ссылка для регистрации
-              </a>
+              </Link>
             </div>
           )}
         </div>

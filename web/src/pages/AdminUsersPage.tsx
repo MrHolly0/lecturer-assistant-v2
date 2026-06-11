@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import type { components } from "../app/api/schema";
 import { createAdminInvitation, listUsers } from "../app/api/admin-api";
 
@@ -59,9 +60,12 @@ export function AdminUsersPage() {
                 для роли {lastInvite.role}, до{" "}
                 {new Date(lastInvite.expiresAt).toLocaleDateString("ru-RU")}
               </span>
-              <a href={`#/register?code=${lastInvite.code}`} className="btn-ghost">
+              <Link
+                to={`/register?code=${encodeURIComponent(lastInvite.code)}`}
+                className="btn-ghost"
+              >
                 Ссылка для регистрации
-              </a>
+              </Link>
             </div>
           )}
         </div>

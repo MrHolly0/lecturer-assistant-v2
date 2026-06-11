@@ -1,12 +1,14 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
 import { registerByInvitation } from "../app/api/auth-api";
 import { useAuth } from "../app/AuthContext";
 import { ApiError } from "../app/api/http";
 
 export function RegisterPage({ code: initialCode }: { code: string }) {
   const { setUser } = useAuth();
+  const navigate = useNavigate();
   const [code, setCode] = useState(initialCode);
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -17,7 +19,7 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
     mutationFn: () => registerByInvitation(displayName, email, password, code),
     onSuccess: (data) => {
       setUser(data.user);
-      window.location.hash = "#/courses";
+      navigate("/courses", { replace: true });
     },
     onError: (err) => {
       setError(
@@ -82,7 +84,7 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
           </button>
         </form>
         <p className="auth-hint">
-          <a href="#/login">← Войти в существующий аккаунт</a>
+          <Link to="/login">← Войти в существующий аккаунт</Link>
         </p>
       </div>
     </div>

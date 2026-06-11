@@ -1,18 +1,24 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { BookOpen, LogOut, Menu, Shield, UserRound, X } from "lucide-react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthContext";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../shared/ui/tooltip";
 
 const navItems = [
-  { path: "#/courses", icon: BookOpen, label: "Курсы" },
-  { path: "#/admin/users", icon: Shield, label: "Пользователи", adminOnly: true }
+  { path: "/courses", icon: BookOpen, label: "Курсы" },
+  { path: "/admin/users", icon: Shield, label: "Пользователи", adminOnly: true }
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const hash = window.location.hash || "#/courses";
+
+  async function handleSignOut() {
+    await signOut();
+    navigate("/login", { replace: true });
+  }
 
   return (
     <div className="flex h-screen bg-neutral-100">
@@ -29,12 +35,12 @@ export function Layout({ children }: { children: ReactNode }) {
         }`}
       >
         <div className="flex items-center justify-between border-b border-neutral-200 p-5">
-          <a href="#/courses" className="flex items-center gap-2 text-lg">
+          <Link to="/courses" className="flex items-center gap-2 text-lg">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500 text-xs text-white">
               L
             </span>
             LectureApp
-          </a>
+          </Link>
           <button
             className="lg:hidden"
             onClick={() => setSidebarOpen(false)}
@@ -49,22 +55,23 @@ export function Layout({ children }: { children: ReactNode }) {
             .filter((item) => !item.adminOnly || user?.role === "ADMIN")
             .map((item) => {
               const Icon = item.icon;
-              const active = hash.startsWith(item.path);
               return (
                 <Tooltip key={item.path}>
                   <TooltipTrigger asChild>
-                    <a
-                      href={item.path}
+                    <NavLink
+                      to={item.path}
                       onClick={() => setSidebarOpen(false)}
-                      className={`mb-0.5 flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition-colors ${
-                        active
-                          ? "border border-orange-200 bg-orange-50 text-orange-600"
-                          : "text-neutral-600 hover:bg-neutral-100"
-                      }`}
+                      className={({ isActive }) =>
+                        `mb-0.5 flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition-colors ${
+                          isActive
+                            ? "border border-orange-200 bg-orange-50 text-orange-600"
+                            : "text-neutral-600 hover:bg-neutral-100"
+                        }`
+                      }
                     >
                       <Icon className="h-4 w-4" />
                       <span>{item.label}</span>
-                    </a>
+                    </NavLink>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>{item.label}</p>
@@ -84,7 +91,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => void signOut()}
+                onClick={() => void handleSignOut()}
                 className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-normal text-neutral-600 transition-colors hover:bg-neutral-100"
               >
                 <LogOut className="h-4 w-4 text-neutral-500" />

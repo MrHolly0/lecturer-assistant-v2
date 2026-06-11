@@ -2,6 +2,6 @@ services:
   cloudflared:
     profiles: ["tunnel"]
     image: cloudflare/cloudflared:2025.2.1
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN:-}
+    command: tunnel --no-autoupdate --url http://web:80
     depends_on:
       - web

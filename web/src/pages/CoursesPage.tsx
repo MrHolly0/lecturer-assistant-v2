@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { createCourse, listCourses } from "../app/api/courses-api";
 
 export function CoursesPage() {
@@ -72,10 +73,10 @@ export function CoursesPage() {
         <ul className="card-list">
           {courses.map((course) => (
             <li key={course.id}>
-              <a href={`#/courses/${course.id}`} className="card-link">
+              <Link to={`/courses/${course.id}`} className="card-link">
                 <span className="card-title">{course.title}</span>
                 {course.archived && <span className="badge badge--muted">архив</span>}
-              </a>
+              </Link>
             </li>
           ))}
         </ul>

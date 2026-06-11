@@ -25,7 +25,7 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   });
   if (response.status === 401) {
     clearStoredAuth();
-    window.location.hash = "#/login";
+    window.dispatchEvent(new CustomEvent("auth:expired"));
     throw new ApiError(401, "Сессия истекла");
   }
   if (!response.ok) {

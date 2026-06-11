@@ -25,24 +25,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const expireAuth = () => setUserState(null);
+    window.addEventListener("auth:expired", expireAuth);
     if (!getStoredAuth()) {
       refreshAuth()
         .then((auth) => setUserState(auth?.user ?? null))
         .catch(() => clearStoredAuth())
         .finally(() => setLoading(false));
-      return;
+      return () => window.removeEventListener("auth:expired", expireAuth);
     }
     getCurrentUser()
       .then((u) => setUserState(u))
       .catch(() => clearStoredAuth())
       .finally(() => setLoading(false));
+    return () => window.removeEventListener("auth:expired", expireAuth);
   }, []);
 
   async function signOut() {
     await logout();
     clearStoredAuth();
     setUserState(null);
-    window.location.hash = "#/login";
   }
 
   return (
