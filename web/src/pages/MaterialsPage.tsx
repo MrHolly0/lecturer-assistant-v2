@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   createLecture,
   getDeck,
@@ -122,14 +123,16 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
 
   async function handleFile(file: File) {
     setError(null);
-    if (!title.trim()) {
-      setError("Сначала введите название лекции");
-      return;
+    const cleanTitle = title.trim();
+    const effectiveTitle = cleanTitle || titleFromFileName(file.name);
+    if (!cleanTitle) {
+      setTitle(effectiveTitle);
+      toast.warning(`Название взято из файла: ${effectiveTitle}`);
     }
     setFileName(file.name);
     setUploadProgress(1);
     try {
-      const nextJob = await uploadDeck(courseId, title.trim(), file, setUploadProgress);
+      const nextJob = await uploadDeck(courseId, effectiveTitle, file, setUploadProgress);
       setJob(nextJob);
       setUploadProgress(Math.max(75, nextJob.progressPercent));
     } catch (err) {
@@ -213,4 +216,10 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
       />
     </div>
   );
+}
+
+function titleFromFileName(fileName: string): string {
+  const cleanName = fileName.trim() || "Материалы";
+  const dot = cleanName.lastIndexOf(".");
+  return dot > 0 ? cleanName.slice(0, dot) : cleanName;
 }

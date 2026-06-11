@@ -27,12 +27,12 @@ export function DeckUploadPanel({
     <section className="material-section">
       <div className="mb-6 max-w-xl">
         <label className="field">
-          <span>Название лекции</span>
+          <span>Название презентации</span>
           <input
             type="text"
             value={title}
             onChange={(event) => onTitleChange(event.target.value)}
-            placeholder="напр. Введение в машинное обучение"
+            placeholder="Можно оставить пустым — возьмём из имени файла"
           />
         </label>
       </div>

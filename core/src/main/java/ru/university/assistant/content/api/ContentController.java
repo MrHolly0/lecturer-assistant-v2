@@ -44,7 +44,7 @@ public class ContentController {
     public ImportJob importDeck(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
-            @RequestPart("title") String title,
+            @RequestPart(value = "title", required = false) String title,
             @RequestPart("file") MultipartFile file) {
         return contentService.startDeckImport(user, courseId, title, file);
     }

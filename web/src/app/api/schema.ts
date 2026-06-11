@@ -1550,7 +1550,7 @@ export interface operations {
         "multipart/form-data": {
           /** Format: binary */
           file: string;
-          title: string;
+          title?: string;
         };
       };
     };

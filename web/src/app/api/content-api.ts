@@ -95,6 +95,10 @@ export function uploadDeck(
         reject(new ApiError(401, "Сессия истекла"));
         return;
       }
+      if (xhr.status === 413) {
+        reject(new ApiError(413, "Файл слишком большой для загрузки"));
+        return;
+      }
       if (xhr.status < 200 || xhr.status >= 300) {
         reject(new ApiError(xhr.status, `Загрузка завершилась с ошибкой ${xhr.status}`));
         return;
