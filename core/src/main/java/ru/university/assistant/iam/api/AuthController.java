@@ -1,8 +1,14 @@
 package ru.university.assistant.iam.api;
 
 import jakarta.validation.Valid;
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -10,40 +16,56 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ru.university.assistant.iam.internal.AuthService;
+import ru.university.assistant.iam.internal.AuthTokens;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
-    private final AuthService authService;
+    private static final String REFRESH_COOKIE = "la_refresh";
 
-    AuthController(AuthService authService) {
+    private final AuthService authService;
+    private final Duration refreshTtl;
+    private final boolean refreshCookieSecure;
+
+    AuthController(
+            AuthService authService,
+            @Value("${app.security.refresh-token-days}") long refreshTokenDays,
+            @Value("${app.security.refresh-cookie-secure:true}") boolean refreshCookieSecure) {
         this.authService = authService;
+        this.refreshTtl = Duration.ofDays(refreshTokenDays);
+        this.refreshCookieSecure = refreshCookieSecure;
     }
 
     @PostMapping("/bootstrap-admin")
-    public AuthResponse bootstrapAdmin(@Valid @RequestBody RegisterRequest request) {
-        return authService.bootstrapAdmin(request);
+    public ResponseEntity<AuthResponse> bootstrapAdmin(@Valid @RequestBody RegisterRequest request) {
+        return authenticated(authService.bootstrapAdmin(request));
     }
 
     @PostMapping("/register")
-    public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
-        return authService.register(request);
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+        return authenticated(authService.register(request));
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
-        return authService.login(request);
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        return authenticated(authService.login(request));
     }
 
     @PostMapping("/refresh")
-    public AuthResponse refresh(@Valid @RequestBody RefreshRequest request) {
-        return authService.refresh(request);
+    public ResponseEntity<AuthResponse> refresh(
+            @CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken) {
+        return authenticated(authService.refresh(requireRefreshToken(refreshToken)));
     }
 
     @PostMapping("/logout")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void logout(@Valid @RequestBody RefreshRequest request) {
-        authService.logout(request);
+    public ResponseEntity<Void> logout(@CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken) {
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            authService.logout(refreshToken);
+        }
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, expiredRefreshCookie().toString())
+                .build();
     }
 
     @PostMapping("/change-password")
@@ -56,5 +78,38 @@ public class AuthController {
     @GetMapping("/me")
     public UserProfile me(@AuthenticationPrincipal AuthenticatedUser user) {
         return authService.currentUser(user);
+    }
+
+    private ResponseEntity<AuthResponse> authenticated(AuthTokens tokens) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshCookie(tokens.refreshToken()).toString())
+                .body(tokens.toResponse());
+    }
+
+    private String requireRefreshToken(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing refresh token");
+        }
+        return refreshToken;
+    }
+
+    private ResponseCookie refreshCookie(String value) {
+        return ResponseCookie.from(REFRESH_COOKIE, value)
+                .httpOnly(true)
+                .secure(refreshCookieSecure)
+                .sameSite("Strict")
+                .path("/api/v1/auth")
+                .maxAge(refreshTtl)
+                .build();
+    }
+
+    private ResponseCookie expiredRefreshCookie() {
+        return ResponseCookie.from(REFRESH_COOKIE, "")
+                .httpOnly(true)
+                .secure(refreshCookieSecure)
+                .sameSite("Strict")
+                .path("/api/v1/auth")
+                .maxAge(Duration.ZERO)
+                .build();
     }
 }

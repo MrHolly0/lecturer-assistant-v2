@@ -1,10 +1,10 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
-import type { components } from './api/schema';
-import { getCurrentUser, logout } from './api/auth-api';
-import { clearStoredAuth, getStoredAuth } from './auth';
+import { createContext, useContext, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import type { components } from "./api/schema";
+import { getCurrentUser, logout, refreshAuth } from "./api/auth-api";
+import { clearStoredAuth, getStoredAuth } from "./auth";
 
-type UserProfile = components['schemas']['UserProfile'];
+type UserProfile = components["schemas"]["UserProfile"];
 
 interface AuthContextValue {
   user: UserProfile | null;
@@ -17,7 +17,7 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
   setUser: () => {},
-  signOut: async () => {},
+  signOut: async () => {}
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -26,7 +26,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!getStoredAuth()) {
-      setLoading(false);
+      refreshAuth()
+        .then((auth) => setUserState(auth?.user ?? null))
+        .catch(() => clearStoredAuth())
+        .finally(() => setLoading(false));
       return;
     }
     getCurrentUser()
@@ -39,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await logout();
     clearStoredAuth();
     setUserState(null);
-    window.location.hash = '#/login';
+    window.location.hash = "#/login";
   }
 
   return (

@@ -1,27 +1,27 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { components } from '../app/api/schema';
-import { createAdminInvitation, listUsers } from '../app/api/admin-api';
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { components } from "../app/api/schema";
+import { createAdminInvitation, listUsers } from "../app/api/admin-api";
 
-type AdminRole = 'ADMIN' | 'LECTURER' | 'ASSISTANT';
-type Invitation = components['schemas']['Invitation'];
+type AdminRole = "ADMIN" | "LECTURER" | "ASSISTANT";
+type Invitation = components["schemas"]["Invitation"];
 
 export function AdminUsersPage() {
   const qc = useQueryClient();
-  const [inviteRole, setInviteRole] = useState<AdminRole>('LECTURER');
+  const [inviteRole, setInviteRole] = useState<AdminRole>("LECTURER");
   const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
 
   const { data: users = [], isLoading } = useQuery({
-    queryKey: ['admin', 'users'],
-    queryFn: listUsers,
+    queryKey: ["admin", "users"],
+    queryFn: listUsers
   });
 
   const inviteMut = useMutation({
     mutationFn: () => createAdminInvitation({ role: inviteRole, ttlHours: 168 }),
     onSuccess: (inv) => {
-      void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      void qc.invalidateQueries({ queryKey: ["admin", "users"] });
       setLastInvite(inv);
-    },
+    }
   });
 
   return (
@@ -44,7 +44,10 @@ export function AdminUsersPage() {
           <button
             type="button"
             className="btn-primary"
-            onClick={() => { setLastInvite(null); inviteMut.mutate(); }}
+            onClick={() => {
+              setLastInvite(null);
+              inviteMut.mutate();
+            }}
             disabled={inviteMut.isPending}
           >
             Создать приглашение
@@ -53,7 +56,8 @@ export function AdminUsersPage() {
             <div className="invite-result">
               <code className="invite-code">{lastInvite.code}</code>
               <span className="muted">
-                для роли {lastInvite.role}, до {new Date(lastInvite.expiresAt).toLocaleDateString('ru-RU')}
+                для роли {lastInvite.role}, до{" "}
+                {new Date(lastInvite.expiresAt).toLocaleDateString("ru-RU")}
               </span>
               <a href={`#/register?code=${lastInvite.code}`} className="btn-ghost">
                 Ссылка для регистрации
@@ -80,7 +84,9 @@ export function AdminUsersPage() {
             <tbody>
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="muted">Нет пользователей.</td>
+                  <td colSpan={4} className="muted">
+                    Нет пользователей.
+                  </td>
                 </tr>
               )}
               {users.map((u) => (

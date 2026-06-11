@@ -81,7 +81,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Rotate refresh token. */
+    /** Rotate refresh token from httpOnly cookie. */
     post: operations["refresh"];
     delete?: never;
     options?: never;
@@ -336,16 +336,12 @@ export interface components {
       email: string;
       password: string;
     };
-    RefreshRequest: {
-      refreshToken: string;
-    };
     ChangePasswordRequest: {
       currentPassword: string;
       newPassword: string;
     };
     AuthResponse: {
       accessToken: string;
-      refreshToken: string;
       user: components["schemas"]["UserProfile"];
     };
     UserProfile: {
@@ -504,6 +500,8 @@ export interface operations {
       /** @description Authenticated admin. */
       200: {
         headers: {
+          /** @description httpOnly refresh token cookie scoped to /api/v1/auth. */
+          "Set-Cookie"?: string;
           [name: string]: unknown;
         };
         content: {
@@ -537,6 +535,8 @@ export interface operations {
       /** @description Registered person and access token. */
       200: {
         headers: {
+          /** @description httpOnly refresh token cookie scoped to /api/v1/auth. */
+          "Set-Cookie"?: string;
           [name: string]: unknown;
         };
         content: {
@@ -568,6 +568,8 @@ export interface operations {
       /** @description Authenticated person and access token. */
       200: {
         headers: {
+          /** @description httpOnly refresh token cookie scoped to /api/v1/auth. */
+          "Set-Cookie"?: string;
           [name: string]: unknown;
         };
         content: {
@@ -590,15 +592,13 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["RefreshRequest"];
-      };
-    };
+    requestBody?: never;
     responses: {
       /** @description Refreshed tokens. */
       200: {
         headers: {
+          /** @description Rotated httpOnly refresh token cookie scoped to /api/v1/auth. */
+          "Set-Cookie"?: string;
           [name: string]: unknown;
         };
         content: {
@@ -621,11 +621,7 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["RefreshRequest"];
-      };
-    };
+    requestBody?: never;
     responses: {
       /** @description Logged out. */
       204: {

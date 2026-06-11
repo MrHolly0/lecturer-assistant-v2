@@ -1,36 +1,36 @@
-import { useState } from 'react';
-import type { FormEvent } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { registerByInvitation } from '../app/api/auth-api';
-import { useAuth } from '../app/AuthContext';
-import { ApiError } from '../app/api/http';
+import { useState } from "react";
+import type { FormEvent } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { registerByInvitation } from "../app/api/auth-api";
+import { useAuth } from "../app/AuthContext";
+import { ApiError } from "../app/api/http";
 
 export function RegisterPage({ code: initialCode }: { code: string }) {
   const { setUser } = useAuth();
   const [code, setCode] = useState(initialCode);
-  const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
   const mutation = useMutation({
     mutationFn: () => registerByInvitation(displayName, email, password, code),
     onSuccess: (data) => {
       setUser(data.user);
-      window.location.hash = '#/courses';
+      window.location.hash = "#/courses";
     },
     onError: (err) => {
       setError(
         err instanceof ApiError && err.status === 400
-          ? 'Недействительный или истёкший код приглашения'
-          : 'Ошибка регистрации',
+          ? "Недействительный или истёкший код приглашения"
+          : "Ошибка регистрации"
       );
-    },
+    }
   });
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    setError('');
+    setError("");
     mutation.mutate();
   }
 
@@ -64,12 +64,7 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
           </label>
           <label className="field">
             <span>Email</span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </label>
           <label className="field">
             <span>Пароль</span>
@@ -83,7 +78,7 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
           </label>
           {error && <p className="form-error">{error}</p>}
           <button type="submit" className="btn-primary" disabled={mutation.isPending}>
-            {mutation.isPending ? '...' : 'Зарегистрироваться'}
+            {mutation.isPending ? "..." : "Зарегистрироваться"}
           </button>
         </form>
         <p className="auth-hint">

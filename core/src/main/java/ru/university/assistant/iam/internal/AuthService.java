@@ -13,7 +13,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import ru.university.assistant.iam.api.AuthResponse;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.iam.api.ChangePasswordRequest;
 import ru.university.assistant.iam.api.CreateInvitationRequest;
@@ -21,7 +20,6 @@ import ru.university.assistant.iam.api.InvitationApi;
 import ru.university.assistant.iam.api.InvitationResponse;
 import ru.university.assistant.iam.api.LoginRequest;
 import ru.university.assistant.iam.api.PersonRole;
-import ru.university.assistant.iam.api.RefreshRequest;
 import ru.university.assistant.iam.api.RegisterRequest;
 import ru.university.assistant.iam.api.UserProfile;
 import ru.university.assistant.iam.internal.security.JwtService;
@@ -65,7 +63,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse bootstrapAdmin(RegisterRequest request) {
+    public AuthTokens bootstrapAdmin(RegisterRequest request) {
         if (persons.count() > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Installation already has users");
         }
@@ -74,7 +72,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse register(RegisterRequest request) {
+    public AuthTokens register(RegisterRequest request) {
         InvitationRecord invitation = invitations
                 .findUsable(request.invitationCode())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid invitation"));
@@ -88,7 +86,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse login(LoginRequest request) {
+    public AuthTokens login(LoginRequest request) {
         PersonRecord person = persons
                 .findByEmail(request.email())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
@@ -99,8 +97,8 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse refresh(RefreshRequest request) {
-        String hash = TokenHasher.sha256(request.refreshToken());
+    public AuthTokens refresh(String refreshToken) {
+        String hash = TokenHasher.sha256(refreshToken);
         UUID personId = refreshTokens
                 .findUsablePersonId(hash)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
@@ -112,8 +110,8 @@ public class AuthService {
     }
 
     @Transactional
-    public void logout(RefreshRequest request) {
-        refreshTokens.revoke(TokenHasher.sha256(request.refreshToken()));
+    public void logout(String refreshToken) {
+        refreshTokens.revoke(TokenHasher.sha256(refreshToken));
     }
 
     @Transactional
@@ -154,13 +152,13 @@ public class AuthService {
                 role);
     }
 
-    private AuthResponse issueTokens(PersonRecord person) {
+    private AuthTokens issueTokens(PersonRecord person) {
         AuthenticatedUser user = new AuthenticatedUser(
                 person.id(), person.displayName(), person.email(), person.role());
         String refreshToken = randomToken();
         refreshTokens.create(
                 UuidV7.generate(), person.id(), TokenHasher.sha256(refreshToken), Instant.now(clock).plus(refreshTtl));
-        return new AuthResponse(jwtService.issue(user), refreshToken, person.toProfile());
+        return new AuthTokens(jwtService.issue(user), refreshToken, person.toProfile());
     }
 
     private CourseRole toCourseRole(PersonRole role) {

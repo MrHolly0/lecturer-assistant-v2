@@ -16,7 +16,7 @@ public final class UuidV7 {
         long timestamp = Instant.now().toEpochMilli();
         long mostSignificantBits = (timestamp & 0x0000_ffff_ffff_ffffL) << 16;
         mostSignificantBits |= 0x7000L;
-        mostSignificantBits |= Byte.toUnsignedLong(random[0]) << 8;
+        mostSignificantBits |= (Byte.toUnsignedLong(random[0]) & 0x0fL) << 8;
         mostSignificantBits |= Byte.toUnsignedLong(random[1]);
 
         long leastSignificantBits = 0x8000_0000_0000_0000L | ((Byte.toUnsignedLong(random[2]) & 0x3fL) << 56);

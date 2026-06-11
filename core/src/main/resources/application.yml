@@ -33,5 +33,7 @@ app:
   version: ${APP_VERSION:0.0.1-SNAPSHOT}
   security:
     jwt-secret: ${JWT_SECRET:phase-1-local-development-secret-change-me}
+    require-strong-secret: ${REQUIRE_STRONG_JWT_SECRET:false}
     access-token-minutes: ${ACCESS_TOKEN_MINUTES:15}
     refresh-token-days: ${REFRESH_TOKEN_DAYS:30}
+    refresh-cookie-secure: ${REFRESH_COOKIE_SECURE:true}

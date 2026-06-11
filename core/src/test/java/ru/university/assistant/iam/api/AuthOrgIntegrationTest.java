@@ -1,7 +1,11 @@
 package ru.university.assistant.iam.api;
 
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -11,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -68,9 +73,16 @@ class AuthOrgIntegrationTest {
                 {"displayName":"Admin","email":"admin@example.test","password":"password-123"}
                 """;
         return tokenFrom(mockMvc.perform(post("/api/v1/auth/bootstrap-admin")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
                 .andExpect(status().isOk())
+                .andExpect(header()
+                        .string(
+                                HttpHeaders.SET_COOKIE,
+                                allOf(
+                                        containsString("HttpOnly"),
+                                        containsString("Secure"),
+                                        containsString("Path=/api/v1/auth"))))
                 .andReturn()
                 .getResponse()
                 .getContentAsString());
@@ -144,6 +156,7 @@ class AuthOrgIntegrationTest {
 
     private String tokenFrom(String response) throws Exception {
         JsonNode json = objectMapper.readTree(response);
+        assertFalse(json.has("refreshToken"));
         return json.get("accessToken").asText();
     }
 

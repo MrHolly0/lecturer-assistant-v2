@@ -1,25 +1,29 @@
-import { useState } from 'react';
-import type { FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createCourse, listCourses } from '../app/api/courses-api';
+import { useState } from "react";
+import type { FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createCourse, listCourses } from "../app/api/courses-api";
 
 export function CoursesPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState("");
 
-  const { data: courses = [], isLoading, isError } = useQuery({
-    queryKey: ['courses'],
-    queryFn: listCourses,
+  const {
+    data: courses = [],
+    isLoading,
+    isError
+  } = useQuery({
+    queryKey: ["courses"],
+    queryFn: listCourses
   });
 
   const createMut = useMutation({
     mutationFn: () => createCourse({ title }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['courses'] });
-      setTitle('');
+      void qc.invalidateQueries({ queryKey: ["courses"] });
+      setTitle("");
       setShowCreate(false);
-    },
+    }
   });
 
   function submit(e: FormEvent) {

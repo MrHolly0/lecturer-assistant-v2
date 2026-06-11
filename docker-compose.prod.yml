@@ -1,4 +1,10 @@
 services:
+  core:
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required for prod}
+      REQUIRE_STRONG_JWT_SECRET: "true"
+      REFRESH_COOKIE_SECURE: "true"
+
   caddy:
     profiles: ["prod"]
     image: caddy:2.8-alpine
@@ -38,4 +44,3 @@ volumes:
   caddy-data:
   caddy-config:
   grafana-data:
-

@@ -13,6 +13,8 @@ out/
 node_modules/
 coverage/
 *.tsbuildinfo
+web/vite.config.d.ts
+web/vite.config.js
 
 .env
 .env.*

@@ -19,6 +19,7 @@ import ru.university.assistant.iam.api.PersonRole;
 
 @Service
 public class JwtService {
+    private static final String DEVELOPMENT_SECRET = "phase-1-local-development-secret-change-me";
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
@@ -32,11 +33,23 @@ public class JwtService {
             ObjectMapper objectMapper,
             Clock clock,
             @Value("${app.security.jwt-secret}") String secret,
-            @Value("${app.security.access-token-minutes}") long accessTokenMinutes) {
+            @Value("${app.security.access-token-minutes}") long accessTokenMinutes,
+            @Value("${app.security.require-strong-secret:false}") boolean requireStrongSecret) {
         this.objectMapper = objectMapper;
         this.clock = clock;
+        validateSecret(secret, requireStrongSecret);
         this.secret = secret.getBytes(StandardCharsets.UTF_8);
         this.accessTtl = Duration.ofMinutes(accessTokenMinutes);
+    }
+
+    private void validateSecret(String secret, boolean requireStrongSecret) {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException("JWT_SECRET must not be blank");
+        }
+        if (requireStrongSecret
+                && (DEVELOPMENT_SECRET.equals(secret) || secret.contains("change-me") || secret.length() < 32)) {
+            throw new IllegalStateException("JWT_SECRET must be a non-default secret with at least 32 characters");
+        }
     }
 
     public String issue(AuthenticatedUser user) {

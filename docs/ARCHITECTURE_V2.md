@@ -533,7 +533,7 @@ record InboundEvent(
 
 ### 8.1 Стек и структура
 
-React 18 + Vite + TypeScript, **TanStack Query** (серверное состояние) + лёгкий клиентский стор (zustand) для live-сессии, типы API — генерация из OpenAPI (`openapi-typescript`). UI-kit shadcn переносится из [react-app/src/shared/](react-app/src/shared) как есть.
+React 18 + Vite + TypeScript, **TanStack Query** (серверное состояние) + лёгкий клиентский стор (zustand) для live-сессии, типы API — генерация из OpenAPI (`openapi-typescript`). UI-kit shadcn переносится из [react-app/src/shared/](react-app/src/shared) как есть, вместе с темой из [react-app/src/styles/](react-app/src/styles) — **дизайн берём из v1, а не изобретаем** (§8.3).
 
 ```
 web/src/
@@ -559,6 +559,34 @@ web/src/
 
 **Десктоп-запуск: PWA (решено 2026-06-11).** Требование «кабинет лектора открывается с ярлыка, без запоминания ссылок» закрывает PWA-установка: страница `/install` с кнопкой и короткой инструкцией → у препода иконка и отдельное окно как у обычного приложения, обновления автоматические, офлайн-кэш дека уже есть (§3.4), окно проектора — `window.open` + Window Management API (Chrome) для второго экрана. Почему не Tauri: это новый для команды тулчейн (Rust) плюс подпись бинарей — неподписанный exe пугает Windows SmartScreen, а сертификата кода у студенческой команды нет; обновления тоже пришлось бы возить самим. Tauri остаётся запасным вариантом на случай, если вуз потребует классический установщик. Electron из v1 не тащим: 150 МБ рантайма ради ярлыка.
 
+### 8.3 Дизайн и UX: источник — v1, не выдумывать
+
+v1-фронт — готовая дизайн-система и экраны, уже принятые преподом. Правило для любого экрана v2: **сначала открыть аналог в v1 и взять его композицию и стиль**; отступление — осознанное решение на ревью, а не «я так вижу». Своя палитра, свои шрифты, свой CSS-фреймворк — нельзя.
+
+**Тема и стиль (переносится как есть, с первого экрана фазы 1):**
+
+- CSS-токены: [react-app/src/styles/theme.css](react-app/src/styles/theme.css) — готовая светлая + тёмная тема shadcn: primary `#030213`, радиус `0.625rem`, oklch-палитра, цвета графиков `--chart-1..5`, токены сайдбара. Остальное из [react-app/src/styles/](react-app/src/styles) — tailwind, шрифты;
+- стек стилей: **Tailwind + shadcn/ui** (как в v1);
+- компоненты: [react-app/src/shared/](react-app/src/shared) — ~50 готовых shadcn-компонентов (button, card, dialog, tabs, table, chart, sheet, sidebar, sonner…) копируются в `web/src/shared/ui`;
+- готовые фичи: [DrawingOverlay.tsx](react-app/src/features/DrawingOverlay.tsx) (рисование), [SlideNotesPanel.tsx](react-app/src/features/SlideNotesPanel.tsx), [StatsPanel.tsx](react-app/src/features/StatsPanel.tsx), [MainLayout.tsx](react-app/src/features/MainLayout.tsx) (каркас с сайдбар-навигацией).
+
+**Паритет экранов — минимум, который обязан существовать в v2 (чтобы ни одно «окошко» не потерялось):**
+
+| Референс v1 | Что это | Куда в v2 |
+|---|---|---|
+| [HomePage.tsx](react-app/src/pages/HomePage.tsx) | входной дашборд | `pages/lecturer` |
+| [MyLecturesPage.tsx](react-app/src/pages/MyLecturesPage.tsx) | список лекций | `pages/lecturer` |
+| [UploadPresentationPage.tsx](react-app/src/pages/UploadPresentationPage.tsx) | загрузка презентации с прогрессом | `pages/lecturer` (материалы) |
+| [LectureSettingsPage.tsx](react-app/src/pages/LectureSettingsPage.tsx) | настройки доступа, анонимности, каналов | `pages/lecturer` (настройки сессии) |
+| [LivePresentationPage.tsx](react-app/src/pages/LivePresentationPage.tsx) | **главный экран**: слайд по центру, сайдбар вопросов, список студентов, светофор, QR, запуск активностей | `pages/presenter` — та же композиция, но разобранная на features (страница ≤300 строк) |
+| [ProjectionPage.tsx](react-app/src/pages/ProjectionPage.tsx) | **режим проектора**: отдельное окно, только слайд + аннотации, BroadcastChannel | `pages/presenter/projection` — обязателен с фазы 3 |
+| [TestsPage.tsx](react-app/src/pages/TestsPage.tsx) | конструктор тестов, запуск, результаты, ручная оценка | `pages/lecturer` (активности) |
+| [StatisticsPage.tsx](react-app/src/pages/StatisticsPage.tsx) | аналитика: выбор лекции, таблицы результатов, срезы | `pages/lecturer` (аналитика) |
+
+UX-механики, выстраданные в v1 и обязательные в v2: проектор открывается отдельным окном кнопкой из презентера; live-панели обновляются пушем без перезагрузки страницы; QR крупно на проекторе; тосты (sonner) вместо `alert`; диалоги (alert-dialog) вместо `window.confirm`; мобильная вёрстка студенческих экранов.
+
+**Чего из v1-фронта НЕ брать:** монолитные страницы на 1900 строк, localStorage для доменных данных, polling, прямые `fetch` из страниц — анти-паттерны §12. Берём внешний вид и поведение, а не структуру кода.
+
 ---
 
 ## 9. Дорожная карта по фазам
@@ -583,13 +611,13 @@ web/src/
 
 ### Фаза 1 — IAM + орг-структура (≈2 нед)
 
-- [ ] `persons`, роли, регистрация по приглашению, login (JWT+refresh), logout, смена пароля.
-- [ ] `channel_identities` (модель + linking-коды; адаптеров ещё нет).
-- [ ] Курсы, членства, группы; приглашение студента (код/ссылка).
-- [ ] Бан-лист на курс (идею `BannedUser` v1 — сюда).
-- [ ] Spring Security: все `/api/v1/**` закрыты, матрица ролей в одном месте (`docs/permissions.md`).
-- [ ] Web: login, layout, список курсов, страница курса (участники/группы), админка пользователей (минимум).
-- [ ] Testcontainers-интеграционные тесты auth + прав.
+- [x] `persons`, роли, регистрация по приглашению, login (JWT+refresh), logout, смена пароля.
+- [x] `channel_identities` (модель + linking-коды; адаптеров ещё нет).
+- [x] Курсы, членства, группы; приглашение студента (код/ссылка).
+- [x] Бан-лист на курс (идею `BannedUser` v1 — сюда).
+- [x] Spring Security: все `/api/v1/**` закрыты, матрица ролей в одном месте (`docs/permissions.md`).
+- [x] Web: login, layout, список курсов, страница курса (участники/группы), админка пользователей (минимум). Дизайн — из v1 с первого экрана (§8.3): tailwind + shadcn + `theme.css`, каркас по [MainLayout.tsx](react-app/src/features/MainLayout.tsx).
+- [x] Testcontainers-интеграционные тесты auth + прав.
 
 **DoD:** лектор регистрируется по приглашению админа, создаёт курс, генерит код для студентов; чужой курс недоступен (тест); IDOR-сценарии из [IDORSecurityTest.java](e2e-tests/src/test/java/ru/university/qatest/IDORSecurityTest.java) переписаны на v2 и зелёные.
 
@@ -766,5 +794,6 @@ web/src/
 7. **Ростер группы из Excel — делаем, фаза 7.** Уточнённая механика: студент **всегда вводит ФИО сам**, деканатский список используется для сверки — опечатки исправляются на каноническое имя из списка (нечёткий матчинг с подтверждением), «вне списка» разруливает лектор. Спецификация — §4.3.
 8. **Синхронизацию standalone → сервер — не делаем.** Standalone самодостаточен. Фокус продукта: кабинет лектора + боты в мессенджерах (+ веб-канал студента как часть приложения).
 9. **Десктоп-запуск — PWA, решено** (§8.2). Tauri — запасной вариант, только если вуз потребует классический установщик; Electron в архив.
+10. **Дизайн фронта — из v1, не выдумывать** (§8.3): тема `theme.css`, shadcn-компоненты из `react-app/src/shared/` и композиция экранов переносятся, включая режим проектора отдельным окном. Свои палитры/шрифты запрещены.
 
 Открытых вопросов не осталось. Новые архитектурные решения — через ADR в `docs/adr/` (правило §12.10).

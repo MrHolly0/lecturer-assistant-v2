@@ -23,6 +23,11 @@ services:
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/lecturer_assistant}
       DB_USERNAME: ${DB_USERNAME:-lecturer}
       DB_PASSWORD: ${DB_PASSWORD:-lecturer_dev_password}
+      JWT_SECRET: ${JWT_SECRET:-phase-1-local-development-secret-change-me}
+      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-15}
+      REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-30}
+      REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-true}
+      REQUIRE_STRONG_JWT_SECRET: ${REQUIRE_STRONG_JWT_SECRET:-false}
       SERVER_PORT: 8080
     ports:
       - "${CORE_PORT:-8080}:8080"
@@ -41,4 +46,3 @@ services:
 
 volumes:
   postgres-data:
-

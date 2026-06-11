@@ -1,43 +1,59 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { components } from '../app/api/schema';
-import { createCourseInvitation, createStudyGroup, getCourse } from '../app/api/courses-api';
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { components } from "../app/api/schema";
+import { createCourseInvitation, createStudyGroup, getCourse } from "../app/api/courses-api";
 
-type CourseRole = 'LECTURER' | 'ASSISTANT' | 'STUDENT';
-type Invitation = components['schemas']['Invitation'];
+type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
+type Invitation = components["schemas"]["Invitation"];
 
 export function CoursePage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'members' | 'groups' | 'invite'>('members');
-  const [groupName, setGroupName] = useState('');
-  const [inviteRole, setInviteRole] = useState<CourseRole>('STUDENT');
+  const [activeTab, setActiveTab] = useState<"members" | "groups" | "invite">("members");
+  const [groupName, setGroupName] = useState("");
+  const [inviteRole, setInviteRole] = useState<CourseRole>("STUDENT");
   const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
 
-  const { data: course, isLoading, isError } = useQuery({
-    queryKey: ['courses', courseId],
-    queryFn: () => getCourse(courseId),
+  const {
+    data: course,
+    isLoading,
+    isError
+  } = useQuery({
+    queryKey: ["courses", courseId],
+    queryFn: () => getCourse(courseId)
   });
 
   const createGroupMut = useMutation({
     mutationFn: () => createStudyGroup(courseId, { name: groupName }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['courses', courseId] });
-      setGroupName('');
-    },
+      void qc.invalidateQueries({ queryKey: ["courses", courseId] });
+      setGroupName("");
+    }
   });
 
   const inviteMut = useMutation({
     mutationFn: () => createCourseInvitation(courseId, { role: inviteRole, ttlHours: 168 }),
-    onSuccess: (inv) => setLastInvite(inv),
+    onSuccess: (inv) => setLastInvite(inv)
   });
 
-  if (isLoading) return <div className="page"><p className="muted">Загрузка...</p></div>;
-  if (isError || !course) return <div className="page"><p className="form-error">Курс не найден или нет доступа.</p></div>;
+  if (isLoading)
+    return (
+      <div className="page">
+        <p className="muted">Загрузка...</p>
+      </div>
+    );
+  if (isError || !course)
+    return (
+      <div className="page">
+        <p className="form-error">Курс не найден или нет доступа.</p>
+      </div>
+    );
 
   return (
     <div className="page">
       <div className="page-header">
-        <a href="#/courses" className="breadcrumb">← Курсы</a>
+        <a href="#/courses" className="breadcrumb">
+          ← Курсы
+        </a>
         <h1>{course.title}</h1>
         {course.archived && <span className="badge badge--muted">архив</span>}
       </div>
@@ -45,28 +61,28 @@ export function CoursePage({ courseId }: { courseId: string }) {
       <div className="tab-row">
         <button
           type="button"
-          className={`tab ${activeTab === 'members' ? 'tab--active' : ''}`}
-          onClick={() => setActiveTab('members')}
+          className={`tab ${activeTab === "members" ? "tab--active" : ""}`}
+          onClick={() => setActiveTab("members")}
         >
           Участники ({course.members.length})
         </button>
         <button
           type="button"
-          className={`tab ${activeTab === 'groups' ? 'tab--active' : ''}`}
-          onClick={() => setActiveTab('groups')}
+          className={`tab ${activeTab === "groups" ? "tab--active" : ""}`}
+          onClick={() => setActiveTab("groups")}
         >
           Группы ({course.groups.length})
         </button>
         <button
           type="button"
-          className={`tab ${activeTab === 'invite' ? 'tab--active' : ''}`}
-          onClick={() => setActiveTab('invite')}
+          className={`tab ${activeTab === "invite" ? "tab--active" : ""}`}
+          onClick={() => setActiveTab("invite")}
         >
           Пригласить
         </button>
       </div>
 
-      {activeTab === 'members' && (
+      {activeTab === "members" && (
         <ul className="member-list">
           {course.members.length === 0 && <li className="muted">Нет участников.</li>}
           {course.members.map((m) => (
@@ -78,7 +94,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
         </ul>
       )}
 
-      {activeTab === 'groups' && (
+      {activeTab === "groups" && (
         <>
           <ul className="card-list">
             {course.groups.length === 0 && <li className="muted">Нет групп.</li>}
@@ -89,7 +105,10 @@ export function CoursePage({ courseId }: { courseId: string }) {
             ))}
           </ul>
           <form
-            onSubmit={(e) => { e.preventDefault(); createGroupMut.mutate(); }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              createGroupMut.mutate();
+            }}
             className="inline-form"
             style={{ marginTop: 16 }}
           >
@@ -107,11 +126,14 @@ export function CoursePage({ courseId }: { courseId: string }) {
         </>
       )}
 
-      {activeTab === 'invite' && (
+      {activeTab === "invite" && (
         <div className="invite-panel">
           <label className="field">
             <span>Роль участника</span>
-            <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as CourseRole)}>
+            <select
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value as CourseRole)}
+            >
               <option value="STUDENT">Студент</option>
               <option value="ASSISTANT">Ассистент</option>
               <option value="LECTURER">Лектор</option>
@@ -120,7 +142,10 @@ export function CoursePage({ courseId }: { courseId: string }) {
           <button
             type="button"
             className="btn-primary"
-            onClick={() => { setLastInvite(null); inviteMut.mutate(); }}
+            onClick={() => {
+              setLastInvite(null);
+              inviteMut.mutate();
+            }}
             disabled={inviteMut.isPending}
           >
             Сгенерировать код
@@ -129,7 +154,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
             <div className="invite-result">
               <code className="invite-code">{lastInvite.code}</code>
               <span className="muted">
-                до {new Date(lastInvite.expiresAt).toLocaleDateString('ru-RU')}
+                до {new Date(lastInvite.expiresAt).toLocaleDateString("ru-RU")}
               </span>
               <a href={`#/register?code=${lastInvite.code}`} className="btn-ghost">
                 Ссылка для регистрации
