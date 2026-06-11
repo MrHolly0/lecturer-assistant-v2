@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestClient;
@@ -33,6 +34,8 @@ class HttpSlideConversionClient implements SlideConversionClient {
         try {
             response = restClient.post()
                     .uri("/convert")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
                     .body(new ConvertRequest(
                             blobStorage.root().resolve(source.ref()).toString(),
                             blobStorage.root().toString(),

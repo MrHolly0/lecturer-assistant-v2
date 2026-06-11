@@ -20,8 +20,10 @@ class ConvertHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            body = self.read_request_body()
+            if not body:
+                raise ValueError("Пустой запрос к converter: core не передал JSON payload")
+            payload = json.loads(body.decode("utf-8"))
             slides = convert(
                 Path(payload["sourcePath"]).resolve(),
                 Path(payload["outputDir"]).resolve(),
@@ -41,6 +43,24 @@ class ConvertHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def read_request_body(self):
+        if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
+            chunks = []
+            while True:
+                size_line = self.rfile.readline().strip().split(b";", 1)[0]
+                if not size_line:
+                    raise ValueError("Некорректный chunked-запрос к converter")
+                size = int(size_line, 16)
+                if size == 0:
+                    while self.rfile.readline().strip():
+                        pass
+                    break
+                chunks.append(self.rfile.read(size))
+                self.rfile.read(2)
+            return b"".join(chunks)
+        length = int(self.headers.get("Content-Length", "0"))
+        return self.rfile.read(length)
 
 
 def convert(source: Path, output_dir: Path, output_prefix: str):
