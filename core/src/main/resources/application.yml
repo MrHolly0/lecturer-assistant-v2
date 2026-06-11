@@ -31,4 +31,7 @@ server:
 
 app:
   version: ${APP_VERSION:0.0.1-SNAPSHOT}
-
+  security:
+    jwt-secret: ${JWT_SECRET:phase-1-local-development-secret-change-me}
+    access-token-minutes: ${ACCESS_TOKEN_MINUTES:15}
+    refresh-token-days: ${REFRESH_TOKEN_DAYS:30}

@@ -1,17 +1,10 @@
-import type { components } from "./schema";
+import type { components } from './schema';
+import { apiFetch } from './http';
 
-export type SystemInfo = components["schemas"]["SystemInfo"];
+export type { ApiError } from './http';
+export type SystemInfo = components['schemas']['SystemInfo'];
 
 export async function getSystemInfo(): Promise<SystemInfo> {
-  const response = await fetch("/api/v1/system/info", {
-    headers: {
-      Accept: "application/json"
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error(`System info request failed with ${response.status}`);
-  }
-
-  return response.json() as Promise<SystemInfo>;
+  const res = await apiFetch('/system/info');
+  return res.json() as Promise<SystemInfo>;
 }

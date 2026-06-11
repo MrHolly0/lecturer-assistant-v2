@@ -1,32 +1,391 @@
 openapi: 3.0.3
 info:
   title: Lecturer Assistant v2 API
-  version: 0.0.1
-  description: Contract-first API scaffold for phase 0.
+  version: 0.1.0
+  description: Contract-first API for lecturer-assistant-v2.
 servers:
   - url: /api/v1
+security:
+  - bearerAuth: []
 paths:
   /system/info:
     get:
       operationId: getSystemInfo
-      summary: Read service bootstrap status.
-      tags:
-        - system
+      summary: Read service status.
+      tags: [system]
+      security: []
       responses:
         "200":
-          description: Bootstrap status.
+          description: Service status.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemInfo"
+  /auth/bootstrap-admin:
+    post:
+      operationId: bootstrapAdmin
+      summary: Create the first admin while the installation has no users.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: Authenticated admin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "409":
+          description: Installation already has users.
+  /auth/register:
+    post:
+      operationId: registerByInvitation
+      summary: Register by invitation code.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/RegisterRequest"
+                - type: object
+                  required: [invitationCode]
+                  properties:
+                    invitationCode:
+                      type: string
+                      minLength: 4
+      responses:
+        "200":
+          description: Registered person and access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Invalid invitation.
+  /auth/login:
+    post:
+      operationId: login
+      summary: Login by email and password.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated person and access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials.
+  /auth/refresh:
+    post:
+      operationId: refresh
+      summary: Rotate refresh token.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Refreshed tokens.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid refresh token.
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke current refresh token.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "204":
+          description: Logged out.
+  /auth/change-password:
+    post:
+      operationId: changePassword
+      summary: Change current user password.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "204":
+          description: Password changed.
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      summary: Read current user profile.
+      tags: [auth]
+      responses:
+        "200":
+          description: Current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+  /admin/users:
+    get:
+      operationId: listUsers
+      summary: List users.
+      tags: [admin]
+      responses:
+        "200":
+          description: Users.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserProfile"
+  /admin/invitations:
+    post:
+      operationId: createAdminInvitation
+      summary: Create an admin or lecturer invitation.
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitationRequest"
+      responses:
+        "201":
+          description: Created invitation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+  /identity/link-codes:
+    post:
+      operationId: createIdentityLinkCode
+      summary: Create a short code for linking a channel identity.
+      tags: [identity]
+      responses:
+        "201":
+          description: Link code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityLinkCode"
+  /identity/link:
+    post:
+      operationId: linkIdentity
+      summary: Link channel identity by code.
+      tags: [identity]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkIdentityRequest"
+      responses:
+        "200":
+          description: Linked channel identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelIdentity"
+  /courses:
+    get:
+      operationId: listCourses
+      summary: List courses visible to current user.
+      tags: [courses]
+      responses:
+        "200":
+          description: Courses.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Course"
+    post:
+      operationId: createCourse
+      summary: Create a course.
+      tags: [courses]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCourseRequest"
+      responses:
+        "201":
+          description: Created course.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+  /courses/{courseId}:
+    get:
+      operationId: getCourse
+      summary: Read one course.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: Course.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseDetails"
+        "403":
+          description: Course is not visible to current user.
+  /courses/{courseId}/invitations:
+    post:
+      operationId: createCourseInvitation
+      summary: Create an invitation for a course or group.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCourseInvitationRequest"
+      responses:
+        "201":
+          description: Created invitation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+  /courses/{courseId}/members:
+    get:
+      operationId: listCourseMembers
+      summary: List course members.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: Members.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CourseMember"
+  /courses/{courseId}/groups:
+    get:
+      operationId: listStudyGroups
+      summary: List study groups.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: Study groups.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StudyGroup"
+    post:
+      operationId: createStudyGroup
+      summary: Create a study group.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStudyGroupRequest"
+      responses:
+        "201":
+          description: Created group.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudyGroup"
+  /courses/{courseId}/bans:
+    get:
+      operationId: listCourseBans
+      summary: List course bans.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: Course bans.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CourseBan"
+    post:
+      operationId: banCourseMember
+      summary: Ban a person from a course.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BanCourseMemberRequest"
+      responses:
+        "201":
+          description: Created ban.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseBan"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    CourseId:
+      name: courseId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   schemas:
     SystemInfo:
       type: object
-      required:
-        - name
-        - version
-        - status
+      required: [name, version, status]
       properties:
         name:
           type: string
@@ -36,6 +395,249 @@ components:
           example: 0.0.1-SNAPSHOT
         status:
           type: string
-          enum:
-            - BOOTSTRAPPED
-
+          enum: [BOOTSTRAPPED]
+    RegisterRequest:
+      type: object
+      required: [displayName, email, password]
+      properties:
+        displayName:
+          type: string
+          minLength: 2
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+    AuthResponse:
+      type: object
+      required: [accessToken, refreshToken, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+    UserProfile:
+      type: object
+      required: [id, displayName, email, role, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [ADMIN, LECTURER, ASSISTANT, STUDENT]
+        status:
+          type: string
+          enum: [ACTIVE, DISABLED, EPHEMERAL]
+    CreateInvitationRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [ADMIN, LECTURER, ASSISTANT]
+        ttlHours:
+          type: integer
+          minimum: 1
+          default: 168
+    CreateCourseInvitationRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [LECTURER, ASSISTANT, STUDENT]
+        groupId:
+          type: string
+          format: uuid
+        ttlHours:
+          type: integer
+          minimum: 1
+          default: 168
+    Invitation:
+      type: object
+      required: [id, code, role, expiresAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        role:
+          type: string
+          enum: [ADMIN, LECTURER, ASSISTANT, STUDENT]
+        courseId:
+          type: string
+          format: uuid
+        groupId:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+    IdentityLinkCode:
+      type: object
+      required: [code, expiresAt]
+      properties:
+        code:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    LinkIdentityRequest:
+      type: object
+      required: [code, channelType, externalId]
+      properties:
+        code:
+          type: string
+        channelType:
+          type: string
+          enum: [telegram, vk, web]
+        externalId:
+          type: string
+        displayHint:
+          type: string
+    ChannelIdentity:
+      type: object
+      required: [id, personId, channelType, externalId, linkedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        personId:
+          type: string
+          format: uuid
+        channelType:
+          type: string
+        externalId:
+          type: string
+        displayHint:
+          type: string
+        linkedAt:
+          type: string
+          format: date-time
+    CreateCourseRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 2
+    Course:
+      type: object
+      required: [id, title, ownerPersonId, archived]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        ownerPersonId:
+          type: string
+          format: uuid
+        archived:
+          type: boolean
+    CourseDetails:
+      allOf:
+        - $ref: "#/components/schemas/Course"
+        - type: object
+          required: [members, groups]
+          properties:
+            members:
+              type: array
+              items:
+                $ref: "#/components/schemas/CourseMember"
+            groups:
+              type: array
+              items:
+                $ref: "#/components/schemas/StudyGroup"
+    CourseMember:
+      type: object
+      required: [courseId, personId, displayName, role]
+      properties:
+        courseId:
+          type: string
+          format: uuid
+        personId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [LECTURER, ASSISTANT, STUDENT]
+    CreateStudyGroupRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+    StudyGroup:
+      type: object
+      required: [id, courseId, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        name:
+          type: string
+    BanCourseMemberRequest:
+      type: object
+      required: [personId]
+      properties:
+        personId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+    CourseBan:
+      type: object
+      required: [courseId, personId, bannedAt]
+      properties:
+        courseId:
+          type: string
+          format: uuid
+        personId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        bannedAt:
+          type: string
+          format: date-time

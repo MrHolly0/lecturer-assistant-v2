@@ -1,78 +1,71 @@
-import { useQuery } from "@tanstack/react-query";
-import { getSystemInfo } from "./api/client";
+import { useEffect, useState } from 'react';
+import { AuthProvider, useAuth } from './AuthContext';
+import { LoginPage } from '../pages/LoginPage';
+import { RegisterPage } from '../pages/RegisterPage';
+import { CoursesPage } from '../pages/CoursesPage';
+import { CoursePage } from '../pages/CoursePage';
+import { AdminUsersPage } from '../pages/AdminUsersPage';
+import { Layout } from '../widgets/Layout';
 
-const modules = [
-  "iam",
-  "org",
-  "content",
-  "live",
-  "qa",
-  "feedback",
-  "interaction",
-  "channel",
-  "analytics",
-  "shared"
-];
+type Route =
+  | { page: 'login' }
+  | { page: 'register'; code: string }
+  | { page: 'courses' }
+  | { page: 'course'; courseId: string }
+  | { page: 'admin-users' };
 
-export function App() {
-  const systemInfo = useQuery({
-    queryKey: ["system-info"],
-    queryFn: getSystemInfo
-  });
+function parseRoute(): Route {
+  const hash = window.location.hash.replace(/^#\/?/, '') || 'courses';
+  if (hash.startsWith('login')) return { page: 'login' };
+  if (hash.startsWith('register')) {
+    const code = new URLSearchParams(hash.split('?')[1] ?? '').get('code') ?? '';
+    return { page: 'register', code };
+  }
+  if (hash.startsWith('admin/users')) return { page: 'admin-users' };
+  const courseMatch = /^courses\/([0-9a-f-]{36})/.exec(hash);
+  if (courseMatch) return { page: 'course', courseId: courseMatch[1] };
+  return { page: 'courses' };
+}
 
-  const status = systemInfo.data?.status ?? (systemInfo.isError ? "OFFLINE" : "CHECKING");
+function Router() {
+  const { user, loading } = useAuth();
+  const [route, setRoute] = useState<Route>(parseRoute);
+
+  useEffect(() => {
+    const handler = () => setRoute(parseRoute());
+    window.addEventListener('hashchange', handler);
+    return () => window.removeEventListener('hashchange', handler);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="auth-shell">
+        <div className="muted" style={{ textAlign: 'center' }}>…</div>
+      </div>
+    );
+  }
+
+  if (!user && route.page !== 'login' && route.page !== 'register') {
+    window.location.hash = '#/login';
+    return null;
+  }
+
+  if (route.page === 'login') return <LoginPage />;
+  if (route.page === 'register') return <RegisterPage code={route.code} />;
 
   return (
-    <main className="shell">
-      <section className="hero" aria-labelledby="page-title">
-        <div>
-          <p className="eyebrow">Phase 0 scaffold</p>
-          <h1 id="page-title">Lecturer Assistant v2</h1>
-          <p className="lead">
-            Modular core, channel adapters, and web workspace are connected from the first
-            checkpoint.
-          </p>
-        </div>
-        <div className={`status-pill status-pill--${status.toLowerCase()}`}>
-          <span aria-hidden="true" />
-          {status}
-        </div>
-      </section>
+    <Layout>
+      {route.page === 'courses' && <CoursesPage />}
+      {route.page === 'course' && <CoursePage courseId={route.courseId} />}
+      {route.page === 'admin-users' && <AdminUsersPage />}
+    </Layout>
+  );
+}
 
-      <section className="grid" aria-label="Bootstrap status">
-        <article className="panel panel--wide">
-          <p className="label">Core API</p>
-          <h2>{systemInfo.data?.name ?? "lecturer-assistant-v2"}</h2>
-          <dl className="facts">
-            <div>
-              <dt>Version</dt>
-              <dd>{systemInfo.data?.version ?? "waiting for core"}</dd>
-            </div>
-            <div>
-              <dt>Contract</dt>
-              <dd>OpenAPI v1</dd>
-            </div>
-          </dl>
-        </article>
-
-        <article className="panel">
-          <p className="label">Database</p>
-          <h2>PostgreSQL + Flyway</h2>
-          <p>Schema-per-module baseline is applied by V1.</p>
-        </article>
-
-        <article className="panel">
-          <p className="label">Architecture</p>
-          <h2>ArchUnit guarded</h2>
-          <p>Internal packages and channel SDK imports are checked on every build.</p>
-        </article>
-      </section>
-
-      <section className="module-strip" aria-label="Core modules">
-        {modules.map((module) => (
-          <span key={module}>{module}</span>
-        ))}
-      </section>
-    </main>
+export function App() {
+  return (
+    <AuthProvider>
+      <Router />
+    </AuthProvider>
   );
 }

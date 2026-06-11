@@ -1,0 +1,97 @@
+package ru.university.assistant.iam.internal;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Repository;
+import ru.university.assistant.iam.api.PersonRole;
+import ru.university.assistant.iam.api.PersonStatus;
+
+@Repository
+class PersonRepository {
+    private final JdbcClient jdbc;
+
+    PersonRepository(JdbcClient jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    long count() {
+        return jdbc.sql("select count(*) from iam.persons").query(Long.class).single();
+    }
+
+    PersonRecord create(UUID id, String displayName, String email, String passwordHash, PersonRole role) {
+        return jdbc.sql(
+                        """
+                        insert into iam.persons (id, display_name, email, password_hash, role, status)
+                        values (:id, :displayName, lower(:email), :passwordHash, :role, 'ACTIVE')
+                        returning id, display_name, email, password_hash, role, status
+                        """)
+                .param("id", id)
+                .param("displayName", displayName)
+                .param("email", email)
+                .param("passwordHash", passwordHash)
+                .param("role", role.name())
+                .query(this::mapPerson)
+                .single();
+    }
+
+    Optional<PersonRecord> findByEmail(String email) {
+        return jdbc.sql(
+                        """
+                        select id, display_name, email, password_hash, role, status
+                        from iam.persons
+                        where email = lower(:email)
+                        """)
+                .param("email", email)
+                .query(this::mapPerson)
+                .optional();
+    }
+
+    Optional<PersonRecord> findById(UUID id) {
+        return jdbc.sql(
+                        """
+                        select id, display_name, email, password_hash, role, status
+                        from iam.persons
+                        where id = :id
+                        """)
+                .param("id", id)
+                .query(this::mapPerson)
+                .optional();
+    }
+
+    List<PersonRecord> list() {
+        return jdbc.sql(
+                        """
+                        select id, display_name, email, password_hash, role, status
+                        from iam.persons
+                        order by created_at desc
+                        """)
+                .query(this::mapPerson)
+                .list();
+    }
+
+    void updatePassword(UUID personId, String passwordHash) {
+        jdbc.sql(
+                        """
+                        update iam.persons
+                        set password_hash = :passwordHash, updated_at = now()
+                        where id = :personId
+                        """)
+                .param("personId", personId)
+                .param("passwordHash", passwordHash)
+                .update();
+    }
+
+    private PersonRecord mapPerson(ResultSet resultSet, int rowNumber) throws SQLException {
+        return new PersonRecord(
+                resultSet.getObject("id", UUID.class),
+                resultSet.getString("display_name"),
+                resultSet.getString("email"),
+                resultSet.getString("password_hash"),
+                PersonRole.valueOf(resultSet.getString("role")),
+                PersonStatus.valueOf(resultSet.getString("status")));
+    }
+}

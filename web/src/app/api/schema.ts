@@ -11,10 +11,302 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read service bootstrap status. */
+    /** Read service status. */
     get: operations["getSystemInfo"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/auth/bootstrap-admin": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create the first admin while the installation has no users. */
+    post: operations["bootstrapAdmin"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/auth/register": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Register by invitation code. */
+    post: operations["registerByInvitation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/auth/login": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Login by email and password. */
+    post: operations["login"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/auth/refresh": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Rotate refresh token. */
+    post: operations["refresh"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/auth/logout": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Revoke current refresh token. */
+    post: operations["logout"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/auth/change-password": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Change current user password. */
+    post: operations["changePassword"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/auth/me": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read current user profile. */
+    get: operations["getCurrentUser"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/users": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List users. */
+    get: operations["listUsers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/invitations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create an admin or lecturer invitation. */
+    post: operations["createAdminInvitation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/identity/link-codes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create a short code for linking a channel identity. */
+    post: operations["createIdentityLinkCode"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/identity/link": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Link channel identity by code. */
+    post: operations["linkIdentity"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List courses visible to current user. */
+    get: operations["listCourses"];
+    put?: never;
+    /** Create a course. */
+    post: operations["createCourse"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read one course. */
+    get: operations["getCourse"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/invitations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create an invitation for a course or group. */
+    post: operations["createCourseInvitation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/members": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List course members. */
+    get: operations["listCourseMembers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/groups": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List study groups. */
+    get: operations["listStudyGroups"];
+    put?: never;
+    /** Create a study group. */
+    post: operations["createStudyGroup"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/bans": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List course bans. */
+    get: operations["listCourseBans"];
+    put?: never;
+    /** Ban a person from a course. */
+    post: operations["banCourseMember"];
     delete?: never;
     options?: never;
     head?: never;
@@ -33,9 +325,143 @@ export interface components {
       /** @enum {string} */
       status: "BOOTSTRAPPED";
     };
+    RegisterRequest: {
+      displayName: string;
+      /** Format: email */
+      email: string;
+      password: string;
+    };
+    LoginRequest: {
+      /** Format: email */
+      email: string;
+      password: string;
+    };
+    RefreshRequest: {
+      refreshToken: string;
+    };
+    ChangePasswordRequest: {
+      currentPassword: string;
+      newPassword: string;
+    };
+    AuthResponse: {
+      accessToken: string;
+      refreshToken: string;
+      user: components["schemas"]["UserProfile"];
+    };
+    UserProfile: {
+      /** Format: uuid */
+      id: string;
+      displayName: string;
+      /** Format: email */
+      email: string;
+      /** @enum {string} */
+      role: "ADMIN" | "LECTURER" | "ASSISTANT" | "STUDENT";
+      /** @enum {string} */
+      status: "ACTIVE" | "DISABLED" | "EPHEMERAL";
+    };
+    CreateInvitationRequest: {
+      /** @enum {string} */
+      role: "ADMIN" | "LECTURER" | "ASSISTANT";
+      /** @default 168 */
+      ttlHours: number;
+    };
+    CreateCourseInvitationRequest: {
+      /** @enum {string} */
+      role: "LECTURER" | "ASSISTANT" | "STUDENT";
+      /** Format: uuid */
+      groupId?: string;
+      /** @default 168 */
+      ttlHours: number;
+    };
+    Invitation: {
+      /** Format: uuid */
+      id: string;
+      code: string;
+      /** @enum {string} */
+      role: "ADMIN" | "LECTURER" | "ASSISTANT" | "STUDENT";
+      /** Format: uuid */
+      courseId?: string;
+      /** Format: uuid */
+      groupId?: string;
+      /** Format: date-time */
+      expiresAt: string;
+    };
+    IdentityLinkCode: {
+      code: string;
+      /** Format: date-time */
+      expiresAt: string;
+    };
+    LinkIdentityRequest: {
+      code: string;
+      /** @enum {string} */
+      channelType: "telegram" | "vk" | "web";
+      externalId: string;
+      displayHint?: string;
+    };
+    ChannelIdentity: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      personId: string;
+      channelType: string;
+      externalId: string;
+      displayHint?: string;
+      /** Format: date-time */
+      linkedAt: string;
+    };
+    CreateCourseRequest: {
+      title: string;
+    };
+    Course: {
+      /** Format: uuid */
+      id: string;
+      title: string;
+      /** Format: uuid */
+      ownerPersonId: string;
+      archived: boolean;
+    };
+    CourseDetails: components["schemas"]["Course"] & {
+      members: components["schemas"]["CourseMember"][];
+      groups: components["schemas"]["StudyGroup"][];
+    };
+    CourseMember: {
+      /** Format: uuid */
+      courseId: string;
+      /** Format: uuid */
+      personId: string;
+      displayName: string;
+      /** @enum {string} */
+      role: "LECTURER" | "ASSISTANT" | "STUDENT";
+    };
+    CreateStudyGroupRequest: {
+      name: string;
+    };
+    StudyGroup: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      courseId: string;
+      name: string;
+    };
+    BanCourseMemberRequest: {
+      /** Format: uuid */
+      personId: string;
+      reason?: string;
+    };
+    CourseBan: {
+      /** Format: uuid */
+      courseId: string;
+      /** Format: uuid */
+      personId: string;
+      reason?: string;
+      /** Format: date-time */
+      bannedAt: string;
+    };
   };
   responses: never;
-  parameters: never;
+  parameters: {
+    CourseId: string;
+  };
   requestBodies: never;
   headers: never;
   pathItems: never;
@@ -51,13 +477,508 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Bootstrap status. */
+      /** @description Service status. */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           "application/json": components["schemas"]["SystemInfo"];
+        };
+      };
+    };
+  };
+  bootstrapAdmin: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RegisterRequest"];
+      };
+    };
+    responses: {
+      /** @description Authenticated admin. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthResponse"];
+        };
+      };
+      /** @description Installation already has users. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  registerByInvitation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RegisterRequest"] & {
+          invitationCode: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Registered person and access token. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthResponse"];
+        };
+      };
+      /** @description Invalid invitation. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  login: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LoginRequest"];
+      };
+    };
+    responses: {
+      /** @description Authenticated person and access token. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthResponse"];
+        };
+      };
+      /** @description Invalid credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  refresh: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RefreshRequest"];
+      };
+    };
+    responses: {
+      /** @description Refreshed tokens. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthResponse"];
+        };
+      };
+      /** @description Invalid refresh token. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  logout: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RefreshRequest"];
+      };
+    };
+    responses: {
+      /** @description Logged out. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  changePassword: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChangePasswordRequest"];
+      };
+    };
+    responses: {
+      /** @description Password changed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getCurrentUser: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current user. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserProfile"];
+        };
+      };
+    };
+  };
+  listUsers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Users. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserProfile"][];
+        };
+      };
+    };
+  };
+  createAdminInvitation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateInvitationRequest"];
+      };
+    };
+    responses: {
+      /** @description Created invitation. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Invitation"];
+        };
+      };
+    };
+  };
+  createIdentityLinkCode: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Link code. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IdentityLinkCode"];
+        };
+      };
+    };
+  };
+  linkIdentity: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LinkIdentityRequest"];
+      };
+    };
+    responses: {
+      /** @description Linked channel identity. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChannelIdentity"];
+        };
+      };
+    };
+  };
+  listCourses: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Courses. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Course"][];
+        };
+      };
+    };
+  };
+  createCourse: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateCourseRequest"];
+      };
+    };
+    responses: {
+      /** @description Created course. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Course"];
+        };
+      };
+    };
+  };
+  getCourse: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Course. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CourseDetails"];
+        };
+      };
+      /** @description Course is not visible to current user. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createCourseInvitation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateCourseInvitationRequest"];
+      };
+    };
+    responses: {
+      /** @description Created invitation. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Invitation"];
+        };
+      };
+    };
+  };
+  listCourseMembers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Members. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CourseMember"][];
+        };
+      };
+    };
+  };
+  listStudyGroups: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Study groups. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudyGroup"][];
+        };
+      };
+    };
+  };
+  createStudyGroup: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateStudyGroupRequest"];
+      };
+    };
+    responses: {
+      /** @description Created group. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudyGroup"];
+        };
+      };
+    };
+  };
+  listCourseBans: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Course bans. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CourseBan"][];
+        };
+      };
+    };
+  };
+  banCourseMember: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BanCourseMemberRequest"];
+      };
+    };
+    responses: {
+      /** @description Created ban. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CourseBan"];
         };
       };
     };
