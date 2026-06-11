@@ -74,6 +74,11 @@ class ContentIntegrationTest {
         jdbc.sql(
                         """
                         truncate table
+                            analytics.outbox,
+                            analytics.events,
+                            live.slide_log,
+                            live.session_participants,
+                            live.sessions,
                             content.attachments,
                             live.lectures,
                             content.slide_notes,
@@ -181,6 +186,40 @@ class ContentIntegrationTest {
                         .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.attachments", hasSize(1)));
+
+        String sessionResponse = mockMvc.perform(post(
+                                "/api/v1/courses/{courseId}/lectures/{lectureId}/sessions", courseId, lectureId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("LIVE"))
+                .andExpect(jsonPath("$.currentSlideIdx").value(1))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String sessionId = objectMapper.readTree(sessionResponse).get("id").asText();
+
+        mockMvc.perform(put("/api/v1/courses/{courseId}/sessions/{sessionId}/slide", courseId, sessionId)
+                        .header("Authorization", bearer(lecturerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slideIdx\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentSlideIdx").value(2));
+
+        mockMvc.perform(get("/api/v1/courses/{courseId}/sessions/{sessionId}", courseId, sessionId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentSlideIdx").value(2));
+
+        long events = jdbc.sql(
+                        """
+                        select count(*)
+                        from analytics.events
+                        where aggregate_id = :sessionId and verb in ('session.started', 'session.slide_changed')
+                        """)
+                .param("sessionId", UUID.fromString(sessionId))
+                .query(Long.class)
+                .single();
+        assertEquals(2, events);
 
         mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, deckId)
                         .header("Authorization", bearer(foreignToken)))

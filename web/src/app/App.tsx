@@ -12,6 +12,8 @@ import { RegisterPage } from "../pages/RegisterPage";
 import { CoursesPage } from "../pages/CoursesPage";
 import { CoursePage } from "../pages/CoursePage";
 import { MaterialsPage } from "../pages/MaterialsPage";
+import { PresenterPage } from "../pages/PresenterPage";
+import { ProjectionPage } from "../pages/ProjectionPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { Layout } from "../widgets/Layout";
 import { Toaster } from "../shared/ui/sonner";
@@ -60,6 +62,16 @@ function MaterialsRoute() {
   return <MaterialsPage courseId={courseId ?? ""} />;
 }
 
+function PresenterRoute() {
+  const { courseId, sessionId } = useParams();
+  return <PresenterPage courseId={courseId ?? ""} sessionId={sessionId ?? ""} />;
+}
+
+function ProjectionRoute() {
+  const { courseId, sessionId } = useParams();
+  return <ProjectionPage courseId={courseId ?? ""} sessionId={sessionId ?? ""} />;
+}
+
 const router = createHashRouter([
   {
     path: "/login",
@@ -84,6 +96,8 @@ const router = createHashRouter([
       { path: "/courses", element: <CoursesPage /> },
       { path: "/courses/:courseId", element: <CourseRoute /> },
       { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
+      { path: "/courses/:courseId/sessions/:sessionId/presenter", element: <PresenterRoute /> },
+      { path: "/courses/:courseId/sessions/:sessionId/projection", element: <ProjectionRoute /> },
       { path: "/admin/users", element: <AdminUsersPage /> }
     ]
   },

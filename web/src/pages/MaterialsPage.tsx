@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   createLecture,
   getDeck,
@@ -14,9 +14,11 @@ import {
 import { DeckUploadPanel } from "../widgets/DeckUploadPanel";
 import { DeckViewer } from "../widgets/DeckViewer";
 import { LectureList } from "../widgets/LectureList";
+import { startLiveSession } from "../app/api/live-api";
 
 export function MaterialsPage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [fileName, setFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -28,6 +30,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [lectureTitle, setLectureTitle] = useState("");
   const [lectureDeckId, setLectureDeckId] = useState("");
+  const [startingLectureId, setStartingLectureId] = useState("");
 
   const decksQuery = useQuery({
     queryKey: ["content", courseId, "decks"],
@@ -108,6 +111,13 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["content", courseId, "decks", selectedDeckId] });
     }
+  });
+
+  const startSessionMut = useMutation({
+    mutationFn: (lectureId: string) => startLiveSession(courseId, lectureId),
+    onMutate: (lectureId) => setStartingLectureId(lectureId),
+    onSuccess: (session) => navigate(`/courses/${courseId}/sessions/${session.id}/presenter`),
+    onSettled: () => setStartingLectureId("")
   });
 
   async function handleFile(file: File) {
@@ -195,9 +205,11 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
         title={lectureTitle}
         deckId={lectureDeckId}
         creating={createLectureMut.isPending}
+        startingId={startingLectureId}
         onTitleChange={setLectureTitle}
         onDeckChange={setLectureDeckId}
         onCreate={() => createLectureMut.mutate()}
+        onStart={(lectureId) => startSessionMut.mutate(lectureId)}
       />
     </div>
   );

@@ -57,6 +57,11 @@ class AuthOrgIntegrationTest {
         jdbc.sql(
                         """
                         truncate table
+                            analytics.outbox,
+                            analytics.events,
+                            live.slide_log,
+                            live.session_participants,
+                            live.sessions,
                             content.attachments,
                             live.lectures,
                             content.slide_notes,

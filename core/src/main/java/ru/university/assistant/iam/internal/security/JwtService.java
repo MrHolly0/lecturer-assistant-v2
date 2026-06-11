@@ -16,9 +16,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.iam.api.PersonRole;
+import ru.university.assistant.iam.api.TokenAuthenticationApi;
 
 @Service
-public class JwtService {
+public class JwtService implements TokenAuthenticationApi {
     private static final String DEVELOPMENT_SECRET = "phase-1-local-development-secret-change-me";
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
@@ -91,6 +92,11 @@ public class JwtService {
         } catch (RuntimeException | java.io.IOException exception) {
             return Optional.empty();
         }
+    }
+
+    @Override
+    public Optional<AuthenticatedUser> parseAccessToken(String token) {
+        return parse(token);
     }
 
     private String encode(Map<String, Object> value) {

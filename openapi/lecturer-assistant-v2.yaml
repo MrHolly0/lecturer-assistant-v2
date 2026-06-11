@@ -599,6 +599,143 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Attachment"
+  /courses/{courseId}/lectures/{lectureId}/sessions:
+    post:
+      operationId: startLiveSession
+      summary: Start a live session for a lecture.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/LectureId"
+      responses:
+        "201":
+          description: Started session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSession"
+  /courses/{courseId}/sessions/{sessionId}:
+    get:
+      operationId: getLiveSession
+      summary: Read current live session state.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Session state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSession"
+  /courses/{courseId}/sessions/join:
+    post:
+      operationId: joinLiveSession
+      summary: Join a live session by join code.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinSessionRequest"
+      responses:
+        "200":
+          description: Joined session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSession"
+  /courses/{courseId}/sessions/{sessionId}/slide:
+    put:
+      operationId: changeLiveSessionSlide
+      summary: Change current slide.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeSlideRequest"
+      responses:
+        "200":
+          description: Updated session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSession"
+  /courses/{courseId}/sessions/{sessionId}/annotations:
+    put:
+      operationId: saveLiveSessionAnnotations
+      summary: Save live annotations.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveAnnotationsRequest"
+      responses:
+        "200":
+          description: Updated session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSession"
+  /courses/{courseId}/sessions/{sessionId}/pause:
+    post:
+      operationId: pauseLiveSession
+      summary: Pause live session.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Paused session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSession"
+  /courses/{courseId}/sessions/{sessionId}/resume:
+    post:
+      operationId: resumeLiveSession
+      summary: Resume live session.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Resumed session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSession"
+  /courses/{courseId}/sessions/{sessionId}/end:
+    post:
+      operationId: endLiveSession
+      summary: End live session.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Ended session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSession"
 components:
   securitySchemes:
     bearerAuth:
@@ -641,6 +778,13 @@ components:
       schema:
         type: integer
         minimum: 0
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   schemas:
     SystemInfo:
       type: object
@@ -1065,3 +1209,70 @@ components:
         createdAt:
           type: string
           format: date-time
+    SessionStatus:
+      type: string
+      enum: [SCHEDULED, LIVE, PAUSED, ENDED, ARCHIVED]
+    LiveSession:
+      type: object
+      required:
+        - id
+        - courseId
+        - lectureId
+        - deckId
+        - lectureTitle
+        - status
+        - joinCode
+        - currentSlideIdx
+        - annotations
+      properties:
+        id:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        lectureId:
+          type: string
+          format: uuid
+        deckId:
+          type: string
+          format: uuid
+        lectureTitle:
+          type: string
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        joinCode:
+          type: string
+        currentSlideIdx:
+          type: integer
+          minimum: 1
+        annotations:
+          type: object
+          additionalProperties: true
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+    ChangeSlideRequest:
+      type: object
+      required: [slideIdx]
+      properties:
+        slideIdx:
+          type: integer
+          minimum: 1
+    SaveAnnotationsRequest:
+      type: object
+      required: [annotations]
+      properties:
+        annotations:
+          type: object
+          additionalProperties: true
+    JoinSessionRequest:
+      type: object
+      required: [joinCode]
+      properties:
+        joinCode:
+          type: string
+          minLength: 4

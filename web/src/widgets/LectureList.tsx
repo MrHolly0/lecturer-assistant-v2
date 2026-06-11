@@ -6,9 +6,11 @@ interface LectureListProps {
   title: string;
   deckId: string;
   creating: boolean;
+  startingId?: string;
   onTitleChange: (value: string) => void;
   onDeckChange: (value: string) => void;
   onCreate: () => void;
+  onStart: (lectureId: string) => void;
 }
 
 export function LectureList({
@@ -17,9 +19,11 @@ export function LectureList({
   title,
   deckId,
   creating,
+  startingId,
   onTitleChange,
   onDeckChange,
-  onCreate
+  onCreate,
+  onStart
 }: LectureListProps) {
   return (
     <section className="material-section">
@@ -56,6 +60,14 @@ export function LectureList({
           <li key={lecture.id} className="card-link">
             <span className="card-title">{lecture.title}</span>
             <span className="muted">{lecture.archived ? "архив" : "активна"}</span>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={startingId === lecture.id}
+              onClick={() => onStart(lecture.id)}
+            >
+              Старт
+            </button>
           </li>
         ))}
       </ul>

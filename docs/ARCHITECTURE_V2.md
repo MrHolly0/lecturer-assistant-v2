@@ -634,12 +634,12 @@ UX-механики, выстраданные в v1 и обязательные 
 
 ### Фаза 3 — Live Session Engine (≈2 нед)
 
-- [ ] `sessions` + FSM + join-коды; `session_participants`; `slide_log`.
-- [ ] WS-хаб `/ws/session/{id}` (auth по JWT): slide_changed, annotations, агрегаты.
-- [ ] **Event store + EventBus + outbox** (схема `analytics.events`) — и первые события: `session.*`, `slide_*`, `participant.*`.
-- [ ] Презентер-вью (тонкий! композиция features), проектор-вью (WS + BroadcastChannel), рисование (перенос DrawingOverlay), заметки, таймер слайда, beforeunload-guard.
-- [ ] Офлайн-каркас презентера (§3.4 D3): service worker прекэширует дек при старте сессии; смена слайда и рисование — optimistic-local, сервер догоняет.
-- [ ] Восстановление: F5/рестарт core при живой сессии.
+- [x] `sessions` + FSM + join-коды; `session_participants`; `slide_log`.
+- [x] WS-хаб `/ws/session/{id}` (auth по JWT): slide_changed, annotations, агрегаты.
+- [x] **Event store + EventBus + outbox** (схема `analytics.events`) — и первые события: `session.*`, `slide_*`, `participant.*`.
+- [x] Презентер-вью (тонкий! композиция features), проектор-вью (WS + BroadcastChannel), рисование (перенос DrawingOverlay), заметки, таймер слайда, beforeunload-guard.
+- [x] Офлайн-каркас презентера (§3.4 D3): service worker прекэширует дек при старте сессии; смена слайда и рисование — optimistic-local, сервер догоняет.
+- [x] Восстановление: F5/рестарт core при живой сессии.
 
 **DoD:** лекция стартует, два окна (презентер+проектор) синхронны; `kill -9` core посреди сессии → после старта сессия в том же состоянии; обрыв сети у лектора на 2 минуты не останавливает показ (локальный кэш + BroadcastChannel), после реконнекта состояние досинхронизировано; в `analytics.events` корректная хронология.
 
