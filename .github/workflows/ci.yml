@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: ["master", "v2/**"]
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Verify core
+        run: mvn -B verify
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Verify web
+        working-directory: web
+        run: |
+          npm ci
+          npm run gen:api
+          npm run lint
+          npm run format
+          npm run build
+
+      - name: Validate compose
+        run: docker compose config --quiet
+
+      - name: Build core image
+        run: docker build -f core/Dockerfile -t lecturer-assistant-core:ci .
+
+      - name: Build web image
+        run: docker build -f web/Dockerfile -t lecturer-assistant-web:ci .

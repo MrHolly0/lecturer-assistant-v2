@@ -1,0 +1,41 @@
+services:
+  caddy:
+    profiles: ["prod"]
+    image: caddy:2.8-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+
+  converter:
+    profiles: ["prod"]
+    image: libreoffice-converter-placeholder:phase-2
+    pull_policy: never
+    command: ["sh", "-c", "echo converter starts in phase 2 && sleep infinity"]
+
+  prometheus:
+    profiles: ["prod"]
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    profiles: ["prod"]
+    image: grafana/grafana:11.1.4
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  caddy-data:
+  caddy-config:
+  grafana-data:
+

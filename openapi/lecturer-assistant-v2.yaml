@@ -1,0 +1,41 @@
+openapi: 3.0.3
+info:
+  title: Lecturer Assistant v2 API
+  version: 0.0.1
+  description: Contract-first API scaffold for phase 0.
+servers:
+  - url: /api/v1
+paths:
+  /system/info:
+    get:
+      operationId: getSystemInfo
+      summary: Read service bootstrap status.
+      tags:
+        - system
+      responses:
+        "200":
+          description: Bootstrap status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemInfo"
+components:
+  schemas:
+    SystemInfo:
+      type: object
+      required:
+        - name
+        - version
+        - status
+      properties:
+        name:
+          type: string
+          example: lecturer-assistant-v2
+        version:
+          type: string
+          example: 0.0.1-SNAPSHOT
+        status:
+          type: string
+          enum:
+            - BOOTSTRAPPED
+

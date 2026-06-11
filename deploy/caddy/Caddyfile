@@ -1,0 +1,5 @@
+:80 {
+    reverse_proxy /api/* core:8080
+    reverse_proxy web:80
+}
+
