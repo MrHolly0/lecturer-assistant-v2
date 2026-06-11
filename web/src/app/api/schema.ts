@@ -557,6 +557,8 @@ export interface components {
       archived: boolean;
     };
     CourseDetails: components["schemas"]["Course"] & {
+      myRole?: components["schemas"]["CourseRole"];
+      canManage: boolean;
       members: components["schemas"]["CourseMember"][];
       groups: components["schemas"]["StudyGroup"][];
     };
@@ -566,9 +568,10 @@ export interface components {
       /** Format: uuid */
       personId: string;
       displayName: string;
-      /** @enum {string} */
-      role: "LECTURER" | "ASSISTANT" | "STUDENT";
+      role: components["schemas"]["CourseRole"];
     };
+    /** @enum {string} */
+    CourseRole: "LECTURER" | "ASSISTANT" | "STUDENT";
     CreateStudyGroupRequest: {
       name: string;
     };

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { components } from "../app/api/schema";
@@ -22,6 +22,13 @@ export function CoursePage({ courseId }: { courseId: string }) {
     queryKey: ["courses", courseId],
     queryFn: () => getCourse(courseId)
   });
+  const canManage = course?.canManage ?? false;
+
+  useEffect(() => {
+    if (!canManage && activeTab !== "members") {
+      setActiveTab("members");
+    }
+  }, [activeTab, canManage]);
 
   const createGroupMut = useMutation({
     mutationFn: () => createStudyGroup(courseId, { name: groupName }),
@@ -70,20 +77,24 @@ export function CoursePage({ courseId }: { courseId: string }) {
         >
           Участники ({course.members.length})
         </button>
-        <button
-          type="button"
-          className={`tab ${activeTab === "groups" ? "tab--active" : ""}`}
-          onClick={() => setActiveTab("groups")}
-        >
-          Группы ({course.groups.length})
-        </button>
-        <button
-          type="button"
-          className={`tab ${activeTab === "invite" ? "tab--active" : ""}`}
-          onClick={() => setActiveTab("invite")}
-        >
-          Пригласить
-        </button>
+        {canManage && (
+          <button
+            type="button"
+            className={`tab ${activeTab === "groups" ? "tab--active" : ""}`}
+            onClick={() => setActiveTab("groups")}
+          >
+            Группы ({course.groups.length})
+          </button>
+        )}
+        {canManage && (
+          <button
+            type="button"
+            className={`tab ${activeTab === "invite" ? "tab--active" : ""}`}
+            onClick={() => setActiveTab("invite")}
+          >
+            Пригласить
+          </button>
+        )}
       </div>
 
       {activeTab === "members" && (
@@ -98,7 +109,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
         </ul>
       )}
 
-      {activeTab === "groups" && (
+      {canManage && activeTab === "groups" && (
         <>
           <ul className="card-list">
             {course.groups.length === 0 && <li className="muted">Нет групп.</li>}
@@ -130,7 +141,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
         </>
       )}
 
-      {activeTab === "invite" && (
+      {canManage && activeTab === "invite" && (
         <div className="invite-panel">
           <label className="field">
             <span>Роль участника</span>

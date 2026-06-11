@@ -824,8 +824,13 @@ components:
       allOf:
         - $ref: "#/components/schemas/Course"
         - type: object
-          required: [members, groups]
+          required: [canManage, members, groups]
           properties:
+            myRole:
+              nullable: true
+              $ref: "#/components/schemas/CourseRole"
+            canManage:
+              type: boolean
             members:
               type: array
               items:
@@ -847,8 +852,10 @@ components:
         displayName:
           type: string
         role:
-          type: string
-          enum: [LECTURER, ASSISTANT, STUDENT]
+          $ref: "#/components/schemas/CourseRole"
+    CourseRole:
+      type: string
+      enum: [LECTURER, ASSISTANT, STUDENT]
     CreateStudyGroupRequest:
       type: object
       required: [name]

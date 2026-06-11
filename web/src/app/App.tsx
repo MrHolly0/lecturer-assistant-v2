@@ -14,6 +14,7 @@ import { CoursePage } from "../pages/CoursePage";
 import { MaterialsPage } from "../pages/MaterialsPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { Layout } from "../widgets/Layout";
+import { Toaster } from "../shared/ui/sonner";
 
 function LoadingScreen() {
   return (
@@ -93,6 +94,7 @@ export function App() {
   return (
     <AuthProvider>
       <RouterProvider router={router} />
+      <Toaster richColors closeButton />
     </AuthProvider>
   );
 }

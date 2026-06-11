@@ -8,5 +8,7 @@ public record CourseDetails(
         String title,
         UUID ownerPersonId,
         boolean archived,
+        CourseRole myRole,
+        boolean canManage,
         List<CourseMember> members,
         List<StudyGroup> groups) {}

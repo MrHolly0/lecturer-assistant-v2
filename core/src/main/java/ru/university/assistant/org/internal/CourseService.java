@@ -50,11 +50,14 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
 
     public CourseDetails getCourse(AuthenticatedUser user, UUID courseId) {
         Course course = visibleCourse(user, courseId);
+        CourseRole myRole = courses.findMemberRole(courseId, user.id()).orElse(null);
         return new CourseDetails(
                 course.id(),
                 course.title(),
                 course.ownerPersonId(),
                 course.archived(),
+                myRole,
+                canManage(user, myRole),
                 courses.listMembers(course.id()),
                 courses.listGroups(course.id()));
     }
@@ -131,9 +134,13 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
         }
         CourseRole role = courses.findMemberRole(courseId, user.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Course is not visible"));
-        if (role != CourseRole.LECTURER && role != CourseRole.ASSISTANT) {
+        if (!canManage(user, role)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Course management is not allowed");
         }
+    }
+
+    private boolean canManage(AuthenticatedUser user, CourseRole role) {
+        return user.role() == PersonRole.ADMIN || role == CourseRole.LECTURER || role == CourseRole.ASSISTANT;
     }
 
     private PersonRole toPersonRole(CourseRole role) {

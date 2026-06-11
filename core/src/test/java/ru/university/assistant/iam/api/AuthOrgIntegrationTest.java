@@ -167,6 +167,12 @@ class AuthOrgIntegrationTest {
                         .content("{\"name\":\"Forbidden\"}"))
                 .andExpect(status().isForbidden());
 
+        mockMvc.perform(post("/api/v1/courses/{courseId}/invitations", courseId)
+                        .header("Authorization", bearer(student.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"STUDENT\"}"))
+                .andExpect(status().isForbidden());
+
         mockMvc.perform(post("/api/v1/courses/{courseId}/bans", courseId)
                         .header("Authorization", bearer(lecturerToken))
                         .contentType(MediaType.APPLICATION_JSON)
