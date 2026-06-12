@@ -29,7 +29,15 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     throw new ApiError(401, "Сессия истекла");
   }
   if (!response.ok) {
-    throw new ApiError(response.status, `Запрос завершился с ошибкой ${response.status}`);
+    let message = `Запрос завершился с ошибкой ${response.status}`;
+    try {
+      const data = (await response.clone().json()) as { message?: string; detail?: string };
+      if (data?.message) message = data.message;
+      else if (data?.detail) message = data.detail;
+    } catch {
+      // тело ответа не JSON — оставляем сообщение по умолчанию
+    }
+    throw new ApiError(response.status, message);
   }
   return response;
 }

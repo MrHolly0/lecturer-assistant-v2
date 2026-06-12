@@ -51,6 +51,30 @@ export async function deleteStudyGroup(courseId: string, groupId: string): Promi
   await apiFetch(`/courses/${courseId}/groups/${groupId}`, { method: "DELETE" });
 }
 
+type CourseRole = components["schemas"]["CourseRole"];
+
+export async function removeCourseMember(courseId: string, personId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/members/${personId}`, { method: "DELETE" });
+}
+
+export async function changeCourseMemberRole(
+  courseId: string,
+  personId: string,
+  role: CourseRole
+): Promise<void> {
+  await apiFetch(`/courses/${courseId}/members/${personId}/role`, {
+    method: "PUT",
+    body: JSON.stringify({ role })
+  });
+}
+
+export async function changeCourseOwner(courseId: string, personId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/owner`, {
+    method: "PUT",
+    body: JSON.stringify({ personId })
+  });
+}
+
 export async function createCourseInvitation(
   courseId: string,
   req: CreateCourseInvitationRequest

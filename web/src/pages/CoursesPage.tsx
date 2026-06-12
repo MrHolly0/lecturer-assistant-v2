@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import {
   archiveCourse,
   createCourse,
@@ -37,17 +38,25 @@ export function CoursesPage() {
     }
   });
 
+  const onCourseError = (error: unknown) =>
+    toast.error(error instanceof Error ? error.message : "Не удалось выполнить действие");
   const archiveMut = useMutation({
     mutationFn: (courseId: string) => archiveCourse(courseId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses"] })
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses"] }),
+    onError: onCourseError
   });
   const restoreMut = useMutation({
     mutationFn: (courseId: string) => restoreCourse(courseId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses"] })
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses"] }),
+    onError: onCourseError
   });
   const hardDeleteMut = useMutation({
     mutationFn: (courseId: string) => hardDeleteCourse(courseId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses"] })
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["courses"] });
+      toast.success("Курс удалён");
+    },
+    onError: onCourseError
   });
   const activeCourses = courses.filter((course) => !course.archived);
   const archivedCourses = courses.filter((course) => course.archived);
@@ -97,12 +106,12 @@ export function CoursesPage() {
       {activeCourses.length > 0 && (
         <ul className="card-list">
           {activeCourses.map((course) => (
-            <li key={course.id}>
-              <div className="card-link">
-                <Link to={`/courses/${course.id}`} className="card-title">
-                  {course.title}
-                </Link>
-                {canCreateCourse && (
+            <li key={course.id} className="course-card">
+              <Link to={`/courses/${course.id}`} className="course-card__main">
+                <span className="card-title">{course.title}</span>
+              </Link>
+              {canCreateCourse && (
+                <div className="course-card__actions">
                   <ConfirmActionButton
                     title="Архивировать курс?"
                     description="Курс пропадёт из активной работы, но история и материалы сохранятся."
@@ -112,8 +121,8 @@ export function CoursesPage() {
                   >
                     Архив
                   </ConfirmActionButton>
-                )}
-              </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -126,13 +135,13 @@ export function CoursesPage() {
           </div>
           <ul className="card-list">
             {archivedCourses.map((course) => (
-              <li key={course.id} className="card-link">
-                <Link to={`/courses/${course.id}`} className="card-title">
-                  {course.title}
+              <li key={course.id} className="course-card course-card--archived">
+                <Link to={`/courses/${course.id}`} className="course-card__main">
+                  <span className="card-title">{course.title}</span>
+                  <span className="badge badge--muted">архив</span>
                 </Link>
-                <span className="badge badge--muted">архив</span>
                 {canCreateCourse && (
-                  <>
+                  <div className="course-card__actions">
                     <button
                       type="button"
                       className="btn-ghost"
@@ -150,7 +159,7 @@ export function CoursesPage() {
                     >
                       Удалить навсегда
                     </ConfirmActionButton>
-                  </>
+                  </div>
                 )}
               </li>
             ))}

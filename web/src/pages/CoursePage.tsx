@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import type { components } from "../app/api/schema";
 import {
+  changeCourseMemberRole,
+  changeCourseOwner,
   createCourseInvitation,
   createStudyGroup,
   deleteStudyGroup,
-  getCourse
+  getCourse,
+  removeCourseMember
 } from "../app/api/courses-api";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
 import {
@@ -59,6 +63,36 @@ export function CoursePage({ courseId }: { courseId: string }) {
   const inviteMut = useMutation({
     mutationFn: () => createCourseInvitation(courseId, { role: inviteRole, ttlHours: 168 }),
     onSuccess: (inv) => setLastInvite(inv)
+  });
+
+  const invalidateCourse = () => qc.invalidateQueries({ queryKey: ["courses", courseId] });
+  const onMemberError = (error: unknown) =>
+    toast.error(error instanceof Error ? error.message : "Не удалось изменить участника");
+
+  const changeRoleMut = useMutation({
+    mutationFn: (vars: { personId: string; role: CourseRole }) =>
+      changeCourseMemberRole(courseId, vars.personId, vars.role),
+    onSuccess: () => {
+      void invalidateCourse();
+      toast.success("Роль обновлена");
+    },
+    onError: onMemberError
+  });
+  const removeMemberMut = useMutation({
+    mutationFn: (personId: string) => removeCourseMember(courseId, personId),
+    onSuccess: () => {
+      void invalidateCourse();
+      toast.success("Участник удалён");
+    },
+    onError: onMemberError
+  });
+  const changeOwnerMut = useMutation({
+    mutationFn: (personId: string) => changeCourseOwner(courseId, personId),
+    onSuccess: () => {
+      void invalidateCourse();
+      toast.success("Владелец курса изменён");
+    },
+    onError: onMemberError
   });
 
   if (isLoading)
@@ -118,12 +152,55 @@ export function CoursePage({ courseId }: { courseId: string }) {
       {activeTab === "members" && (
         <ul className="member-list">
           {course.members.length === 0 && <li className="muted">Нет участников.</li>}
-          {course.members.map((m) => (
-            <li key={m.personId} className="member-row">
-              <span>{m.displayName}</span>
-              <span className={`badge badge--${m.role.toLowerCase()}`}>{m.role}</span>
-            </li>
-          ))}
+          {course.members.map((m) => {
+            const isOwner = m.personId === course.ownerPersonId;
+            return (
+              <li key={m.personId} className="member-row">
+                <span className="member-name">
+                  {m.displayName}
+                  {isOwner && <span className="badge badge--owner">владелец</span>}
+                </span>
+                {canManage && !isOwner ? (
+                  <div className="member-actions">
+                    <Select
+                      value={m.role}
+                      onValueChange={(value) =>
+                        changeRoleMut.mutate({ personId: m.personId, role: value as CourseRole })
+                      }
+                    >
+                      <SelectTrigger className="member-role-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="STUDENT">Студент</SelectItem>
+                        <SelectItem value="ASSISTANT">Ассистент</SelectItem>
+                        <SelectItem value="LECTURER">Лектор</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <ConfirmActionButton
+                      title="Сделать владельцем курса?"
+                      description={`${m.displayName} станет лектором-владельцем курса. Вы останетесь лектором.`}
+                      confirmLabel="Сделать владельцем"
+                      disabled={changeOwnerMut.isPending}
+                      onConfirm={() => changeOwnerMut.mutate(m.personId)}
+                    >
+                      Владелец
+                    </ConfirmActionButton>
+                    <ConfirmActionButton
+                      title="Удалить участника?"
+                      description={`${m.displayName} потеряет доступ к курсу.`}
+                      disabled={removeMemberMut.isPending}
+                      onConfirm={() => removeMemberMut.mutate(m.personId)}
+                    >
+                      Удалить
+                    </ConfirmActionButton>
+                  </div>
+                ) : (
+                  <span className={`badge badge--${m.role.toLowerCase()}`}>{m.role}</span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
