@@ -6,14 +6,10 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-@Component
-@ConditionalOnProperty(prefix = "app.content", name = "converter-url")
 class HttpSlideConversionClient implements SlideConversionClient {
     private final BlobStorage blobStorage;
     private final RestClient restClient;

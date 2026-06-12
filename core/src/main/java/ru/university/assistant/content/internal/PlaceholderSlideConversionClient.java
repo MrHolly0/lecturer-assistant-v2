@@ -2,11 +2,7 @@ package ru.university.assistant.content.internal;
 
 import java.io.IOException;
 import java.util.UUID;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.stereotype.Component;
 
-@Component
-@ConditionalOnMissingBean(SlideConversionClient.class)
 class PlaceholderSlideConversionClient implements SlideConversionClient {
     private static final byte[] PNG = java.util.Base64.getDecoder()
             .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lQ5yYwAAAABJRU5ErkJggg==");
