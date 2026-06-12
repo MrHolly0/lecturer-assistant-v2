@@ -33,6 +33,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   );
   const [displayName, setDisplayName] = useState("");
   const [question, setQuestion] = useState("");
+  const [lastSignal, setLastSignal] = useState<SignalValue | null>(null);
   const [snapshot, setSnapshot] = useState<StudentSessionSnapshot | null>(null);
   const [questions, setQuestions] = useState<StudentQuestion[]>([]);
   const sessionQuery = useQuery({
@@ -94,6 +95,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     event.preventDefault();
     if (!question.trim()) return;
     questionMut.mutate();
+  }
+
+  function sendSignal(value: SignalValue) {
+    setLastSignal(value);
+    signalMut.mutate(value);
   }
 
   if (sessionQuery.isLoading && !current) {
@@ -173,9 +179,15 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
               <button
                 key={item.value}
                 type="button"
-                className={`student-signal-btn student-signal-btn--${item.value.toLowerCase()}`}
+                className={[
+                  "student-signal-btn",
+                  `student-signal-btn--${item.value.toLowerCase()}`,
+                  lastSignal === item.value ? "student-signal-btn--selected" : ""
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 disabled={!isLive || signalMut.isPending}
-                onClick={() => signalMut.mutate(item.value)}
+                onClick={() => sendSignal(item.value)}
               >
                 <strong>{item.label}</strong>
                 <span>{item.helper}</span>

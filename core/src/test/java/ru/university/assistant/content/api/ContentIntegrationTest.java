@@ -349,6 +349,28 @@ class ContentIntegrationTest {
                 .andExpect(jsonPath("$.green").value(1))
                 .andExpect(jsonPath("$.total").value(1));
 
+        mockMvc.perform(post("/api/v1/student/sessions/{joinCode}/signals", joinCode)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"participantToken":"%s","value":"YELLOW"}
+                                """
+                                .formatted(participantToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.green").value(0))
+                .andExpect(jsonPath("$.yellow").value(1))
+                .andExpect(jsonPath("$.total").value(1));
+
+        long signalRows = jdbc.sql(
+                        """
+                        select count(*)
+                        from feedback.comprehension_signals
+                        where session_id = :sessionId
+                        """)
+                .param("sessionId", UUID.fromString(sessionId))
+                .query(Long.class)
+                .single();
+        assertEquals(1, signalRows);
+
         mockMvc.perform(post("/api/v1/student/sessions/{joinCode}/questions", joinCode)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -362,7 +384,9 @@ class ContentIntegrationTest {
         mockMvc.perform(get("/api/v1/courses/{courseId}/sessions/{sessionId}/engagement", courseId, sessionId)
                         .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.signalAggregate.green").value(1))
+                .andExpect(jsonPath("$.signalAggregate.green").value(0))
+                .andExpect(jsonPath("$.signalAggregate.yellow").value(1))
+                .andExpect(jsonPath("$.signalAggregate.total").value(1))
                 .andExpect(jsonPath("$.questions", hasSize(1)))
                 .andExpect(jsonPath("$.questions[0].text").value("Почему сложность O(n)?"));
 
@@ -381,7 +405,7 @@ class ContentIntegrationTest {
                         """)
                 .query(Long.class)
                 .single();
-        assertEquals(3, events);
+        assertEquals(4, events);
     }
 
     private JsonNode startImport(String token, UUID courseId, String title, byte[] bytes) throws Exception {

@@ -20,6 +20,11 @@ class FeedbackRepository {
                         """
                         insert into feedback.comprehension_signals (id, session_id, person_id, channel_type, value)
                         values (:id, :sessionId, :personId, :channelType, :value)
+                        on conflict (session_id, person_id)
+                        do update set
+                            channel_type = excluded.channel_type,
+                            value = excluded.value,
+                            created_at = now()
                         """)
                 .param("id", UuidV7.generate())
                 .param("sessionId", sessionId)

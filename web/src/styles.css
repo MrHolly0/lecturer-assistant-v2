@@ -1101,6 +1101,11 @@ textarea {
   opacity: 0.55;
 }
 
+.student-signal-btn--selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
 .student-signal-btn--green {
   background: rgba(34, 197, 94, 0.12);
 }
