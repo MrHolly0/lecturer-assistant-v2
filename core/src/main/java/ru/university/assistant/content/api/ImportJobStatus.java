@@ -4,5 +4,6 @@ public enum ImportJobStatus {
     PENDING,
     RUNNING,
     COMPLETED,
+    PARTIAL,
     FAILED
 }

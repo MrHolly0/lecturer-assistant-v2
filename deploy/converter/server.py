@@ -3,15 +3,26 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
+import zipfile
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 MAX_SLIDES = int(os.environ.get("CONVERTER_MAX_SLIDES", "300"))
-RENDER_DPI = int(os.environ.get("CONVERTER_RENDER_DPI", "144"))
+BASE_DPI = int(os.environ.get("CONVERTER_BASE_DPI", "150"))
+LARGE_DECK_THRESHOLD = int(os.environ.get("CONVERTER_LARGE_DECK_THRESHOLD", "120"))
+LARGE_FILE_BYTES = int(os.environ.get("CONVERTER_LARGE_FILE_BYTES", str(80 * 1024 * 1024)))
+LARGE_DECK_DPI = int(os.environ.get("CONVERTER_LARGE_DECK_DPI", "110"))
+MAX_LONG_EDGE = int(os.environ.get("CONVERTER_MAX_LONG_EDGE", "1600"))
 OFFICE_TIMEOUT_SECONDS = int(os.environ.get("CONVERTER_OFFICE_TIMEOUT_SECONDS", "240"))
+OFFICE_QUEUE_TIMEOUT_SECONDS = int(os.environ.get("CONVERTER_OFFICE_QUEUE_TIMEOUT_SECONDS", "600"))
 PAGE_TIMEOUT_SECONDS = int(os.environ.get("CONVERTER_PAGE_TIMEOUT_SECONDS", "60"))
+SOFFICE_CONCURRENCY = int(os.environ.get("CONVERTER_SOFFICE_CONCURRENCY", "1"))
+ZIP_BOMB_RATIO = int(os.environ.get("CONVERTER_ZIP_BOMB_RATIO", "120"))
+ZIP_BOMB_UNCOMPRESSED_BYTES = int(os.environ.get("CONVERTER_ZIP_BOMB_UNCOMPRESSED_BYTES", str(350 * 1024 * 1024)))
 SUPPORTED_EXTENSIONS = {".pdf", ".ppt", ".pptx", ".odp"}
+SOFFICE_SEMAPHORE = threading.BoundedSemaphore(max(1, SOFFICE_CONCURRENCY))
 
 
 class ConvertHandler(BaseHTTPRequestHandler):
@@ -19,30 +30,30 @@ class ConvertHandler(BaseHTTPRequestHandler):
         if self.path != "/convert":
             self.send_error(404)
             return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.end_headers()
         try:
             body = self.read_request_body()
             if not body:
                 raise ValueError("Пустой запрос к converter: core не передал JSON payload")
             payload = json.loads(body.decode("utf-8"))
-            slides = convert(
-                Path(payload["sourcePath"]).resolve(),
-                Path(payload["outputDir"]).resolve(),
-                payload["outputPrefix"].strip("/"),
+            stream_convert(
+                job_id=payload["jobId"],
+                source=Path(payload["sourcePath"]).resolve(),
+                output_dir=Path(payload["outputDir"]).resolve(),
+                output_prefix=payload["outputPrefix"].strip("/"),
+                emit=self.emit,
             )
-            self.respond(200, {"slides": slides})
         except Exception as exc:
-            self.respond(500, {"error": human_error(exc)})
+            self.emit({"type": "error", "errorMessage": human_error(exc)})
 
     def log_message(self, fmt, *args):
         return
 
-    def respond(self, status, payload):
-        body = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    def emit(self, payload):
+        self.wfile.write((json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"))
+        self.wfile.flush()
 
     def read_request_body(self):
         if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
@@ -63,80 +74,165 @@ class ConvertHandler(BaseHTTPRequestHandler):
         return self.rfile.read(length)
 
 
-def convert(source: Path, output_dir: Path, output_prefix: str):
+def stream_convert(job_id: str, source: Path, output_dir: Path, output_prefix: str, emit):
     ensure_under(source, output_dir)
-    if not source.exists():
-        raise FileNotFoundError(source)
-    if source.suffix.lower() not in SUPPORTED_EXTENSIONS:
-        raise ValueError("Поддерживаются только PDF, PPT, PPTX и ODP")
+    if not source.exists() or source.stat().st_size == 0:
+        raise ValueError("Файл пустой или не найден")
+    validate_source(source)
     with tempfile.TemporaryDirectory() as tmp_raw:
         tmp = Path(tmp_raw)
-        pdf = source if source.suffix.lower() == ".pdf" else office_to_pdf(source, tmp)
+        pdf = source if source.suffix.lower() == ".pdf" else office_to_pdf(source, tmp, job_id)
         page_count = pdf_page_count(pdf)
         if page_count <= 0:
             raise RuntimeError("PDF не содержит страниц")
-        slide_count = min(page_count, MAX_SLIDES)
+
+        render_count = min(page_count, MAX_SLIDES)
+        dpi = choose_dpi(page_count, source.stat().st_size)
+        warning = warning_message(page_count, render_count, dpi)
         target_dir = output_dir / output_prefix
         ensure_under(target_dir, output_dir)
         target_dir.mkdir(parents=True, exist_ok=True)
-        slides = []
-        for index in range(1, slide_count + 1):
+        emit({
+            "type": "metadata",
+            "phase": f"RENDERING 0/{page_count}",
+            "totalSlides": page_count,
+            "renderedSlides": render_count,
+            "warningMessage": warning,
+        })
+
+        processed = 0
+        for index in range(1, render_count + 1):
             target = target_dir / f"slide-{index}.png"
-            image = render_page(pdf, index, tmp)
+            placeholder = False
+            render_error = None
+            image = render_page(pdf, index, tmp, dpi)
             if image is None:
-                write_placeholder_png(target, f"Слайд {index} — ошибка отображения")
+                placeholder = True
+                render_error = f"Слайд {index}: ошибка рендера"
+                write_placeholder_png(target, render_error)
             else:
                 shutil.copyfile(image, target)
             text = page_text(pdf, index, tmp)
-            slides.append({
+            if render_error:
+                text = (text + "\n\n" if text else "") + render_error
+            processed = index
+            emit({
+                "type": "slide",
                 "index": index,
                 "imageRef": f"{output_prefix}/slide-{index}.png",
                 "textExtract": text,
+                "placeholder": placeholder,
+                "processedSlides": processed,
+                "totalSlides": page_count,
             })
-        if page_count > MAX_SLIDES:
-            slides[-1]["textExtract"] = (
-                slides[-1]["textExtract"] + "\n\n"
-                if slides[-1]["textExtract"] else ""
-            ) + f"Импорт ограничен первыми {MAX_SLIDES} слайдами из {page_count}."
-        return slides
+
+        emit({
+            "type": "done",
+            "totalSlides": page_count,
+            "renderedSlides": processed,
+            "partial": processed < page_count,
+            "warningMessage": warning,
+        })
 
 
-def office_to_pdf(source: Path, tmp: Path):
-    run([
-        "soffice",
-        "--headless",
-        "--nologo",
-        "--nofirststartwizard",
-        "--nolockcheck",
-        "--nodefault",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        str(tmp),
-        str(source),
-    ], timeout=OFFICE_TIMEOUT_SECONDS)
+def validate_source(source: Path):
+    suffix = source.suffix.lower()
+    if suffix not in SUPPORTED_EXTENSIONS:
+        raise ValueError("Поддерживаются только PDF, PPT, PPTX и ODP")
+    with source.open("rb") as file:
+        header = file.read(8)
+    if suffix == ".pdf" and not header.startswith(b"%PDF"):
+        raise ValueError("Файл не похож на PDF или повреждён")
+    if suffix in {".pptx", ".odp"}:
+        if not header.startswith(b"PK"):
+            raise ValueError("Файл не похож на ZIP-based Office документ")
+        validate_zip_safety(source)
+    if suffix == ".ppt" and header != b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+        raise ValueError("Файл не похож на старый PowerPoint PPT")
+
+
+def validate_zip_safety(source: Path):
+    try:
+        with zipfile.ZipFile(source) as archive:
+            infos = archive.infolist()
+            compressed = sum(max(info.compress_size, 1) for info in infos)
+            uncompressed = sum(info.file_size for info in infos)
+    except zipfile.BadZipFile as exc:
+        raise ValueError("ZIP-структура PPTX/ODP повреждена") from exc
+    if uncompressed > ZIP_BOMB_UNCOMPRESSED_BYTES or uncompressed / max(compressed, 1) > ZIP_BOMB_RATIO:
+        raise ValueError("PPTX похож на zip-bomb или содержит слишком сильно сжатые вложения")
+
+
+def choose_dpi(page_count: int, source_size: int):
+    if page_count > LARGE_DECK_THRESHOLD or source_size > LARGE_FILE_BYTES:
+        return LARGE_DECK_DPI
+    return BASE_DPI
+
+
+def warning_message(page_count: int, render_count: int, dpi: int):
+    warnings = []
+    if render_count < page_count:
+        warnings.append(f"Импортировано {render_count} из {page_count}; остальное загрузите отдельным файлом")
+    if dpi < BASE_DPI:
+        warnings.append(f"Для большой презентации качество снижено до {dpi} DPI")
+    return ". ".join(warnings) if warnings else None
+
+
+def office_to_pdf(source: Path, tmp: Path, job_id: str):
+    profile = Path(tempfile.gettempdir()) / f"lo-{job_id}"
+    profile.mkdir(parents=True, exist_ok=True)
+    if not SOFFICE_SEMAPHORE.acquire(timeout=OFFICE_QUEUE_TIMEOUT_SECONDS):
+        raise TimeoutError("Очередь LibreOffice переполнена. Попробуйте импорт позже.")
+    try:
+        run([
+            "soffice",
+            f"-env:UserInstallation={profile.as_uri()}",
+            "--headless",
+            "--nologo",
+            "--nofirststartwizard",
+            "--nolockcheck",
+            "--nodefault",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            str(tmp),
+            str(source),
+        ], timeout=OFFICE_TIMEOUT_SECONDS)
+    finally:
+        SOFFICE_SEMAPHORE.release()
+        shutil.rmtree(profile, ignore_errors=True)
     pdfs = list(tmp.glob("*.pdf"))
     if not pdfs:
-        raise RuntimeError("LibreOffice produced no PDF")
+        raise RuntimeError("LibreOffice вернул 0 PDF-файлов")
     return pdfs[0]
 
 
 def pdf_page_count(pdf: Path):
     result = run(["pdfinfo", str(pdf)], timeout=30)
+    pages = None
+    encrypted = False
     for line in result.stdout.splitlines():
         if line.startswith("Pages:"):
-            return int(line.split(":", 1)[1].strip())
-    raise RuntimeError("pdfinfo did not return page count")
+            pages = int(line.split(":", 1)[1].strip())
+        if "Encrypted:" in line and "yes" in line.lower():
+            encrypted = True
+    if encrypted:
+        raise RuntimeError("PDF защищён паролем или зашифрован")
+    if pages is not None:
+        return pages
+    raise RuntimeError("pdfinfo не вернул число страниц")
 
 
-def render_page(pdf: Path, page: int, tmp: Path):
+def render_page(pdf: Path, page: int, tmp: Path, dpi: int):
     prefix = tmp / f"slide-{page}"
     try:
         run([
             "pdftoppm",
             "-png",
             "-r",
-            str(RENDER_DPI),
+            str(dpi),
+            "-scale-to",
+            str(MAX_LONG_EDGE),
             "-f",
             str(page),
             "-l",
@@ -148,7 +244,7 @@ def render_page(pdf: Path, page: int, tmp: Path):
     except Exception:
         return None
     image = prefix.with_suffix(".png")
-    return image if image.exists() else None
+    return image if image.exists() and image.stat().st_size > 0 else None
 
 
 def page_text(pdf: Path, page: int, tmp: Path):
@@ -181,34 +277,50 @@ def run(args, timeout):
 
 def human_error(exc: Exception):
     if isinstance(exc, subprocess.TimeoutExpired):
-        return "Конвертация заняла слишком много времени. Попробуйте сохранить презентацию как PDF и загрузить PDF."
+        return "Конвертация заняла слишком много времени. Сохраните презентацию как PDF и загрузите PDF."
+    if isinstance(exc, TimeoutError):
+        return str(exc)
     if isinstance(exc, subprocess.CalledProcessError):
         output = " ".join(part for part in [exc.stdout, exc.stderr] if part).strip()
-        if "source file could not be loaded" in output.lower():
-            return "LibreOffice не смог открыть файл. Проверьте, что PPTX не повреждён, или сохраните его как PDF."
-        if "incorrect password" in output.lower() or "encrypted" in output.lower():
+        lowered = output.lower()
+        if "source file could not be loaded" in lowered:
+            return "LibreOffice не смог открыть файл. Проверьте, что файл не повреждён."
+        if "incorrect password" in lowered or "encrypted" in lowered or "password" in lowered:
             return "Файл защищён паролем или зашифрован. Снимите защиту и загрузите заново."
+        if "out of memory" in lowered or "cannot allocate memory" in lowered:
+            return "Конвертеру не хватило памяти. Сохраните презентацию как PDF или разделите файл."
         return f"Ошибка конвертации: {output[:500] or exc}"
     message = str(exc)
-    if "zip bomb" in message.lower():
+    if "zip-bomb" in message.lower():
         return "PPTX похож на zip-bomb или содержит слишком сильно сжатые вложения. Сохраните презентацию как PDF."
     return message
 
 
 def write_placeholder_png(path: Path, text: str):
     width, height = 1280, 720
-    png = make_placeholder_png(width, height)
+    png = make_placeholder_png(width, height, text)
     path.write_bytes(png)
 
 
-def make_placeholder_png(width: int, height: int):
-    # Minimal RGB PNG. The text is intentionally not rendered to avoid pulling image libraries into the converter.
-    row = bytes([0]) + bytes([248, 240, 240]) * width
-    raw = row * height
+def make_placeholder_png(width: int, height: int, text: str):
+    pixels = bytearray()
+    for y in range(height):
+        pixels.append(0)
+        for x in range(width):
+            banner = height // 2 - 90 <= y <= height // 2 + 90
+            border = x < 24 or x > width - 24 or y < 24 or y > height - 24
+            diagonal = (x + y) % 80 < 20
+            if border or (banner and diagonal):
+                pixels.extend([185, 28, 28])
+            elif banner:
+                pixels.extend([254, 226, 226])
+            else:
+                pixels.extend([255, 247, 237])
     return (
         b"\x89PNG\r\n\x1a\n"
         + png_chunk(b"IHDR", width.to_bytes(4, "big") + height.to_bytes(4, "big") + b"\x08\x02\x00\x00\x00")
-        + png_chunk(b"IDAT", zlib.compress(raw, level=6))
+        + png_chunk(b"tEXt", ("Description\x00" + text).encode("utf-8", errors="ignore"))
+        + png_chunk(b"IDAT", zlib.compress(bytes(pixels), level=6))
         + png_chunk(b"IEND", b"")
     )
 

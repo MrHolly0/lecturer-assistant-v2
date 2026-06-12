@@ -17,7 +17,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,7 +37,9 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.university.assistant.content.internal.BlobStorage;
 import ru.university.assistant.content.internal.ConvertedSlide;
+import ru.university.assistant.content.internal.SlideConversionResult;
 import ru.university.assistant.content.internal.SlideConversionClient;
+import ru.university.assistant.content.internal.SlideConversionSink;
 import ru.university.assistant.content.internal.StoredBlob;
 
 @Testcontainers
@@ -140,6 +141,30 @@ class ContentIntegrationTest {
     }
 
     @Test
+    void partialImportKeepsRenderedSlidesAvailable() throws Exception {
+        String adminToken = bootstrapAdmin();
+        String lecturerToken = register(
+                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        UUID courseId = createCourse(lecturerToken, "Algorithms");
+        byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
+
+        JsonNode job = startImport(lecturerToken, courseId, "Partial Deck", "partial-report.pdf", pdf);
+        JsonNode partialJob = waitForJobStatus(lecturerToken, courseId, job.get("id").asText(), "PARTIAL");
+        String deckId = partialJob.get("deckId").asText();
+
+        assertEquals(1, partialJob.get("processedSlides").asInt());
+        assertEquals(3, partialJob.get("totalSlides").asInt());
+        assertEquals("Импортировано 1 из 3", partialJob.get("warningMessage").asText());
+
+        mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, deckId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Partial Deck"))
+                .andExpect(jsonPath("$.slides", hasSize(1)))
+                .andExpect(jsonPath("$.slides[0].textExtract", containsString("Слайд 2: ошибка рендера")));
+    }
+
+    @Test
     void slideNotesLecturesAttachmentsAndDecksAreCourseScoped() throws Exception {
         String adminToken = bootstrapAdmin();
         String lecturerToken = register(
@@ -227,8 +252,13 @@ class ContentIntegrationTest {
     }
 
     private JsonNode startImport(String token, UUID courseId, String title, byte[] bytes) throws Exception {
+        return startImport(token, courseId, title, "v1-report.pdf", bytes);
+    }
+
+    private JsonNode startImport(
+            String token, UUID courseId, String title, String filename, byte[] bytes) throws Exception {
         MockMultipartFile titlePart = new MockMultipartFile("title", "", "text/plain", title.getBytes());
-        MockMultipartFile filePart = new MockMultipartFile("file", "v1-report.pdf", "application/pdf", bytes);
+        MockMultipartFile filePart = new MockMultipartFile("file", filename, "application/pdf", bytes);
         String response = mockMvc.perform(multipart("/api/v1/courses/{courseId}/decks", courseId)
                         .file(titlePart)
                         .file(filePart)
@@ -242,6 +272,14 @@ class ContentIntegrationTest {
     }
 
     private JsonNode waitForCompletedJob(String token, UUID courseId, String jobId) throws Exception {
+        JsonNode job = waitForJobStatus(token, courseId, jobId, "COMPLETED");
+        assertEquals(100, job.get("progressPercent").asInt());
+        assertNotNull(job.get("deckId").asText());
+        return job;
+    }
+
+    private JsonNode waitForJobStatus(String token, UUID courseId, String jobId, String expectedStatus)
+            throws Exception {
         JsonNode job = null;
         for (int attempt = 0; attempt < 50; attempt++) {
             String response = mockMvc.perform(get("/api/v1/courses/{courseId}/import-jobs/{jobId}", courseId, jobId)
@@ -251,14 +289,12 @@ class ContentIntegrationTest {
                     .getResponse()
                     .getContentAsString();
             job = objectMapper.readTree(response);
-            if ("COMPLETED".equals(job.get("status").asText())) {
-                assertEquals(100, job.get("progressPercent").asInt());
-                assertNotNull(job.get("deckId").asText());
+            if (expectedStatus.equals(job.get("status").asText())) {
                 return job;
             }
             Thread.sleep(100);
         }
-        throw new AssertionError("Import job did not complete: " + job);
+        throw new AssertionError("Import job did not reach " + expectedStatus + ": " + job);
     }
 
     private String bootstrapAdmin() throws Exception {
@@ -329,16 +365,24 @@ class ContentIntegrationTest {
         SlideConversionClient fakeConverter(BlobStorage storage) {
             return new SlideConversionClient() {
                 @Override
-                public List<ConvertedSlide> convert(StoredBlob source, String outputPrefix) {
+                public SlideConversionResult convert(
+                        StoredBlob source, String outputPrefix, UUID jobId, SlideConversionSink sink) {
                     try {
                         byte[] png = java.util.Base64.getDecoder().decode(
                                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/"
                                         + "lQ5yYwAAAABJRU5ErkJggg==");
                         String first = storage.storeBytes(png, "slide-1.png", "image/png").ref();
+                        if (source.filename().contains("partial")) {
+                            sink.metadata(3, 3, "RENDERING 0/3", "Импортировано 1 из 3");
+                            sink.slide(new ConvertedSlide(1, first, "Слайд 2: ошибка рендера", true), 1, 3);
+                            return new SlideConversionResult(
+                                    3, 1, true, "Импортировано 1 из 3", "Слайд 2: ошибка рендера");
+                        }
                         String second = storage.storeBytes(png, "slide-2.png", "image/png").ref();
-                        return List.of(
-                                new ConvertedSlide(1, first, "V1 golden: " + source.filename()),
-                                new ConvertedSlide(2, second, "Second rendered slide"));
+                        sink.metadata(2, 2, "RENDERING 0/2", null);
+                        sink.slide(new ConvertedSlide(1, first, "V1 golden: " + source.filename(), false), 1, 2);
+                        sink.slide(new ConvertedSlide(2, second, "Second rendered slide", false), 2, 2);
+                        return new SlideConversionResult(2, 2, false, null, null);
                     } catch (java.io.IOException exception) {
                         throw new IllegalStateException(exception);
                     }

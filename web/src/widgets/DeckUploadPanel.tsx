@@ -7,6 +7,10 @@ interface DeckUploadPanelProps {
   progress: number;
   importing: boolean;
   error: string | null;
+  phase?: string;
+  processedSlides?: number;
+  totalSlides?: number;
+  warning?: string | null;
   onTitleChange: (value: string) => void;
   onFile: (file: File) => void;
   onDragOverChange: (value: boolean) => void;
@@ -19,6 +23,10 @@ export function DeckUploadPanel({
   progress,
   importing,
   error,
+  phase,
+  processedSlides,
+  totalSlides,
+  warning,
   onTitleChange,
   onFile,
   onDragOverChange
@@ -82,12 +90,20 @@ export function DeckUploadPanel({
             <div className="progress-track">
               <div className="progress-fill" style={{ width: `${progress}%` }} />
             </div>
-            <span className="muted">Загрузка и разбор слайдов...</span>
+            <span className="muted">{progressLabel(phase, processedSlides, totalSlides)}</span>
           </div>
         </div>
       )}
 
+      {warning && <p className="form-warning">{warning}</p>}
       {error && <p className="form-error">{error}</p>}
     </section>
   );
+}
+
+function progressLabel(phase?: string, processedSlides?: number, totalSlides?: number): string {
+  if (totalSlides && totalSlides > 0) {
+    return `Разбор слайдов: слайд ${processedSlides ?? 0} из ${totalSlides}`;
+  }
+  return phase || "Загрузка и разбор слайдов...";
 }

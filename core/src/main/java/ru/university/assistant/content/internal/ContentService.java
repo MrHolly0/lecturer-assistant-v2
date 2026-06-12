@@ -1,7 +1,10 @@
 package ru.university.assistant.content.internal;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -56,6 +59,7 @@ public class ContentService {
                 ? filenameWithoutExtension(file.getOriginalFilename())
                 : title.trim();
         try {
+            validateMagic(file.getOriginalFilename(), readHeader(file), file.getSize());
             StoredBlob source = blobStorage.store(
                     file.getInputStream(), file.getOriginalFilename(), file.getContentType(), file.getSize());
             ImportJob job = repository.createJob(UuidV7.generate(), courseId, source);
@@ -205,5 +209,60 @@ public class ContentService {
         }
         int dot = filename.lastIndexOf('.');
         return dot <= 0 ? filename : filename.substring(0, dot);
+    }
+
+    private byte[] readHeader(MultipartFile file) throws IOException {
+        try (InputStream stream = file.getInputStream()) {
+            return stream.readNBytes(8);
+        }
+    }
+
+    private void validateMagic(String filename, byte[] header, long size) {
+        if (size < 4 || header.length < 4) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Файл пустой или повреждён");
+        }
+        String extension = extension(filename);
+        boolean pdf = startsWith(header, "%PDF".getBytes(StandardCharsets.US_ASCII));
+        boolean zip = header[0] == 'P' && header[1] == 'K';
+        boolean ole = header.length >= 8
+                && (header[0] & 0xff) == 0xd0
+                && (header[1] & 0xff) == 0xcf
+                && (header[2] & 0xff) == 0x11
+                && (header[3] & 0xff) == 0xe0
+                && (header[4] & 0xff) == 0xa1
+                && (header[5] & 0xff) == 0xb1
+                && (header[6] & 0xff) == 0x1a
+                && (header[7] & 0xff) == 0xe1;
+        boolean supported = switch (extension) {
+            case ".pdf" -> pdf;
+            case ".pptx", ".odp" -> zip;
+            case ".ppt" -> ole;
+            default -> false;
+        };
+        if (!supported) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Тип файла не совпадает с содержимым. Загрузите PDF, PPT, PPTX или ODP без пароля.");
+        }
+    }
+
+    private String extension(String filename) {
+        if (filename == null) {
+            return "";
+        }
+        int dot = filename.lastIndexOf('.');
+        return dot < 0 ? "" : filename.substring(dot).toLowerCase(Locale.ROOT);
+    }
+
+    private boolean startsWith(byte[] bytes, byte[] prefix) {
+        if (bytes.length < prefix.length) {
+            return false;
+        }
+        for (int index = 0; index < prefix.length; index++) {
+            if (bytes[index] != prefix[index]) {
+                return false;
+            }
+        }
+        return true;
     }
 }

@@ -9,7 +9,11 @@ public record ImportJob(
         UUID deckId,
         ImportJobStatus status,
         int progressPercent,
+        String phase,
+        int processedSlides,
+        Integer totalSlides,
         String sourceFilename,
         String errorMessage,
+        String warningMessage,
         Instant createdAt,
         Instant updatedAt) {}

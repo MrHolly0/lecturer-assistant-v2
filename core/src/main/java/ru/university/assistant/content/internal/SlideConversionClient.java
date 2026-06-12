@@ -1,7 +1,7 @@
 package ru.university.assistant.content.internal;
 
-import java.util.List;
+import java.util.UUID;
 
 public interface SlideConversionClient {
-    List<ConvertedSlide> convert(StoredBlob source, String outputPrefix);
+    SlideConversionResult convert(StoredBlob source, String outputPrefix, UUID jobId, SlideConversionSink sink);
 }

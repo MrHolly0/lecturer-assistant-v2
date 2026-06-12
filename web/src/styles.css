@@ -154,6 +154,16 @@ textarea {
   margin: 0;
 }
 
+.form-warning {
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--secondary-foreground);
+  font-size: 0.875rem;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+}
+
 .page {
   margin: 0 auto;
   max-width: 960px;

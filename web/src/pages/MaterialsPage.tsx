@@ -55,7 +55,9 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const jobQuery = useQuery({
     queryKey: ["content", courseId, "jobs", job?.id],
     queryFn: () => getImportJob(courseId, job?.id ?? ""),
-    enabled: Boolean(job && job.status !== "COMPLETED" && job.status !== "FAILED"),
+    enabled: Boolean(
+      job && job.status !== "COMPLETED" && job.status !== "PARTIAL" && job.status !== "FAILED"
+    ),
     refetchInterval: 1000
   });
   const deckQuery = useQuery({
@@ -86,12 +88,15 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   useEffect(() => {
     if (!jobQuery.data) return;
     setJob(jobQuery.data);
-    setUploadProgress(Math.max(75, jobQuery.data.progressPercent));
-    if (jobQuery.data.status === "COMPLETED" && jobQuery.data.deckId) {
+    setUploadProgress(jobQuery.data.progressPercent);
+    if ((jobQuery.data.status === "COMPLETED" || jobQuery.data.status === "PARTIAL") && jobQuery.data.deckId) {
       setSelectedDeckId(jobQuery.data.deckId);
       setLectureDeckId(jobQuery.data.deckId);
       setJob(null);
-      setUploadProgress(100);
+      setUploadProgress(jobQuery.data.progressPercent);
+      if (jobQuery.data.status === "PARTIAL") {
+        toast.warning(jobQuery.data.warningMessage || jobQuery.data.errorMessage || "Импорт завершён частично");
+      }
       void qc.invalidateQueries({ queryKey: ["content", courseId, "decks"] });
     }
     if (jobQuery.data.status === "FAILED") {
@@ -113,15 +118,15 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   }, [selectedDeckId]);
 
   const importing = Boolean(
-    latestJob && latestJob.status !== "COMPLETED" && latestJob.status !== "FAILED"
+    latestJob
+      && latestJob.status !== "COMPLETED"
+      && latestJob.status !== "PARTIAL"
+      && latestJob.status !== "FAILED"
   );
   const displayedProgress = importing
     ? latestJob?.progressPercent ?? uploadProgress
     : uploadProgress;
-  const selectedDeckTitle = useMemo(
-    () => decks.find((deck) => deck.id === selectedDeckId)?.title ?? "Материалы курса",
-    [decks, selectedDeckId]
-  );
+  const selectedDeckTitle = decks.find((deck) => deck.id === selectedDeckId)?.title ?? "Материалы курса";
 
   const createLectureMut = useMutation({
     mutationFn: () => createLecture(courseId, lectureTitle.trim(), lectureDeckId),
@@ -181,9 +186,9 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     setFileName(file.name);
     setUploadProgress(1);
     try {
-      const nextJob = await uploadDeck(courseId, effectiveTitle, file, setUploadProgress);
-      setJob(nextJob);
-      setUploadProgress(Math.max(75, nextJob.progressPercent));
+      const uploadedJob = await uploadDeck(courseId, effectiveTitle, file, setUploadProgress);
+      setJob(uploadedJob);
+      setUploadProgress(uploadedJob.progressPercent);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить файл");
       setUploadProgress(0);
@@ -208,6 +213,10 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
           progress={displayedProgress}
           importing={importing}
           error={error}
+          phase={latestJob?.phase}
+          processedSlides={latestJob?.processedSlides}
+          totalSlides={latestJob?.totalSlides}
+          warning={latestJob?.warningMessage}
           onTitleChange={setTitle}
           onFile={(file) => void handleFile(file)}
           onDragOverChange={setDragOver}
@@ -284,7 +293,6 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     </div>
   );
 }
-
 function titleFromFileName(fileName: string): string {
   const cleanName = fileName.trim() || "Материалы";
   const dot = cleanName.lastIndexOf(".");

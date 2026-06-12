@@ -33,7 +33,7 @@ class ContentRepository {
                             source_filename, source_content_type, source_size_bytes)
                         values (:id, :courseId, 'PENDING', 0, :ref, :filename, :contentType, :sizeBytes)
                         returning id, course_id, deck_id, status, progress, source_filename, error_message,
-                            created_at, updated_at
+                            phase, processed_slides, total_slides, warning_message, created_at, updated_at
                         """)
                 .param("id", id)
                 .param("courseId", courseId)
@@ -49,7 +49,7 @@ class ContentRepository {
         return jdbc.sql(
                         """
                         select id, course_id, deck_id, status, progress, source_filename, error_message,
-                            created_at, updated_at
+                            phase, processed_slides, total_slides, warning_message, created_at, updated_at
                         from content.import_jobs
                         where course_id = :courseId and id = :jobId
                         """)
@@ -75,18 +75,33 @@ class ContentRepository {
                 .optional();
     }
 
-    void markJob(UUID jobId, ImportJobStatus status, int progress, String errorMessage, UUID deckId) {
+    void markJob(
+            UUID jobId,
+            ImportJobStatus status,
+            int progress,
+            String phase,
+            int processedSlides,
+            Integer totalSlides,
+            String errorMessage,
+            String warningMessage,
+            UUID deckId) {
         jdbc.sql(
                         """
                         update content.import_jobs
                         set status = :status, progress = :progress, error_message = :errorMessage,
-                            deck_id = coalesce(:deckId, deck_id), updated_at = now()
+                            phase = :phase, processed_slides = :processedSlides, total_slides = :totalSlides,
+                            warning_message = :warningMessage, deck_id = coalesce(:deckId, deck_id),
+                            updated_at = now()
                         where id = :jobId
                         """)
                 .param("jobId", jobId)
                 .param("status", status.name())
                 .param("progress", progress)
+                .param("phase", phase)
+                .param("processedSlides", processedSlides)
+                .param("totalSlides", totalSlides)
                 .param("errorMessage", errorMessage)
+                .param("warningMessage", warningMessage)
                 .param("deckId", deckId)
                 .update();
     }
@@ -131,6 +146,8 @@ class ContentRepository {
                         """
                         insert into content.slides (id, deck_id, idx, image_ref, text_extract)
                         values (:id, :deckId, :idx, :imageRef, :textExtract)
+                        on conflict (deck_id, idx) do update
+                        set image_ref = excluded.image_ref, text_extract = excluded.text_extract
                         """)
                 .param("id", slideId)
                 .param("deckId", deckId)
@@ -138,6 +155,13 @@ class ContentRepository {
                 .param("imageRef", slide.imageRef())
                 .param("textExtract", slide.textExtract())
                 .update();
+    }
+
+    Optional<UUID> findDeckIdByJobId(UUID jobId) {
+        return jdbc.sql("select id from content.slide_decks where import_job_id = :jobId")
+                .param("jobId", jobId)
+                .query(UUID.class)
+                .optional();
     }
 
     List<SlideDeck> listDecks(UUID courseId) {
@@ -381,8 +405,12 @@ class ContentRepository {
                 rs.getObject("deck_id", UUID.class),
                 ImportJobStatus.valueOf(rs.getString("status")),
                 rs.getInt("progress"),
+                rs.getString("phase"),
+                rs.getInt("processed_slides"),
+                rs.getObject("total_slides", Integer.class),
                 rs.getString("source_filename"),
                 rs.getString("error_message"),
+                rs.getString("warning_message"),
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));
     }

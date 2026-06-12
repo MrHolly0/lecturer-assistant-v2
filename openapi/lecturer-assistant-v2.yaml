@@ -1228,7 +1228,7 @@ components:
           format: date-time
     ImportJob:
       type: object
-      required: [id, courseId, status, progressPercent, sourceFilename, createdAt, updatedAt]
+      required: [id, courseId, status, progressPercent, processedSlides, sourceFilename, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -1241,14 +1241,24 @@ components:
           format: uuid
         status:
           type: string
-          enum: [PENDING, RUNNING, COMPLETED, FAILED]
+          enum: [PENDING, RUNNING, COMPLETED, PARTIAL, FAILED]
         progressPercent:
           type: integer
           minimum: 0
           maximum: 100
+        phase:
+          type: string
+        processedSlides:
+          type: integer
+          minimum: 0
+        totalSlides:
+          type: integer
+          minimum: 0
         sourceFilename:
           type: string
         errorMessage:
+          type: string
+        warningMessage:
           type: string
         createdAt:
           type: string

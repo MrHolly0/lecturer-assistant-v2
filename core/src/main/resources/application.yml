@@ -46,6 +46,11 @@ app:
     max-upload-bytes: ${MAX_UPLOAD_BYTES:104857600}
     slide-image-url-secret: ${SLIDE_IMAGE_URL_SECRET:${JWT_SECRET:phase-1-local-development-secret-change-me}}
     slide-image-url-ttl: ${SLIDE_IMAGE_URL_TTL:PT1H}
+    converter-connect-timeout: ${CONVERTER_CONNECT_TIMEOUT:PT5S}
+    converter-read-timeout: ${CONVERTER_READ_TIMEOUT:PT20M}
+    import-core-pool-size: ${CONTENT_IMPORT_CORE_POOL_SIZE:1}
+    import-max-pool-size: ${CONTENT_IMPORT_MAX_POOL_SIZE:2}
+    import-queue-capacity: ${CONTENT_IMPORT_QUEUE_CAPACITY:8}
   channel:
     internal-api-key: ${CHANNEL_INTERNAL_API_KEY:phase-4-local-channel-key}
     delivery-worker-delay-ms: ${CHANNEL_DELIVERY_WORKER_DELAY_MS:5000}

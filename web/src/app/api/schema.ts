@@ -862,10 +862,14 @@ export interface components {
       /** Format: uuid */
       deckId?: string;
       /** @enum {string} */
-      status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+      status: "PENDING" | "RUNNING" | "COMPLETED" | "PARTIAL" | "FAILED";
       progressPercent: number;
+      phase?: string;
+      processedSlides: number;
+      totalSlides?: number;
       sourceFilename: string;
       errorMessage?: string;
+      warningMessage?: string;
       /** Format: date-time */
       createdAt: string;
       /** Format: date-time */

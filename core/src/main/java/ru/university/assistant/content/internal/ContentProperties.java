@@ -10,4 +10,9 @@ public record ContentProperties(
         String converterUrl,
         long maxUploadBytes,
         String slideImageUrlSecret,
-        Duration slideImageUrlTtl) {}
+        Duration slideImageUrlTtl,
+        Duration converterConnectTimeout,
+        Duration converterReadTimeout,
+        int importCorePoolSize,
+        int importMaxPoolSize,
+        int importQueueCapacity) {}

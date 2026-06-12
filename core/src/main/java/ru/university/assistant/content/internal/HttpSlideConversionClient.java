@@ -1,19 +1,21 @@
 package ru.university.assistant.content.internal;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestClient;
 
 @Component
 @ConditionalOnProperty(prefix = "app.content", name = "converter-url")
 class HttpSlideConversionClient implements SlideConversionClient {
     private final BlobStorage blobStorage;
-    private final ContentProperties properties;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
@@ -23,49 +25,134 @@ class HttpSlideConversionClient implements SlideConversionClient {
             RestClient.Builder builder,
             ObjectMapper objectMapper) {
         this.blobStorage = blobStorage;
-        this.properties = properties;
-        this.restClient = builder.baseUrl(properties.converterUrl()).build();
         this.objectMapper = objectMapper;
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(properties.converterConnectTimeout());
+        requestFactory.setReadTimeout(properties.converterReadTimeout());
+        this.restClient = builder.baseUrl(properties.converterUrl()).requestFactory(requestFactory).build();
     }
 
     @Override
-    public List<ConvertedSlide> convert(StoredBlob source, String outputPrefix) {
-        ConvertResponse response;
-        try {
-            response = restClient.post()
-                    .uri("/convert")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .accept(MediaType.APPLICATION_JSON)
-                    .body(new ConvertRequest(
-                            blobStorage.root().resolve(source.ref()).toString(),
-                            blobStorage.root().toString(),
-                            outputPrefix))
-                    .retrieve()
-                    .body(ConvertResponse.class);
-        } catch (RestClientResponseException exception) {
-            throw new IllegalStateException("Converter failed: " + converterMessage(exception), exception);
-        }
-        if (response == null || response.slides() == null || response.slides().isEmpty()) {
-            throw new IllegalStateException("Converter returned no slides");
-        }
-        return response.slides();
+    public SlideConversionResult convert(
+            StoredBlob source, String outputPrefix, UUID jobId, SlideConversionSink sink) {
+        return restClient.post()
+                .uri("/convert")
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_NDJSON, MediaType.APPLICATION_JSON)
+                .body(new ConvertRequest(
+                        jobId.toString(),
+                        blobStorage.root().resolve(source.ref()).toString(),
+                        blobStorage.root().toString(),
+                        outputPrefix))
+                .exchange((request, response) -> {
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                            response.getBody(), StandardCharsets.UTF_8))) {
+                        if (!response.getStatusCode().is2xxSuccessful()) {
+                            throw new IllegalStateException("Converter failed: " + readError(reader));
+                        }
+                        return readEvents(reader, sink);
+                    } catch (IOException exception) {
+                        throw new IllegalStateException("Converter stream failed", exception);
+                    }
+                });
     }
 
-    private String converterMessage(RestClientResponseException exception) {
-        try {
-            ConvertError error = objectMapper.readValue(exception.getResponseBodyAsString(), ConvertError.class);
-            if (error.error() != null && !error.error().isBlank()) {
-                return error.error();
+    private SlideConversionResult readEvents(BufferedReader reader, SlideConversionSink sink) throws IOException {
+        int totalSlides = 0;
+        int renderedSlides = 0;
+        int processedSlides = 0;
+        String warningMessage = null;
+        String line;
+        while ((line = reader.readLine()) != null) {
+            if (line.isBlank()) {
+                continue;
             }
-        } catch (JsonProcessingException ignored) {
-            // Fall through to the HTTP status when the converter response is not JSON.
+            ConvertEvent event = objectMapper.readValue(line, ConvertEvent.class);
+            switch (event.type()) {
+                case "metadata" -> {
+                    totalSlides = valueOrZero(event.totalSlides());
+                    renderedSlides = valueOrZero(event.renderedSlides());
+                    warningMessage = firstNonBlank(warningMessage, event.warningMessage());
+                    sink.metadata(totalSlides, renderedSlides, event.phase(), warningMessage);
+                }
+                case "slide" -> {
+                    processedSlides = valueOrZero(event.processedSlides());
+                    totalSlides = Math.max(totalSlides, valueOrZero(event.totalSlides()));
+                    sink.slide(new ConvertedSlide(
+                                    event.index(),
+                                    event.imageRef(),
+                                    event.textExtract() == null ? "" : event.textExtract(),
+                                    Boolean.TRUE.equals(event.placeholder())),
+                            processedSlides,
+                            totalSlides);
+                }
+                case "warning" -> warningMessage = firstNonBlank(warningMessage, event.warningMessage());
+                case "error" -> {
+                    String message = firstNonBlank(event.errorMessage(), "Конвертер остановился во время импорта");
+                    return new SlideConversionResult(totalSlides, processedSlides, processedSlides > 0, warningMessage,
+                            message);
+                }
+                case "done" -> {
+                    boolean partial = Boolean.TRUE.equals(event.partial());
+                    warningMessage = firstNonBlank(warningMessage, event.warningMessage());
+                    return new SlideConversionResult(
+                            valueOrDefault(event.totalSlides(), totalSlides),
+                            valueOrDefault(event.renderedSlides(), processedSlides),
+                            partial,
+                            warningMessage,
+                            event.errorMessage());
+                }
+                default -> throw new IllegalStateException("Unknown converter event: " + event.type());
+            }
         }
-        return exception.getStatusCode().toString();
+        if (processedSlides > 0) {
+            return new SlideConversionResult(totalSlides, processedSlides, true, warningMessage,
+                    "Конвертер оборвал поток после " + processedSlides + " слайдов");
+        }
+        throw new IllegalStateException("Converter returned no slides");
     }
 
-    private record ConvertRequest(String sourcePath, String outputDir, String outputPrefix) {}
+    private String readError(BufferedReader reader) throws IOException {
+        String body = reader.lines().reduce("", (left, right) -> left + right);
+        if (body.isBlank()) {
+            return "empty response";
+        }
+        try {
+            ConvertEvent event = objectMapper.readValue(body, ConvertEvent.class);
+            return firstNonBlank(event.errorMessage(), body);
+        } catch (IOException ignored) {
+            return body;
+        }
+    }
 
-    private record ConvertResponse(List<ConvertedSlide> slides) {}
+    private int valueOrZero(Integer value) {
+        return value == null ? 0 : value;
+    }
 
-    private record ConvertError(String error) {}
+    private int valueOrDefault(Integer value, int fallback) {
+        return value == null ? fallback : value;
+    }
+
+    private String firstNonBlank(String current, String next) {
+        if (current != null && !current.isBlank()) {
+            return current;
+        }
+        return next == null || next.isBlank() ? current : next;
+    }
+
+    private record ConvertRequest(String jobId, String sourcePath, String outputDir, String outputPrefix) {}
+
+    private record ConvertEvent(
+            String type,
+            Integer totalSlides,
+            Integer renderedSlides,
+            Integer processedSlides,
+            String phase,
+            Integer index,
+            String imageRef,
+            String textExtract,
+            Boolean placeholder,
+            Boolean partial,
+            String warningMessage,
+            String errorMessage) {}
 }
