@@ -45,6 +45,7 @@
     "input-otp": "1.4.2",
     "lucide-react": "0.487.0",
     "next-themes": "0.4.6",
+    "qrcode": "^1.5.4",
     "react": "18.2.0",
     "react-day-picker": "8.10.1",
     "react-dom": "18.2.0",
@@ -59,6 +60,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
     "@types/node": "22.19.21",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "18.2.57",
     "@types/react-dom": "18.2.19",
     "@types/scheduler": "0.26.0",
