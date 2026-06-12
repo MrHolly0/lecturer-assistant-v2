@@ -1,5 +1,11 @@
+import { useMemo, useState } from "react";
 import type { SlideDeck } from "../app/api/content-api";
+import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
+import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { ConfirmActionButton } from "./ConfirmActionButton";
+import { PaginationBar, SearchField } from "./ListControls";
+
+type DeckTab = "active" | "archive";
 
 interface DeckListPanelProps {
   decks: SlideDeck[];
@@ -28,6 +34,16 @@ export function DeckListPanel({
 }: DeckListPanelProps) {
   const activeDecks = decks.filter((deck) => !deck.archived);
   const archivedDecks = decks.filter((deck) => deck.archived);
+  const [tab, setTab] = useState<DeckTab>("active");
+  const [query, setQuery] = useState("");
+  const visibleDecks = useMemo(
+    () =>
+      (tab === "archive" ? archivedDecks : activeDecks).filter((deck) =>
+        includesQuery(query, deck.title, deck.sourceFilename)
+      ),
+    [activeDecks, archivedDecks, query, tab]
+  );
+  const paged = usePagedList(visibleDecks, 20);
 
   return (
     <section className="material-section">
@@ -35,9 +51,22 @@ export function DeckListPanel({
         <h2>Презентации</h2>
         <span className="muted">{activeDecks.length} активных</span>
       </div>
+      <div className="list-toolbar">
+        <Tabs value={tab} onValueChange={(value) => setTab(value as DeckTab)}>
+          <TabsList>
+            <TabsTrigger value="active">Активные ({activeDecks.length})</TabsTrigger>
+            <TabsTrigger value="archive">Архив ({archivedDecks.length})</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <SearchField value={query} onChange={setQuery} placeholder="Найти презентацию" />
+      </div>
       <div className="deck-list">
-        {activeDecks.length === 0 && <p className="muted">Загрузите первую презентацию курса.</p>}
-        {activeDecks.map((deck) => (
+        {visibleDecks.length === 0 && (
+          <p className="muted">
+            {tab === "archive" ? "В архиве презентаций нет." : "Загрузите первую презентацию курса."}
+          </p>
+        )}
+        {paged.pageItems.map((deck) => (
           <div key={deck.id} className={`deck-pill ${deck.id === selectedDeckId ? "deck-pill--active" : ""}`}>
             <button type="button" onClick={() => onSelect(deck.id)}>
               <span>{deck.title}</span>
@@ -45,7 +74,7 @@ export function DeckListPanel({
                 v{deck.version} · {deck.slideCount} слайдов
               </small>
             </button>
-            {canManage && (
+            {canManage && !deck.archived && (
               <ConfirmActionButton
                 title="Архивировать презентацию?"
                 description="Презентация исчезнет из активного списка, но её можно восстановить."
@@ -56,50 +85,31 @@ export function DeckListPanel({
                 Архив
               </ConfirmActionButton>
             )}
+            {canManage && deck.archived && (
+              <>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={restorePending}
+                  onClick={() => onRestore(deck.id)}
+                >
+                  Восстановить
+                </button>
+                <ConfirmActionButton
+                  title="Удалить презентацию навсегда?"
+                  description="Удаление возможно только если дек не привязан к лекциям."
+                  confirmLabel="Удалить навсегда"
+                  disabled={hardDeletePending}
+                  onConfirm={() => onHardDelete(deck.id)}
+                >
+                  Удалить навсегда
+                </ConfirmActionButton>
+              </>
+            )}
           </div>
         ))}
       </div>
-      {archivedDecks.length > 0 && (
-        <div className="archive-section">
-          <div className="section-heading">
-            <h3>Архив</h3>
-            <span className="muted">{archivedDecks.length} презентаций</span>
-          </div>
-          <div className="deck-list">
-            {archivedDecks.map((deck) => (
-              <div key={deck.id} className="deck-pill">
-                <button type="button" onClick={() => onSelect(deck.id)}>
-                  <span>{deck.title}</span>
-                  <small>
-                    v{deck.version} · {deck.slideCount} слайдов
-                  </small>
-                </button>
-                {canManage && (
-                  <>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      disabled={restorePending}
-                      onClick={() => onRestore(deck.id)}
-                    >
-                      Восстановить
-                    </button>
-                    <ConfirmActionButton
-                      title="Удалить презентацию навсегда?"
-                      description="Удаление возможно только если дек не привязан к лекциям."
-                      confirmLabel="Удалить навсегда"
-                      disabled={hardDeletePending}
-                      onConfirm={() => onHardDelete(deck.id)}
-                    >
-                      Удалить навсегда
-                    </ConfirmActionButton>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <PaginationBar {...paged} onPageChange={paged.setPage} />
     </section>
   );
 }

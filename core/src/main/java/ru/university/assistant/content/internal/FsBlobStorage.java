@@ -43,6 +43,21 @@ class FsBlobStorage implements BlobStorage {
     }
 
     @Override
+    public void delete(String ref) throws IOException {
+        Path path = root().resolve(ref).normalize();
+        ensureInsideRoot(path);
+        Files.deleteIfExists(path);
+        Path parent = path.getParent();
+        if (parent != null && !parent.equals(root()) && parent.startsWith(root())) {
+            try {
+                Files.deleteIfExists(parent);
+            } catch (java.nio.file.DirectoryNotEmptyException ignored) {
+                // Several blobs may share a generated directory during a single import.
+            }
+        }
+    }
+
+    @Override
     public Path root() {
         return properties.blobRoot().toAbsolutePath().normalize();
     }

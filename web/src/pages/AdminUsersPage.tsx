@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { components } from "../app/api/schema";
 import { createAdminInvitation, listUsers, updateUserRole, updateUserStatus } from "../app/api/admin-api";
 import { useAuth } from "../app/AuthContext";
+import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import {
   Select,
   SelectContent,
@@ -11,16 +12,38 @@ import {
   SelectTrigger,
   SelectValue
 } from "../shared/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
+import { PaginationBar, SearchField } from "../widgets/ListControls";
 
+type UserProfile = components["schemas"]["UserProfile"];
 type UserRole = "ADMIN" | "LECTURER" | "ASSISTANT" | "STUDENT";
+type UserStatus = "ACTIVE" | "DISABLED" | "EPHEMERAL";
 type AdminInviteRole = "ADMIN" | "LECTURER" | "ASSISTANT";
 type Invitation = components["schemas"]["Invitation"];
+type UserTab = "active" | "disabled" | "roles";
+type RoleFilter = UserRole | "ALL";
+
+const roleLabels: Record<UserRole, string> = {
+  ADMIN: "Администратор",
+  LECTURER: "Лектор",
+  ASSISTANT: "Ассистент",
+  STUDENT: "Студент"
+};
+
+const statusLabels: Record<UserStatus, string> = {
+  ACTIVE: "Активен",
+  DISABLED: "Деактивирован",
+  EPHEMERAL: "Временный"
+};
 
 export function AdminUsersPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [inviteRole, setInviteRole] = useState<AdminInviteRole>("LECTURER");
   const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
+  const [tab, setTab] = useState<UserTab>("active");
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
+  const [query, setQuery] = useState("");
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin", "users"],
@@ -34,18 +57,28 @@ export function AdminUsersPage() {
       setLastInvite(inv);
     }
   });
-
   const roleMut = useMutation({
     mutationFn: ({ personId, role }: { personId: string; role: UserRole }) =>
       updateUserRole(personId, { role }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "users"] })
   });
-
   const statusMut = useMutation({
     mutationFn: ({ personId, status }: { personId: string; status: "ACTIVE" | "DISABLED" }) =>
       updateUserStatus(personId, { status }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "users"] })
   });
+
+  const filteredUsers = useMemo(
+    () =>
+      users.filter((item) => {
+        if (tab === "active" && item.status !== "ACTIVE") return false;
+        if (tab === "disabled" && item.status !== "DISABLED") return false;
+        if (tab === "roles" && roleFilter !== "ALL" && item.role !== roleFilter) return false;
+        return includesQuery(query, item.displayName, item.email);
+      }),
+    [query, roleFilter, tab, users]
+  );
+  const paged = usePagedList(filteredUsers, 20);
 
   return (
     <div className="page">
@@ -87,10 +120,7 @@ export function AdminUsersPage() {
                 для роли {lastInvite.role}, до{" "}
                 {new Date(lastInvite.expiresAt).toLocaleDateString("ru-RU")}
               </span>
-              <Link
-                to={`/register?code=${encodeURIComponent(lastInvite.code)}`}
-                className="btn-ghost"
-              >
+              <Link to={`/register?code=${encodeURIComponent(lastInvite.code)}`} className="btn-ghost">
                 Ссылка для регистрации
               </Link>
             </div>
@@ -99,73 +129,136 @@ export function AdminUsersPage() {
       </section>
 
       <section className="section">
-        <h2>Все пользователи</h2>
+        <div className="section-heading">
+          <h2>Все пользователи</h2>
+          <span className="muted">{filteredUsers.length} найдено</span>
+        </div>
+        <div className="list-toolbar">
+          <Tabs value={tab} onValueChange={(value) => setTab(value as UserTab)}>
+            <TabsList>
+              <TabsTrigger value="active">Активные</TabsTrigger>
+              <TabsTrigger value="disabled">Деактивированные</TabsTrigger>
+              <TabsTrigger value="roles">По ролям</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div className="list-toolbar__filters">
+            {tab === "roles" && (
+              <Select value={roleFilter} onValueChange={(value) => setRoleFilter(value as RoleFilter)}>
+                <SelectTrigger className="table-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Все роли</SelectItem>
+                  <SelectItem value="ADMIN">Администратор</SelectItem>
+                  <SelectItem value="LECTURER">Лектор</SelectItem>
+                  <SelectItem value="ASSISTANT">Ассистент</SelectItem>
+                  <SelectItem value="STUDENT">Студент</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+            <SearchField value={query} onChange={setQuery} placeholder="Имя или email" />
+          </div>
+        </div>
         {isLoading ? (
           <p className="muted">Загрузка...</p>
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Имя</th>
-                <th>Email</th>
-                <th>Роль</th>
-                <th>Статус</th>
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="muted">
-                    Нет пользователей.
-                  </td>
-                </tr>
-              )}
-              {users.map((u) => (
-                <tr key={u.id}>
-                  <td>{u.displayName}</td>
-                  <td>{u.email}</td>
-                  <td>
-                    <Select
-                      value={u.role}
-                      onValueChange={(role) => roleMut.mutate({ personId: u.id, role: role as UserRole })}
-                      disabled={u.id === user?.id || roleMut.isPending}
-                    >
-                      <SelectTrigger className="table-select">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ADMIN">Администратор</SelectItem>
-                        <SelectItem value="LECTURER">Лектор</SelectItem>
-                        <SelectItem value="ASSISTANT">Ассистент</SelectItem>
-                        <SelectItem value="STUDENT">Студент</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  <td>
-                    <span className={`badge badge--${u.status.toLowerCase()}`}>{u.status}</span>
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      disabled={u.id === user?.id || statusMut.isPending}
-                      onClick={() =>
-                        statusMut.mutate({
-                          personId: u.id,
-                          status: u.status === "DISABLED" ? "ACTIVE" : "DISABLED"
-                        })
-                      }
-                    >
-                      {u.status === "DISABLED" ? "Активировать" : "Деактивировать"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <UsersTable
+            users={paged.pageItems}
+            currentUserId={user?.id}
+            rolePending={roleMut.isPending}
+            statusPending={statusMut.isPending}
+            onRole={(personId, role) => roleMut.mutate({ personId, role })}
+            onStatus={(personId, status) => statusMut.mutate({ personId, status })}
+          />
         )}
+        <PaginationBar {...paged} onPageChange={paged.setPage} />
       </section>
     </div>
+  );
+}
+
+interface UsersTableProps {
+  users: UserProfile[];
+  currentUserId?: string;
+  rolePending: boolean;
+  statusPending: boolean;
+  onRole: (personId: string, role: UserRole) => void;
+  onStatus: (personId: string, status: "ACTIVE" | "DISABLED") => void;
+}
+
+function UsersTable({
+  users,
+  currentUserId,
+  rolePending,
+  statusPending,
+  onRole,
+  onStatus
+}: UsersTableProps) {
+  return (
+    <table className="data-table">
+      <thead>
+        <tr>
+          <th>Имя</th>
+          <th>Email</th>
+          <th>Роль</th>
+          <th>Статус</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {users.length === 0 && (
+          <tr>
+            <td colSpan={5} className="muted">
+              Ничего не найдено.
+            </td>
+          </tr>
+        )}
+        {users.map((item) => {
+          const ownProfile = item.id === currentUserId;
+          const canToggle = item.status === "ACTIVE" || item.status === "DISABLED";
+          return (
+            <tr key={item.id}>
+              <td>{item.displayName}</td>
+              <td>{item.email}</td>
+              <td>
+                <Select
+                  value={item.role}
+                  onValueChange={(role) => onRole(item.id, role as UserRole)}
+                  disabled={ownProfile || rolePending}
+                >
+                  <SelectTrigger className="table-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(roleLabels).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </td>
+              <td>
+                <span className={`badge badge--${item.status.toLowerCase()}`}>
+                  {statusLabels[item.status as UserStatus]}
+                </span>
+              </td>
+              <td>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={ownProfile || !canToggle || statusPending}
+                  onClick={() =>
+                    onStatus(item.id, item.status === "DISABLED" ? "ACTIVE" : "DISABLED")
+                  }
+                >
+                  {item.status === "DISABLED" ? "Активировать" : "Деактивировать"}
+                </button>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }

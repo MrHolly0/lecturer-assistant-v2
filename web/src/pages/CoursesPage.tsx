@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -11,13 +11,20 @@ import {
   restoreCourse
 } from "../app/api/courses-api";
 import { useAuth } from "../app/AuthContext";
+import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
+import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
+import { PaginationBar, SearchField } from "../widgets/ListControls";
+
+type CourseTab = "active" | "archive";
 
 export function CoursesPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
+  const [tab, setTab] = useState<CourseTab>("active");
+  const [query, setQuery] = useState("");
   const canCreateCourse = user?.role === "ADMIN" || user?.role === "LECTURER";
 
   const {
@@ -60,6 +67,14 @@ export function CoursesPage() {
   });
   const activeCourses = courses.filter((course) => !course.archived);
   const archivedCourses = courses.filter((course) => course.archived);
+  const visibleCourses = useMemo(
+    () =>
+      (tab === "archive" ? archivedCourses : activeCourses).filter((course) =>
+        includesQuery(query, course.title)
+      ),
+    [activeCourses, archivedCourses, query, tab]
+  );
+  const paged = usePagedList(visibleCourses, 20);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -103,14 +118,27 @@ export function CoursesPage() {
         <p className="muted">Нет курсов. Создайте первый.</p>
       )}
 
-      {activeCourses.length > 0 && (
+      {!isLoading && !isError && courses.length > 0 && (
+        <div className="list-toolbar">
+          <Tabs value={tab} onValueChange={(value) => setTab(value as CourseTab)}>
+            <TabsList>
+              <TabsTrigger value="active">Активные ({activeCourses.length})</TabsTrigger>
+              <TabsTrigger value="archive">Архив ({archivedCourses.length})</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <SearchField value={query} onChange={setQuery} placeholder="Найти курс" />
+        </div>
+      )}
+
+      {visibleCourses.length > 0 && (
         <ul className="card-list">
-          {activeCourses.map((course) => (
+          {paged.pageItems.map((course) => (
             <li key={course.id} className="course-card">
               <Link to={`/courses/${course.id}`} className="course-card__main">
                 <span className="card-title">{course.title}</span>
+                {course.archived && <span className="badge badge--muted">архив</span>}
               </Link>
-              {canCreateCourse && (
+              {canCreateCourse && !course.archived && (
                 <div className="course-card__actions">
                   <ConfirmActionButton
                     title="Архивировать курс?"
@@ -123,49 +151,35 @@ export function CoursesPage() {
                   </ConfirmActionButton>
                 </div>
               )}
+              {canCreateCourse && course.archived && (
+                <div className="course-card__actions">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    disabled={restoreMut.isPending}
+                    onClick={() => restoreMut.mutate(course.id)}
+                  >
+                    Восстановить
+                  </button>
+                  <ConfirmActionButton
+                    title="Удалить курс навсегда?"
+                    description="Курс, материалы, лекции и история будут удалены."
+                    confirmLabel="Удалить навсегда"
+                    disabled={hardDeleteMut.isPending}
+                    onConfirm={() => hardDeleteMut.mutate(course.id)}
+                  >
+                    Удалить навсегда
+                  </ConfirmActionButton>
+                </div>
+              )}
             </li>
           ))}
         </ul>
       )}
-      {archivedCourses.length > 0 && (
-        <section className="archive-section">
-          <div className="section-heading">
-            <h2>Архив</h2>
-            <span className="muted">{archivedCourses.length} курсов</span>
-          </div>
-          <ul className="card-list">
-            {archivedCourses.map((course) => (
-              <li key={course.id} className="course-card course-card--archived">
-                <Link to={`/courses/${course.id}`} className="course-card__main">
-                  <span className="card-title">{course.title}</span>
-                  <span className="badge badge--muted">архив</span>
-                </Link>
-                {canCreateCourse && (
-                  <div className="course-card__actions">
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      disabled={restoreMut.isPending}
-                      onClick={() => restoreMut.mutate(course.id)}
-                    >
-                      Восстановить
-                    </button>
-                    <ConfirmActionButton
-                      title="Удалить курс навсегда?"
-                      description="Курс, материалы, лекции и история будут удалены."
-                      confirmLabel="Удалить навсегда"
-                      disabled={hardDeleteMut.isPending}
-                      onConfirm={() => hardDeleteMut.mutate(course.id)}
-                    >
-                      Удалить навсегда
-                    </ConfirmActionButton>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
+      {!isLoading && !isError && courses.length > 0 && visibleCourses.length === 0 && (
+        <p className="muted">Ничего не найдено.</p>
       )}
+      <PaginationBar {...paged} onPageChange={paged.setPage} />
     </div>
   );
 }

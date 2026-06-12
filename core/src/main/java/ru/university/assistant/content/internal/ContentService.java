@@ -2,6 +2,7 @@ package ru.university.assistant.content.internal;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
@@ -9,6 +10,8 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.content.api.Attachment;
@@ -126,6 +129,14 @@ public class ContentService {
     @Transactional
     public void restoreDeck(AuthenticatedUser user, UUID courseId, UUID deckId) {
         courseAccess.requireManage(user, courseId);
+        SlideDeckDetails deck = repository.findDeck(courseId, deckId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
+        if (repository.activeDeckVersionExists(courseId, deck.title(), deck.version(), deckId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Нельзя восстановить: уже есть активная презентация \""
+                            + deck.title() + "\" v" + deck.version() + ".");
+        }
         repository.restoreDeck(courseId, deckId);
     }
 
@@ -145,7 +156,9 @@ public class ContentService {
                     "Презентация используется в лекциях: " + String.join(", ", linkedLectures)
                             + ". Удалите эти лекции, прежде чем удалять презентацию.");
         }
+        List<String> blobRefs = repository.blobRefsForDeck(courseId, deckId);
         repository.deleteDeck(courseId, deckId);
+        deleteBlobsAfterCommit(blobRefs);
     }
 
     public List<Lecture> listLectures(AuthenticatedUser user, UUID courseId) {
@@ -240,6 +253,26 @@ public class ContentService {
         if (repository.findDeck(courseId, deckId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Deck does not belong to course");
         }
+    }
+
+    private void deleteBlobsAfterCommit(List<String> refs) {
+        Runnable delete = () -> {
+            try {
+                blobStorage.deleteAll(refs);
+            } catch (IOException exception) {
+                throw new UncheckedIOException("Cannot delete deck blobs", exception);
+            }
+        };
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            delete.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                delete.run();
+            }
+        });
     }
 
     private String filenameWithoutExtension(String filename) {

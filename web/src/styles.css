@@ -91,9 +91,7 @@ textarea {
 }
 
 .field input,
-.field select,
-.inline-form input,
-.inline-form select {
+.inline-form input {
   background: var(--input-background);
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) - 2px);
@@ -103,9 +101,7 @@ textarea {
 }
 
 .field input:focus,
-.field select:focus,
-.inline-form input:focus,
-.inline-form select:focus {
+.inline-form input:focus {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
 }
@@ -213,12 +209,6 @@ textarea {
 .inline-form input {
   flex: 1;
   min-width: 200px;
-}
-
-.inline-form select {
-  min-height: 40px;
-  min-width: 220px;
-  padding: 0 12px;
 }
 
 .invite-panel {
@@ -1081,6 +1071,45 @@ textarea {
 
 .archive-section h3 {
   margin: 0;
+}
+
+.list-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.list-toolbar__filters {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.list-search {
+  align-items: center;
+  color: var(--muted-foreground);
+  display: flex;
+  gap: 8px;
+  min-width: min(100%, 320px);
+}
+
+.list-footer {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.pager {
+  align-items: center;
+  display: flex;
+  gap: 8px;
 }
 
 .badge {

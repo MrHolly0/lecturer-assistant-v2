@@ -111,7 +111,7 @@ class ContentRepository {
                         """
                         select coalesce(max(version), 0)
                         from content.slide_decks
-                        where course_id = :courseId and title = :title
+                        where course_id = :courseId and title = :title and archived = false
                         """)
                 .param("courseId", courseId)
                 .param("title", title)
@@ -274,6 +274,26 @@ class ContentRepository {
                 .update();
     }
 
+    boolean activeDeckVersionExists(UUID courseId, String title, int version, UUID exceptDeckId) {
+        return jdbc.sql(
+                        """
+                        select count(*)
+                        from content.slide_decks
+                        where course_id = :courseId
+                            and title = :title
+                            and version = :version
+                            and archived = false
+                            and id <> :exceptDeckId
+                        """)
+                .param("courseId", courseId)
+                .param("title", title)
+                .param("version", version)
+                .param("exceptDeckId", exceptDeckId)
+                .query(Long.class)
+                .single()
+                > 0;
+    }
+
     boolean deckHasLectures(UUID deckId) {
         return jdbc.sql("select count(*) from live.lectures where deck_id = :deckId")
                 .param("deckId", deckId)
@@ -284,6 +304,24 @@ class ContentRepository {
 
     List<String> lectureTitlesForDeck(UUID deckId) {
         return jdbc.sql("select title from live.lectures where deck_id = :deckId order by title")
+                .param("deckId", deckId)
+                .query(String.class)
+                .list();
+    }
+
+    List<String> blobRefsForDeck(UUID courseId, UUID deckId) {
+        return jdbc.sql(
+                        """
+                        select source_file_ref as ref
+                        from content.slide_decks
+                        where course_id = :courseId and id = :deckId
+                        union
+                        select s.image_ref as ref
+                        from content.slides s
+                        join content.slide_decks d on d.id = s.deck_id
+                        where d.course_id = :courseId and d.id = :deckId
+                        """)
+                .param("courseId", courseId)
                 .param("deckId", deckId)
                 .query(String.class)
                 .list();

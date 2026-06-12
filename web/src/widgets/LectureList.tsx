@@ -1,4 +1,6 @@
+import { useMemo, useState } from "react";
 import type { Lecture, SlideDeck } from "../app/api/content-api";
+import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import {
   Select,
   SelectContent,
@@ -6,7 +8,11 @@ import {
   SelectTrigger,
   SelectValue
 } from "../shared/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { ConfirmActionButton } from "./ConfirmActionButton";
+import { PaginationBar, SearchField } from "./ListControls";
+
+type LectureTab = "active" | "archive";
 
 interface LectureListProps {
   lectures: Lecture[];
@@ -43,6 +49,16 @@ export function LectureList({
 }: LectureListProps) {
   const activeLectures = lectures.filter((lecture) => !lecture.archived);
   const archivedLectures = lectures.filter((lecture) => lecture.archived);
+  const [tab, setTab] = useState<LectureTab>("active");
+  const [query, setQuery] = useState("");
+  const visibleLectures = useMemo(
+    () =>
+      (tab === "archive" ? archivedLectures : activeLectures).filter((lecture) =>
+        includesQuery(query, lecture.title, lecture.deckTitle)
+      ),
+    [activeLectures, archivedLectures, query, tab]
+  );
+  const paged = usePagedList(visibleLectures, 20);
 
   return (
     <section className="material-section">
@@ -79,29 +95,26 @@ export function LectureList({
           </button>
         </div>
       )}
+      <div className="list-toolbar">
+        <Tabs value={tab} onValueChange={(value) => setTab(value as LectureTab)}>
+          <TabsList>
+            <TabsTrigger value="active">Активные ({activeLectures.length})</TabsTrigger>
+            <TabsTrigger value="archive">Архив ({archivedLectures.length})</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <SearchField value={query} onChange={setQuery} placeholder="Найти лекцию или дек" />
+      </div>
       <LectureRows
-        lectures={activeLectures}
-        empty="Лекции ещё не созданы."
+        lectures={paged.pageItems}
+        empty={tab === "archive" ? "В архиве лекций нет." : "Лекции ещё не созданы."}
         canManage={canManage}
         startingId={startingId}
         onStart={onStart}
         onArchive={onArchive}
+        onRestore={onRestore}
+        onHardDelete={onHardDelete}
       />
-      {archivedLectures.length > 0 && (
-        <div className="archive-section">
-          <div className="section-heading">
-            <h3>Архив</h3>
-            <span className="muted">{archivedLectures.length} лекций</span>
-          </div>
-          <LectureRows
-            lectures={archivedLectures}
-            empty=""
-            canManage={canManage}
-            onRestore={onRestore}
-            onHardDelete={onHardDelete}
-          />
-        </div>
-      )}
+      <PaginationBar {...paged} onPageChange={paged.setPage} />
     </section>
   );
 }

@@ -5,6 +5,8 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -17,6 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -162,6 +165,48 @@ class ContentIntegrationTest {
                 .andExpect(jsonPath("$.title").value("Partial Deck"))
                 .andExpect(jsonPath("$.slides", hasSize(1)))
                 .andExpect(jsonPath("$.slides[0].textExtract", containsString("Слайд 2: ошибка рендера")));
+    }
+
+    @Test
+    void archivedDeckNameCanBeReusedAndHardDeleteRemovesBlobs() throws Exception {
+        String adminToken = bootstrapAdmin();
+        String lecturerToken = register(
+                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        UUID courseId = createCourse(lecturerToken, "Algorithms");
+        byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
+
+        String firstDeckId = waitForCompletedJob(lecturerToken, courseId,
+                        startImport(lecturerToken, courseId, "Reusable Deck", pdf).get("id").asText())
+                .get("deckId")
+                .asText();
+        List<String> firstBlobRefs = blobRefs(firstDeckId);
+        assertFalse(firstBlobRefs.isEmpty());
+        for (String ref : firstBlobRefs) {
+            assertTrue(Files.exists(BLOB_ROOT.resolve(ref)), "Blob must exist before hard-delete: " + ref);
+        }
+
+        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}", courseId, firstDeckId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isNoContent());
+
+        String secondDeckId = waitForCompletedJob(lecturerToken, courseId,
+                        startImport(lecturerToken, courseId, "Reusable Deck", pdf).get("id").asText())
+                .get("deckId")
+                .asText();
+
+        mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, secondDeckId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Reusable Deck"))
+                .andExpect(jsonPath("$.version").value(1));
+
+        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}/hard", courseId, firstDeckId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isNoContent());
+
+        for (String ref : firstBlobRefs) {
+            assertFalse(Files.exists(BLOB_ROOT.resolve(ref)), "Blob must be deleted: " + ref);
+        }
     }
 
     @Test
@@ -352,6 +397,22 @@ class ContentIntegrationTest {
 
     private String tokenFrom(String response) throws Exception {
         return objectMapper.readTree(response).get("accessToken").asText();
+    }
+
+    private List<String> blobRefs(String deckId) {
+        return jdbc.sql(
+                        """
+                        select source_file_ref as ref
+                        from content.slide_decks
+                        where id = :deckId
+                        union
+                        select image_ref as ref
+                        from content.slides
+                        where deck_id = :deckId
+                        """)
+                .param("deckId", UUID.fromString(deckId))
+                .query(String.class)
+                .list();
     }
 
     private String bearer(String token) {
