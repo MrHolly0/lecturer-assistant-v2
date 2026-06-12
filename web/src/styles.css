@@ -697,8 +697,14 @@ textarea {
 .presenter-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   padding: 16px;
+}
+
+.presenter-main {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
 }
 
 .presenter-stage,
@@ -713,7 +719,7 @@ textarea {
 
 .presenter-stage {
   border-radius: var(--radius);
-  min-height: calc(100vh - 96px);
+  min-height: min(68vh, calc(100vh - 210px));
 }
 
 .presenter-stage > img,
@@ -728,6 +734,7 @@ textarea {
   display: grid;
   gap: 14px;
   grid-auto-rows: max-content;
+  min-width: 0;
 }
 
 .live-metric,
@@ -850,11 +857,14 @@ textarea {
 }
 
 .presenter-slide-strip {
-  display: grid;
+  display: flex;
   gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  max-height: 220px;
-  overflow: auto;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.presenter-slide-strip .slide-thumb {
+  flex: 0 0 132px;
 }
 
 .live-panel {
@@ -862,6 +872,14 @@ textarea {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius);
   padding: 14px;
+}
+
+.live-tabs {
+  min-height: 260px;
+}
+
+.live-tabs__list {
+  width: 100%;
 }
 
 .live-panel .section-heading {
@@ -972,6 +990,8 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   justify-content: space-between;
   min-height: 48px;
   padding: 12px 14px;
@@ -983,6 +1003,23 @@ textarea {
 
 .card-title {
   font-weight: var(--font-weight-medium);
+  margin-right: auto;
+}
+
+.inline-select {
+  min-width: 220px;
+}
+
+.table-select {
+  min-width: 180px;
+}
+
+.archive-section {
+  margin-top: 24px;
+}
+
+.archive-section h3 {
+  margin: 0;
 }
 
 .badge {

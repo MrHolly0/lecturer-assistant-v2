@@ -49,6 +49,18 @@ public class CourseController {
         courseService.archiveCourse(user, courseId);
     }
 
+    @PostMapping("/{courseId}/restore")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void restore(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID courseId) {
+        courseService.restoreCourse(user, courseId);
+    }
+
+    @DeleteMapping("/{courseId}/hard")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void hardDelete(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID courseId) {
+        courseService.hardDeleteCourse(user, courseId);
+    }
+
     @PostMapping("/{courseId}/invitations")
     @ResponseStatus(HttpStatus.CREATED)
     public InvitationResponse invite(

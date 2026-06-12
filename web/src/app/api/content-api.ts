@@ -53,6 +53,14 @@ export async function archiveDeck(courseId: string, deckId: string): Promise<voi
   await apiFetch(`/courses/${courseId}/decks/${deckId}`, { method: "DELETE" });
 }
 
+export async function restoreDeck(courseId: string, deckId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/decks/${deckId}/restore`, { method: "POST" });
+}
+
+export async function hardDeleteDeck(courseId: string, deckId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/decks/${deckId}/hard`, { method: "DELETE" });
+}
+
 export async function listLectures(courseId: string): Promise<Lecture[]> {
   const res = await apiFetch(`/courses/${courseId}/lectures`);
   return res.json() as Promise<Lecture[]>;
@@ -72,6 +80,14 @@ export async function createLecture(
 
 export async function deleteLecture(courseId: string, lectureId: string): Promise<void> {
   await apiFetch(`/courses/${courseId}/lectures/${lectureId}`, { method: "DELETE" });
+}
+
+export async function restoreLecture(courseId: string, lectureId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/lectures/${lectureId}/restore`, { method: "POST" });
+}
+
+export async function hardDeleteLecture(courseId: string, lectureId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/lectures/${lectureId}/hard`, { method: "DELETE" });
 }
 
 export async function getLecture(courseId: string, lectureId: string): Promise<LectureDetails> {

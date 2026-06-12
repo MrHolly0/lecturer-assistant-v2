@@ -157,6 +157,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/users/{personId}/role": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Change a user global role. */
+    put: operations["updateUserRole"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/users/{personId}/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Activate or disable a user. */
+    put: operations["updateUserStatus"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/invitations": {
     parameters: {
       query?: never;
@@ -239,6 +273,40 @@ export interface paths {
     post?: never;
     /** Archive a course. */
     delete: operations["archiveCourse"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/restore": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Restore an archived course. */
+    post: operations["restoreCourse"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/hard": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Permanently delete an archived course. */
+    delete: operations["hardDeleteCourse"];
     options?: never;
     head?: never;
     patch?: never;
@@ -384,6 +452,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/decks/{deckId}/restore": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Restore an archived slide deck. */
+    post: operations["restoreSlideDeck"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/decks/{deckId}/hard": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Permanently delete an archived slide deck. */
+    delete: operations["hardDeleteSlideDeck"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/decks/{deckId}/slides/{slideIndex}/image": {
     parameters: {
       query?: never;
@@ -451,6 +553,40 @@ export interface paths {
     post?: never;
     /** Archive lecture material. */
     delete: operations["deleteLecture"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/lectures/{lectureId}/restore": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Restore archived lecture material. */
+    post: operations["restoreLecture"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/lectures/{lectureId}/hard": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Permanently delete archived lecture material. */
+    delete: operations["hardDeleteLecture"];
     options?: never;
     head?: never;
     patch?: never;
@@ -753,6 +889,14 @@ export interface components {
       /** @enum {string} */
       status: "ACTIVE" | "DISABLED" | "EPHEMERAL";
     };
+    UpdateUserRoleRequest: {
+      /** @enum {string} */
+      role: "ADMIN" | "LECTURER" | "ASSISTANT" | "STUDENT";
+    };
+    UpdateUserStatusRequest: {
+      /** @enum {string} */
+      status: "ACTIVE" | "DISABLED";
+    };
     CreateInvitationRequest: {
       /** @enum {string} */
       role: "ADMIN" | "LECTURER" | "ASSISTANT";
@@ -884,6 +1028,7 @@ export interface components {
       version: number;
       sourceFilename?: string;
       slideCount: number;
+      archived: boolean;
       /** Format: date-time */
       createdAt: string;
     };
@@ -928,6 +1073,8 @@ export interface components {
       title: string;
       /** Format: uuid */
       deckId: string;
+      deckTitle: string;
+      deckVersion: number;
       archived: boolean;
       /** Format: date-time */
       createdAt: string;
@@ -1065,6 +1212,7 @@ export interface components {
     JobId: string;
     LectureId: string;
     AttachmentId: string;
+    PersonId: string;
     SlideIndex: number;
     SessionId: string;
     ChannelType: "telegram" | "vk" | "web" | "echo";
@@ -1305,6 +1453,58 @@ export interface operations {
       };
     };
   };
+  updateUserRole: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        personId: components["parameters"]["PersonId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateUserRoleRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated user. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserProfile"];
+        };
+      };
+    };
+  };
+  updateUserStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        personId: components["parameters"]["PersonId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateUserStatusRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated user. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserProfile"];
+        };
+      };
+    };
+  };
   createAdminInvitation: {
     parameters: {
       query?: never;
@@ -1458,6 +1658,46 @@ export interface operations {
     requestBody?: never;
     responses: {
       /** @description Course archived. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  restoreCourse: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Course restored. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  hardDeleteCourse: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Course permanently deleted. */
       204: {
         headers: {
           [name: string]: unknown;
@@ -1750,6 +1990,48 @@ export interface operations {
       };
     };
   };
+  restoreSlideDeck: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        deckId: components["parameters"]["DeckId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deck restored. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  hardDeleteSlideDeck: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        deckId: components["parameters"]["DeckId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deck permanently deleted. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   getSlideImage: {
     parameters: {
       query?: {
@@ -1940,6 +2222,48 @@ export interface operations {
     requestBody?: never;
     responses: {
       /** @description Lecture archived. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  restoreLecture: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        lectureId: components["parameters"]["LectureId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Lecture restored. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  hardDeleteLecture: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        lectureId: components["parameters"]["LectureId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Lecture permanently deleted. */
       204: {
         headers: {
           [name: string]: unknown;

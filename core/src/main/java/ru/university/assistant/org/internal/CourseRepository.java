@@ -53,6 +53,18 @@ class CourseRepository {
                 .update();
     }
 
+    void restore(UUID courseId) {
+        jdbc.sql("update org.courses set archived = false, updated_at = now() where id = :courseId")
+                .param("courseId", courseId)
+                .update();
+    }
+
+    void delete(UUID courseId) {
+        jdbc.sql("delete from org.courses where id = :courseId")
+                .param("courseId", courseId)
+                .update();
+    }
+
     List<Course> listForPerson(UUID personId, boolean admin) {
         if (admin) {
             return jdbc.sql("select id, owner_person_id, title, archived from org.courses order by created_at desc")

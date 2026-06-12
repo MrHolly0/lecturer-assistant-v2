@@ -5,12 +5,16 @@ import { toast } from "sonner";
 import {
   createLecture,
   archiveDeck,
+  hardDeleteDeck,
+  hardDeleteLecture,
   deleteLecture,
   deleteSlideNote,
   getDeck,
   getImportJob,
   listDecks,
   listLectures,
+  restoreDeck,
+  restoreLecture,
   saveSlideNote,
   uploadDeck,
   type ImportJob
@@ -20,7 +24,7 @@ import { DeckUploadPanel } from "../widgets/DeckUploadPanel";
 import { DeckViewer } from "../widgets/DeckViewer";
 import { LectureList } from "../widgets/LectureList";
 import { startLiveSession } from "../app/api/live-api";
-import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
+import { DeckListPanel } from "../widgets/DeckListPanel";
 
 export function MaterialsPage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
@@ -67,6 +71,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   });
 
   const decks = useMemo(() => decksQuery.data ?? [], [decksQuery.data]);
+  const activeDecks = useMemo(() => decks.filter((deck) => !deck.archived), [decks]);
   const lectures = useMemo(() => lecturesQuery.data ?? [], [lecturesQuery.data]);
   const selectedDeck = deckQuery.data;
   const latestJob = jobQuery.data ?? job;
@@ -106,11 +111,11 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   }, [courseId, jobQuery.data, qc]);
 
   useEffect(() => {
-    if (!selectedDeckId && decks[0]) {
-      setSelectedDeckId(decks[0].id);
-      setLectureDeckId(decks[0].id);
+    if (!selectedDeckId && activeDecks[0]) {
+      setSelectedDeckId(activeDecks[0].id);
+      setLectureDeckId(activeDecks[0].id);
     }
-  }, [decks, selectedDeckId]);
+  }, [activeDecks, selectedDeckId]);
 
   useEffect(() => {
     setActiveSlide(0);
@@ -162,9 +167,25 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
       void qc.invalidateQueries({ queryKey: ["content", courseId, "decks"] });
     }
   });
+  const restoreDeckMut = useMutation({
+    mutationFn: (deckId: string) => restoreDeck(courseId, deckId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["content", courseId, "decks"] })
+  });
+  const hardDeleteDeckMut = useMutation({
+    mutationFn: (deckId: string) => hardDeleteDeck(courseId, deckId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["content", courseId, "decks"] })
+  });
 
   const deleteLectureMut = useMutation({
     mutationFn: (lectureId: string) => deleteLecture(courseId, lectureId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["content", courseId, "lectures"] })
+  });
+  const restoreLectureMut = useMutation({
+    mutationFn: (lectureId: string) => restoreLecture(courseId, lectureId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["content", courseId, "lectures"] })
+  });
+  const hardDeleteLectureMut = useMutation({
+    mutationFn: (lectureId: string) => hardDeleteLecture(courseId, lectureId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["content", courseId, "lectures"] })
   });
 
@@ -223,45 +244,21 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
         />
       )}
 
-      <section className="material-section">
-        <div className="section-heading">
-          <h2>Презентации</h2>
-          <span className="muted">{decks.length} версий</span>
-        </div>
-        <div className="deck-list">
-          {decks.length === 0 && <p className="muted">Загрузите первую презентацию курса.</p>}
-          {decks.map((deck) => (
-            <div
-              key={deck.id}
-              className={`deck-pill ${deck.id === selectedDeckId ? "deck-pill--active" : ""}`}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedDeckId(deck.id);
-                  setLectureDeckId(deck.id);
-                }}
-              >
-                <span>{deck.title}</span>
-                <small>
-                  v{deck.version} · {deck.slideCount} слайдов
-                </small>
-              </button>
-              {canManage && (
-                <ConfirmActionButton
-                  title="Архивировать презентацию?"
-                  description="Презентация исчезнет из активного списка, но старые сессии сохранят ссылку на неё."
-                  confirmLabel="Архивировать"
-                  disabled={archiveDeckMut.isPending}
-                  onConfirm={() => archiveDeckMut.mutate(deck.id)}
-                >
-                  Архив
-                </ConfirmActionButton>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
+      <DeckListPanel
+        decks={decks}
+        selectedDeckId={selectedDeckId}
+        canManage={canManage}
+        archivePending={archiveDeckMut.isPending}
+        restorePending={restoreDeckMut.isPending}
+        hardDeletePending={hardDeleteDeckMut.isPending}
+        onSelect={(deckId) => {
+          setSelectedDeckId(deckId);
+          setLectureDeckId(deckId);
+        }}
+        onArchive={(deckId) => archiveDeckMut.mutate(deckId)}
+        onRestore={(deckId) => restoreDeckMut.mutate(deckId)}
+        onHardDelete={(deckId) => hardDeleteDeckMut.mutate(deckId)}
+      />
 
       {selectedDeck && (
         <DeckViewer
@@ -278,7 +275,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
 
       <LectureList
         lectures={lectures}
-        decks={decks}
+        decks={activeDecks}
         canManage={canManage}
         title={lectureTitle}
         deckId={lectureDeckId}
@@ -288,7 +285,9 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
         onDeckChange={setLectureDeckId}
         onCreate={() => createLectureMut.mutate()}
         onStart={(lectureId) => startSessionMut.mutate(lectureId)}
-        onDelete={(lectureId) => deleteLectureMut.mutate(lectureId)}
+        onArchive={(lectureId) => deleteLectureMut.mutate(lectureId)}
+        onRestore={(lectureId) => restoreLectureMut.mutate(lectureId)}
+        onHardDelete={(lectureId) => hardDeleteLectureMut.mutate(lectureId)}
       />
     </div>
   );

@@ -23,6 +23,14 @@ export async function archiveCourse(courseId: string): Promise<void> {
   await apiFetch(`/courses/${courseId}`, { method: "DELETE" });
 }
 
+export async function restoreCourse(courseId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/restore`, { method: "POST" });
+}
+
+export async function hardDeleteCourse(courseId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/hard`, { method: "DELETE" });
+}
+
 export async function getCourse(courseId: string): Promise<CourseDetails> {
   const res = await apiFetch(`/courses/${courseId}`);
   return res.json() as Promise<CourseDetails>;

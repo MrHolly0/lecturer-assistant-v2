@@ -85,6 +85,34 @@ class PersonRepository {
                 .update();
     }
 
+    PersonRecord updateRole(UUID personId, PersonRole role) {
+        return jdbc.sql(
+                        """
+                        update iam.persons
+                        set role = :role, updated_at = now()
+                        where id = :personId
+                        returning id, display_name, email, password_hash, role, status
+                        """)
+                .param("personId", personId)
+                .param("role", role.name())
+                .query(this::mapPerson)
+                .single();
+    }
+
+    PersonRecord updateStatus(UUID personId, PersonStatus status) {
+        return jdbc.sql(
+                        """
+                        update iam.persons
+                        set status = :status, updated_at = now()
+                        where id = :personId
+                        returning id, display_name, email, password_hash, role, status
+                        """)
+                .param("personId", personId)
+                .param("status", status.name())
+                .query(this::mapPerson)
+                .single();
+    }
+
     private PersonRecord mapPerson(ResultSet resultSet, int rowNumber) throws SQLException {
         return new PersonRecord(
                 resultSet.getObject("id", UUID.class),

@@ -4,6 +4,13 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listCourses } from "../app/api/courses-api";
 import { joinLiveSession } from "../app/api/live-api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "../shared/ui/select";
 
 export function StudentHomePage() {
   const [courseId, setCourseId] = useState("");
@@ -43,13 +50,18 @@ export function StudentHomePage() {
         </div>
         <form onSubmit={submit} className="inline-form">
           {courses.length > 1 && (
-            <select value={selectedCourseId} onChange={(event) => setCourseId(event.target.value)}>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.title}
-                </option>
-              ))}
-            </select>
+            <Select value={selectedCourseId} onValueChange={setCourseId}>
+              <SelectTrigger className="inline-select">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {courses.map((course) => (
+                  <SelectItem key={course.id} value={course.id}>
+                    {course.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
           <input
             value={joinCode}

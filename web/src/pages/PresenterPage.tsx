@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Clock, Monitor, Pause, Play, Square } from "lucide-react";
+import { Monitor, Pause, Play, Square } from "lucide-react";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
 import {
   changeLiveSessionSlide,
@@ -17,7 +17,7 @@ import {
 import { precacheDeck } from "../app/offline";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
-import { LocalQrCode } from "../widgets/LocalQrCode";
+import { PresenterSidePanel } from "../widgets/PresenterSidePanel";
 
 export function PresenterPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const qc = useQueryClient();
@@ -48,7 +48,6 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     enabled: Boolean(sessionId)
   });
   const participants = participantsQuery.data ?? [];
-  const activeParticipants = participants.filter((participant) => !participant.leftAt);
 
   useEffect(() => {
     if (sessionQuery.data) setLocalSession(sessionQuery.data);
@@ -187,29 +186,19 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       </header>
 
       <main className="presenter-grid">
-        <section className="presenter-stage">
-          <img src={slideImageUrl(slide)} alt={`Слайд ${slide.idx}`} />
-          <DrawingOverlay
-            slideIdx={slide.idx}
-            active={drawing}
-            annotations={session.annotations as LiveAnnotations}
-            onChange={(annotations) => {
-              const next = { ...session, annotations };
-              setSession(next);
-              annotationMut.mutate(annotations, { onSuccess: (saved) => setSession(saved) });
-            }}
-          />
-        </section>
-        <aside className="presenter-side">
-          <div className="live-metric">
-            <Clock size={16} />
-            Лекция {formatTime(elapsed)} · слайд {formatTime(slideElapsed)}
-          </div>
-          <div className="join-panel">
-            <span className="muted">Подключение</span>
-            <strong>{session.joinCode}</strong>
-            <small>/join {session.joinCode}</small>
-            <LocalQrCode value={session.joinCode} label="QR кода лекции" />
+        <section className="presenter-main">
+          <div className="presenter-stage">
+            <img src={slideImageUrl(slide)} alt={`Слайд ${slide.idx}`} />
+            <DrawingOverlay
+              slideIdx={slide.idx}
+              active={drawing}
+              annotations={session.annotations as LiveAnnotations}
+              onChange={(annotations) => {
+                const next = { ...session, annotations };
+                setSession(next);
+                annotationMut.mutate(annotations, { onSuccess: (saved) => setSession(saved) });
+              }}
+            />
           </div>
           <div className="deck-controls">
             <button
@@ -244,46 +233,15 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
               </button>
             ))}
           </div>
-          <div className="live-panel">
-            <div className="section-heading">
-              <h2>Студенты</h2>
-              <span className="badge">{activeParticipants.length} на связи</span>
-            </div>
-            {activeParticipants.length === 0 && <p className="muted">Пока никто не подключился.</p>}
-            {activeParticipants.length > 0 && (
-              <ul className="participant-list">
-                {activeParticipants.map((participant) => (
-                  <li key={`${participant.personId}-${participant.channelType}`}>
-                    <span>{participant.displayName}</span>
-                    <small>
-                      {participant.channelType} ·{" "}
-                      {new Date(participant.joinedAt).toLocaleTimeString("ru-RU", {
-                        hour: "2-digit",
-                        minute: "2-digit"
-                      })}
-                    </small>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="live-panel">
-            <div className="section-heading">
-              <h2>Заметки</h2>
-              <span className="muted">слайд {slide.idx}</span>
-            </div>
-            <p className="presenter-note">{slide.note?.content || "Для этого слайда заметок нет."}</p>
-          </div>
-        </aside>
+        </section>
+        <PresenterSidePanel
+          session={session}
+          slide={slide}
+          participants={participants}
+          elapsed={elapsed}
+          slideElapsed={slideElapsed}
+        />
       </main>
     </div>
   );
-}
-
-function formatTime(total: number) {
-  const minutes = Math.floor(total / 60)
-    .toString()
-    .padStart(2, "0");
-  const seconds = (total % 60).toString().padStart(2, "0");
-  return `${minutes}:${seconds}`;
 }

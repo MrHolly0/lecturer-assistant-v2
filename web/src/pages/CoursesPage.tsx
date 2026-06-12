@@ -2,7 +2,13 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { archiveCourse, createCourse, listCourses } from "../app/api/courses-api";
+import {
+  archiveCourse,
+  createCourse,
+  hardDeleteCourse,
+  listCourses,
+  restoreCourse
+} from "../app/api/courses-api";
 import { useAuth } from "../app/AuthContext";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
 
@@ -35,6 +41,16 @@ export function CoursesPage() {
     mutationFn: (courseId: string) => archiveCourse(courseId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses"] })
   });
+  const restoreMut = useMutation({
+    mutationFn: (courseId: string) => restoreCourse(courseId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses"] })
+  });
+  const hardDeleteMut = useMutation({
+    mutationFn: (courseId: string) => hardDeleteCourse(courseId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses"] })
+  });
+  const activeCourses = courses.filter((course) => !course.archived);
+  const archivedCourses = courses.filter((course) => course.archived);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -78,16 +94,15 @@ export function CoursesPage() {
         <p className="muted">Нет курсов. Создайте первый.</p>
       )}
 
-      {courses.length > 0 && (
+      {activeCourses.length > 0 && (
         <ul className="card-list">
-          {courses.map((course) => (
+          {activeCourses.map((course) => (
             <li key={course.id}>
               <div className="card-link">
                 <Link to={`/courses/${course.id}`} className="card-title">
                   {course.title}
                 </Link>
-                {course.archived && <span className="badge badge--muted">архив</span>}
-                {canCreateCourse && !course.archived && (
+                {canCreateCourse && (
                   <ConfirmActionButton
                     title="Архивировать курс?"
                     description="Курс пропадёт из активной работы, но история и материалы сохранятся."
@@ -102,6 +117,45 @@ export function CoursesPage() {
             </li>
           ))}
         </ul>
+      )}
+      {archivedCourses.length > 0 && (
+        <section className="archive-section">
+          <div className="section-heading">
+            <h2>Архив</h2>
+            <span className="muted">{archivedCourses.length} курсов</span>
+          </div>
+          <ul className="card-list">
+            {archivedCourses.map((course) => (
+              <li key={course.id} className="card-link">
+                <Link to={`/courses/${course.id}`} className="card-title">
+                  {course.title}
+                </Link>
+                <span className="badge badge--muted">архив</span>
+                {canCreateCourse && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={restoreMut.isPending}
+                      onClick={() => restoreMut.mutate(course.id)}
+                    >
+                      Восстановить
+                    </button>
+                    <ConfirmActionButton
+                      title="Удалить курс навсегда?"
+                      description="Курс, материалы, лекции и история будут удалены."
+                      confirmLabel="Удалить навсегда"
+                      disabled={hardDeleteMut.isPending}
+                      onConfirm={() => hardDeleteMut.mutate(course.id)}
+                    >
+                      Удалить навсегда
+                    </ConfirmActionButton>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );

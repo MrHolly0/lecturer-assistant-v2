@@ -9,5 +9,6 @@ public record SlideDeck(
         String title,
         int version,
         int slideCount,
+        boolean archived,
         String sourceFilename,
         Instant createdAt) {}

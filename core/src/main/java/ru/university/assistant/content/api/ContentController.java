@@ -109,6 +109,24 @@ public class ContentController {
         contentService.archiveDeck(user, courseId, deckId);
     }
 
+    @PostMapping("/decks/{deckId}/restore")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void restoreDeck(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID deckId) {
+        contentService.restoreDeck(user, courseId, deckId);
+    }
+
+    @DeleteMapping("/decks/{deckId}/hard")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void hardDeleteDeck(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID deckId) {
+        contentService.hardDeleteDeck(user, courseId, deckId);
+    }
+
     @GetMapping("/lectures")
     public List<Lecture> lectures(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID courseId) {
         return contentService.listLectures(user, courseId);
@@ -147,6 +165,24 @@ public class ContentController {
             @PathVariable UUID courseId,
             @PathVariable UUID lectureId) {
         contentService.archiveLecture(user, courseId, lectureId);
+    }
+
+    @PostMapping("/lectures/{lectureId}/restore")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void restoreLecture(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID lectureId) {
+        contentService.restoreLecture(user, courseId, lectureId);
+    }
+
+    @DeleteMapping("/lectures/{lectureId}/hard")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void hardDeleteLecture(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID lectureId) {
+        contentService.hardDeleteLecture(user, courseId, lectureId);
     }
 
     @PostMapping(path = "/lectures/{lectureId}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

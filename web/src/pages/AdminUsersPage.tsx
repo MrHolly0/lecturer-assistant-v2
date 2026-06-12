@@ -2,14 +2,24 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { components } from "../app/api/schema";
-import { createAdminInvitation, listUsers } from "../app/api/admin-api";
+import { createAdminInvitation, listUsers, updateUserRole, updateUserStatus } from "../app/api/admin-api";
+import { useAuth } from "../app/AuthContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "../shared/ui/select";
 
-type AdminRole = "ADMIN" | "LECTURER" | "ASSISTANT";
+type UserRole = "ADMIN" | "LECTURER" | "ASSISTANT" | "STUDENT";
+type AdminInviteRole = "ADMIN" | "LECTURER" | "ASSISTANT";
 type Invitation = components["schemas"]["Invitation"];
 
 export function AdminUsersPage() {
   const qc = useQueryClient();
-  const [inviteRole, setInviteRole] = useState<AdminRole>("LECTURER");
+  const { user } = useAuth();
+  const [inviteRole, setInviteRole] = useState<AdminInviteRole>("LECTURER");
   const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
 
   const { data: users = [], isLoading } = useQuery({
@@ -25,6 +35,18 @@ export function AdminUsersPage() {
     }
   });
 
+  const roleMut = useMutation({
+    mutationFn: ({ personId, role }: { personId: string; role: UserRole }) =>
+      updateUserRole(personId, { role }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "users"] })
+  });
+
+  const statusMut = useMutation({
+    mutationFn: ({ personId, status }: { personId: string; status: "ACTIVE" | "DISABLED" }) =>
+      updateUserStatus(personId, { status }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["admin", "users"] })
+  });
+
   return (
     <div className="page">
       <div className="page-header">
@@ -36,11 +58,16 @@ export function AdminUsersPage() {
         <div className="invite-panel">
           <label className="field">
             <span>Роль</span>
-            <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as AdminRole)}>
-              <option value="LECTURER">Лектор</option>
-              <option value="ASSISTANT">Ассистент</option>
-              <option value="ADMIN">Администратор</option>
-            </select>
+            <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as AdminInviteRole)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="LECTURER">Лектор</SelectItem>
+                <SelectItem value="ASSISTANT">Ассистент</SelectItem>
+                <SelectItem value="ADMIN">Администратор</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <button
             type="button"
@@ -83,12 +110,13 @@ export function AdminUsersPage() {
                 <th>Email</th>
                 <th>Роль</th>
                 <th>Статус</th>
+                <th>Действия</th>
               </tr>
             </thead>
             <tbody>
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="muted">
+                  <td colSpan={5} className="muted">
                     Нет пользователей.
                   </td>
                 </tr>
@@ -98,10 +126,39 @@ export function AdminUsersPage() {
                   <td>{u.displayName}</td>
                   <td>{u.email}</td>
                   <td>
-                    <span className={`badge badge--${u.role.toLowerCase()}`}>{u.role}</span>
+                    <Select
+                      value={u.role}
+                      onValueChange={(role) => roleMut.mutate({ personId: u.id, role: role as UserRole })}
+                      disabled={u.id === user?.id || roleMut.isPending}
+                    >
+                      <SelectTrigger className="table-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ADMIN">Администратор</SelectItem>
+                        <SelectItem value="LECTURER">Лектор</SelectItem>
+                        <SelectItem value="ASSISTANT">Ассистент</SelectItem>
+                        <SelectItem value="STUDENT">Студент</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </td>
                   <td>
                     <span className={`badge badge--${u.status.toLowerCase()}`}>{u.status}</span>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={u.id === user?.id || statusMut.isPending}
+                      onClick={() =>
+                        statusMut.mutate({
+                          personId: u.id,
+                          status: u.status === "DISABLED" ? "ACTIVE" : "DISABLED"
+                        })
+                      }
+                    >
+                      {u.status === "DISABLED" ? "Активировать" : "Деактивировать"}
+                    </button>
                   </td>
                 </tr>
               ))}

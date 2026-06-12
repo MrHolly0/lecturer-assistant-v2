@@ -68,6 +68,23 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
         courses.archive(courseId);
     }
 
+    @Transactional
+    public void restoreCourse(AuthenticatedUser user, UUID courseId) {
+        requireManage(user, courseId);
+        courses.restore(courseId);
+    }
+
+    @Transactional
+    public void hardDeleteCourse(AuthenticatedUser user, UUID courseId) {
+        requireManage(user, courseId);
+        Course course = courses.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        if (!course.archived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Archive course before permanent deletion");
+        }
+        courses.delete(courseId);
+    }
+
     public List<CourseMember> listMembers(AuthenticatedUser user, UUID courseId) {
         requireVisible(user, courseId);
         return courses.listMembers(courseId);

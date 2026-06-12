@@ -56,6 +56,14 @@ function RequireRole({ roles }: { roles: UserRole[] }) {
   return <Outlet />;
 }
 
+function RequireRolePage({ roles, children }: { roles: UserRole[]; children: JSX.Element }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!roles.includes(user.role)) return <Navigate to={landingPath(user.role)} replace />;
+  return children;
+}
+
 function RoleHome() {
   const { user } = useAuth();
   return <Navigate to={user ? landingPath(user.role) : "/login"} replace />;
@@ -104,6 +112,22 @@ const router = createHashRouter([
     )
   },
   {
+    path: "/courses/:courseId/sessions/:sessionId/presenter",
+    element: (
+      <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
+        <PresenterRoute />
+      </RequireRolePage>
+    )
+  },
+  {
+    path: "/courses/:courseId/sessions/:sessionId/projection",
+    element: (
+      <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
+        <ProjectionRoute />
+      </RequireRolePage>
+    )
+  },
+  {
     element: <ProtectedLayout />,
     children: [
       { index: true, element: <RoleHome /> },
@@ -113,9 +137,7 @@ const router = createHashRouter([
         children: [
           { path: "/courses", element: <CoursesPage /> },
           { path: "/courses/:courseId", element: <CourseRoute /> },
-          { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
-          { path: "/courses/:courseId/sessions/:sessionId/presenter", element: <PresenterRoute /> },
-          { path: "/courses/:courseId/sessions/:sessionId/projection", element: <ProjectionRoute /> }
+          { path: "/courses/:courseId/materials", element: <MaterialsRoute /> }
         ]
       },
       {

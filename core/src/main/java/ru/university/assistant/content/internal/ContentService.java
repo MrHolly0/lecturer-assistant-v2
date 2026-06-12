@@ -123,6 +123,26 @@ public class ContentService {
         repository.archiveDeck(courseId, deckId);
     }
 
+    @Transactional
+    public void restoreDeck(AuthenticatedUser user, UUID courseId, UUID deckId) {
+        courseAccess.requireManage(user, courseId);
+        repository.restoreDeck(courseId, deckId);
+    }
+
+    @Transactional
+    public void hardDeleteDeck(AuthenticatedUser user, UUID courseId, UUID deckId) {
+        courseAccess.requireManage(user, courseId);
+        SlideDeckDetails deck = repository.findDeck(courseId, deckId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
+        if (!deck.archived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Archive deck before permanent deletion");
+        }
+        if (repository.deckHasLectures(deckId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Deck is linked to lectures");
+        }
+        repository.deleteDeck(courseId, deckId);
+    }
+
     public List<Lecture> listLectures(AuthenticatedUser user, UUID courseId) {
         courseAccess.requireVisible(user, courseId);
         return repository.listLectures(courseId);
@@ -152,9 +172,22 @@ public class ContentService {
     @Transactional
     public void archiveLecture(AuthenticatedUser user, UUID courseId, UUID lectureId) {
         courseAccess.requireManage(user, courseId);
-        if (repository.lectureHasSessions(lectureId)) {
-            repository.archiveLecture(courseId, lectureId);
-            return;
+        repository.archiveLecture(courseId, lectureId);
+    }
+
+    @Transactional
+    public void restoreLecture(AuthenticatedUser user, UUID courseId, UUID lectureId) {
+        courseAccess.requireManage(user, courseId);
+        repository.restoreLecture(courseId, lectureId);
+    }
+
+    @Transactional
+    public void hardDeleteLecture(AuthenticatedUser user, UUID courseId, UUID lectureId) {
+        courseAccess.requireManage(user, courseId);
+        LectureDetails lecture = repository.findLecture(courseId, lectureId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lecture not found"));
+        if (!lecture.archived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Archive lecture before permanent deletion");
         }
         repository.deleteLecture(courseId, lectureId);
     }
@@ -194,7 +227,7 @@ public class ContentService {
                 .toList();
         return new SlideDeckDetails(
                 deck.id(), deck.courseId(), deck.title(), deck.version(),
-                deck.sourceFilename(), deck.createdAt(), token, slides);
+                deck.slideCount(), deck.archived(), deck.sourceFilename(), deck.createdAt(), token, slides);
     }
 
     private void ensureDeckExists(UUID courseId, UUID deckId) {

@@ -9,6 +9,8 @@ public record SlideDeckDetails(
         UUID courseId,
         String title,
         int version,
+        int slideCount,
+        boolean archived,
         String sourceFilename,
         Instant createdAt,
         String mediaToken,

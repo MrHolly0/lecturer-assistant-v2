@@ -167,13 +167,13 @@ class ContentRepository {
     List<SlideDeck> listDecks(UUID courseId) {
         return jdbc.sql(
                         """
-                        select d.id, d.course_id, d.title, d.version, d.source_filename, d.created_at,
-                            count(s.id)::int as slide_count
+                        select d.id, d.course_id, d.title, d.version, d.archived, d.source_filename,
+                            d.created_at, count(s.id)::int as slide_count
                         from content.slide_decks d
                         left join content.slides s on s.deck_id = d.id
-                        where d.course_id = :courseId and d.archived = false
+                        where d.course_id = :courseId
                         group by d.id
-                        order by d.created_at desc
+                        order by d.archived, d.created_at desc
                         """)
                 .param("courseId", courseId)
                 .query(this::mapDeck)
@@ -183,8 +183,8 @@ class ContentRepository {
     Optional<SlideDeckDetails> findDeck(UUID courseId, UUID deckId) {
         Optional<SlideDeck> deck = jdbc.sql(
                         """
-                        select d.id, d.course_id, d.title, d.version, d.source_filename, d.created_at,
-                            count(s.id)::int as slide_count
+                        select d.id, d.course_id, d.title, d.version, d.archived, d.source_filename,
+                            d.created_at, count(s.id)::int as slide_count
                         from content.slide_decks d
                         left join content.slides s on s.deck_id = d.id
                         where d.course_id = :courseId and d.id = :deckId
@@ -196,7 +196,8 @@ class ContentRepository {
                 .optional();
         return deck.map(value -> new SlideDeckDetails(
                 value.id(), value.courseId(), value.title(), value.version(),
-                value.sourceFilename(), value.createdAt(), null, listSlides(value.courseId(), deckId)));
+                value.slideCount(), value.archived(), value.sourceFilename(), value.createdAt(),
+                null, listSlides(value.courseId(), deckId)));
     }
 
     List<Slide> listSlides(UUID courseId, UUID deckId) {
@@ -261,13 +262,46 @@ class ContentRepository {
                 .update();
     }
 
+    void restoreDeck(UUID courseId, UUID deckId) {
+        jdbc.sql(
+                        """
+                        update content.slide_decks
+                        set archived = false
+                        where course_id = :courseId and id = :deckId
+                        """)
+                .param("courseId", courseId)
+                .param("deckId", deckId)
+                .update();
+    }
+
+    boolean deckHasLectures(UUID deckId) {
+        return jdbc.sql("select count(*) from live.lectures where deck_id = :deckId")
+                .param("deckId", deckId)
+                .query(Long.class)
+                .single()
+                > 0;
+    }
+
+    void deleteDeck(UUID courseId, UUID deckId) {
+        jdbc.sql(
+                        """
+                        delete from content.slide_decks
+                        where course_id = :courseId and id = :deckId
+                        """)
+                .param("courseId", courseId)
+                .param("deckId", deckId)
+                .update();
+    }
+
     List<Lecture> listLectures(UUID courseId) {
         return jdbc.sql(
                         """
-                        select id, course_id, title, deck_id, archived, created_at
-                        from live.lectures
-                        where course_id = :courseId
-                        order by created_at desc
+                        select l.id, l.course_id, l.title, l.deck_id, d.title as deck_title,
+                            d.version as deck_version, l.archived, l.created_at
+                        from live.lectures l
+                        join content.slide_decks d on d.id = l.deck_id
+                        where l.course_id = :courseId
+                        order by l.archived, l.created_at desc
                         """)
                 .param("courseId", courseId)
                 .query(this::mapLecture)
@@ -275,50 +309,62 @@ class ContentRepository {
     }
 
     Lecture createLecture(UUID id, UUID courseId, String title, UUID deckId, UUID createdBy) {
-        return jdbc.sql(
+        jdbc.sql(
                         """
                         insert into live.lectures (id, course_id, title, deck_id, created_by)
                         values (:id, :courseId, :title, :deckId, :createdBy)
-                        returning id, course_id, title, deck_id, archived, created_at
                         """)
                 .param("id", id)
                 .param("courseId", courseId)
                 .param("title", title)
                 .param("deckId", deckId)
                 .param("createdBy", createdBy)
-                .query(this::mapLecture)
-                .single();
+                .update();
+        return findLectureSummary(courseId, id).orElseThrow();
     }
 
     Optional<LectureDetails> findLecture(UUID courseId, UUID lectureId) {
+        return findLectureSummary(courseId, lectureId)
+                .map(lecture -> new LectureDetails(
+                        lecture.id(),
+                        lecture.courseId(),
+                        lecture.title(),
+                        lecture.deckId(),
+                        lecture.deckTitle(),
+                        lecture.deckVersion(),
+                        lecture.archived(),
+                        lecture.createdAt(),
+                        listAttachments(lecture.id())));
+    }
+
+    Optional<Lecture> findLectureSummary(UUID courseId, UUID lectureId) {
         return jdbc.sql(
                         """
-                        select id, course_id, title, deck_id, archived, created_at
-                        from live.lectures
-                        where course_id = :courseId and id = :lectureId
+                        select l.id, l.course_id, l.title, l.deck_id, d.title as deck_title,
+                            d.version as deck_version, l.archived, l.created_at
+                        from live.lectures l
+                        join content.slide_decks d on d.id = l.deck_id
+                        where l.course_id = :courseId and l.id = :lectureId
                         """)
                 .param("courseId", courseId)
                 .param("lectureId", lectureId)
                 .query(this::mapLecture)
-                .optional()
-                .map(lecture -> new LectureDetails(lecture.id(), lecture.courseId(), lecture.title(),
-                        lecture.deckId(), lecture.archived(), lecture.createdAt(), listAttachments(lecture.id())));
+                .optional();
     }
 
     Lecture updateLecture(UUID courseId, UUID lectureId, String title, UUID deckId) {
-        return jdbc.sql(
+        jdbc.sql(
                         """
                         update live.lectures
                         set title = :title, deck_id = :deckId
                         where course_id = :courseId and id = :lectureId
-                        returning id, course_id, title, deck_id, archived, created_at
                         """)
                 .param("courseId", courseId)
                 .param("lectureId", lectureId)
                 .param("title", title)
                 .param("deckId", deckId)
-                .query(this::mapLecture)
-                .single();
+                .update();
+        return findLectureSummary(courseId, lectureId).orElseThrow();
     }
 
     void archiveLecture(UUID courseId, UUID lectureId) {
@@ -326,6 +372,18 @@ class ContentRepository {
                         """
                         update live.lectures
                         set archived = true
+                        where course_id = :courseId and id = :lectureId
+                        """)
+                .param("courseId", courseId)
+                .param("lectureId", lectureId)
+                .update();
+    }
+
+    void restoreLecture(UUID courseId, UUID lectureId) {
+        jdbc.sql(
+                        """
+                        update live.lectures
+                        set archived = false
                         where course_id = :courseId and id = :lectureId
                         """)
                 .param("courseId", courseId)
@@ -427,6 +485,7 @@ class ContentRepository {
                 rs.getString("title"),
                 rs.getInt("version"),
                 rs.getInt("slide_count"),
+                rs.getBoolean("archived"),
                 rs.getString("source_filename"),
                 instant(rs, "created_at"));
     }
@@ -460,6 +519,8 @@ class ContentRepository {
                 rs.getObject("course_id", UUID.class),
                 rs.getString("title"),
                 rs.getObject("deck_id", UUID.class),
+                rs.getString("deck_title"),
+                rs.getInt("deck_version"),
                 rs.getBoolean("archived"),
                 instant(rs, "created_at"));
     }

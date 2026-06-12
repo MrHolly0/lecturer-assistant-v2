@@ -20,7 +20,10 @@ import ru.university.assistant.iam.api.InvitationApi;
 import ru.university.assistant.iam.api.InvitationResponse;
 import ru.university.assistant.iam.api.LoginRequest;
 import ru.university.assistant.iam.api.PersonRole;
+import ru.university.assistant.iam.api.PersonStatus;
 import ru.university.assistant.iam.api.RegisterRequest;
+import ru.university.assistant.iam.api.UpdateUserRoleRequest;
+import ru.university.assistant.iam.api.UpdateUserStatusRequest;
 import ru.university.assistant.iam.api.UserProfile;
 import ru.university.assistant.iam.internal.security.JwtService;
 import ru.university.assistant.org.api.CourseMembershipApi;
@@ -90,6 +93,7 @@ public class AuthService {
         PersonRecord person = persons
                 .findByEmail(request.email())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
+        ensureActive(person);
         if (!passwordEncoder.matches(request.password(), person.passwordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
@@ -106,6 +110,7 @@ public class AuthService {
         PersonRecord person = persons
                 .findById(personId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
+        ensureActive(person);
         return issueTokens(person);
     }
 
@@ -136,6 +141,27 @@ public class AuthService {
     }
 
     @Transactional
+    public UserProfile updateUserRole(
+            AuthenticatedUser actor, UUID personId, UpdateUserRoleRequest request) {
+        if (actor.id().equals(personId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot change your own role");
+        }
+        return persons.updateRole(personId, request.role()).toProfile();
+    }
+
+    @Transactional
+    public UserProfile updateUserStatus(
+            AuthenticatedUser actor, UUID personId, UpdateUserStatusRequest request) {
+        if (actor.id().equals(personId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot change your own status");
+        }
+        if (request.status() == PersonStatus.EPHEMERAL) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "EPHEMERAL status is system-managed");
+        }
+        return persons.updateStatus(personId, request.status()).toProfile();
+    }
+
+    @Transactional
     public InvitationResponse createAdminInvitation(AuthenticatedUser createdBy, CreateInvitationRequest request) {
         if (request.role() == PersonRole.STUDENT) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Student invitations are course-scoped");
@@ -153,12 +179,19 @@ public class AuthService {
     }
 
     private AuthTokens issueTokens(PersonRecord person) {
+        ensureActive(person);
         AuthenticatedUser user = new AuthenticatedUser(
                 person.id(), person.displayName(), person.email(), person.role());
         String refreshToken = randomToken();
         refreshTokens.create(
                 UuidV7.generate(), person.id(), TokenHasher.sha256(refreshToken), Instant.now(clock).plus(refreshTtl));
         return new AuthTokens(jwtService.issue(user), refreshToken, person.toProfile());
+    }
+
+    private void ensureActive(PersonRecord person) {
+        if (person.status() != PersonStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is disabled");
+        }
     }
 
     private CourseRole toCourseRole(PersonRole role) {

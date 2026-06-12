@@ -9,6 +9,13 @@ import {
   getCourse
 } from "../app/api/courses-api";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "../shared/ui/select";
 
 type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
 type Invitation = components["schemas"]["Invitation"];
@@ -164,14 +171,16 @@ export function CoursePage({ courseId }: { courseId: string }) {
         <div className="invite-panel">
           <label className="field">
             <span>Роль участника</span>
-            <select
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value as CourseRole)}
-            >
-              <option value="STUDENT">Студент</option>
-              <option value="ASSISTANT">Ассистент</option>
-              <option value="LECTURER">Лектор</option>
-            </select>
+            <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as CourseRole)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="STUDENT">Студент</SelectItem>
+                <SelectItem value="ASSISTANT">Ассистент</SelectItem>
+                <SelectItem value="LECTURER">Лектор</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <button
             type="button"

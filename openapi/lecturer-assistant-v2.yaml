@@ -174,6 +174,46 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/UserProfile"
+  /admin/users/{personId}/role:
+    put:
+      operationId: updateUserRole
+      summary: Change a user global role.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRoleRequest"
+      responses:
+        "200":
+          description: Updated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+  /admin/users/{personId}/status:
+    put:
+      operationId: updateUserStatus
+      summary: Activate or disable a user.
+      tags: [admin]
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserStatusRequest"
+      responses:
+        "200":
+          description: Updated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
   /admin/invitations:
     post:
       operationId: createAdminInvitation
@@ -279,6 +319,26 @@ paths:
       responses:
         "204":
           description: Course archived.
+  /courses/{courseId}/restore:
+    post:
+      operationId: restoreCourse
+      summary: Restore an archived course.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "204":
+          description: Course restored.
+  /courses/{courseId}/hard:
+    delete:
+      operationId: hardDeleteCourse
+      summary: Permanently delete an archived course.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "204":
+          description: Course permanently deleted.
   /courses/{courseId}/invitations:
     post:
       operationId: createCourseInvitation
@@ -479,6 +539,28 @@ paths:
       responses:
         "204":
           description: Deck archived.
+  /courses/{courseId}/decks/{deckId}/restore:
+    post:
+      operationId: restoreSlideDeck
+      summary: Restore an archived slide deck.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/DeckId"
+      responses:
+        "204":
+          description: Deck restored.
+  /courses/{courseId}/decks/{deckId}/hard:
+    delete:
+      operationId: hardDeleteSlideDeck
+      summary: Permanently delete an archived slide deck.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/DeckId"
+      responses:
+        "204":
+          description: Deck permanently deleted.
   /courses/{courseId}/decks/{deckId}/slides/{slideIndex}/image:
     get:
       operationId: getSlideImage
@@ -620,6 +702,28 @@ paths:
       responses:
         "204":
           description: Lecture archived.
+  /courses/{courseId}/lectures/{lectureId}/restore:
+    post:
+      operationId: restoreLecture
+      summary: Restore archived lecture material.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/LectureId"
+      responses:
+        "204":
+          description: Lecture restored.
+  /courses/{courseId}/lectures/{lectureId}/hard:
+    delete:
+      operationId: hardDeleteLecture
+      summary: Permanently delete archived lecture material.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/LectureId"
+      responses:
+        "204":
+          description: Lecture permanently deleted.
   /courses/{courseId}/lectures/{lectureId}/attachments:
     post:
       operationId: uploadLectureAttachment
@@ -947,6 +1051,13 @@ components:
       schema:
         type: string
         format: uuid
+    PersonId:
+      name: personId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     SlideIndex:
       name: slideIndex
       in: path
@@ -1039,6 +1150,20 @@ components:
         status:
           type: string
           enum: [ACTIVE, DISABLED, EPHEMERAL]
+    UpdateUserRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [ADMIN, LECTURER, ASSISTANT, STUDENT]
+    UpdateUserStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, DISABLED]
     CreateInvitationRequest:
       type: object
       required: [role]
@@ -1268,7 +1393,7 @@ components:
           format: date-time
     SlideDeck:
       type: object
-      required: [id, courseId, title, version, slideCount, createdAt]
+      required: [id, courseId, title, version, slideCount, archived, createdAt]
       properties:
         id:
           type: string
@@ -1286,6 +1411,8 @@ components:
         slideCount:
           type: integer
           minimum: 0
+        archived:
+          type: boolean
         createdAt:
           type: string
           format: date-time
@@ -1355,7 +1482,7 @@ components:
           additionalProperties: true
     Lecture:
       type: object
-      required: [id, courseId, title, deckId, archived, createdAt]
+      required: [id, courseId, title, deckId, deckTitle, deckVersion, archived, createdAt]
       properties:
         id:
           type: string
@@ -1368,6 +1495,11 @@ components:
         deckId:
           type: string
           format: uuid
+        deckTitle:
+          type: string
+        deckVersion:
+          type: integer
+          minimum: 1
         archived:
           type: boolean
         createdAt:

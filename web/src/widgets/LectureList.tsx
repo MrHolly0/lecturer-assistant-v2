@@ -1,4 +1,11 @@
 import type { Lecture, SlideDeck } from "../app/api/content-api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "../shared/ui/select";
 import { ConfirmActionButton } from "./ConfirmActionButton";
 
 interface LectureListProps {
@@ -13,7 +20,9 @@ interface LectureListProps {
   onDeckChange: (value: string) => void;
   onCreate: () => void;
   onStart: (lectureId: string) => void;
-  onDelete: (lectureId: string) => void;
+  onArchive: (lectureId: string) => void;
+  onRestore: (lectureId: string) => void;
+  onHardDelete: (lectureId: string) => void;
 }
 
 export function LectureList({
@@ -28,13 +37,18 @@ export function LectureList({
   onDeckChange,
   onCreate,
   onStart,
-  onDelete
+  onArchive,
+  onRestore,
+  onHardDelete
 }: LectureListProps) {
+  const activeLectures = lectures.filter((lecture) => !lecture.archived);
+  const archivedLectures = lectures.filter((lecture) => lecture.archived);
+
   return (
     <section className="material-section">
       <div className="section-heading">
         <h2>Лекции</h2>
-        <span className="muted">{lectures.length} создано</span>
+        <span className="muted">{activeLectures.length} активных</span>
       </div>
       {canManage && (
         <div className="inline-form">
@@ -43,14 +57,18 @@ export function LectureList({
             onChange={(event) => onTitleChange(event.target.value)}
             placeholder="Название лекции"
           />
-          <select value={deckId} onChange={(event) => onDeckChange(event.target.value)}>
-            <option value="">Выберите презентацию</option>
-            {decks.map((deck) => (
-              <option key={deck.id} value={deck.id}>
-                {deck.title} v{deck.version}
-              </option>
-            ))}
-          </select>
+          <Select value={deckId || undefined} onValueChange={onDeckChange}>
+            <SelectTrigger className="inline-select">
+              <SelectValue placeholder="Выберите презентацию" />
+            </SelectTrigger>
+            <SelectContent>
+              {decks.map((deck) => (
+                <SelectItem key={deck.id} value={deck.id}>
+                  {deck.title} v{deck.version}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <button
             className="btn-primary"
             type="button"
@@ -61,37 +79,100 @@ export function LectureList({
           </button>
         </div>
       )}
-      <ul className="card-list">
-        {lectures.length === 0 && <li className="muted">Лекции ещё не созданы.</li>}
-        {lectures.map((lecture) => (
-          <li key={lecture.id} className="card-link">
-            <span className="card-title">{lecture.title}</span>
-            <span className="muted">{lecture.archived ? "архив" : "активна"}</span>
-            {canManage && (
-              <>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  disabled={startingId === lecture.id || lecture.archived}
-                  onClick={() => onStart(lecture.id)}
-                >
-                  Старт
-                </button>
-                {!lecture.archived && (
-                  <ConfirmActionButton
-                    title="Удалить лекцию?"
-                    description="Черновик без сессий будет удалён, лекция с историей уйдёт в архив."
-                    disabled={startingId === lecture.id}
-                    onConfirm={() => onDelete(lecture.id)}
-                  >
-                    Удалить
-                  </ConfirmActionButton>
-                )}
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
+      <LectureRows
+        lectures={activeLectures}
+        empty="Лекции ещё не созданы."
+        canManage={canManage}
+        startingId={startingId}
+        onStart={onStart}
+        onArchive={onArchive}
+      />
+      {archivedLectures.length > 0 && (
+        <div className="archive-section">
+          <div className="section-heading">
+            <h3>Архив</h3>
+            <span className="muted">{archivedLectures.length} лекций</span>
+          </div>
+          <LectureRows
+            lectures={archivedLectures}
+            empty=""
+            canManage={canManage}
+            onRestore={onRestore}
+            onHardDelete={onHardDelete}
+          />
+        </div>
+      )}
     </section>
+  );
+}
+
+interface LectureRowsProps {
+  lectures: Lecture[];
+  empty: string;
+  canManage: boolean;
+  startingId?: string;
+  onStart?: (lectureId: string) => void;
+  onArchive?: (lectureId: string) => void;
+  onRestore?: (lectureId: string) => void;
+  onHardDelete?: (lectureId: string) => void;
+}
+
+function LectureRows({
+  lectures,
+  empty,
+  canManage,
+  startingId,
+  onStart,
+  onArchive,
+  onRestore,
+  onHardDelete
+}: LectureRowsProps) {
+  return (
+    <ul className="card-list">
+      {lectures.length === 0 && empty && <li className="muted">{empty}</li>}
+      {lectures.map((lecture) => (
+        <li key={lecture.id} className="card-link">
+          <span className="card-title">{lecture.title}</span>
+          <span className="muted">
+            {lecture.deckTitle} v{lecture.deckVersion}
+          </span>
+          {canManage && !lecture.archived && (
+            <>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={startingId === lecture.id}
+                onClick={() => onStart?.(lecture.id)}
+              >
+                Старт
+              </button>
+              <ConfirmActionButton
+                title="Архивировать лекцию?"
+                description="Лекция уйдёт в архив, её можно будет восстановить."
+                disabled={startingId === lecture.id}
+                onConfirm={() => onArchive?.(lecture.id)}
+              >
+                Архив
+              </ConfirmActionButton>
+            </>
+          )}
+          {canManage && lecture.archived && (
+            <>
+              <button type="button" className="btn-ghost" onClick={() => onRestore?.(lecture.id)}>
+                Восстановить
+              </button>
+              <ConfirmActionButton
+                title="Удалить лекцию навсегда?"
+                description="История сессий и вложения этой лекции будут удалены."
+                confirmLabel="Удалить навсегда"
+                onConfirm={() => onHardDelete?.(lecture.id)}
+              >
+                Удалить навсегда
+              </ConfirmActionButton>
+            </>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

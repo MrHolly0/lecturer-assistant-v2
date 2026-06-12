@@ -9,6 +9,8 @@ public record LectureDetails(
         UUID courseId,
         String title,
         UUID deckId,
+        String deckTitle,
+        int deckVersion,
         boolean archived,
         Instant createdAt,
         List<Attachment> attachments) {}
