@@ -659,7 +659,10 @@ textarea {
 .presenter-shell {
   background: #111;
   color: #fff;
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .presenter-topbar {
@@ -686,14 +689,18 @@ textarea {
 
 .presenter-grid {
   display: grid;
+  flex: 1;
   gap: 16px;
   grid-template-columns: minmax(0, 1fr) 340px;
+  min-height: 0;
   padding: 16px;
 }
 
 .presenter-main {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
+  min-height: 0;
   min-width: 0;
 }
 
@@ -708,8 +715,9 @@ textarea {
 }
 
 .presenter-stage {
+  flex: 1;
   border-radius: var(--radius);
-  min-height: min(68vh, calc(100vh - 210px));
+  min-height: 0;
 }
 
 .presenter-stage > img,
@@ -724,7 +732,9 @@ textarea {
   display: grid;
   gap: 14px;
   grid-auto-rows: max-content;
+  max-height: 100%;
   min-width: 0;
+  overflow-y: auto;
 }
 
 .live-metric,
@@ -848,13 +858,14 @@ textarea {
 
 .presenter-slide-strip {
   display: flex;
+  flex: 0 0 auto;
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 4px;
 }
 
 .presenter-slide-strip .slide-thumb {
-  flex: 0 0 132px;
+  flex: 0 0 118px;
 }
 
 .live-panel {
