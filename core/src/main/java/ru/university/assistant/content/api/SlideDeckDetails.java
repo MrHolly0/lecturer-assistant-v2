@@ -11,4 +11,5 @@ public record SlideDeckDetails(
         int version,
         String sourceFilename,
         Instant createdAt,
+        String mediaToken,
         List<Slide> slides) {}

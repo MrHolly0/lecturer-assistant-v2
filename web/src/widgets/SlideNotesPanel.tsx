@@ -8,6 +8,7 @@ interface SlideNotesPanelProps {
   saving: boolean;
   onClose: () => void;
   onSave: (content: string) => Promise<void>;
+  onClear: () => void;
 }
 
 export function SlideNotesPanel({
@@ -15,7 +16,8 @@ export function SlideNotesPanel({
   note,
   saving,
   onClose,
-  onSave
+  onSave,
+  onClear
 }: SlideNotesPanelProps) {
   const [draft, setDraft] = useState(note?.content ?? "");
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
@@ -92,6 +94,15 @@ export function SlideNotesPanel({
         />
       </div>
       <div className="snp-footer">
+        <button
+          className="snp-btn"
+          type="button"
+          disabled={saving || !note}
+          onClick={onClear}
+          title="Очистить заметку"
+        >
+          Очистить
+        </button>
         <button
           id="slide-notes-save-btn"
           className={`snp-btn snp-btn-primary ${!isDirty ? "snp-btn-disabled" : ""}`}

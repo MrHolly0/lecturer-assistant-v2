@@ -4,6 +4,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   createLecture,
+  archiveDeck,
+  deleteLecture,
+  deleteSlideNote,
   getDeck,
   getImportJob,
   listDecks,
@@ -12,10 +15,12 @@ import {
   uploadDeck,
   type ImportJob
 } from "../app/api/content-api";
+import { getCourse } from "../app/api/courses-api";
 import { DeckUploadPanel } from "../widgets/DeckUploadPanel";
 import { DeckViewer } from "../widgets/DeckViewer";
 import { LectureList } from "../widgets/LectureList";
 import { startLiveSession } from "../app/api/live-api";
+import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
 
 export function MaterialsPage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
@@ -32,6 +37,12 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const [lectureTitle, setLectureTitle] = useState("");
   const [lectureDeckId, setLectureDeckId] = useState("");
   const [startingLectureId, setStartingLectureId] = useState("");
+
+  const courseQuery = useQuery({
+    queryKey: ["courses", courseId],
+    queryFn: () => getCourse(courseId)
+  });
+  const canManage = courseQuery.data?.canManage ?? false;
 
   const decksQuery = useQuery({
     queryKey: ["content", courseId, "decks"],
@@ -57,6 +68,20 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const lectures = useMemo(() => lecturesQuery.data ?? [], [lecturesQuery.data]);
   const selectedDeck = deckQuery.data;
   const latestJob = jobQuery.data ?? job;
+
+  useEffect(() => {
+    setTitle("");
+    setFileName("");
+    setUploadProgress(0);
+    setJob(null);
+    setSelectedDeckId("");
+    setLectureDeckId("");
+    setActiveSlide(0);
+    setNotesOpen(false);
+    setError(null);
+    setLectureTitle("");
+    setStartingLectureId("");
+  }, [courseId]);
 
   useEffect(() => {
     if (!jobQuery.data) return;
@@ -110,8 +135,32 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     mutationFn: (content: string) =>
       saveSlideNote(courseId, selectedDeckId, selectedDeck?.slides[activeSlide]?.idx ?? 1, content),
     onSuccess: () => {
+      toast.success("Заметка сохранена");
       void qc.invalidateQueries({ queryKey: ["content", courseId, "decks", selectedDeckId] });
     }
+  });
+
+  const clearNoteMut = useMutation({
+    mutationFn: () =>
+      deleteSlideNote(courseId, selectedDeckId, selectedDeck?.slides[activeSlide]?.idx ?? 1),
+    onSuccess: () => {
+      toast.success("Заметка очищена");
+      void qc.invalidateQueries({ queryKey: ["content", courseId, "decks", selectedDeckId] });
+    }
+  });
+
+  const archiveDeckMut = useMutation({
+    mutationFn: (deckId: string) => archiveDeck(courseId, deckId),
+    onSuccess: () => {
+      setSelectedDeckId("");
+      setLectureDeckId("");
+      void qc.invalidateQueries({ queryKey: ["content", courseId, "decks"] });
+    }
+  });
+
+  const deleteLectureMut = useMutation({
+    mutationFn: (lectureId: string) => deleteLecture(courseId, lectureId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["content", courseId, "lectures"] })
   });
 
   const startSessionMut = useMutation({
@@ -151,17 +200,19 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
         <span className="muted">{selectedDeckTitle}</span>
       </div>
 
-      <DeckUploadPanel
-        title={title}
-        fileName={fileName}
-        dragOver={dragOver}
-        progress={displayedProgress}
-        importing={importing}
-        error={error}
-        onTitleChange={setTitle}
-        onFile={(file) => void handleFile(file)}
-        onDragOverChange={setDragOver}
-      />
+      {canManage && (
+        <DeckUploadPanel
+          title={title}
+          fileName={fileName}
+          dragOver={dragOver}
+          progress={displayedProgress}
+          importing={importing}
+          error={error}
+          onTitleChange={setTitle}
+          onFile={(file) => void handleFile(file)}
+          onDragOverChange={setDragOver}
+        />
+      )}
 
       <section className="material-section">
         <div className="section-heading">
@@ -171,27 +222,40 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
         <div className="deck-list">
           {decks.length === 0 && <p className="muted">Загрузите первую презентацию курса.</p>}
           {decks.map((deck) => (
-            <button
+            <div
               key={deck.id}
-              type="button"
               className={`deck-pill ${deck.id === selectedDeckId ? "deck-pill--active" : ""}`}
-              onClick={() => {
-                setSelectedDeckId(deck.id);
-                setLectureDeckId(deck.id);
-              }}
             >
-              <span>{deck.title}</span>
-              <small>
-                v{deck.version} · {deck.slideCount} слайдов
-              </small>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDeckId(deck.id);
+                  setLectureDeckId(deck.id);
+                }}
+              >
+                <span>{deck.title}</span>
+                <small>
+                  v{deck.version} · {deck.slideCount} слайдов
+                </small>
+              </button>
+              {canManage && (
+                <ConfirmActionButton
+                  title="Архивировать презентацию?"
+                  description="Презентация исчезнет из активного списка, но старые сессии сохранят ссылку на неё."
+                  confirmLabel="Архивировать"
+                  disabled={archiveDeckMut.isPending}
+                  onConfirm={() => archiveDeckMut.mutate(deck.id)}
+                >
+                  Архив
+                </ConfirmActionButton>
+              )}
+            </div>
           ))}
         </div>
       </section>
 
       {selectedDeck && (
         <DeckViewer
-          courseId={courseId}
           deck={selectedDeck}
           activeIndex={activeSlide}
           notesOpen={notesOpen}
@@ -199,12 +263,14 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
           onSlideChange={setActiveSlide}
           onNotesOpenChange={setNotesOpen}
           onSaveNote={(content) => saveNoteMut.mutateAsync(content).then(() => undefined)}
+          onClearNote={() => clearNoteMut.mutate()}
         />
       )}
 
       <LectureList
         lectures={lectures}
         decks={decks}
+        canManage={canManage}
         title={lectureTitle}
         deckId={lectureDeckId}
         creating={createLectureMut.isPending}
@@ -213,6 +279,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
         onDeckChange={setLectureDeckId}
         onCreate={() => createLectureMut.mutate()}
         onStart={(lectureId) => startSessionMut.mutate(lectureId)}
+        onDelete={(lectureId) => deleteLectureMut.mutate(lectureId)}
       />
     </div>
   );

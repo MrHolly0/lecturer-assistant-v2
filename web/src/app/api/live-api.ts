@@ -3,6 +3,7 @@ import { getStoredAuth } from "../auth";
 import { apiFetch } from "./http";
 
 export type LiveSession = components["schemas"]["LiveSession"];
+export type SessionParticipant = components["schemas"]["SessionParticipant"];
 export type LiveSessionMessage = { type: string; session: LiveSession };
 
 export async function startLiveSession(courseId: string, lectureId: string): Promise<LiveSession> {
@@ -14,6 +15,22 @@ export async function startLiveSession(courseId: string, lectureId: string): Pro
 
 export async function getLiveSession(courseId: string, sessionId: string): Promise<LiveSession> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}`);
+  return res.json() as Promise<LiveSession>;
+}
+
+export async function listSessionParticipants(
+  courseId: string,
+  sessionId: string
+): Promise<SessionParticipant[]> {
+  const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/participants`);
+  return res.json() as Promise<SessionParticipant[]>;
+}
+
+export async function joinLiveSession(courseId: string, joinCode: string): Promise<LiveSession> {
+  const res = await apiFetch(`/courses/${courseId}/sessions/join`, {
+    method: "POST",
+    body: JSON.stringify({ joinCode })
+  });
   return res.json() as Promise<LiveSession>;
 }
 

@@ -44,6 +44,8 @@ app:
   content:
     blob-root: ${BLOB_ROOT:./data/blobs}
     max-upload-bytes: ${MAX_UPLOAD_BYTES:104857600}
+    slide-image-url-secret: ${SLIDE_IMAGE_URL_SECRET:${JWT_SECRET:phase-1-local-development-secret-change-me}}
+    slide-image-url-ttl: ${SLIDE_IMAGE_URL_TTL:PT1H}
   channel:
     internal-api-key: ${CHANNEL_INTERNAL_API_KEY:phase-4-local-channel-key}
     delivery-worker-delay-ms: ${CHANNEL_DELIVERY_WORKER_DELAY_MS:5000}

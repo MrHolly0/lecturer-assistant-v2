@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { registerByInvitation } from "../app/api/auth-api";
 import { useAuth } from "../app/AuthContext";
 import { ApiError } from "../app/api/http";
+import { landingPath } from "../app/routes";
 
 export function RegisterPage({ code: initialCode }: { code: string }) {
   const { setUser } = useAuth();
@@ -19,7 +20,7 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
     mutationFn: () => registerByInvitation(displayName, email, password, code),
     onSuccess: (data) => {
       setUser(data.user);
-      navigate("/courses", { replace: true });
+      navigate(landingPath(data.user.role), { replace: true });
     },
     onError: (err) => {
       setError(

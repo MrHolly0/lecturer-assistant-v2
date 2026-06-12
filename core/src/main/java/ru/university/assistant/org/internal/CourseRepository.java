@@ -47,6 +47,12 @@ class CourseRepository {
                 .optional();
     }
 
+    void archive(UUID courseId) {
+        jdbc.sql("update org.courses set archived = true, updated_at = now() where id = :courseId")
+                .param("courseId", courseId)
+                .update();
+    }
+
     List<Course> listForPerson(UUID personId, boolean admin) {
         if (admin) {
             return jdbc.sql("select id, owner_person_id, title, archived from org.courses order by created_at desc")
@@ -141,6 +147,12 @@ class CourseRepository {
                 .query(Long.class)
                 .single()
                 > 0;
+    }
+
+    void deleteGroup(UUID groupId) {
+        jdbc.sql("delete from org.study_groups where id = :groupId")
+                .param("groupId", groupId)
+                .update();
     }
 
     void addGroupMember(UUID groupId, UUID personId) {

@@ -4,7 +4,6 @@ import { slideImageUrl } from "../app/api/content-api";
 import { SlideNotesPanel } from "./SlideNotesPanel";
 
 interface DeckViewerProps {
-  courseId: string;
   deck: SlideDeckDetails;
   activeIndex: number;
   notesOpen: boolean;
@@ -12,17 +11,18 @@ interface DeckViewerProps {
   onSlideChange: (index: number) => void;
   onNotesOpenChange: (open: boolean) => void;
   onSaveNote: (content: string) => Promise<void>;
+  onClearNote: () => void;
 }
 
 export function DeckViewer({
-  courseId,
   deck,
   activeIndex,
   notesOpen,
   savingNote,
   onSlideChange,
   onNotesOpenChange,
-  onSaveNote
+  onSaveNote,
+  onClearNote
 }: DeckViewerProps) {
   const slide = deck.slides[activeIndex];
   const slideNumber = slide?.idx ?? activeIndex + 1;
@@ -52,7 +52,7 @@ export function DeckViewer({
 
       <div className="deck-stage">
         <img
-          src={slideImageUrl(courseId, deck.id, slideNumber)}
+          src={slideImageUrl(slide)}
           alt={`Слайд ${slideNumber}`}
           className="deck-stage__image"
         />
@@ -63,6 +63,7 @@ export function DeckViewer({
             saving={savingNote}
             onClose={() => onNotesOpenChange(false)}
             onSave={onSaveNote}
+            onClear={onClearNote}
           />
         )}
       </div>
@@ -99,7 +100,7 @@ export function DeckViewer({
             className={`slide-thumb ${index === activeIndex ? "slide-thumb--active" : ""}`}
             onClick={() => onSlideChange(index)}
           >
-            <img src={slideImageUrl(courseId, deck.id, item.idx)} alt={`Слайд ${item.idx}`} />
+            <img src={slideImageUrl(item)} alt={`Слайд ${item.idx}`} />
             <span>{item.idx}</span>
           </button>
         ))}

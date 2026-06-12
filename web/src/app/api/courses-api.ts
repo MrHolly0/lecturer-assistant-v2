@@ -19,6 +19,10 @@ export async function createCourse(req: CreateCourseRequest): Promise<Course> {
   return res.json() as Promise<Course>;
 }
 
+export async function archiveCourse(courseId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}`, { method: "DELETE" });
+}
+
 export async function getCourse(courseId: string): Promise<CourseDetails> {
   const res = await apiFetch(`/courses/${courseId}`);
   return res.json() as Promise<CourseDetails>;
@@ -33,6 +37,10 @@ export async function createStudyGroup(
     body: JSON.stringify(req)
   });
   return res.json() as Promise<StudyGroup>;
+}
+
+export async function deleteStudyGroup(courseId: string, groupId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/groups/${groupId}`, { method: "DELETE" });
 }
 
 export async function createCourseInvitation(

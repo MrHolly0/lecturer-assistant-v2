@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import ru.university.assistant.iam.api.AuthenticatedUser;
@@ -164,6 +165,19 @@ class LiveSessionRepository {
                 .param("displayName", user.displayName())
                 .query(this::mapParticipant)
                 .single();
+    }
+
+    List<SessionParticipant> listParticipants(UUID sessionId) {
+        return jdbc.sql(
+                        """
+                        select session_id, person_id, channel_type, display_name, joined_at, left_at, kicked
+                        from live.session_participants
+                        where session_id = :sessionId
+                        order by left_at nulls first, joined_at desc
+                        """)
+                .param("sessionId", sessionId)
+                .query(this::mapParticipant)
+                .list();
     }
 
     private LiveSession mapSession(ResultSet rs, int rowNumber) throws SQLException {

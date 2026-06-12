@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { login, bootstrapAdmin } from "../app/api/auth-api";
 import { useAuth } from "../app/AuthContext";
 import { ApiError } from "../app/api/http";
+import { landingPath } from "../app/routes";
 
 type Mode = "login" | "bootstrap";
 
@@ -21,7 +22,7 @@ export function LoginPage() {
     mutationFn: () => login(email, password),
     onSuccess: (data) => {
       setUser(data.user);
-      navigate("/courses", { replace: true });
+      navigate(landingPath(data.user.role), { replace: true });
     },
     onError: (err) => {
       setError(
@@ -34,7 +35,7 @@ export function LoginPage() {
     mutationFn: () => bootstrapAdmin(displayName, email, password),
     onSuccess: (data) => {
       setUser(data.user);
-      navigate("/courses", { replace: true });
+      navigate(landingPath(data.user.role), { replace: true });
     },
     onError: (err) => {
       setError(

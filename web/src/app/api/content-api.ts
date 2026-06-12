@@ -39,6 +39,20 @@ export async function saveSlideNote(
   return res.json() as Promise<SlideNote>;
 }
 
+export async function deleteSlideNote(
+  courseId: string,
+  deckId: string,
+  slideIndex: number
+): Promise<void> {
+  await apiFetch(`/courses/${courseId}/decks/${deckId}/slides/${slideIndex}/notes`, {
+    method: "DELETE"
+  });
+}
+
+export async function archiveDeck(courseId: string, deckId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/decks/${deckId}`, { method: "DELETE" });
+}
+
 export async function listLectures(courseId: string): Promise<Lecture[]> {
   const res = await apiFetch(`/courses/${courseId}/lectures`);
   return res.json() as Promise<Lecture[]>;
@@ -56,13 +70,27 @@ export async function createLecture(
   return res.json() as Promise<Lecture>;
 }
 
+export async function deleteLecture(courseId: string, lectureId: string): Promise<void> {
+  await apiFetch(`/courses/${courseId}/lectures/${lectureId}`, { method: "DELETE" });
+}
+
 export async function getLecture(courseId: string, lectureId: string): Promise<LectureDetails> {
   const res = await apiFetch(`/courses/${courseId}/lectures/${lectureId}`);
   return res.json() as Promise<LectureDetails>;
 }
 
-export function slideImageUrl(courseId: string, deckId: string, slideIndex: number): string {
-  return `/api/v1/courses/${courseId}/decks/${deckId}/slides/${slideIndex}/image`;
+export async function deleteAttachment(
+  courseId: string,
+  lectureId: string,
+  attachmentId: string
+): Promise<void> {
+  await apiFetch(`/courses/${courseId}/lectures/${lectureId}/attachments/${attachmentId}`, {
+    method: "DELETE"
+  });
+}
+
+export function slideImageUrl(slide: Pick<Slide, "imageUrl">): string {
+  return slide.imageUrl;
 }
 
 export function uploadDeck(

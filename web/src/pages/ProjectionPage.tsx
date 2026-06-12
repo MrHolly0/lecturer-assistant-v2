@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
 import { connectLiveSession, getLiveSession, type LiveSession } from "../app/api/live-api";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
+import { LocalQrCode } from "../widgets/LocalQrCode";
 
 export function ProjectionPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const [localSession, setLocalSession] = useState<LiveSession | null>(null);
@@ -44,7 +45,7 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
 
   return (
     <main className="projection-shell">
-      <img src={slideImageUrl(courseId, deck.id, slide.idx)} alt={`Слайд ${slide.idx}`} />
+      <img src={slideImageUrl(slide)} alt={`Слайд ${slide.idx}`} />
       <DrawingOverlay
         slideIdx={slide.idx}
         annotations={session.annotations as LiveAnnotations}
@@ -54,6 +55,7 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
       <div className="projection-code">
         <span>Код подключения</span>
         <strong>{session.joinCode}</strong>
+        <LocalQrCode value={session.joinCode} label="QR" />
       </div>
     </main>
   );

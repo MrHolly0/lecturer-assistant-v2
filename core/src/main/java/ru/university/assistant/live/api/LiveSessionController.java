@@ -1,6 +1,7 @@
 package ru.university.assistant.live.api;
 
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -39,6 +40,14 @@ public class LiveSessionController {
             @PathVariable UUID courseId,
             @PathVariable UUID sessionId) {
         return liveSessions.get(user, courseId, sessionId);
+    }
+
+    @GetMapping("/sessions/{sessionId}/participants")
+    public List<SessionParticipant> participants(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID sessionId) {
+        return liveSessions.participants(user, courseId, sessionId);
     }
 
     @PostMapping("/sessions/join")

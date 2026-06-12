@@ -1,5 +1,6 @@
 package ru.university.assistant.live.internal;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -14,6 +15,7 @@ import ru.university.assistant.live.api.ChangeSlideRequest;
 import ru.university.assistant.live.api.JoinSessionRequest;
 import ru.university.assistant.live.api.LiveSession;
 import ru.university.assistant.live.api.SaveAnnotationsRequest;
+import ru.university.assistant.live.api.SessionParticipant;
 import ru.university.assistant.live.api.SessionStatus;
 import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.shared.api.CodeGenerator;
@@ -56,6 +58,12 @@ public class LiveSessionService {
     public LiveSession get(AuthenticatedUser user, UUID courseId, UUID sessionId) {
         courseAccess.requireVisible(user, courseId);
         return session(courseId, sessionId);
+    }
+
+    public List<SessionParticipant> participants(AuthenticatedUser user, UUID courseId, UUID sessionId) {
+        courseAccess.requireManage(user, courseId);
+        session(courseId, sessionId);
+        return sessions.listParticipants(sessionId);
     }
 
     @Transactional

@@ -237,7 +237,8 @@ export interface paths {
     get: operations["getCourse"];
     put?: never;
     post?: never;
-    delete?: never;
+    /** Archive a course. */
+    delete: operations["archiveCourse"];
     options?: never;
     head?: never;
     patch?: never;
@@ -290,6 +291,23 @@ export interface paths {
     /** Create a study group. */
     post: operations["createStudyGroup"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/groups/{groupId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete a study group. */
+    delete: operations["deleteStudyGroup"];
     options?: never;
     head?: never;
     patch?: never;
@@ -359,7 +377,8 @@ export interface paths {
     get: operations["getSlideDeck"];
     put?: never;
     post?: never;
-    delete?: never;
+    /** Archive a slide deck. */
+    delete: operations["archiveSlideDeck"];
     options?: never;
     head?: never;
     patch?: never;
@@ -393,7 +412,8 @@ export interface paths {
     /** Save lecturer notes for one slide. */
     put: operations["saveSlideNote"];
     post?: never;
-    delete?: never;
+    /** Clear lecturer notes for one slide. */
+    delete: operations["deleteSlideNote"];
     options?: never;
     head?: never;
     patch?: never;
@@ -453,6 +473,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/lectures/{lectureId}/attachments/{attachmentId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete an attachment from a lecture. */
+    delete: operations["deleteLectureAttachment"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/lectures/{lectureId}/sessions": {
     parameters: {
       query?: never;
@@ -479,6 +516,23 @@ export interface paths {
     };
     /** Read current live session state. */
     get: operations["getLiveSession"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/participants": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List participants connected to a live session. */
+    get: operations["listSessionParticipants"];
     put?: never;
     post?: never;
     delete?: never;
@@ -830,6 +884,8 @@ export interface components {
       createdAt: string;
     };
     SlideDeckDetails: components["schemas"]["SlideDeck"] & {
+      /** @description Short-lived HMAC token used in slide image URLs. */
+      mediaToken: string;
       slides: components["schemas"]["Slide"][];
     };
     Slide: {
@@ -911,6 +967,20 @@ export interface components {
       /** Format: date-time */
       endedAt?: string;
     };
+    SessionParticipant: {
+      /** Format: uuid */
+      sessionId: string;
+      /** Format: uuid */
+      personId: string;
+      /** @enum {string} */
+      channelType: "web" | "telegram" | "vk";
+      displayName: string;
+      /** Format: date-time */
+      joinedAt: string;
+      /** Format: date-time */
+      leftAt?: string;
+      kicked: boolean;
+    };
     ChangeSlideRequest: {
       slideIdx: number;
     };
@@ -987,8 +1057,10 @@ export interface components {
   parameters: {
     CourseId: string;
     DeckId: string;
+    GroupId: string;
     JobId: string;
     LectureId: string;
+    AttachmentId: string;
     SlideIndex: number;
     SessionId: string;
     ChannelType: "telegram" | "vk" | "web" | "echo";
@@ -1370,6 +1442,26 @@ export interface operations {
       };
     };
   };
+  archiveCourse: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Course archived. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   createCourseInvitation: {
     parameters: {
       query?: never;
@@ -1463,6 +1555,27 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["StudyGroup"];
         };
+      };
+    };
+  };
+  deleteStudyGroup: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        groupId: components["parameters"]["GroupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Group deleted. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -1612,9 +1725,33 @@ export interface operations {
       };
     };
   };
-  getSlideImage: {
+  archiveSlideDeck: {
     parameters: {
       query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        deckId: components["parameters"]["DeckId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deck archived. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getSlideImage: {
+    parameters: {
+      query?: {
+        /** @description Short-lived HMAC token scoped to the course and deck. */
+        t?: string;
+      };
       header?: never;
       path: {
         courseId: components["parameters"]["CourseId"];
@@ -1663,6 +1800,28 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["SlideNote"];
         };
+      };
+    };
+  };
+  deleteSlideNote: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        deckId: components["parameters"]["DeckId"];
+        slideIndex: components["parameters"]["SlideIndex"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Note cleared. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -1815,6 +1974,28 @@ export interface operations {
       };
     };
   };
+  deleteLectureAttachment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        lectureId: components["parameters"]["LectureId"];
+        attachmentId: components["parameters"]["AttachmentId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Attachment deleted. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   startLiveSession: {
     parameters: {
       query?: never;
@@ -1857,6 +2038,29 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["LiveSession"];
+        };
+      };
+    };
+  };
+  listSessionParticipants: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Session participants. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionParticipant"][];
         };
       };
     };

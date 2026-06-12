@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -70,10 +71,11 @@ public class ContentController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
             @PathVariable UUID deckId,
-            @PathVariable int slideIndex) {
-        BlobResource image = contentService.getSlideImage(user, courseId, deckId, slideIndex);
+            @PathVariable int slideIndex,
+            @RequestParam(name = "t", required = false) String token) {
+        BlobResource image = contentService.getSlideImage(user, courseId, deckId, slideIndex, token);
         return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(java.time.Duration.ofDays(365)).cachePublic().immutable())
+                .cacheControl(CacheControl.maxAge(java.time.Duration.ofHours(1)).cachePrivate())
                 .header(HttpHeaders.CONTENT_TYPE, image.contentType())
                 .body(new FileSystemResource(image.path()));
     }
@@ -86,6 +88,25 @@ public class ContentController {
             @PathVariable int slideIndex,
             @Valid @RequestBody SaveSlideNoteRequest request) {
         return contentService.saveSlideNote(user, courseId, deckId, slideIndex, request);
+    }
+
+    @DeleteMapping("/decks/{deckId}/slides/{slideIndex}/notes")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteNote(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID deckId,
+            @PathVariable int slideIndex) {
+        contentService.deleteSlideNote(user, courseId, deckId, slideIndex);
+    }
+
+    @DeleteMapping("/decks/{deckId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void archiveDeck(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID deckId) {
+        contentService.archiveDeck(user, courseId, deckId);
     }
 
     @GetMapping("/lectures")
@@ -136,5 +157,15 @@ public class ContentController {
             @PathVariable UUID lectureId,
             @RequestPart("file") MultipartFile file) {
         return contentService.addAttachment(user, courseId, lectureId, file);
+    }
+
+    @DeleteMapping("/lectures/{lectureId}/attachments/{attachmentId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteAttachment(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID lectureId,
+            @PathVariable UUID attachmentId) {
+        contentService.deleteAttachment(user, courseId, lectureId, attachmentId);
     }
 }

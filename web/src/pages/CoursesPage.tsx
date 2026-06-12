@@ -2,12 +2,16 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { createCourse, listCourses } from "../app/api/courses-api";
+import { archiveCourse, createCourse, listCourses } from "../app/api/courses-api";
+import { useAuth } from "../app/AuthContext";
+import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
 
 export function CoursesPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
+  const canCreateCourse = user?.role === "ADMIN" || user?.role === "LECTURER";
 
   const {
     data: courses = [],
@@ -27,6 +31,11 @@ export function CoursesPage() {
     }
   });
 
+  const archiveMut = useMutation({
+    mutationFn: (courseId: string) => archiveCourse(courseId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses"] })
+  });
+
   function submit(e: FormEvent) {
     e.preventDefault();
     createMut.mutate();
@@ -36,14 +45,14 @@ export function CoursesPage() {
     <div className="page">
       <div className="page-header">
         <h1>Курсы</h1>
-        {!showCreate && (
+        {canCreateCourse && !showCreate && (
           <button className="btn-primary" onClick={() => setShowCreate(true)}>
             + Создать курс
           </button>
         )}
       </div>
 
-      {showCreate && (
+      {canCreateCourse && showCreate && (
         <form onSubmit={submit} className="inline-form">
           <input
             value={title}
@@ -73,10 +82,23 @@ export function CoursesPage() {
         <ul className="card-list">
           {courses.map((course) => (
             <li key={course.id}>
-              <Link to={`/courses/${course.id}`} className="card-link">
-                <span className="card-title">{course.title}</span>
+              <div className="card-link">
+                <Link to={`/courses/${course.id}`} className="card-title">
+                  {course.title}
+                </Link>
                 {course.archived && <span className="badge badge--muted">архив</span>}
-              </Link>
+                {canCreateCourse && !course.archived && (
+                  <ConfirmActionButton
+                    title="Архивировать курс?"
+                    description="Курс пропадёт из активной работы, но история и материалы сохранятся."
+                    confirmLabel="Архивировать"
+                    disabled={archiveMut.isPending}
+                    onConfirm={() => archiveMut.mutate(course.id)}
+                  >
+                    Архив
+                  </ConfirmActionButton>
+                )}
+              </div>
             </li>
           ))}
         </ul>

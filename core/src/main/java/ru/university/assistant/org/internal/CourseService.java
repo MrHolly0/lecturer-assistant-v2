@@ -62,6 +62,12 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
                 courses.listGroups(course.id()));
     }
 
+    @Transactional
+    public void archiveCourse(AuthenticatedUser user, UUID courseId) {
+        requireManage(user, courseId);
+        courses.archive(courseId);
+    }
+
     public List<CourseMember> listMembers(AuthenticatedUser user, UUID courseId) {
         requireVisible(user, courseId);
         return courses.listMembers(courseId);
@@ -76,6 +82,15 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     public StudyGroup createGroup(AuthenticatedUser user, UUID courseId, CreateStudyGroupRequest request) {
         requireManage(user, courseId);
         return courses.createGroup(UuidV7.generate(), courseId, request.name().trim());
+    }
+
+    @Transactional
+    public void deleteGroup(AuthenticatedUser user, UUID courseId, UUID groupId) {
+        requireManage(user, courseId);
+        if (!courses.groupBelongsToCourse(groupId, courseId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found");
+        }
+        courses.deleteGroup(groupId);
     }
 
     @Transactional

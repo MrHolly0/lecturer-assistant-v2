@@ -5,6 +5,10 @@ type Point = { x: number; y: number };
 type DrawAction = { color: string; size: number; points: Point[]; erase?: boolean };
 export type LiveAnnotations = Record<string, DrawAction[]>;
 
+const COLORS = ["#dc2626", "#2563eb", "#16a34a", "#eab308", "#111827"];
+const PEN_SIZES = [2, 5, 9];
+const ERASER_SIZES = [12, 24, 36];
+
 interface DrawingOverlayProps {
   slideIdx: number;
   annotations: LiveAnnotations;
@@ -16,6 +20,9 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [erase, setErase] = useState(false);
+  const [color, setColor] = useState(COLORS[0]);
+  const [size, setSize] = useState(PEN_SIZES[1]);
+  const [eraserSize, setEraserSize] = useState(ERASER_SIZES[1]);
   const [drawing, setDrawing] = useState(false);
   const [points, setPoints] = useState<Point[]>([]);
   const slideKey = String(slideIdx);
@@ -65,11 +72,14 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
           setPoints(next);
           const canvas = canvasRef.current;
           if (canvas)
-            redraw(canvas, [...actions, { color: "#f97316", size: 4, points: next, erase }]);
+            redraw(canvas, [
+              ...actions,
+              { color, size: erase ? eraserSize : size, points: next, erase }
+            ]);
         }}
         onPointerUp={() => {
           if (!active || !drawing || points.length < 2) return;
-          commit([...actions, { color: "#f97316", size: 4, points, erase }]);
+          commit([...actions, { color, size: erase ? eraserSize : size, points, erase }]);
           setDrawing(false);
           setPoints([]);
         }}
@@ -78,20 +88,67 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
         <div className="drawing-toolbar">
           <button
             type="button"
-            className="icon-button"
+            className={`icon-button ${!erase ? "icon-button--active" : ""}`}
             onClick={() => setErase(false)}
             title="Карандаш"
           >
             <Pencil size={16} />
           </button>
+          <div className="drawing-swatches" aria-label="Цвет пера">
+            {COLORS.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`color-swatch ${color === item && !erase ? "color-swatch--active" : ""}`}
+                style={{ backgroundColor: item }}
+                onClick={() => {
+                  setColor(item);
+                  setErase(false);
+                }}
+                title={`Цвет ${item}`}
+              />
+            ))}
+          </div>
+          <div className="drawing-sizes" aria-label="Толщина пера">
+            {PEN_SIZES.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`size-dot ${size === item && !erase ? "size-dot--active" : ""}`}
+                onClick={() => {
+                  setSize(item);
+                  setErase(false);
+                }}
+                title={`Перо ${item}px`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
-            className="icon-button"
+            className={`icon-button ${erase ? "icon-button--active" : ""}`}
             onClick={() => setErase(true)}
             title="Ластик"
           >
             <Eraser size={16} />
           </button>
+          <div className="drawing-sizes" aria-label="Толщина ластика">
+            {ERASER_SIZES.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`size-dot ${eraserSize === item && erase ? "size-dot--active" : ""}`}
+                onClick={() => {
+                  setEraserSize(item);
+                  setErase(true);
+                }}
+                title={`Ластик ${item}px`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             className="icon-button"

@@ -270,6 +270,15 @@ paths:
                 $ref: "#/components/schemas/CourseDetails"
         "403":
           description: Course is not visible to current user.
+    delete:
+      operationId: archiveCourse
+      summary: Archive a course.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "204":
+          description: Course archived.
   /courses/{courseId}/invitations:
     post:
       operationId: createCourseInvitation
@@ -341,6 +350,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudyGroup"
+  /courses/{courseId}/groups/{groupId}:
+    delete:
+      operationId: deleteStudyGroup
+      summary: Delete a study group.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "204":
+          description: Group deleted.
   /courses/{courseId}/bans:
     get:
       operationId: listCourseBans
@@ -449,6 +469,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SlideDeckDetails"
+    delete:
+      operationId: archiveSlideDeck
+      summary: Archive a slide deck.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/DeckId"
+      responses:
+        "204":
+          description: Deck archived.
   /courses/{courseId}/decks/{deckId}/slides/{slideIndex}/image:
     get:
       operationId: getSlideImage
@@ -458,6 +488,12 @@ paths:
         - $ref: "#/components/parameters/CourseId"
         - $ref: "#/components/parameters/DeckId"
         - $ref: "#/components/parameters/SlideIndex"
+        - name: t
+          in: query
+          required: false
+          description: Short-lived HMAC token scoped to the course and deck.
+          schema:
+            type: string
       responses:
         "200":
           description: Slide image.
@@ -493,6 +529,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SlideNote"
+    delete:
+      operationId: deleteSlideNote
+      summary: Clear lecturer notes for one slide.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/DeckId"
+        - $ref: "#/components/parameters/SlideIndex"
+      responses:
+        "204":
+          description: Note cleared.
   /courses/{courseId}/lectures:
     get:
       operationId: listLectures
@@ -599,6 +646,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Attachment"
+  /courses/{courseId}/lectures/{lectureId}/attachments/{attachmentId}:
+    delete:
+      operationId: deleteLectureAttachment
+      summary: Delete an attachment from a lecture.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/LectureId"
+        - $ref: "#/components/parameters/AttachmentId"
+      responses:
+        "204":
+          description: Attachment deleted.
   /courses/{courseId}/lectures/{lectureId}/sessions:
     post:
       operationId: startLiveSession
@@ -629,6 +688,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveSession"
+  /courses/{courseId}/sessions/{sessionId}/participants:
+    get:
+      operationId: listSessionParticipants
+      summary: List participants connected to a live session.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Session participants.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionParticipant"
   /courses/{courseId}/sessions/join:
     post:
       operationId: joinLiveSession
@@ -843,6 +919,13 @@ components:
       schema:
         type: string
         format: uuid
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     JobId:
       name: jobId
       in: path
@@ -852,6 +935,13 @@ components:
         format: uuid
     LectureId:
       name: lectureId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AttachmentId:
+      name: attachmentId
       in: path
       required: true
       schema:
@@ -1193,8 +1283,11 @@ components:
       allOf:
         - $ref: "#/components/schemas/SlideDeck"
         - type: object
-          required: [slides]
+          required: [mediaToken, slides]
           properties:
+            mediaToken:
+              type: string
+              description: Short-lived HMAC token used in slide image URLs.
             slides:
               type: array
               items:
@@ -1348,6 +1441,29 @@ components:
         endedAt:
           type: string
           format: date-time
+    SessionParticipant:
+      type: object
+      required: [sessionId, personId, channelType, displayName, joinedAt, kicked]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        personId:
+          type: string
+          format: uuid
+        channelType:
+          type: string
+          enum: [web, telegram, vk]
+        displayName:
+          type: string
+        joinedAt:
+          type: string
+          format: date-time
+        leftAt:
+          type: string
+          format: date-time
+        kicked:
+          type: boolean
     ChangeSlideRequest:
       type: object
       required: [slideIdx]

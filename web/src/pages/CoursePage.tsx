@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { components } from "../app/api/schema";
-import { createCourseInvitation, createStudyGroup, getCourse } from "../app/api/courses-api";
+import {
+  createCourseInvitation,
+  createStudyGroup,
+  deleteStudyGroup,
+  getCourse
+} from "../app/api/courses-api";
+import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
 
 type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
 type Invitation = components["schemas"]["Invitation"];
@@ -36,6 +42,11 @@ export function CoursePage({ courseId }: { courseId: string }) {
       void qc.invalidateQueries({ queryKey: ["courses", courseId] });
       setGroupName("");
     }
+  });
+
+  const deleteGroupMut = useMutation({
+    mutationFn: (groupId: string) => deleteStudyGroup(courseId, groupId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses", courseId] })
   });
 
   const inviteMut = useMutation({
@@ -116,6 +127,14 @@ export function CoursePage({ courseId }: { courseId: string }) {
             {course.groups.map((g) => (
               <li key={g.id} className="card-link">
                 <span className="card-title">{g.name}</span>
+                <ConfirmActionButton
+                  title="Удалить группу?"
+                  description="Группа будет удалена из курса. Участники курса сохранятся."
+                  disabled={deleteGroupMut.isPending}
+                  onConfirm={() => deleteGroupMut.mutate(g.id)}
+                >
+                  Удалить
+                </ConfirmActionButton>
               </li>
             ))}
           </ul>

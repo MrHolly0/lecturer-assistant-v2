@@ -147,7 +147,7 @@ class ContentRepository {
                             count(s.id)::int as slide_count
                         from content.slide_decks d
                         left join content.slides s on s.deck_id = d.id
-                        where d.course_id = :courseId
+                        where d.course_id = :courseId and d.archived = false
                         group by d.id
                         order by d.created_at desc
                         """)
@@ -172,7 +172,7 @@ class ContentRepository {
                 .optional();
         return deck.map(value -> new SlideDeckDetails(
                 value.id(), value.courseId(), value.title(), value.version(),
-                value.sourceFilename(), value.createdAt(), listSlides(value.courseId(), deckId)));
+                value.sourceFilename(), value.createdAt(), null, listSlides(value.courseId(), deckId)));
     }
 
     List<Slide> listSlides(UUID courseId, UUID deckId) {
@@ -217,6 +217,24 @@ class ContentRepository {
                 .param("text", text)
                 .query(this::mapNote)
                 .single();
+    }
+
+    void deleteNote(UUID slideId) {
+        jdbc.sql("delete from content.slide_notes where slide_id = :slideId")
+                .param("slideId", slideId)
+                .update();
+    }
+
+    void archiveDeck(UUID courseId, UUID deckId) {
+        jdbc.sql(
+                        """
+                        update content.slide_decks
+                        set archived = true
+                        where course_id = :courseId and id = :deckId
+                        """)
+                .param("courseId", courseId)
+                .param("deckId", deckId)
+                .update();
     }
 
     List<Lecture> listLectures(UUID courseId) {
@@ -291,6 +309,25 @@ class ContentRepository {
                 .update();
     }
 
+    boolean lectureHasSessions(UUID lectureId) {
+        return jdbc.sql("select count(*) from live.sessions where lecture_id = :lectureId")
+                .param("lectureId", lectureId)
+                .query(Long.class)
+                .single()
+                > 0;
+    }
+
+    void deleteLecture(UUID courseId, UUID lectureId) {
+        jdbc.sql(
+                        """
+                        delete from live.lectures
+                        where course_id = :courseId and id = :lectureId
+                        """)
+                .param("courseId", courseId)
+                .param("lectureId", lectureId)
+                .update();
+    }
+
     Attachment addAttachment(UUID id, UUID lectureId, StoredBlob blob) {
         return jdbc.sql(
                         """
@@ -319,6 +356,22 @@ class ContentRepository {
                 .param("lectureId", lectureId)
                 .query(this::mapAttachment)
                 .list();
+    }
+
+    void deleteAttachment(UUID courseId, UUID lectureId, UUID attachmentId) {
+        jdbc.sql(
+                        """
+                        delete from content.attachments a
+                        using live.lectures l
+                        where a.lecture_id = l.id
+                            and l.course_id = :courseId
+                            and l.id = :lectureId
+                            and a.id = :attachmentId
+                        """)
+                .param("courseId", courseId)
+                .param("lectureId", lectureId)
+                .param("attachmentId", attachmentId)
+                .update();
     }
 
     private ImportJob mapJob(ResultSet rs, int rowNumber) throws SQLException {

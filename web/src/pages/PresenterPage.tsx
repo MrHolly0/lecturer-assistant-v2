@@ -8,6 +8,7 @@ import {
   connectLiveSession,
   endLiveSession,
   getLiveSession,
+  listSessionParticipants,
   pauseLiveSession,
   resumeLiveSession,
   saveLiveSessionAnnotations,
@@ -15,6 +16,8 @@ import {
 } from "../app/api/live-api";
 import { precacheDeck } from "../app/offline";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
+import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
+import { LocalQrCode } from "../widgets/LocalQrCode";
 
 export function PresenterPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const qc = useQueryClient();
@@ -38,10 +41,14 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   const deck = deckQuery.data;
   const slide =
     deck?.slides.find((item) => item.idx === session?.currentSlideIdx) ?? deck?.slides[0];
-  const imageUrls = useMemo(
-    () => deck?.slides.map((item) => slideImageUrl(courseId, deck.id, item.idx)) ?? [],
-    [courseId, deck]
-  );
+  const imageUrls = useMemo(() => deck?.slides.map((item) => slideImageUrl(item)) ?? [], [deck]);
+  const participantsQuery = useQuery({
+    queryKey: ["live", courseId, sessionId, "participants"],
+    queryFn: () => listSessionParticipants(courseId, sessionId),
+    enabled: Boolean(sessionId)
+  });
+  const participants = participantsQuery.data ?? [];
+  const activeParticipants = participants.filter((participant) => !participant.leftAt);
 
   useEffect(() => {
     if (sessionQuery.data) setLocalSession(sessionQuery.data);
@@ -55,6 +62,9 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       setLocalSession(message.session);
       channel.postMessage(message.session);
       void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId] });
+      if (message.type === "participant.joined" || message.type === "participant.left") {
+        void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "participants"] });
+      }
     });
     return () => {
       disconnect();
@@ -108,7 +118,6 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     if (!session || !deck || idx < 1 || idx > deck.slides.length) return;
     const next = { ...session, currentSlideIdx: idx };
     setSession(next);
-    localStorage.setItem(`pending-slide-${session.id}`, String(idx));
     slideMut.mutate(idx, { onSuccess: (saved) => setSession(saved) });
   }
 
@@ -128,6 +137,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
         <button
           className="btn-ghost"
           type="button"
+          title="Открыть проектор в отдельном окне"
           onClick={() =>
             window.open(
               `/#/courses/${courseId}/sessions/${sessionId}/projection`,
@@ -143,22 +153,42 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
           Рисование
         </button>
         {session.status === "PAUSED" ? (
-          <button className="btn-primary" type="button" onClick={() => resumeMut.mutate()}>
+          <button
+            className="btn-primary"
+            type="button"
+            title="Продолжить показ слайдов"
+            onClick={() => resumeMut.mutate(undefined, { onSuccess: (saved) => setSession(saved) })}
+          >
             <Play size={16} />
+            Продолжить
           </button>
         ) : (
-          <button className="btn-ghost" type="button" onClick={() => pauseMut.mutate()}>
+          <button
+            className="btn-ghost"
+            type="button"
+            title="Поставить лекцию на паузу"
+            onClick={() => pauseMut.mutate(undefined, { onSuccess: (saved) => setSession(saved) })}
+          >
             <Pause size={16} />
+            Пауза
           </button>
         )}
-        <button className="btn-ghost" type="button" onClick={() => endMut.mutate()}>
+        <ConfirmActionButton
+          title="Завершить лекцию?"
+          description="Завершение необратимо: рассылка и управление этой сессией остановятся."
+          confirmLabel="Завершить"
+          className="btn-ghost"
+          disabled={endMut.isPending}
+          onConfirm={() => endMut.mutate(undefined, { onSuccess: (saved) => setSession(saved) })}
+        >
           <Square size={16} />
-        </button>
+          Завершить
+        </ConfirmActionButton>
       </header>
 
       <main className="presenter-grid">
         <section className="presenter-stage">
-          <img src={slideImageUrl(courseId, deck.id, slide.idx)} alt={`Слайд ${slide.idx}`} />
+          <img src={slideImageUrl(slide)} alt={`Слайд ${slide.idx}`} />
           <DrawingOverlay
             slideIdx={slide.idx}
             active={drawing}
@@ -179,6 +209,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
             <span className="muted">Подключение</span>
             <strong>{session.joinCode}</strong>
             <small>/join {session.joinCode}</small>
+            <LocalQrCode value={session.joinCode} label="QR кода лекции" />
           </div>
           <div className="deck-controls">
             <button
@@ -198,6 +229,50 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
             >
               Далее
             </button>
+          </div>
+          <div className="presenter-slide-strip">
+            {deck.slides.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`slide-thumb ${item.idx === session.currentSlideIdx ? "slide-thumb--active" : ""}`}
+                onClick={() => go(item.idx)}
+                title={`Перейти к слайду ${item.idx}`}
+              >
+                <img src={slideImageUrl(item)} alt={`Слайд ${item.idx}`} />
+                <span>{index + 1}</span>
+              </button>
+            ))}
+          </div>
+          <div className="live-panel">
+            <div className="section-heading">
+              <h2>Студенты</h2>
+              <span className="badge">{activeParticipants.length} на связи</span>
+            </div>
+            {activeParticipants.length === 0 && <p className="muted">Пока никто не подключился.</p>}
+            {activeParticipants.length > 0 && (
+              <ul className="participant-list">
+                {activeParticipants.map((participant) => (
+                  <li key={`${participant.personId}-${participant.channelType}`}>
+                    <span>{participant.displayName}</span>
+                    <small>
+                      {participant.channelType} ·{" "}
+                      {new Date(participant.joinedAt).toLocaleTimeString("ru-RU", {
+                        hour: "2-digit",
+                        minute: "2-digit"
+                      })}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="live-panel">
+            <div className="section-heading">
+              <h2>Заметки</h2>
+              <span className="muted">слайд {slide.idx}</span>
+            </div>
+            <p className="presenter-note">{slide.note?.content || "Для этого слайда заметок нет."}</p>
           </div>
         </aside>
       </main>

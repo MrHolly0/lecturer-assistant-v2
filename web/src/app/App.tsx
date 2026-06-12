@@ -15,8 +15,10 @@ import { MaterialsPage } from "../pages/MaterialsPage";
 import { PresenterPage } from "../pages/PresenterPage";
 import { ProjectionPage } from "../pages/ProjectionPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
+import { StudentHomePage } from "../pages/StudentHomePage";
 import { Layout } from "../widgets/Layout";
 import { Toaster } from "../shared/ui/sonner";
+import { landingPath, type UserRole } from "./routes";
 
 function LoadingScreen() {
   return (
@@ -31,7 +33,7 @@ function LoadingScreen() {
 function PublicOnly({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingScreen />;
-  if (user) return <Navigate to="/courses" replace />;
+  if (user) return <Navigate to={landingPath(user.role)} replace />;
   return children;
 }
 
@@ -45,6 +47,18 @@ function ProtectedLayout() {
       <Outlet />
     </Layout>
   );
+}
+
+function RequireRole({ roles }: { roles: UserRole[] }) {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (!roles.includes(user.role)) return <Navigate to={landingPath(user.role)} replace />;
+  return <Outlet />;
+}
+
+function RoleHome() {
+  const { user } = useAuth();
+  return <Navigate to={user ? landingPath(user.role) : "/login"} replace />;
 }
 
 function RegisterRoute() {
@@ -92,16 +106,25 @@ const router = createHashRouter([
   {
     element: <ProtectedLayout />,
     children: [
-      { index: true, element: <Navigate to="/courses" replace /> },
-      { path: "/courses", element: <CoursesPage /> },
-      { path: "/courses/:courseId", element: <CourseRoute /> },
-      { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
-      { path: "/courses/:courseId/sessions/:sessionId/presenter", element: <PresenterRoute /> },
-      { path: "/courses/:courseId/sessions/:sessionId/projection", element: <ProjectionRoute /> },
-      { path: "/admin/users", element: <AdminUsersPage /> }
+      { index: true, element: <RoleHome /> },
+      { path: "/home", element: <StudentHomePage /> },
+      {
+        element: <RequireRole roles={["ADMIN", "LECTURER", "ASSISTANT"]} />,
+        children: [
+          { path: "/courses", element: <CoursesPage /> },
+          { path: "/courses/:courseId", element: <CourseRoute /> },
+          { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
+          { path: "/courses/:courseId/sessions/:sessionId/presenter", element: <PresenterRoute /> },
+          { path: "/courses/:courseId/sessions/:sessionId/projection", element: <ProjectionRoute /> }
+        ]
+      },
+      {
+        element: <RequireRole roles={["ADMIN"]} />,
+        children: [{ path: "/admin/users", element: <AdminUsersPage /> }]
+      }
     ]
   },
-  { path: "*", element: <Navigate to="/courses" replace /> }
+  { path: "*", element: <RoleHome /> }
 ]);
 
 export function App() {
