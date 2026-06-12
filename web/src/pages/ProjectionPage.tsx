@@ -21,6 +21,7 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
   const deck = deckQuery.data;
   const slide =
     deck?.slides.find((item) => item.idx === session?.currentSlideIdx) ?? deck?.slides[0];
+  const showJoinCode = slide?.idx === 1;
 
   useEffect(() => {
     if (sessionQuery.data) setLocalSession(sessionQuery.data);
@@ -52,11 +53,13 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
         active={false}
         onChange={() => undefined}
       />
-      <div className="projection-code">
-        <span>Код подключения</span>
-        <strong>{session.joinCode}</strong>
-        <LocalQrCode value={session.joinCode} label="QR" />
-      </div>
+      {showJoinCode && (
+        <div className="projection-code">
+          <span>Код подключения</span>
+          <strong>{session.joinCode}</strong>
+          <LocalQrCode value={session.joinCode} label="QR" />
+        </div>
+      )}
     </main>
   );
 }
