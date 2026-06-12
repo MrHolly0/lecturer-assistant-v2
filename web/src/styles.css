@@ -1049,11 +1049,19 @@ textarea {
   justify-content: space-between;
 }
 
-.student-slide-card img,
+.student-slide-viewport,
 .student-slide-empty {
   aspect-ratio: 16 / 9;
   background: #050505;
   border-radius: calc(var(--radius) - 2px);
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.student-slide-viewport img {
+  display: block;
+  height: 100%;
   object-fit: contain;
   width: 100%;
 }

@@ -13,6 +13,7 @@ import {
   type StudentQuestion,
   type StudentSessionSnapshot
 } from "../app/api/student-api";
+import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 
 interface StudentSessionPageProps {
   joinCode: string;
@@ -132,7 +133,15 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           {!isLive && <span className="muted">Показ сейчас не идет</span>}
         </div>
         {current.currentSlide ? (
-          <img src={current.currentSlide.imageUrl} alt={`Слайд ${current.currentSlide.idx}`} />
+          <div className="student-slide-viewport">
+            <img src={current.currentSlide.imageUrl} alt={`Слайд ${current.currentSlide.idx}`} />
+            <DrawingOverlay
+              slideIdx={current.currentSlide.idx}
+              annotations={(current.annotations ?? {}) as LiveAnnotations}
+              active={false}
+              onChange={() => undefined}
+            />
+          </div>
         ) : (
           <div className="student-slide-empty">Слайд пока не выбран</div>
         )}
