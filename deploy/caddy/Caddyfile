@@ -4,5 +4,6 @@
     }
 
     reverse_proxy /api/* core:8080
+    reverse_proxy /ws/* core:8080
     reverse_proxy web:80
 }

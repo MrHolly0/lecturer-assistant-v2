@@ -46,13 +46,15 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   const participantsQuery = useQuery({
     queryKey: ["live", courseId, sessionId, "participants"],
     queryFn: () => listSessionParticipants(courseId, sessionId),
-    enabled: Boolean(sessionId)
+    enabled: Boolean(sessionId),
+    refetchInterval: 3000
   });
   const participants = participantsQuery.data ?? [];
   const engagementQuery = useQuery({
     queryKey: ["live", courseId, sessionId, "engagement"],
     queryFn: () => getStudentEngagement(courseId, sessionId),
-    enabled: Boolean(sessionId)
+    enabled: Boolean(sessionId),
+    refetchInterval: 3000
   });
 
   useEffect(() => {
