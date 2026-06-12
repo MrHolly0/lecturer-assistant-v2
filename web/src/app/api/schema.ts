@@ -830,6 +830,108 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/sessions/{sessionId}/engagement": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read live student signals and questions for presenter. */
+    get: operations["getLiveSessionEngagement"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read public student session snapshot by join code. */
+    get: operations["getStudentSession"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/join": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Join a live session as a web student. */
+    post: operations["joinStudentSession"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** SSE stream with current student session state. */
+    get: operations["streamStudentSession"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/signals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Submit current comprehension signal. */
+    post: operations["submitStudentSignal"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/questions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Ask a question from web student channel. */
+    post: operations["askStudentQuestion"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/internal/v1/channels/{channelType}/capabilities": {
     parameters: {
       query?: never;
@@ -1201,6 +1303,73 @@ export interface components {
     JoinSessionRequest: {
       joinCode: string;
     };
+    /** @enum {string} */
+    IdentityLevel: "EPHEMERAL" | "PROFILE";
+    /** @enum {string} */
+    SignalValue: "GREEN" | "YELLOW" | "RED";
+    SignalAggregate: {
+      green: number;
+      yellow: number;
+      red: number;
+      total: number;
+    };
+    StudentSlide: {
+      idx: number;
+      imageUrl: string;
+      textExtract?: string;
+    };
+    StudentSessionSnapshot: {
+      /** Format: uuid */
+      sessionId: string;
+      /** Format: uuid */
+      courseId: string;
+      lectureTitle: string;
+      status: components["schemas"]["SessionStatus"];
+      joinCode: string;
+      currentSlideIdx: number;
+      slideCount: number;
+      currentSlide: components["schemas"]["StudentSlide"];
+      annotations?: {
+        [key: string]: unknown;
+      };
+      signalAggregate: components["schemas"]["SignalAggregate"];
+    };
+    StudentJoinRequest: {
+      displayName?: string;
+    };
+    StudentJoinResponse: {
+      participantToken: string;
+      /** Format: uuid */
+      participantId: string;
+      identityLevel: components["schemas"]["IdentityLevel"];
+      snapshot: components["schemas"]["StudentSessionSnapshot"];
+    };
+    StudentSignalRequest: {
+      participantToken: string;
+      value: components["schemas"]["SignalValue"];
+    };
+    StudentQuestionRequest: {
+      participantToken: string;
+      text: string;
+    };
+    StudentQuestion: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      sessionId: string;
+      displayName: string;
+      /** @enum {string} */
+      channelType: "web" | "telegram" | "vk" | "echo";
+      text: string;
+      /** @enum {string} */
+      status: "OPEN" | "ANSWERED" | "DISMISSED";
+      /** Format: date-time */
+      createdAt: string;
+    };
+    StudentEngagement: {
+      signalAggregate: components["schemas"]["SignalAggregate"];
+      questions: components["schemas"]["StudentQuestion"][];
+    };
     ChannelCapabilities: {
       inlineButtons: boolean;
       editMessage: boolean;
@@ -1273,6 +1442,8 @@ export interface components {
     PersonId: string;
     SlideIndex: number;
     SessionId: string;
+    JoinCode: string;
+    ParticipantTokenQuery: string;
     ChannelType: "telegram" | "vk" | "web" | "echo";
   };
   requestBodies: never;
@@ -2666,6 +2837,153 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["LiveSession"];
+        };
+      };
+    };
+  };
+  getLiveSessionEngagement: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Student engagement snapshot. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentEngagement"];
+        };
+      };
+    };
+  };
+  getStudentSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Student session snapshot. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentSessionSnapshot"];
+        };
+      };
+    };
+  };
+  joinStudentSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["StudentJoinRequest"];
+      };
+    };
+    responses: {
+      /** @description Joined web session. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentJoinResponse"];
+        };
+      };
+    };
+  };
+  streamStudentSession: {
+    parameters: {
+      query: {
+        participantToken: components["parameters"]["ParticipantTokenQuery"];
+      };
+      header?: never;
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Server-sent student session events. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/event-stream": string;
+        };
+      };
+    };
+  };
+  submitStudentSignal: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["StudentSignalRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated aggregate. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SignalAggregate"];
+        };
+      };
+    };
+  };
+  askStudentQuestion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["StudentQuestionRequest"];
+      };
+    };
+    responses: {
+      /** @description Created question. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentQuestion"];
         };
       };
     };

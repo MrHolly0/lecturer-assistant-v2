@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
 import { connectLiveSession, getLiveSession, type LiveSession } from "../app/api/live-api";
@@ -22,6 +22,10 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
   const slide =
     deck?.slides.find((item) => item.idx === session?.currentSlideIdx) ?? deck?.slides[0];
   const showJoinCode = slide?.idx === 1;
+  const joinUrl = useMemo(() => {
+    if (!session) return "";
+    return `${window.location.origin}${window.location.pathname}#/s/${session.joinCode}`;
+  }, [session]);
 
   useEffect(() => {
     if (sessionQuery.data) setLocalSession(sessionQuery.data);
@@ -57,7 +61,7 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
         <div className="projection-code">
           <span>Код подключения</span>
           <strong>{session.joinCode}</strong>
-          <LocalQrCode value={session.joinCode} label="QR" />
+          <LocalQrCode value={joinUrl} label="QR" />
         </div>
       )}
     </main>

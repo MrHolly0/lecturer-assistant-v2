@@ -16,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.iam.api.ChangePasswordRequest;
 import ru.university.assistant.iam.api.CreateInvitationRequest;
+import ru.university.assistant.iam.api.EphemeralPersonApi;
 import ru.university.assistant.iam.api.InvitationApi;
 import ru.university.assistant.iam.api.InvitationResponse;
 import ru.university.assistant.iam.api.LoginRequest;
@@ -31,7 +32,7 @@ import ru.university.assistant.org.api.CourseRole;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
-public class AuthService {
+public class AuthService implements EphemeralPersonApi {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final PersonRepository persons;
@@ -133,6 +134,23 @@ public class AuthService {
     public UserProfile currentUser(AuthenticatedUser user) {
         return persons.findById(user.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"))
+                .toProfile();
+    }
+
+    @Override
+    @Transactional
+    public UserProfile createEphemeralStudent(String displayName) {
+        UUID personId = UuidV7.generate();
+        String cleanName = displayName == null || displayName.isBlank()
+                ? "Гость " + personId.toString().substring(0, 8)
+                : displayName.trim();
+        return persons.createWithStatus(
+                        personId,
+                        cleanName,
+                        "web-" + personId + "@ephemeral.local",
+                        passwordEncoder.encode(randomToken()),
+                        PersonRole.STUDENT,
+                        PersonStatus.EPHEMERAL)
                 .toProfile();
     }
 

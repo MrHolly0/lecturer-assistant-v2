@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Monitor, Pause, Play, Square } from "lucide-react";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
+import { getStudentEngagement } from "../app/api/student-api";
 import {
   changeLiveSessionSlide,
   connectLiveSession,
@@ -48,6 +49,11 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     enabled: Boolean(sessionId)
   });
   const participants = participantsQuery.data ?? [];
+  const engagementQuery = useQuery({
+    queryKey: ["live", courseId, sessionId, "engagement"],
+    queryFn: () => getStudentEngagement(courseId, sessionId),
+    enabled: Boolean(sessionId)
+  });
 
   useEffect(() => {
     if (sessionQuery.data) setLocalSession(sessionQuery.data);
@@ -63,6 +69,9 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId] });
       if (message.type === "participant.joined" || message.type === "participant.left") {
         void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "participants"] });
+      }
+      if (message.type === "feedback.signal_submitted" || message.type === "qa.question_asked") {
+        void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "engagement"] });
       }
     });
     return () => {
@@ -238,6 +247,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
           session={session}
           slide={slide}
           participants={participants}
+          engagement={engagementQuery.data}
           elapsed={elapsed}
           slideElapsed={slideElapsed}
         />

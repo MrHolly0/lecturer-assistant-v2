@@ -898,9 +898,77 @@ textarea {
   color: #a3a3a3;
 }
 
+.signal-summary {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.signal-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 92px minmax(0, 1fr) 28px;
+}
+
+.signal-row__track {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.signal-row__bar {
+  display: block;
+  height: 100%;
+  transition: width 0.2s ease;
+}
+
+.signal-row__bar--green {
+  background: #22c55e;
+}
+
+.signal-row__bar--yellow {
+  background: #eab308;
+}
+
+.signal-row__bar--red {
+  background: #ef4444;
+}
+
 .presenter-note {
   margin: 0;
   white-space: pre-wrap;
+}
+
+.live-question-list,
+.student-question-list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.live-question-list li,
+.student-question-list li {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: calc(var(--radius) - 2px);
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.live-question-list p {
+  margin: 0;
+}
+
+.live-question-list small,
+.student-question-list small {
+  color: #a3a3a3;
 }
 
 .qr-card {
@@ -932,6 +1000,134 @@ textarea {
   background: #111;
 }
 
+.student-session-shell {
+  background: var(--background);
+  color: var(--foreground);
+  display: grid;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 760px;
+  min-height: 100vh;
+  padding: 18px;
+}
+
+.student-session-shell--center {
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.student-session-topbar {
+  align-items: start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.student-session-topbar h1 {
+  font-size: clamp(1.25rem, 4vw, 1.8rem);
+  margin: 2px 0 0;
+}
+
+.student-status {
+  white-space: nowrap;
+}
+
+.student-slide-card,
+.student-action-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.student-slide-meta {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.student-slide-card img,
+.student-slide-empty {
+  aspect-ratio: 16 / 9;
+  background: #050505;
+  border-radius: calc(var(--radius) - 2px);
+  object-fit: contain;
+  width: 100%;
+}
+
+.student-slide-empty {
+  align-items: center;
+  color: #fff;
+  display: flex;
+  justify-content: center;
+}
+
+.student-join-form,
+.student-question-form {
+  display: grid;
+  gap: 10px;
+}
+
+.student-signal-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.student-signal-btn {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  min-height: 82px;
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.student-signal-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.student-signal-btn--green {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.student-signal-btn--yellow {
+  background: rgba(234, 179, 8, 0.14);
+}
+
+.student-signal-btn--red {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.student-signal-btn span {
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+}
+
+.student-question-form textarea {
+  background: var(--input-background);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--foreground);
+  resize: vertical;
+}
+
+.student-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 900px) {
   .presenter-grid {
     grid-template-columns: 1fr;
@@ -940,6 +1136,16 @@ textarea {
   .presenter-topbar {
     align-items: stretch;
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .student-session-shell {
+    padding: 12px;
+  }
+
+  .student-signal-grid {
+    grid-template-columns: 1fr;
   }
 }
 

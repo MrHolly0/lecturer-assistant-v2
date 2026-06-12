@@ -12,6 +12,7 @@ import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import ru.university.assistant.iam.api.AuthenticatedUser;
+import ru.university.assistant.live.api.IdentityLevel;
 import ru.university.assistant.live.api.LiveSession;
 import ru.university.assistant.live.api.SessionParticipant;
 import ru.university.assistant.live.api.SessionStatus;
@@ -81,6 +82,20 @@ class LiveSessionRepository {
                         where l.course_id = :courseId and s.join_code = :joinCode
                         """)
                 .param("courseId", courseId)
+                .param("joinCode", joinCode)
+                .query(this::mapSession)
+                .optional();
+    }
+
+    Optional<LiveSession> findByJoinCode(String joinCode) {
+        return jdbc.sql(
+                        """
+                        select s.id, l.course_id, s.lecture_id, l.deck_id, l.title as lecture_title, s.status,
+                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
+                        from live.sessions s
+                        join live.lectures l on l.id = s.lecture_id
+                        where s.join_code = :joinCode
+                        """)
                 .param("joinCode", joinCode)
                 .query(this::mapSession)
                 .optional();
@@ -167,6 +182,58 @@ class LiveSessionRepository {
                 .single();
     }
 
+    SessionParticipant joinWeb(UUID sessionId, UUID personId, String displayName) {
+        return jdbc.sql(
+                        """
+                        insert into live.session_participants (session_id, person_id, channel_type, display_name)
+                        values (:sessionId, :personId, 'web', :displayName)
+                        on conflict (session_id, person_id, channel_type)
+                        do update set left_at = null, kicked = false
+                        returning session_id, person_id, channel_type, display_name, joined_at, left_at, kicked
+                        """)
+                .param("sessionId", sessionId)
+                .param("personId", personId)
+                .param("displayName", displayName)
+                .query(this::mapParticipant)
+                .single();
+    }
+
+    WebParticipant createWebToken(
+            UUID id, UUID sessionId, UUID personId, String tokenHash, String displayName, IdentityLevel level) {
+        jdbc.sql(
+                        """
+                        insert into live.web_participant_tokens
+                            (id, session_id, person_id, token_hash, identity_level)
+                        values (:id, :sessionId, :personId, :tokenHash, :level)
+                        """)
+                .param("id", id)
+                .param("sessionId", sessionId)
+                .param("personId", personId)
+                .param("tokenHash", tokenHash)
+                .param("level", level.name())
+                .update();
+        return new WebParticipant(id, sessionId, personId, displayName, level);
+    }
+
+    Optional<WebParticipant> findWebParticipant(String tokenHash) {
+        return jdbc.sql(
+                        """
+                        select t.id, t.session_id, t.person_id, p.display_name, t.identity_level
+                        from live.web_participant_tokens t
+                        join iam.persons p on p.id = t.person_id
+                        where t.token_hash = :tokenHash
+                        """)
+                .param("tokenHash", tokenHash)
+                .query(this::mapWebParticipant)
+                .optional();
+    }
+
+    void touchWebParticipant(UUID participantId) {
+        jdbc.sql("update live.web_participant_tokens set last_seen_at = now() where id = :participantId")
+                .param("participantId", participantId)
+                .update();
+    }
+
     List<SessionParticipant> listParticipants(UUID sessionId) {
         return jdbc.sql(
                         """
@@ -204,6 +271,15 @@ class LiveSessionRepository {
                 rs.getTimestamp("joined_at").toInstant(),
                 rs.getTimestamp("left_at") == null ? null : rs.getTimestamp("left_at").toInstant(),
                 rs.getBoolean("kicked"));
+    }
+
+    private WebParticipant mapWebParticipant(ResultSet rs, int rowNumber) throws SQLException {
+        return new WebParticipant(
+                rs.getObject("id", UUID.class),
+                rs.getObject("session_id", UUID.class),
+                rs.getObject("person_id", UUID.class),
+                rs.getString("display_name"),
+                IdentityLevel.valueOf(rs.getString("identity_level")));
     }
 
     private Map<String, Object> readMap(String json) {

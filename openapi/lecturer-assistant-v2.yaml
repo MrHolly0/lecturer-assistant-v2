@@ -970,6 +970,115 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveSession"
+  /courses/{courseId}/sessions/{sessionId}/engagement:
+    get:
+      operationId: getLiveSessionEngagement
+      summary: Read live student signals and questions for presenter.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Student engagement snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentEngagement"
+  /student/sessions/{joinCode}:
+    get:
+      operationId: getStudentSession
+      summary: Read public student session snapshot by join code.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+      responses:
+        "200":
+          description: Student session snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentSessionSnapshot"
+  /student/sessions/{joinCode}/join:
+    post:
+      operationId: joinStudentSession
+      summary: Join a live session as a web student.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentJoinRequest"
+      responses:
+        "200":
+          description: Joined web session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentJoinResponse"
+  /student/sessions/{joinCode}/events:
+    get:
+      operationId: streamStudentSession
+      summary: SSE stream with current student session state.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+        - $ref: "#/components/parameters/ParticipantTokenQuery"
+      responses:
+        "200":
+          description: Server-sent student session events.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /student/sessions/{joinCode}/signals:
+    post:
+      operationId: submitStudentSignal
+      summary: Submit current comprehension signal.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentSignalRequest"
+      responses:
+        "200":
+          description: Updated aggregate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalAggregate"
+  /student/sessions/{joinCode}/questions:
+    post:
+      operationId: askStudentQuestion
+      summary: Ask a question from web student channel.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentQuestionRequest"
+      responses:
+        "201":
+          description: Created question.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentQuestion"
   /internal/v1/channels/{channelType}/capabilities:
     put:
       operationId: registerChannelCapabilities
@@ -1126,6 +1235,20 @@ components:
       schema:
         type: string
         format: uuid
+    JoinCode:
+      name: joinCode
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 4
+    ParticipantTokenQuery:
+      name: participantToken
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 16
     ChannelType:
       name: channelType
       in: path
@@ -1694,6 +1817,148 @@ components:
         joinCode:
           type: string
           minLength: 4
+    IdentityLevel:
+      type: string
+      enum: [EPHEMERAL, PROFILE]
+    SignalValue:
+      type: string
+      enum: [GREEN, YELLOW, RED]
+    SignalAggregate:
+      type: object
+      required: [green, yellow, red, total]
+      properties:
+        green:
+          type: integer
+          minimum: 0
+        yellow:
+          type: integer
+          minimum: 0
+        red:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+    StudentSlide:
+      type: object
+      required: [idx, imageUrl]
+      properties:
+        idx:
+          type: integer
+          minimum: 1
+        imageUrl:
+          type: string
+        textExtract:
+          type: string
+    StudentSessionSnapshot:
+      type: object
+      required:
+        - sessionId
+        - courseId
+        - lectureTitle
+        - status
+        - joinCode
+        - currentSlideIdx
+        - slideCount
+        - currentSlide
+        - signalAggregate
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        lectureTitle:
+          type: string
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        joinCode:
+          type: string
+        currentSlideIdx:
+          type: integer
+          minimum: 1
+        slideCount:
+          type: integer
+          minimum: 0
+        currentSlide:
+          $ref: "#/components/schemas/StudentSlide"
+        annotations:
+          type: object
+          additionalProperties: true
+        signalAggregate:
+          $ref: "#/components/schemas/SignalAggregate"
+    StudentJoinRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 120
+    StudentJoinResponse:
+      type: object
+      required: [participantToken, participantId, identityLevel, snapshot]
+      properties:
+        participantToken:
+          type: string
+        participantId:
+          type: string
+          format: uuid
+        identityLevel:
+          $ref: "#/components/schemas/IdentityLevel"
+        snapshot:
+          $ref: "#/components/schemas/StudentSessionSnapshot"
+    StudentSignalRequest:
+      type: object
+      required: [participantToken, value]
+      properties:
+        participantToken:
+          type: string
+        value:
+          $ref: "#/components/schemas/SignalValue"
+    StudentQuestionRequest:
+      type: object
+      required: [participantToken, text]
+      properties:
+        participantToken:
+          type: string
+        text:
+          type: string
+          minLength: 2
+          maxLength: 2000
+    StudentQuestion:
+      type: object
+      required: [id, sessionId, displayName, channelType, text, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        channelType:
+          type: string
+          enum: [web, telegram, vk, echo]
+        text:
+          type: string
+        status:
+          type: string
+          enum: [OPEN, ANSWERED, DISMISSED]
+        createdAt:
+          type: string
+          format: date-time
+    StudentEngagement:
+      type: object
+      required: [signalAggregate, questions]
+      properties:
+        signalAggregate:
+          $ref: "#/components/schemas/SignalAggregate"
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentQuestion"
     ChannelCapabilities:
       type: object
       required: [inlineButtons, editMessage, images, maxTextLength, maxButtonsPerRow]

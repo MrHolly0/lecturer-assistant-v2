@@ -1,39 +1,24 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { listCourses } from "../app/api/courses-api";
-import { joinLiveSession } from "../app/api/live-api";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "../shared/ui/select";
 
 export function StudentHomePage() {
-  const [courseId, setCourseId] = useState("");
+  const navigate = useNavigate();
   const [joinCode, setJoinCode] = useState("");
   const coursesQuery = useQuery({ queryKey: ["courses"], queryFn: listCourses });
   const courses = useMemo(() => coursesQuery.data ?? [], [coursesQuery.data]);
-  const selectedCourseId = courseId || courses[0]?.id || "";
-
-  const joinMut = useMutation({
-    mutationFn: () => joinLiveSession(selectedCourseId, joinCode.trim()),
-    onSuccess: (session) => {
-      setJoinCode("");
-      toast.success(`Вы подключены к лекции "${session.lectureTitle}".`);
-    }
-  });
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!selectedCourseId) {
-      toast.error("Сначала нужен курс, куда вас пригласил преподаватель.");
+    const code = joinCode.trim().toUpperCase();
+    if (!code) {
+      toast.error("Введите код лекции.");
       return;
     }
-    joinMut.mutate();
+    navigate(`/s/${encodeURIComponent(code)}`);
   }
 
   return (
@@ -49,20 +34,6 @@ export function StudentHomePage() {
           <span className="muted">Введите код с экрана преподавателя</span>
         </div>
         <form onSubmit={submit} className="inline-form">
-          {courses.length > 1 && (
-            <Select value={selectedCourseId} onValueChange={setCourseId}>
-              <SelectTrigger className="inline-select">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {courses.map((course) => (
-                  <SelectItem key={course.id} value={course.id}>
-                    {course.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
           <input
             value={joinCode}
             onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
@@ -73,7 +44,7 @@ export function StudentHomePage() {
           <button
             className="btn-primary"
             type="submit"
-            disabled={joinMut.isPending || !joinCode.trim()}
+            disabled={!joinCode.trim()}
           >
             Подключиться
           </button>

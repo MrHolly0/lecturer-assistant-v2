@@ -24,12 +24,13 @@ import ru.university.assistant.content.api.Slide;
 import ru.university.assistant.content.api.SlideDeck;
 import ru.university.assistant.content.api.SlideDeckDetails;
 import ru.university.assistant.content.api.SlideNote;
+import ru.university.assistant.content.api.StudentDeckApi;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
-public class ContentService {
+public class ContentService implements StudentDeckApi {
     private final CourseAccessApi courseAccess;
     private final ContentRepository repository;
     private final BlobStorage blobStorage;
@@ -86,6 +87,13 @@ public class ContentService {
 
     public SlideDeckDetails getDeck(AuthenticatedUser user, UUID courseId, UUID deckId) {
         courseAccess.requireVisible(user, courseId);
+        SlideDeckDetails deck = repository.findDeck(courseId, deckId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
+        return signDeck(deck);
+    }
+
+    @Override
+    public SlideDeckDetails getDeckForStudent(UUID courseId, UUID deckId) {
         SlideDeckDetails deck = repository.findDeck(courseId, deckId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
         return signDeck(deck);

@@ -29,6 +29,8 @@ class SecurityConfig {
                         .permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/courses/*/decks/*/slides/*/image")
                         .permitAll()
+                        .requestMatchers("/api/v1/student/**")
+                        .permitAll()
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/v1/auth/bootstrap-admin",

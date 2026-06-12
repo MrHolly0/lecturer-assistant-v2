@@ -38,6 +38,24 @@ class PersonRepository {
                 .single();
     }
 
+    PersonRecord createWithStatus(
+            UUID id, String displayName, String email, String passwordHash, PersonRole role, PersonStatus status) {
+        return jdbc.sql(
+                        """
+                        insert into iam.persons (id, display_name, email, password_hash, role, status)
+                        values (:id, :displayName, lower(:email), :passwordHash, :role, :status)
+                        returning id, display_name, email, password_hash, role, status
+                        """)
+                .param("id", id)
+                .param("displayName", displayName)
+                .param("email", email)
+                .param("passwordHash", passwordHash)
+                .param("role", role.name())
+                .param("status", status.name())
+                .query(this::mapPerson)
+                .single();
+    }
+
     Optional<PersonRecord> findByEmail(String email) {
         return jdbc.sql(
                         """

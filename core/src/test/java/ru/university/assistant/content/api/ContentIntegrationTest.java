@@ -80,6 +80,9 @@ class ContentIntegrationTest {
                         truncate table
                             analytics.outbox,
                             analytics.events,
+                            qa.questions,
+                            feedback.comprehension_signals,
+                            live.web_participant_tokens,
                             live.slide_log,
                             live.session_participants,
                             live.sessions,
@@ -296,6 +299,91 @@ class ContentIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void webStudentChannelJoinsSignalsQuestionsAndAppearsInPresenterEngagement() throws Exception {
+        String adminToken = bootstrapAdmin();
+        String lecturerToken = register(
+                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        UUID courseId = createCourse(lecturerToken, "Algorithms");
+        byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
+        String deckId = waitForCompletedJob(lecturerToken, courseId,
+                        startImport(lecturerToken, courseId, "Live Deck", pdf).get("id").asText())
+                .get("deckId")
+                .asText();
+        String lectureId = createLecture(lecturerToken, courseId, deckId);
+        JsonNode session = startSession(lecturerToken, courseId, lectureId);
+        String sessionId = session.get("id").asText();
+        String joinCode = session.get("joinCode").asText();
+
+        String snapshotResponse = mockMvc.perform(get("/api/v1/student/sessions/{joinCode}", joinCode))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.joinCode").value(joinCode))
+                .andExpect(jsonPath("$.currentSlide.imageUrl", containsString("?t=")))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String signedSlideUrl = objectMapper.readTree(snapshotResponse).get("currentSlide").get("imageUrl").asText();
+
+        mockMvc.perform(get(signedSlideUrl))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "image/png"));
+
+        String joinResponse = mockMvc.perform(post("/api/v1/student/sessions/{joinCode}/join", joinCode)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"Web Student\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.identityLevel").value("EPHEMERAL"))
+                .andExpect(jsonPath("$.participantToken").isNotEmpty())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String participantToken = objectMapper.readTree(joinResponse).get("participantToken").asText();
+
+        mockMvc.perform(post("/api/v1/student/sessions/{joinCode}/signals", joinCode)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"participantToken":"%s","value":"GREEN"}
+                                """
+                                .formatted(participantToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.green").value(1))
+                .andExpect(jsonPath("$.total").value(1));
+
+        mockMvc.perform(post("/api/v1/student/sessions/{joinCode}/questions", joinCode)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"participantToken":"%s","text":"Почему сложность O(n)?"}
+                                """
+                                .formatted(participantToken)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.displayName").value("Web Student"))
+                .andExpect(jsonPath("$.status").value("OPEN"));
+
+        mockMvc.perform(get("/api/v1/courses/{courseId}/sessions/{sessionId}/engagement", courseId, sessionId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.signalAggregate.green").value(1))
+                .andExpect(jsonPath("$.questions", hasSize(1)))
+                .andExpect(jsonPath("$.questions[0].text").value("Почему сложность O(n)?"));
+
+        mockMvc.perform(get("/api/v1/courses/{courseId}/sessions/{sessionId}/participants", courseId, sessionId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].displayName").value("Web Student"))
+                .andExpect(jsonPath("$[0].channelType").value("web"));
+
+        long events = jdbc.sql(
+                        """
+                        select count(*)
+                        from analytics.events
+                        where verb in ('participant.joined', 'feedback.signal_submitted', 'qa.question_asked')
+                        """)
+                .query(Long.class)
+                .single();
+        assertEquals(3, events);
+    }
+
     private JsonNode startImport(String token, UUID courseId, String title, byte[] bytes) throws Exception {
         return startImport(token, courseId, title, "v1-report.pdf", bytes);
     }
@@ -393,6 +481,32 @@ class ContentIntegrationTest {
                 .getResponse()
                 .getContentAsString();
         return UUID.fromString(objectMapper.readTree(response).get("id").asText());
+    }
+
+    private String createLecture(String token, UUID courseId, String deckId) throws Exception {
+        String response = mockMvc.perform(post("/api/v1/courses/{courseId}/lectures", courseId)
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Lecture 1","deckId":"%s"}
+                                """
+                                .formatted(deckId)))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(response).get("id").asText();
+    }
+
+    private JsonNode startSession(String token, UUID courseId, String lectureId) throws Exception {
+        String response = mockMvc.perform(post(
+                                "/api/v1/courses/{courseId}/lectures/{lectureId}/sessions", courseId, lectureId)
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(response);
     }
 
     private String tokenFrom(String response) throws Exception {

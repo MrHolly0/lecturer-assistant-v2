@@ -16,6 +16,7 @@ import { PresenterPage } from "../pages/PresenterPage";
 import { ProjectionPage } from "../pages/ProjectionPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { StudentHomePage } from "../pages/StudentHomePage";
+import { StudentSessionPage } from "../pages/StudentSessionPage";
 import { Layout } from "../widgets/Layout";
 import { Toaster } from "../shared/ui/sonner";
 import { landingPath, type UserRole } from "./routes";
@@ -94,6 +95,11 @@ function ProjectionRoute() {
   return <ProjectionPage courseId={courseId ?? ""} sessionId={sessionId ?? ""} />;
 }
 
+function StudentSessionRoute() {
+  const { joinCode } = useParams();
+  return <StudentSessionPage joinCode={joinCode ?? ""} />;
+}
+
 const router = createHashRouter([
   {
     path: "/login",
@@ -126,6 +132,10 @@ const router = createHashRouter([
         <ProjectionRoute />
       </RequireRolePage>
     )
+  },
+  {
+    path: "/s/:joinCode",
+    element: <StudentSessionRoute />
   },
   {
     element: <ProtectedLayout />,
