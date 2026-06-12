@@ -97,6 +97,32 @@ class CourseRepository {
                 .update();
     }
 
+    void removeMember(UUID courseId, UUID personId) {
+        jdbc.sql("delete from org.course_members where course_id = :courseId and person_id = :personId")
+                .param("courseId", courseId)
+                .param("personId", personId)
+                .update();
+    }
+
+    void updateMemberRole(UUID courseId, UUID personId, CourseRole role) {
+        jdbc.sql(
+                        """
+                        update org.course_members set role = :role
+                        where course_id = :courseId and person_id = :personId
+                        """)
+                .param("courseId", courseId)
+                .param("personId", personId)
+                .param("role", role.name())
+                .update();
+    }
+
+    void updateOwner(UUID courseId, UUID newOwnerPersonId) {
+        jdbc.sql("update org.courses set owner_person_id = :owner, updated_at = now() where id = :courseId")
+                .param("owner", newOwnerPersonId)
+                .param("courseId", courseId)
+                .update();
+    }
+
     Optional<CourseRole> findMemberRole(UUID courseId, UUID personId) {
         return jdbc.sql(
                         """

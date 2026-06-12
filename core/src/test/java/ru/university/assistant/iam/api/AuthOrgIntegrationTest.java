@@ -4,8 +4,10 @@ import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -213,6 +215,58 @@ class AuthOrgIntegrationTest {
                                 """
                                         .formatted(otherCourseGroupId)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void courseMembershipCanBeManaged() throws Exception {
+        String adminToken = bootstrapAdmin();
+        String lecturerInvite = createAdminInvitation(adminToken, "LECTURER");
+        AuthResult owner = registerWithProfile(lecturerInvite, "Owner Lecturer", "owner@example.test");
+        String ownerToken = owner.accessToken();
+        String ownerId = owner.user().get("id").asText();
+        UUID courseId = createCourse(ownerToken, "Algorithms");
+        UUID groupId = createGroup(ownerToken, courseId, "BVT-21-1");
+
+        String secondInvite = createCourseInvitation(ownerToken, courseId, groupId, "ASSISTANT");
+        AuthResult second = registerWithProfile(secondInvite, "Second Teacher", "second@example.test");
+        String secondId = second.user().get("id").asText();
+        String studentInvite = createCourseInvitation(ownerToken, courseId, groupId, "STUDENT");
+        AuthResult student = registerWithProfile(studentInvite, "Student One", "student@example.test");
+        String studentId = student.user().get("id").asText();
+
+        // студент (роль STUDENT) не управляет составом
+        mockMvc.perform(delete("/api/v1/courses/{c}/members/{p}", courseId, secondId)
+                        .header("Authorization", bearer(student.accessToken())))
+                .andExpect(status().isForbidden());
+
+        // сменить роль студента на ассистента
+        mockMvc.perform(put("/api/v1/courses/{c}/members/{p}/role", courseId, studentId)
+                        .header("Authorization", bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ASSISTANT\"}"))
+                .andExpect(status().isNoContent());
+
+        // владельца удалить нельзя
+        mockMvc.perform(delete("/api/v1/courses/{c}/members/{p}", courseId, ownerId)
+                        .header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isConflict());
+
+        // удалить участника
+        mockMvc.perform(delete("/api/v1/courses/{c}/members/{p}", courseId, studentId)
+                        .header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isNoContent());
+
+        // передать владение второму преподавателю
+        mockMvc.perform(put("/api/v1/courses/{c}/owner", courseId)
+                        .header("Authorization", bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\"}".formatted(secondId)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/courses/{c}", courseId).header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ownerPersonId").value(secondId))
+                .andExpect(jsonPath("$.members", hasSize(2)));
     }
 
     @Test

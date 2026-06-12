@@ -346,6 +346,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/members/{personId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove a member from the course. */
+    delete: operations["removeCourseMember"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/members/{personId}/role": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Change a member's role in the course. */
+    put: operations["changeCourseMemberRole"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/owner": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Transfer course ownership to another member. */
+    put: operations["changeCourseOwner"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/groups": {
     parameters: {
       query?: never;
@@ -974,6 +1025,13 @@ export interface components {
     };
     /** @enum {string} */
     CourseRole: "LECTURER" | "ASSISTANT" | "STUDENT";
+    ChangeMemberRoleRequest: {
+      role: components["schemas"]["CourseRole"];
+    };
+    ChangeCourseOwnerRequest: {
+      /** Format: uuid */
+      personId: string;
+    };
     CreateStudyGroupRequest: {
       name: string;
     };
@@ -1751,6 +1809,76 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["CourseMember"][];
         };
+      };
+    };
+  };
+  removeCourseMember: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        personId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Member removed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  changeCourseMemberRole: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        personId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChangeMemberRoleRequest"];
+      };
+    };
+    responses: {
+      /** @description Role changed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  changeCourseOwner: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChangeCourseOwnerRequest"];
+      };
+    };
+    responses: {
+      /** @description Ownership transferred. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

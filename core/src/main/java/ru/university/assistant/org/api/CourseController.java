@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -73,6 +74,34 @@ public class CourseController {
     @GetMapping("/{courseId}/members")
     public List<CourseMember> members(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID courseId) {
         return courseService.listMembers(user, courseId);
+    }
+
+    @DeleteMapping("/{courseId}/members/{personId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeMember(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID personId) {
+        courseService.removeMember(user, courseId, personId);
+    }
+
+    @PutMapping("/{courseId}/members/{personId}/role")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changeMemberRole(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID personId,
+            @Valid @RequestBody ChangeMemberRoleRequest request) {
+        courseService.changeMemberRole(user, courseId, personId, request.role());
+    }
+
+    @PutMapping("/{courseId}/owner")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changeOwner(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @Valid @RequestBody ChangeCourseOwnerRequest request) {
+        courseService.changeOwner(user, courseId, request.personId());
     }
 
     @GetMapping("/{courseId}/groups")

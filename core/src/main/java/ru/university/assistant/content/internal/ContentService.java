@@ -135,10 +135,15 @@ public class ContentService {
         SlideDeckDetails deck = repository.findDeck(courseId, deckId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
         if (!deck.archived()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Archive deck before permanent deletion");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Сначала отправьте презентацию в архив, потом удаляйте навсегда.");
         }
-        if (repository.deckHasLectures(deckId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Deck is linked to lectures");
+        List<String> linkedLectures = repository.lectureTitlesForDeck(deckId);
+        if (!linkedLectures.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Презентация используется в лекциях: " + String.join(", ", linkedLectures)
+                            + ". Удалите эти лекции, прежде чем удалять презентацию.");
         }
         repository.deleteDeck(courseId, deckId);
     }
@@ -187,7 +192,8 @@ public class ContentService {
         LectureDetails lecture = repository.findLecture(courseId, lectureId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lecture not found"));
         if (!lecture.archived()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Archive lecture before permanent deletion");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Сначала отправьте лекцию в архив, потом удаляйте навсегда.");
         }
         repository.deleteLecture(courseId, lectureId);
     }

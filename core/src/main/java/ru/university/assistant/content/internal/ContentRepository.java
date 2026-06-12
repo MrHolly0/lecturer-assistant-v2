@@ -282,6 +282,13 @@ class ContentRepository {
                 > 0;
     }
 
+    List<String> lectureTitlesForDeck(UUID deckId) {
+        return jdbc.sql("select title from live.lectures where deck_id = :deckId order by title")
+                .param("deckId", deckId)
+                .query(String.class)
+                .list();
+    }
+
     void deleteDeck(UUID courseId, UUID deckId) {
         jdbc.sql(
                         """

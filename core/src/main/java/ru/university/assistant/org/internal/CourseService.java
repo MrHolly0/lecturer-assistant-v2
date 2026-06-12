@@ -80,7 +80,8 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
         Course course = courses.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
         if (!course.archived()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Archive course before permanent deletion");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Сначала отправьте курс в архив, потом удаляйте навсегда.");
         }
         courses.delete(courseId);
     }
@@ -119,6 +120,51 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
         }
         return invitations.createInvitation(
                 toPersonRole(request.role()), courseId, request.groupId(), user.id(), request.ttlHours());
+    }
+
+    @Transactional
+    public void removeMember(AuthenticatedUser user, UUID courseId, UUID personId) {
+        requireManage(user, courseId);
+        Course course = courses.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Курс не найден"));
+        if (course.ownerPersonId().equals(personId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Нельзя удалить владельца курса. Сначала назначьте другого лектора-владельца.");
+        }
+        if (courses.findMemberRole(courseId, personId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Участник не найден в курсе");
+        }
+        courses.removeMember(courseId, personId);
+    }
+
+    @Transactional
+    public void changeMemberRole(AuthenticatedUser user, UUID courseId, UUID personId, CourseRole role) {
+        requireManage(user, courseId);
+        Course course = courses.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Курс не найден"));
+        if (courses.findMemberRole(courseId, personId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Участник не найден в курсе");
+        }
+        if (course.ownerPersonId().equals(personId) && role != CourseRole.LECTURER) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Владелец курса должен оставаться лектором. Сначала передайте владение другому лектору.");
+        }
+        courses.updateMemberRole(courseId, personId, role);
+    }
+
+    @Transactional
+    public void changeOwner(AuthenticatedUser user, UUID courseId, UUID newOwnerPersonId) {
+        requireManage(user, courseId);
+        courses.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Курс не найден"));
+        if (courses.findMemberRole(courseId, newOwnerPersonId).isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Новый владелец должен быть участником курса");
+        }
+        courses.updateMemberRole(courseId, newOwnerPersonId, CourseRole.LECTURER);
+        courses.updateOwner(courseId, newOwnerPersonId);
     }
 
     @Transactional

@@ -375,6 +375,60 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/CourseMember"
+  /courses/{courseId}/members/{personId}:
+    delete:
+      operationId: removeCourseMember
+      summary: Remove a member from the course.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - name: personId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Member removed.
+  /courses/{courseId}/members/{personId}/role:
+    put:
+      operationId: changeCourseMemberRole
+      summary: Change a member's role in the course.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - name: personId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeMemberRoleRequest"
+      responses:
+        "204":
+          description: Role changed.
+  /courses/{courseId}/owner:
+    put:
+      operationId: changeCourseOwner
+      summary: Transfer course ownership to another member.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeCourseOwnerRequest"
+      responses:
+        "204":
+          description: Ownership transferred.
   /courses/{courseId}/groups:
     get:
       operationId: listStudyGroups
@@ -1308,6 +1362,19 @@ components:
     CourseRole:
       type: string
       enum: [LECTURER, ASSISTANT, STUDENT]
+    ChangeMemberRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: "#/components/schemas/CourseRole"
+    ChangeCourseOwnerRequest:
+      type: object
+      required: [personId]
+      properties:
+        personId:
+          type: string
+          format: uuid
     CreateStudyGroupRequest:
       type: object
       required: [name]
