@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.university.assistant.feedback.api.SignalAggregate;
 import ru.university.assistant.iam.api.AuthenticatedUser;
+import ru.university.assistant.interaction.api.PollResponseRequest;
 import ru.university.assistant.live.internal.StudentSseBroadcaster;
 import ru.university.assistant.live.internal.StudentWebSessionService;
 import ru.university.assistant.qa.api.StudentQuestion;
@@ -70,5 +71,14 @@ class StudentSessionController {
             @PathVariable String joinCode,
             @Valid @RequestBody StudentQuestionRequest request) {
         return studentSessions.ask(joinCode, request);
+    }
+
+    @PostMapping("/api/v1/student/sessions/{joinCode}/polls/{pollId}/respond")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void pollRespond(
+            @PathVariable String joinCode,
+            @PathVariable UUID pollId,
+            @Valid @RequestBody PollResponseRequest request) {
+        studentSessions.pollRespond(joinCode, pollId, request.participantToken(), request.optionIdx());
     }
 }

@@ -32,6 +32,8 @@ import ru.university.assistant.live.api.StudentSlide;
 import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.org.api.CourseRole;
+import ru.university.assistant.interaction.api.ActivePollView;
+import ru.university.assistant.interaction.api.QuickPollApi;
 import ru.university.assistant.qa.api.QuestionApi;
 import ru.university.assistant.qa.api.StudentQuestion;
 import ru.university.assistant.shared.api.UuidV7;
@@ -49,6 +51,7 @@ public class StudentWebSessionService {
     private final CourseAccessApi courseAccess;
     private final EventBus events;
     private final LiveSessionPublisher publisher;
+    private final QuickPollApi quickPolls;
 
     StudentWebSessionService(
             LiveSessionRepository sessions,
@@ -59,7 +62,8 @@ public class StudentWebSessionService {
             CourseMembershipApi memberships,
             CourseAccessApi courseAccess,
             EventBus events,
-            LiveSessionPublisher publisher) {
+            LiveSessionPublisher publisher,
+            QuickPollApi quickPolls) {
         this.sessions = sessions;
         this.decks = decks;
         this.feedback = feedback;
@@ -69,6 +73,7 @@ public class StudentWebSessionService {
         this.courseAccess = courseAccess;
         this.events = events;
         this.publisher = publisher;
+        this.quickPolls = quickPolls;
     }
 
     public StudentSessionSnapshot snapshot(String joinCode) {
@@ -146,6 +151,15 @@ public class StudentWebSessionService {
         return new ParticipantSession(session, participant);
     }
 
+    @Transactional
+    public void pollRespond(String joinCode, UUID pollId, String participantToken, int optionIdx) {
+        ParticipantSession current = participantSession(joinCode, participantToken);
+        ensureJoinable(current.session());
+        quickPolls.respond(pollId, current.participant().personId(), optionIdx);
+        sessions.touchWebParticipant(current.participant().id());
+        publisher.publish("poll.response.recorded", current.session());
+    }
+
     private StudentSessionSnapshot snapshot(LiveSession session) {
         SlideDeckDetails deck = decks.getDeckForStudent(session.courseId(), session.deckId());
         Slide slide = deck.slides().stream()
@@ -155,6 +169,7 @@ public class StudentWebSessionService {
         if (slide == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session deck has no slides");
         }
+        ActivePollView activePoll = quickPolls.activePollForSession(session.id()).orElse(null);
         return new StudentSessionSnapshot(
                 session.id(),
                 session.courseId(),
@@ -165,7 +180,8 @@ public class StudentWebSessionService {
                 deck.slideCount(),
                 new StudentSlide(slide.idx(), slide.imageUrl(), slide.textExtract()),
                 session.annotations(),
-                feedback.aggregate(session.id()));
+                feedback.aggregate(session.id()),
+                activePoll);
     }
 
     private LiveSession sessionByCode(String joinCode) {

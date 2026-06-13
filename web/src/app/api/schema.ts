@@ -932,6 +932,91 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/sessions/{sessionId}/polls": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start a quick poll for the current session. */
+    post: operations["startPoll"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/polls/active": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get the currently open poll with live vote counts. */
+    get: operations["getActivePoll"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/polls/{pollId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get poll result by id. */
+    get: operations["getPollResult"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/polls/{pollId}/close": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Close an open poll and optionally reveal the correct answer. */
+    post: operations["closePoll"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/polls/{pollId}/respond": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Submit or update student answer to a poll. */
+    post: operations["respondToPoll"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/internal/v1/channels/{channelType}/capabilities": {
     parameters: {
       query?: never;
@@ -1307,6 +1392,47 @@ export interface components {
     IdentityLevel: "EPHEMERAL" | "PROFILE";
     /** @enum {string} */
     SignalValue: "GREEN" | "YELLOW" | "RED";
+    /** @enum {string} */
+    PollStatus: "OPEN" | "CLOSED";
+    QuickPoll: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      sessionId: string;
+      questionText: string;
+      options: string[];
+      status: components["schemas"]["PollStatus"];
+      correctOptionIdx?: number;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      closedAt?: string;
+    };
+    PollResult: {
+      poll: components["schemas"]["QuickPoll"];
+      votes: number[];
+      totalResponses: number;
+    };
+    ActivePollView: {
+      /** Format: uuid */
+      pollId: string;
+      questionText: string;
+      options: string[];
+      status: components["schemas"]["PollStatus"];
+      correctOptionIdx?: number;
+      votes: number[];
+    };
+    StartPollRequest: {
+      questionText: string;
+      options: string[];
+    };
+    ClosePollRequest: {
+      correctOptionIdx?: number;
+    };
+    PollResponseRequest: {
+      participantToken: string;
+      optionIdx: number;
+    };
     SignalAggregate: {
       green: number;
       yellow: number;
@@ -1333,6 +1459,7 @@ export interface components {
         [key: string]: unknown;
       };
       signalAggregate: components["schemas"]["SignalAggregate"];
+      activePoll?: components["schemas"]["ActivePollView"];
     };
     StudentJoinRequest: {
       displayName?: string;
@@ -1443,6 +1570,7 @@ export interface components {
     SlideIndex: number;
     SessionId: string;
     JoinCode: string;
+    PollId: string;
     ParticipantTokenQuery: string;
     ChannelType: "telegram" | "vk" | "web" | "echo";
   };
@@ -2985,6 +3113,161 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["StudentQuestion"];
         };
+      };
+    };
+  };
+  startPoll: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["StartPollRequest"];
+      };
+    };
+    responses: {
+      /** @description Started poll with initial vote counts. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PollResult"];
+        };
+      };
+      /** @description A poll is already open for this session. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getActivePoll: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Active poll with vote counts. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PollResult"];
+        };
+      };
+      /** @description No active poll. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getPollResult: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        pollId: components["parameters"]["PollId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Poll result. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PollResult"];
+        };
+      };
+    };
+  };
+  closePoll: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        pollId: components["parameters"]["PollId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["ClosePollRequest"];
+      };
+    };
+    responses: {
+      /** @description Closed poll with final vote counts. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PollResult"];
+        };
+      };
+      /** @description Poll already closed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  respondToPoll: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+        pollId: components["parameters"]["PollId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PollResponseRequest"];
+      };
+    };
+    responses: {
+      /** @description Answer recorded. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Poll is already closed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

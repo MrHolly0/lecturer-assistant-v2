@@ -1079,6 +1079,106 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudentQuestion"
+  /courses/{courseId}/sessions/{sessionId}/polls:
+    post:
+      operationId: startPoll
+      summary: Start a quick poll for the current session.
+      tags: [interaction]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartPollRequest"
+      responses:
+        "201":
+          description: Started poll with initial vote counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollResult"
+        "409":
+          description: A poll is already open for this session.
+  /courses/{courseId}/sessions/{sessionId}/polls/active:
+    get:
+      operationId: getActivePoll
+      summary: Get the currently open poll with live vote counts.
+      tags: [interaction]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Active poll with vote counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollResult"
+        "404":
+          description: No active poll.
+  /courses/{courseId}/sessions/{sessionId}/polls/{pollId}:
+    get:
+      operationId: getPollResult
+      summary: Get poll result by id.
+      tags: [interaction]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/PollId"
+      responses:
+        "200":
+          description: Poll result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollResult"
+  /courses/{courseId}/sessions/{sessionId}/polls/{pollId}/close:
+    post:
+      operationId: closePoll
+      summary: Close an open poll and optionally reveal the correct answer.
+      tags: [interaction]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/PollId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClosePollRequest"
+      responses:
+        "200":
+          description: Closed poll with final vote counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollResult"
+        "409":
+          description: Poll already closed.
+  /student/sessions/{joinCode}/polls/{pollId}/respond:
+    post:
+      operationId: respondToPoll
+      summary: Submit or update student answer to a poll.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+        - $ref: "#/components/parameters/PollId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PollResponseRequest"
+      responses:
+        "204":
+          description: Answer recorded.
+        "409":
+          description: Poll is already closed.
   /internal/v1/channels/{channelType}/capabilities:
     put:
       operationId: registerChannelCapabilities
@@ -1242,6 +1342,13 @@ components:
       schema:
         type: string
         minLength: 4
+    PollId:
+      name: pollId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     ParticipantTokenQuery:
       name: participantToken
       in: query
@@ -1823,6 +1930,97 @@ components:
     SignalValue:
       type: string
       enum: [GREEN, YELLOW, RED]
+    PollStatus:
+      type: string
+      enum: [OPEN, CLOSED]
+    QuickPoll:
+      type: object
+      required: [id, sessionId, questionText, options, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+        questionText:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: "#/components/schemas/PollStatus"
+        correctOptionIdx:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: string
+          format: date-time
+    PollResult:
+      type: object
+      required: [poll, votes, totalResponses]
+      properties:
+        poll:
+          $ref: "#/components/schemas/QuickPoll"
+        votes:
+          type: array
+          items:
+            type: integer
+        totalResponses:
+          type: integer
+    ActivePollView:
+      type: object
+      required: [pollId, questionText, options, status, votes]
+      properties:
+        pollId:
+          type: string
+          format: uuid
+        questionText:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: "#/components/schemas/PollStatus"
+        correctOptionIdx:
+          type: integer
+        votes:
+          type: array
+          items:
+            type: integer
+    StartPollRequest:
+      type: object
+      required: [questionText, options]
+      properties:
+        questionText:
+          type: string
+          minLength: 1
+        options:
+          type: array
+          minItems: 2
+          maxItems: 6
+          items:
+            type: string
+            minLength: 1
+    ClosePollRequest:
+      type: object
+      properties:
+        correctOptionIdx:
+          type: integer
+    PollResponseRequest:
+      type: object
+      required: [participantToken, optionIdx]
+      properties:
+        participantToken:
+          type: string
+          minLength: 1
+        optionIdx:
+          type: integer
+          minimum: 0
     SignalAggregate:
       type: object
       required: [green, yellow, red, total]
@@ -1888,6 +2086,8 @@ components:
           additionalProperties: true
         signalAggregate:
           $ref: "#/components/schemas/SignalAggregate"
+        activePoll:
+          $ref: "#/components/schemas/ActivePollView"
     StudentJoinRequest:
       type: object
       properties:
