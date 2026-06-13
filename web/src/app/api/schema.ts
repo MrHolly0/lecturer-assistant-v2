@@ -1017,6 +1017,146 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/questions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List questions in the bank, optionally filtered by tag. */
+    get: operations["listQuestions"];
+    put?: never;
+    /** Create a question in the bank. */
+    post: operations["createQuestion"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/questions/{questionId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a question by id. */
+    get: operations["getQuestion"];
+    /** Update question text, options, or tags. */
+    put: operations["updateQuestion"];
+    post?: never;
+    /** Archive (soft-delete) a question. */
+    delete: operations["archiveQuestion"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/activities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List activity definitions for a course. */
+    get: operations["listActivities"];
+    put?: never;
+    /** Create an activity definition. */
+    post: operations["createActivity"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/activities/{definitionId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get an activity definition. */
+    get: operations["getActivity"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/activities/{definitionId}/runs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start an activity run for the current session. */
+    post: operations["startActivityRun"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/activity-runs/{runId}/close": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Close an open activity run. */
+    post: operations["closeActivityRun"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/activity-runs/{runId}/responses": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get all responses for a run. */
+    get: operations["getActivityResponses"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/activity-runs/{runId}/respond": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Submit or update a student response to an activity question. */
+    post: operations["respondToActivity"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/internal/v1/channels/{channelType}/capabilities": {
     parameters: {
       query?: never;
@@ -1433,6 +1573,87 @@ export interface components {
       participantToken: string;
       optionIdx: number;
     };
+    /** @enum {string} */
+    QuestionType: "CHOICE" | "MULTIPLE_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER";
+    QuestionOption: {
+      text: string;
+      correct: boolean;
+    };
+    QuestionBankEntry: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      courseId: string;
+      text: string;
+      questionType: components["schemas"]["QuestionType"];
+      options: components["schemas"]["QuestionOption"][];
+      tags: string[];
+      archived: boolean;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    CreateQuestionRequest: {
+      text: string;
+      questionType: components["schemas"]["QuestionType"];
+      options: components["schemas"]["QuestionOption"][];
+      tags?: string[];
+    };
+    /** @enum {string} */
+    ActivityStrategy: "ALL" | "RANDOM_N" | "MANUAL";
+    /** @enum {string} */
+    ActivityRunStatus: "OPEN" | "CLOSED";
+    ActivityDefinition: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      courseId: string;
+      title: string;
+      questionIds: string[];
+      strategy: components["schemas"]["ActivityStrategy"];
+      strategyN?: number;
+      archived: boolean;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    ActivityRun: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      definitionId: string;
+      /** Format: uuid */
+      sessionId: string;
+      status: components["schemas"]["ActivityRunStatus"];
+      questionIds: string[];
+      /** Format: date-time */
+      startedAt: string;
+      /** Format: date-time */
+      closedAt?: string;
+    };
+    ActivityResponse: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      runId: string;
+      /** Format: uuid */
+      personId: string;
+      /** Format: uuid */
+      questionId: string;
+      answer: unknown;
+      /** Format: date-time */
+      answeredAt: string;
+    };
+    CreateActivityRequest: {
+      title: string;
+      questionIds: string[];
+      strategy: components["schemas"]["ActivityStrategy"];
+      strategyN?: number;
+    };
+    SubmitActivityResponseRequest: {
+      participantToken: string;
+      /** Format: uuid */
+      questionId: string;
+      answer: unknown;
+    };
     SignalAggregate: {
       green: number;
       yellow: number;
@@ -1571,6 +1792,9 @@ export interface components {
     SessionId: string;
     JoinCode: string;
     PollId: string;
+    QuestionId: string;
+    DefinitionId: string;
+    RunId: string;
     ParticipantTokenQuery: string;
     ChannelType: "telegram" | "vk" | "web" | "echo";
   };
@@ -3263,6 +3487,304 @@ export interface operations {
         content?: never;
       };
       /** @description Poll is already closed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listQuestions: {
+    parameters: {
+      query?: {
+        tag?: string;
+      };
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Questions list. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QuestionBankEntry"][];
+        };
+      };
+    };
+  };
+  createQuestion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateQuestionRequest"];
+      };
+    };
+    responses: {
+      /** @description Created question. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QuestionBankEntry"];
+        };
+      };
+    };
+  };
+  getQuestion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        questionId: components["parameters"]["QuestionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Question. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QuestionBankEntry"];
+        };
+      };
+    };
+  };
+  updateQuestion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        questionId: components["parameters"]["QuestionId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateQuestionRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated question. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QuestionBankEntry"];
+        };
+      };
+    };
+  };
+  archiveQuestion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        questionId: components["parameters"]["QuestionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Archived. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listActivities: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Activity definitions. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActivityDefinition"][];
+        };
+      };
+    };
+  };
+  createActivity: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateActivityRequest"];
+      };
+    };
+    responses: {
+      /** @description Created activity. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActivityDefinition"];
+        };
+      };
+    };
+  };
+  getActivity: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        definitionId: components["parameters"]["DefinitionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Activity definition. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActivityDefinition"];
+        };
+      };
+    };
+  };
+  startActivityRun: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        definitionId: components["parameters"]["DefinitionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Started run. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActivityRun"];
+        };
+      };
+    };
+  };
+  closeActivityRun: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        runId: components["parameters"]["RunId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Closed run. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActivityRun"];
+        };
+      };
+    };
+  };
+  getActivityResponses: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        runId: components["parameters"]["RunId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Responses. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActivityResponse"][];
+        };
+      };
+    };
+  };
+  respondToActivity: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+        runId: components["parameters"]["RunId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubmitActivityResponseRequest"];
+      };
+    };
+    responses: {
+      /** @description Response recorded. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActivityResponse"];
+        };
+      };
+      /** @description Activity run already closed. */
       409: {
         headers: {
           [name: string]: unknown;

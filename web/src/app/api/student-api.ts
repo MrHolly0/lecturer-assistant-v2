@@ -8,7 +8,7 @@ export type SignalValue = components["schemas"]["SignalValue"];
 export type StudentQuestion = components["schemas"]["StudentQuestion"];
 export type StudentEngagement = components["schemas"]["StudentEngagement"];
 
-async function publicFetch(path: string, init?: RequestInit): Promise<Response> {
+export async function publicFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (!headers.has("Accept")) headers.set("Accept", "application/json");

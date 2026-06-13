@@ -12,6 +12,7 @@ import { RegisterPage } from "../pages/RegisterPage";
 import { CoursesPage } from "../pages/CoursesPage";
 import { CoursePage } from "../pages/CoursePage";
 import { MaterialsPage } from "../pages/MaterialsPage";
+import { QuestionBankPage } from "../pages/QuestionBankPage";
 import { PresenterPage } from "../pages/PresenterPage";
 import { ProjectionPage } from "../pages/ProjectionPage";
 import { SessionJoinPage } from "../pages/SessionJoinPage";
@@ -84,6 +85,11 @@ function CourseRoute() {
 function MaterialsRoute() {
   const { courseId } = useParams();
   return <MaterialsPage courseId={courseId ?? ""} />;
+}
+
+function QuestionBankRoute() {
+  const { courseId } = useParams();
+  return <QuestionBankPage courseId={courseId ?? ""} />;
 }
 
 function PresenterRoute() {
@@ -161,7 +167,8 @@ const router = createHashRouter([
         children: [
           { path: "/courses", element: <CoursesPage /> },
           { path: "/courses/:courseId", element: <CourseRoute /> },
-          { path: "/courses/:courseId/materials", element: <MaterialsRoute /> }
+          { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
+          { path: "/courses/:courseId/questions", element: <QuestionBankRoute /> }
         ]
       },
       {

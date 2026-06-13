@@ -18,6 +18,7 @@ import {
 import { precacheDeck } from "../app/offline";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
+import { PollPanel } from "../widgets/PollPanel";
 import { PresenterSidePanel } from "../widgets/PresenterSidePanel";
 
 export function PresenterPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
@@ -177,6 +178,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
         <button className="btn-ghost" type="button" onClick={() => setDrawing((value) => !value)}>
           Рисование
         </button>
+        <PollPanel courseId={courseId} sessionId={sessionId} />
         {session.status === "PAUSED" ? (
           <button
             className="btn-primary"

@@ -13,6 +13,7 @@ import {
   type StudentQuestion,
   type StudentSessionSnapshot
 } from "../app/api/student-api";
+import { respondToPoll } from "../app/api/interaction-api";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 
 interface StudentSessionPageProps {
@@ -36,6 +37,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const [lastSignal, setLastSignal] = useState<SignalValue | null>(null);
   const [snapshot, setSnapshot] = useState<StudentSessionSnapshot | null>(null);
   const [questions, setQuestions] = useState<StudentQuestion[]>([]);
+  const [myVote, setMyVote] = useState<number | null>(null);
   const sessionQuery = useQuery({
     queryKey: ["student-session", normalizedCode],
     queryFn: () => getStudentSession(normalizedCode),
@@ -70,10 +72,23 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       toast.success("Вопрос отправлен преподавателю.");
     }
   });
+  const pollMut = useMutation({
+    mutationFn: ({ pollId, optionIdx }: { pollId: string; optionIdx: number }) =>
+      respondToPoll(normalizedCode, pollId, participantToken, optionIdx),
+    onSuccess: (_, { optionIdx }) => {
+      setMyVote(optionIdx);
+      toast.success("Ответ принят.");
+    },
+    onError: () => toast.error("Не удалось отправить ответ.")
+  });
 
   useEffect(() => {
     if (sessionQuery.data) setSnapshot(sessionQuery.data);
   }, [sessionQuery.data]);
+
+  useEffect(() => {
+    setMyVote(null);
+  }, [current?.activePoll?.pollId]);
 
   useEffect(() => {
     if (!participantToken || !normalizedCode) return undefined;
@@ -170,6 +185,63 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         </section>
       ) : (
         <section className="student-action-panel">
+          {current.activePoll && (
+            <div className="student-poll-card">
+              <h2 className="student-poll-question">{current.activePoll.questionText}</h2>
+              {current.activePoll.status === "OPEN" && myVote === null ? (
+                <div className="student-poll-options">
+                  {current.activePoll.options.map((opt, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className="student-poll-option"
+                      disabled={pollMut.isPending || !isLive}
+                      onClick={() =>
+                        pollMut.mutate({ pollId: current.activePoll!.pollId, optionIdx: idx })
+                      }
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="student-poll-bars">
+                  {current.activePoll.options.map((opt, idx) => {
+                    const votes = current.activePoll!.votes;
+                    const total = votes.reduce((a, b) => a + b, 0);
+                    const count = votes[idx] ?? 0;
+                    const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                    const isCorrect = current.activePoll!.correctOptionIdx === idx;
+                    const isMyVote = myVote === idx;
+                    return (
+                      <div
+                        key={idx}
+                        className={[
+                          "student-poll-bar-row",
+                          isCorrect ? "student-poll-bar-row--correct" : "",
+                          isMyVote ? "student-poll-bar-row--mine" : ""
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      >
+                        <span className="student-poll-bar-label">{opt}</span>
+                        <div className="student-poll-bar-track">
+                          <div
+                            className="student-poll-bar-fill"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="student-poll-bar-pct">{pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {current.activePoll.status === "CLOSED" && (
+                <p className="student-poll-closed muted">Опрос завершён</p>
+              )}
+            </div>
+          )}
           <div className="section-heading">
             <h2>Сигнал преподавателю</h2>
             <span className="muted">{current.signalAggregate.total} ответов</span>
