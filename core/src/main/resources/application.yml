@@ -56,3 +56,5 @@ app:
   channel:
     internal-api-key: ${CHANNEL_INTERNAL_API_KEY:phase-4-local-channel-key}
     delivery-worker-delay-ms: ${CHANNEL_DELIVERY_WORKER_DELAY_MS:5000}
+    telegram-bot: ${TELEGRAM_BOT:}
+    vk-bot: ${VK_BOT:}

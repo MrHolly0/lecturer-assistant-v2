@@ -1,10 +1,8 @@
-import { useMemo } from "react";
 import { Clock } from "lucide-react";
 import type { Slide } from "../app/api/content-api";
 import type { LiveSession, SessionParticipant } from "../app/api/live-api";
 import type { SignalValue, StudentEngagement } from "../app/api/student-api";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
-import { LocalQrCode } from "./LocalQrCode";
 
 interface PresenterSidePanelProps {
   session: LiveSession;
@@ -24,10 +22,6 @@ export function PresenterSidePanel({
   slideElapsed
 }: PresenterSidePanelProps) {
   const activeParticipants = participants.filter((participant) => !participant.leftAt);
-  const joinUrl = useMemo(() => {
-    if (typeof window === "undefined") return `#/s/${session.joinCode}`;
-    return `${window.location.origin}${window.location.pathname}#/s/${session.joinCode}`;
-  }, [session.joinCode]);
   const signals = engagement?.signalAggregate;
   const questions = engagement?.questions ?? [];
 
@@ -38,10 +32,9 @@ export function PresenterSidePanel({
         Лекция {formatTime(elapsed)} · слайд {formatTime(slideElapsed)}
       </div>
       <div className="join-panel">
-        <span className="muted">Подключение</span>
+        <span className="muted">Код подключения</span>
         <strong>{session.joinCode}</strong>
-        <small>/s/{session.joinCode}</small>
-        <LocalQrCode value={joinUrl} label="QR кода лекции" />
+        <small>Кнопка «Подключение» сверху — QR и ссылки для веба, Telegram и ВК.</small>
       </div>
       <Tabs defaultValue="students" className="live-tabs">
         <TabsList className="live-tabs__list">

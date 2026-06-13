@@ -14,6 +14,7 @@ import { CoursePage } from "../pages/CoursePage";
 import { MaterialsPage } from "../pages/MaterialsPage";
 import { PresenterPage } from "../pages/PresenterPage";
 import { ProjectionPage } from "../pages/ProjectionPage";
+import { SessionJoinPage } from "../pages/SessionJoinPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { StudentHomePage } from "../pages/StudentHomePage";
 import { StudentSessionPage } from "../pages/StudentSessionPage";
@@ -95,6 +96,11 @@ function ProjectionRoute() {
   return <ProjectionPage courseId={courseId ?? ""} sessionId={sessionId ?? ""} />;
 }
 
+function SessionJoinRoute() {
+  const { courseId, sessionId } = useParams();
+  return <SessionJoinPage courseId={courseId ?? ""} sessionId={sessionId ?? ""} />;
+}
+
 function StudentSessionRoute() {
   const { joinCode } = useParams();
   return <StudentSessionPage joinCode={joinCode ?? ""} />;
@@ -130,6 +136,14 @@ const router = createHashRouter([
     element: (
       <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
         <ProjectionRoute />
+      </RequireRolePage>
+    )
+  },
+  {
+    path: "/courses/:courseId/sessions/:sessionId/join",
+    element: (
+      <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
+        <SessionJoinRoute />
       </RequireRolePage>
     )
   },

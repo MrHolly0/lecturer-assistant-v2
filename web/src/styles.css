@@ -1383,3 +1383,78 @@ textarea {
     padding: 22px;
   }
 }
+
+/* Окно «Подключение» — отдельное окно с QR по каналам (web/TG/VK) */
+.session-join-shell {
+  background: #111;
+  box-sizing: border-box;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.session-join-shell--center {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.session-join-head {
+  display: grid;
+  gap: 4px;
+}
+
+.session-join-code {
+  color: #f97316;
+  font-size: 44px;
+  letter-spacing: 2px;
+  line-height: 1;
+}
+
+.session-join-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.session-join-tabs__list {
+  width: 100%;
+}
+
+.session-join-panel {
+  display: flex;
+  justify-content: center;
+}
+
+.session-join-target {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+}
+
+.session-join-target .qr-card img {
+  height: auto;
+  image-rendering: pixelated;
+  width: min(320px, 70vw);
+}
+
+.session-join-link {
+  color: #93c5fd;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.session-join-soon {
+  background: #171717;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Monitor, Pause, Play, Square } from "lucide-react";
+import { Monitor, Pause, Play, QrCode, Square } from "lucide-react";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
 import { getStudentEngagement } from "../app/api/student-api";
 import {
@@ -158,6 +158,21 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
         >
           <Monitor size={16} />
           Проектор
+        </button>
+        <button
+          className="btn-ghost"
+          type="button"
+          title="Показать QR и ссылки для подключения — окно можно унести на другой экран"
+          onClick={() =>
+            window.open(
+              `/#/courses/${courseId}/sessions/${sessionId}/join`,
+              "session-join",
+              "width=560,height=760"
+            )
+          }
+        >
+          <QrCode size={16} />
+          Подключение
         </button>
         <button className="btn-ghost" type="button" onClick={() => setDrawing((value) => !value)}>
           Рисование
