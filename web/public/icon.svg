@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Ассистент лектора">
+  <rect width="512" height="512" fill="#111111"/>
+  <rect x="116" y="148" width="280" height="180" rx="16" fill="#1f1f1f" stroke="#f97316" stroke-width="12"/>
+  <path d="M236 200l66 38-66 38z" fill="#f97316"/>
+  <rect x="196" y="356" width="120" height="14" rx="7" fill="#f97316"/>
+  <rect x="236" y="328" width="40" height="34" fill="#1f1f1f"/>
+  <rect x="236" y="328" width="40" height="10" fill="#f97316"/>
+</svg>
