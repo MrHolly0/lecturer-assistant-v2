@@ -33,7 +33,10 @@ import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.org.api.CourseRole;
 import ru.university.assistant.interaction.api.ActivePollView;
+import ru.university.assistant.interaction.api.ActivityRespondApi;
+import ru.university.assistant.interaction.api.ActivityResponse;
 import ru.university.assistant.interaction.api.QuickPollApi;
+import ru.university.assistant.interaction.api.SubmitActivityResponseRequest;
 import ru.university.assistant.qa.api.QuestionApi;
 import ru.university.assistant.qa.api.StudentQuestion;
 import ru.university.assistant.shared.api.UuidV7;
@@ -52,6 +55,7 @@ public class StudentWebSessionService {
     private final EventBus events;
     private final LiveSessionPublisher publisher;
     private final QuickPollApi quickPolls;
+    private final ActivityRespondApi activityRespond;
 
     StudentWebSessionService(
             LiveSessionRepository sessions,
@@ -63,7 +67,8 @@ public class StudentWebSessionService {
             CourseAccessApi courseAccess,
             EventBus events,
             LiveSessionPublisher publisher,
-            QuickPollApi quickPolls) {
+            QuickPollApi quickPolls,
+            ActivityRespondApi activityRespond) {
         this.sessions = sessions;
         this.decks = decks;
         this.feedback = feedback;
@@ -74,6 +79,7 @@ public class StudentWebSessionService {
         this.events = events;
         this.publisher = publisher;
         this.quickPolls = quickPolls;
+        this.activityRespond = activityRespond;
     }
 
     public StudentSessionSnapshot snapshot(String joinCode) {
@@ -149,6 +155,17 @@ public class StudentWebSessionService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Participant token does not belong to session");
         }
         return new ParticipantSession(session, participant);
+    }
+
+    @Transactional
+    public ActivityResponse activityRespond(
+            String joinCode, UUID runId, SubmitActivityResponseRequest request) {
+        ParticipantSession current = participantSession(joinCode, request.participantToken());
+        ensureJoinable(current.session());
+        ActivityResponse response = activityRespond.submitResponse(
+                runId, current.participant().personId(), request.questionId(), request.answer());
+        sessions.touchWebParticipant(current.participant().id());
+        return response;
     }
 
     @Transactional
