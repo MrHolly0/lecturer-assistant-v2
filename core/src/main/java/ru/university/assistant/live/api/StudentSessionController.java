@@ -1,10 +1,7 @@
 package ru.university.assistant.live.api;
 
 import jakarta.validation.Valid;
-import java.io.IOException;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,19 +15,18 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.university.assistant.feedback.api.SignalAggregate;
 import ru.university.assistant.iam.api.AuthenticatedUser;
+import ru.university.assistant.live.internal.StudentSseBroadcaster;
 import ru.university.assistant.live.internal.StudentWebSessionService;
 import ru.university.assistant.qa.api.StudentQuestion;
 
 @RestController
 class StudentSessionController {
     private final StudentWebSessionService studentSessions;
-    private final TaskExecutor studentSseExecutor;
+    private final StudentSseBroadcaster broadcaster;
 
-    StudentSessionController(
-            StudentWebSessionService studentSessions,
-            @Qualifier("studentSseExecutor") TaskExecutor studentSseExecutor) {
+    StudentSessionController(StudentWebSessionService studentSessions, StudentSseBroadcaster broadcaster) {
         this.studentSessions = studentSessions;
-        this.studentSseExecutor = studentSseExecutor;
+        this.broadcaster = broadcaster;
     }
 
     @GetMapping("/api/v1/courses/{courseId}/sessions/{sessionId}/engagement")
@@ -57,7 +53,7 @@ class StudentSessionController {
     public SseEmitter events(@PathVariable String joinCode, @RequestParam String participantToken) {
         studentSessions.tokenBelongsToJoinCode(joinCode, participantToken);
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L);
-        studentSseExecutor.execute(() -> stream(joinCode, emitter));
+        broadcaster.register(joinCode, emitter);
         return emitter;
     }
 
@@ -74,26 +70,5 @@ class StudentSessionController {
             @PathVariable String joinCode,
             @Valid @RequestBody StudentQuestionRequest request) {
         return studentSessions.ask(joinCode, request);
-    }
-
-    private void stream(String joinCode, SseEmitter emitter) {
-        try {
-            while (true) {
-                StudentSessionSnapshot snapshot = studentSessions.snapshot(joinCode);
-                emitter.send(SseEmitter.event().name("snapshot").data(snapshot));
-                if (snapshot.status() == SessionStatus.ENDED || snapshot.status() == SessionStatus.ARCHIVED) {
-                    emitter.complete();
-                    return;
-                }
-                Thread.sleep(1000);
-            }
-        } catch (IOException | IllegalStateException exception) {
-            emitter.complete();
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            emitter.complete();
-        } catch (RuntimeException exception) {
-            emitter.completeWithError(exception);
-        }
     }
 }
