@@ -1,6 +1,7 @@
 import type { components } from "./schema";
-import { clearStoredAuth, getStoredAuth } from "../auth";
+import { expireStoredAuth, getStoredAuth } from "../auth";
 import { apiFetch, ApiError } from "./http";
+import { refreshAuthSession } from "./refresh";
 
 export type ImportJob = components["schemas"]["ImportJob"];
 export type SlideDeck = components["schemas"]["SlideDeck"];
@@ -120,37 +121,52 @@ export function uploadDeck(
   form.append("file", file);
 
   return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/api/v1/courses/${courseId}/decks`);
-    xhr.withCredentials = true;
-    xhr.responseType = "json";
-    xhr.setRequestHeader("Accept", "application/json");
+    const send = (retried: boolean) => {
+      const xhr = new XMLHttpRequest();
+      const requestToken = getStoredAuth()?.accessToken ?? null;
 
-    const auth = getStoredAuth();
-    if (auth) xhr.setRequestHeader("Authorization", `Bearer ${auth.accessToken}`);
+      xhr.open("POST", `/api/v1/courses/${courseId}/decks`);
+      xhr.withCredentials = true;
+      xhr.responseType = "json";
+      xhr.setRequestHeader("Accept", "application/json");
+      if (requestToken) xhr.setRequestHeader("Authorization", `Bearer ${requestToken}`);
 
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 70));
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 70));
+      };
+      xhr.onload = async () => {
+        if (xhr.status === 401 && !retried && requestToken) {
+          const currentToken = getStoredAuth()?.accessToken ?? null;
+          if (currentToken && currentToken !== requestToken) {
+            send(true);
+            return;
+          }
+
+          if (await refreshAuthSession()) {
+            send(true);
+            return;
+          }
+        }
+        if (xhr.status === 401) {
+          expireStoredAuth();
+          reject(new ApiError(401, "Сессия истекла"));
+          return;
+        }
+        if (xhr.status === 413) {
+          reject(new ApiError(413, "Файл слишком большой для загрузки"));
+          return;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(new ApiError(xhr.status, `Загрузка завершилась с ошибкой ${xhr.status}`));
+          return;
+        }
+        onProgress(75);
+        resolve(xhr.response as ImportJob);
+      };
+      xhr.onerror = () => reject(new ApiError(0, "Не удалось загрузить файл"));
+      xhr.send(form);
     };
-    xhr.onload = () => {
-      if (xhr.status === 401) {
-        clearStoredAuth();
-        window.dispatchEvent(new CustomEvent("auth:expired"));
-        reject(new ApiError(401, "Сессия истекла"));
-        return;
-      }
-      if (xhr.status === 413) {
-        reject(new ApiError(413, "Файл слишком большой для загрузки"));
-        return;
-      }
-      if (xhr.status < 200 || xhr.status >= 300) {
-        reject(new ApiError(xhr.status, `Загрузка завершилась с ошибкой ${xhr.status}`));
-        return;
-      }
-      onProgress(75);
-      resolve(xhr.response as ImportJob);
-    };
-    xhr.onerror = () => reject(new ApiError(0, "Не удалось загрузить файл"));
-    xhr.send(form);
+
+    send(false);
   });
 }

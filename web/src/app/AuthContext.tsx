@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { toast } from "sonner";
 import type { components } from "./api/schema";
 import { getCurrentUser, logout, refreshAuth } from "./api/auth-api";
 import { clearStoredAuth, getStoredAuth } from "./auth";
@@ -25,7 +26,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const expireAuth = () => setUserState(null);
+    const expireAuth = () => {
+      setUserState(null);
+      toast.error("Сессия истекла. Войдите снова.", { id: "auth-expired" });
+    };
     window.addEventListener("auth:expired", expireAuth);
     if (!getStoredAuth()) {
       refreshAuth()
