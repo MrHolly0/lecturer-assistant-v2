@@ -53,6 +53,10 @@ public class JwtService implements TokenAuthenticationApi {
         }
     }
 
+    public long accessTtlSeconds() {
+        return accessTtl.toSeconds();
+    }
+
     public String issue(AuthenticatedUser user) {
         Instant expiresAt = clock.instant().plus(accessTtl);
         Map<String, Object> header = Map.of("alg", "HS256", "typ", "JWT");

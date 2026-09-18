@@ -39,7 +39,8 @@ public class IdentityService implements ChannelIdentityApi {
         if (!channelType.equals("telegram")
                 && !channelType.equals("vk")
                 && !channelType.equals("web")
-                && !channelType.equals("echo")) {
+                && !channelType.equals("echo")
+                && !channelType.equals("max")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported channel type");
         }
         var personId = identities
