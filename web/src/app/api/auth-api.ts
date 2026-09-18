@@ -1,6 +1,7 @@
 import type { components } from "./schema";
 import { apiFetch } from "./http";
 import { getStoredAuth, setStoredAuth } from "../auth";
+import { refreshAuthSession } from "./refresh";
 
 type AuthResponse = components["schemas"]["AuthResponse"];
 type UserProfile = components["schemas"]["UserProfile"];
@@ -12,7 +13,8 @@ export async function bootstrapAdmin(
 ): Promise<AuthResponse> {
   const res = await apiFetch("/auth/bootstrap-admin", {
     method: "POST",
-    body: JSON.stringify({ displayName, email, password })
+    body: JSON.stringify({ displayName, email, password }),
+    skipAuthRefresh: true
   });
   const data: AuthResponse = await res.json();
   setStoredAuth({ accessToken: data.accessToken });
@@ -22,7 +24,8 @@ export async function bootstrapAdmin(
 export async function login(email: string, password: string): Promise<AuthResponse> {
   const res = await apiFetch("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email, password }),
+    skipAuthRefresh: true
   });
   const data: AuthResponse = await res.json();
   setStoredAuth({ accessToken: data.accessToken });
@@ -37,7 +40,8 @@ export async function registerByInvitation(
 ): Promise<AuthResponse> {
   const res = await apiFetch("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ displayName, email, password, invitationCode })
+    body: JSON.stringify({ displayName, email, password, invitationCode }),
+    skipAuthRefresh: true
   });
   const data: AuthResponse = await res.json();
   setStoredAuth({ accessToken: data.accessToken });
@@ -45,15 +49,7 @@ export async function registerByInvitation(
 }
 
 export async function refreshAuth(): Promise<AuthResponse | null> {
-  const res = await fetch("/api/v1/auth/refresh", {
-    method: "POST",
-    credentials: "include",
-    headers: { Accept: "application/json" }
-  });
-  if (!res.ok) return null;
-  const data: AuthResponse = await res.json();
-  setStoredAuth({ accessToken: data.accessToken });
-  return data;
+  return refreshAuthSession();
 }
 
 export async function logout(): Promise<void> {

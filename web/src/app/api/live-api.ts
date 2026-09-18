@@ -1,6 +1,7 @@
 import type { components } from "./schema";
-import { getStoredAuth } from "../auth";
+import { expireStoredAuth, getStoredAuth } from "../auth";
 import { apiFetch } from "./http";
+import { refreshAuthSession } from "./refresh";
 
 export type LiveSession = components["schemas"]["LiveSession"];
 export type SessionParticipant = components["schemas"]["SessionParticipant"];
@@ -87,26 +88,54 @@ export function connectLiveSession(
   let reconnectTimer: number | undefined;
   let stopped = false;
   let attempt = 0;
+  let reconnectImmediately = false;
+  let rejectedToken: string | null = null;
+  let refreshAttemptedSinceConnected = false;
 
   function connect() {
     if (stopped) return;
     let buffer = "";
-    socket = new WebSocket(url);
+    let connectionToken = "";
+    let connectedTimer: number | undefined;
+    const currentSocket = new WebSocket(url);
+    socket = currentSocket;
 
-    socket.addEventListener("open", () => {
-      attempt = 0;
-      const token = getStoredAuth()?.accessToken ?? "";
-      socket?.send(`CONNECT\naccept-version:1.2\nAuthorization:Bearer ${token}\n\n\u0000`);
-      socket?.send(`SUBSCRIBE\nid:session\ndestination:/topic/session/${sessionId}\n\n\u0000`);
+    currentSocket.addEventListener("open", () => {
+      connectionToken = getStoredAuth()?.accessToken ?? "";
+      currentSocket.send(
+        `CONNECT\naccept-version:1.2\nAuthorization:Bearer ${connectionToken}\n\n\u0000`
+      );
+      connectedTimer = window.setTimeout(() => {
+        void recoverAuthentication(connectionToken, currentSocket);
+      }, 4000);
     });
 
-    socket.addEventListener("message", (event) => {
+    currentSocket.addEventListener("message", (event) => {
       buffer += String(event.data);
       const frames = buffer.split("\u0000");
       buffer = frames.pop() ?? "";
       for (const frame of frames) {
-        const body = frame.slice(frame.indexOf("\n\n") + 2).trim();
-        if (!body || body === "CONNECTED") continue;
+        const stompFrame = frame.replace(/^\n+/, "");
+        const command = stompFrame.split("\n", 1)[0]?.trim();
+        if (command === "CONNECTED") {
+          if (connectedTimer) window.clearTimeout(connectedTimer);
+          connectedTimer = undefined;
+          attempt = 0;
+          rejectedToken = null;
+          refreshAttemptedSinceConnected = false;
+          currentSocket.send(
+            `SUBSCRIBE\nid:session\ndestination:/topic/session/${sessionId}\n\n\u0000`
+          );
+          continue;
+        }
+        if (command === "ERROR") {
+          void recoverAuthentication(connectionToken, currentSocket);
+          continue;
+        }
+        if (command !== "MESSAGE") continue;
+
+        const body = stompFrame.slice(stompFrame.indexOf("\n\n") + 2).trim();
+        if (!body) continue;
         try {
           onMessage(JSON.parse(body) as LiveSessionMessage);
         } catch {
@@ -115,22 +144,58 @@ export function connectLiveSession(
       }
     });
 
-    socket.addEventListener("close", scheduleReconnect);
-    socket.addEventListener("error", () => socket?.close());
+    currentSocket.addEventListener("close", () => {
+      if (connectedTimer) window.clearTimeout(connectedTimer);
+      connectedTimer = undefined;
+      if (socket === currentSocket) socket = null;
+      scheduleReconnect();
+    });
+    currentSocket.addEventListener("error", () => currentSocket.close());
   }
 
   function scheduleReconnect() {
     if (stopped) return;
-    const delay = Math.min(500 * 2 ** attempt, 5000);
-    attempt += 1;
+    if (reconnectTimer) window.clearTimeout(reconnectTimer);
+    const delay = reconnectImmediately ? 0 : Math.min(500 * 2 ** attempt, 5000);
+    reconnectImmediately = false;
+    if (delay > 0) attempt += 1;
     reconnectTimer = window.setTimeout(connect, delay);
   }
+
+  async function recoverAuthentication(token: string, currentSocket: WebSocket) {
+    if (stopped || currentSocket.readyState >= WebSocket.CLOSING) return;
+    if (refreshAttemptedSinceConnected || rejectedToken === token) {
+      currentSocket.close();
+      return;
+    }
+
+    refreshAttemptedSinceConnected = true;
+    rejectedToken = token;
+    const refreshed = await refreshAuthSession();
+    if (!refreshed) {
+      expireStoredAuth();
+      stopped = true;
+      currentSocket.close();
+    }
+  }
+
+  const handleAuthRefreshed = () => {
+    if (stopped) return;
+    reconnectImmediately = true;
+    attempt = 0;
+    refreshAttemptedSinceConnected = true;
+    if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+    else scheduleReconnect();
+  };
+
+  window.addEventListener("auth:refreshed", handleAuthRefreshed);
 
   connect();
 
   return () => {
     stopped = true;
     if (reconnectTimer) window.clearTimeout(reconnectTimer);
+    window.removeEventListener("auth:refreshed", handleAuthRefreshed);
     socket?.close();
   };
 }

@@ -20,3 +20,9 @@ export function setStoredAuth(auth: StoredAuth): void {
 export function clearStoredAuth(): void {
   sessionStorage.removeItem(KEY);
 }
+
+export function expireStoredAuth(): void {
+  if (!getStoredAuth()) return;
+  clearStoredAuth();
+  window.dispatchEvent(new CustomEvent("auth:expired"));
+}

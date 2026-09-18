@@ -12,12 +12,17 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Запрос завершился ошибкой.";
 }
 
+function reportError(error: unknown): void {
+  if (error instanceof ApiError && error.status === 401) return;
+  toast.error(errorMessage(error));
+}
+
 export const queryClient = new QueryClient({
   mutationCache: new MutationCache({
-    onError: (error) => toast.error(errorMessage(error))
+    onError: reportError
   }),
   queryCache: new QueryCache({
-    onError: (error) => toast.error(errorMessage(error))
+    onError: reportError
   }),
   defaultOptions: {
     queries: {
