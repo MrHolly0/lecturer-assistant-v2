@@ -1,8 +1,11 @@
+import { useEffect } from "react";
 import {
   createHashRouter,
   Navigate,
   Outlet,
   RouterProvider,
+  useLocation,
+  useNavigate,
   useParams,
   useSearchParams
 } from "react-router-dom";
@@ -22,6 +25,34 @@ import { StudentSessionPage } from "../pages/StudentSessionPage";
 import { Layout } from "../widgets/Layout";
 import { Toaster } from "../shared/ui/sonner";
 import { landingPath, type UserRole } from "./routes";
+import { hideBackButton, showBackButton, subscribeBackButton } from "./max/bridge";
+import { useMaxBridge } from "./max/context";
+
+const maxRootPaths = new Set(["/", "/home", "/courses", "/login", "/register"]);
+
+function MaxNavigationRoot() {
+  const { isMax } = useMaxBridge();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const shouldShowBackButton = isMax && !maxRootPaths.has(location.pathname);
+    if (!shouldShowBackButton) {
+      hideBackButton();
+      return;
+    }
+
+    const unsubscribe = subscribeBackButton(() => navigate(-1));
+    showBackButton();
+
+    return () => {
+      unsubscribe();
+      hideBackButton();
+    };
+  }, [isMax, location.pathname, navigate]);
+
+  return <Outlet />;
+}
 
 function LoadingScreen() {
   return (
@@ -114,70 +145,75 @@ function StudentSessionRoute() {
 
 const router = createHashRouter([
   {
-    path: "/login",
-    element: (
-      <PublicOnly>
-        <LoginPage />
-      </PublicOnly>
-    )
-  },
-  {
-    path: "/register",
-    element: (
-      <PublicOnly>
-        <RegisterRoute />
-      </PublicOnly>
-    )
-  },
-  {
-    path: "/courses/:courseId/sessions/:sessionId/presenter",
-    element: (
-      <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
-        <PresenterRoute />
-      </RequireRolePage>
-    )
-  },
-  {
-    path: "/courses/:courseId/sessions/:sessionId/projection",
-    element: (
-      <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
-        <ProjectionRoute />
-      </RequireRolePage>
-    )
-  },
-  {
-    path: "/courses/:courseId/sessions/:sessionId/join",
-    element: (
-      <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
-        <SessionJoinRoute />
-      </RequireRolePage>
-    )
-  },
-  {
-    path: "/s/:joinCode",
-    element: <StudentSessionRoute />
-  },
-  {
-    element: <ProtectedLayout />,
+    element: <MaxNavigationRoot />,
     children: [
-      { index: true, element: <RoleHome /> },
-      { path: "/home", element: <StudentHomePage /> },
       {
-        element: <RequireRole roles={["ADMIN", "LECTURER", "ASSISTANT"]} />,
-        children: [
-          { path: "/courses", element: <CoursesPage /> },
-          { path: "/courses/:courseId", element: <CourseRoute /> },
-          { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
-          { path: "/courses/:courseId/questions", element: <QuestionBankRoute /> }
-        ]
+        path: "/login",
+        element: (
+          <PublicOnly>
+            <LoginPage />
+          </PublicOnly>
+        )
       },
       {
-        element: <RequireRole roles={["ADMIN"]} />,
-        children: [{ path: "/admin/users", element: <AdminUsersPage /> }]
-      }
+        path: "/register",
+        element: (
+          <PublicOnly>
+            <RegisterRoute />
+          </PublicOnly>
+        )
+      },
+      {
+        path: "/courses/:courseId/sessions/:sessionId/presenter",
+        element: (
+          <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
+            <PresenterRoute />
+          </RequireRolePage>
+        )
+      },
+      {
+        path: "/courses/:courseId/sessions/:sessionId/projection",
+        element: (
+          <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
+            <ProjectionRoute />
+          </RequireRolePage>
+        )
+      },
+      {
+        path: "/courses/:courseId/sessions/:sessionId/join",
+        element: (
+          <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
+            <SessionJoinRoute />
+          </RequireRolePage>
+        )
+      },
+      {
+        path: "/s/:joinCode",
+        element: <StudentSessionRoute />
+      },
+      {
+        element: <ProtectedLayout />,
+        children: [
+          { index: true, element: <RoleHome /> },
+          { path: "/home", element: <StudentHomePage /> },
+          {
+            element: <RequireRole roles={["ADMIN", "LECTURER", "ASSISTANT"]} />,
+            children: [
+              { path: "/courses", element: <CoursesPage /> },
+              { path: "/courses/:courseId", element: <CourseRoute /> },
+              { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
+              { path: "/courses/:courseId/questions", element: <QuestionBankRoute /> }
+            ]
+          },
+          {
+            element: <RequireRole roles={["ADMIN"]} />,
+            children: [{ path: "/admin/users", element: <AdminUsersPage /> }]
+          }
+        ]
+      },
+      { path: "*", element: <RoleHome /> }
     ]
-  },
-  { path: "*", element: <RoleHome /> }
+  }
 ]);
 
 export function App() {
