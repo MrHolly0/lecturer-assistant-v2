@@ -1,4 +1,4 @@
-import { Clock } from "lucide-react";
+import { AlertTriangle, Clock } from "lucide-react";
 import type { Slide } from "../app/api/content-api";
 import type { LiveSession, SessionParticipant } from "../app/api/live-api";
 import type { SignalValue, StudentEngagement } from "../app/api/student-api";
@@ -24,6 +24,7 @@ export function PresenterSidePanel({
   const activeParticipants = participants.filter((participant) => !participant.leftAt);
   const signals = engagement?.signalAggregate;
   const questions = engagement?.questions ?? [];
+  const redCount = signals?.red ?? 0;
 
   return (
     <aside className="presenter-side">
@@ -36,11 +37,27 @@ export function PresenterSidePanel({
         <strong>{session.joinCode}</strong>
         <small>Кнопка «Подключение» сверху — QR и ссылки для веба, Telegram и ВК.</small>
       </div>
+      {redCount > 0 && (
+        <div className="signal-alert">
+          <AlertTriangle size={14} />
+          {redCount} {pluralStudents(redCount)} не {redCount === 1 ? "понимает" : "понимают"}
+        </div>
+      )}
       <Tabs defaultValue="students" className="live-tabs">
         <TabsList className="live-tabs__list">
-          <TabsTrigger value="students">Студенты</TabsTrigger>
+          <TabsTrigger value="students">
+            Студенты
+            {activeParticipants.length > 0 && (
+              <span className="tab-badge">{activeParticipants.length}</span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="notes">Заметки</TabsTrigger>
-          <TabsTrigger value="questions">Вопросы</TabsTrigger>
+          <TabsTrigger value="questions">
+            Вопросы
+            {questions.length > 0 && (
+              <span className="tab-badge tab-badge--alert">{questions.length}</span>
+            )}
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="students" className="live-panel">
           <div className="section-heading">
@@ -159,4 +176,10 @@ function formatTime(total: number) {
     .padStart(2, "0");
   const seconds = (total % 60).toString().padStart(2, "0");
   return `${minutes}:${seconds}`;
+}
+
+function pluralStudents(n: number) {
+  if (n % 10 === 1 && n % 100 !== 11) return "студент";
+  if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return "студента";
+  return "студентов";
 }

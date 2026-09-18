@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Monitor, Pause, Play, QrCode, Square } from "lucide-react";
+import { toast } from "sonner";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
 import { getStudentEngagement } from "../app/api/student-api";
 import {
@@ -70,10 +71,16 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       setLocalSession(message.session);
       channel.postMessage(message.session);
       void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId] });
-      if (message.type === "participant.joined" || message.type === "participant.left") {
+      if (message.type === "participant.joined") {
+        void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "participants"] });
+        toast("Студент подключился", { duration: 2500 });
+      } else if (message.type === "participant.left") {
         void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "participants"] });
       }
-      if (message.type === "feedback.signal_submitted" || message.type === "qa.question_asked") {
+      if (message.type === "qa.question_asked") {
+        void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "engagement"] });
+        toast.warning("Новый вопрос от студента", { duration: 5000 });
+      } else if (message.type === "feedback.signal_submitted") {
         void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "engagement"] });
       }
     });

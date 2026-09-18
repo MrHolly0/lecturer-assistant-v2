@@ -949,6 +949,41 @@ textarea {
   background: #ef4444;
 }
 
+.signal-alert {
+  align-items: center;
+  animation: pulse-alert 1.8s ease-in-out infinite;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 8px;
+  color: #f87171;
+  display: flex;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+}
+
+@keyframes pulse-alert {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.tab-badge {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-left: 5px;
+  padding: 2px 6px;
+}
+
+.tab-badge--alert {
+  background: #ef4444;
+  color: #fff;
+}
+
 .presenter-note {
   margin: 0;
   white-space: pre-wrap;
