@@ -106,6 +106,41 @@ paths:
                 $ref: "#/components/schemas/AuthResponse"
         "401":
           description: Invalid credentials.
+  /auth/max:
+    post:
+      operationId: loginWithMax
+      summary: Login by signed initData of the MAX mini app.
+      description: >
+        Verifies the initData signature (HMAC-SHA256, key derived from the bot token) and auth_date freshness,
+        finds or creates the person by MAX user id and returns a JWT.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaxAuthRequest"
+      responses:
+        "200":
+          description: Access token and role of the person.
+          headers:
+            Set-Cookie:
+              description: httpOnly refresh token cookie scoped to /api/v1/auth.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaxAuthResponse"
+        "400":
+          description: initData is blank or longer than 8192 characters.
+        "401":
+          description: Signature mismatch, malformed or expired initData.
+        "403":
+          description: Person is disabled.
+        "503":
+          description: MAX login is not configured on the server (no bot token).
   /auth/refresh:
     post:
       operationId: refresh
@@ -1646,6 +1681,32 @@ components:
           type: string
         user:
           $ref: "#/components/schemas/UserProfile"
+    MaxAuthRequest:
+      type: object
+      required: [initData]
+      properties:
+        initData:
+          type: string
+          maxLength: 8192
+          description: Raw window.WebApp.initData string, never initDataUnsafe.
+    MaxAuthResponse:
+      type: object
+      required: [accessToken, expiresIn, role, personId, displayName]
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: integer
+          format: int64
+          description: Access token lifetime in seconds.
+        role:
+          type: string
+          enum: [ADMIN, LECTURER, ASSISTANT, STUDENT]
+        personId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
     UserProfile:
       type: object
       required: [id, displayName, email, role, status]

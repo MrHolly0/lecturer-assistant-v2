@@ -49,6 +49,14 @@ class IdentityRepository {
                 .update();
     }
 
+    /** Сериализует первый вход одного внешнего пользователя, чтобы параллельные запросы не создали двух людей. */
+    void lockExternalId(String channelType, String externalId) {
+        jdbc.sql("select pg_advisory_xact_lock(hashtextextended(:key, 0))")
+                .param("key", channelType + ":" + externalId)
+                .query()
+                .singleRow();
+    }
+
     ChannelIdentityResponse createIdentity(
             UUID id, UUID personId, String channelType, String externalId, String displayHint) {
         return jdbc.sql(

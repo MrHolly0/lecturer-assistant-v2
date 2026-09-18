@@ -33,9 +33,12 @@ import ru.university.assistant.shared.api.UuidV7;
 
 @Service
 public class AuthService implements EphemeralPersonApi {
+    private static final String MAX_CHANNEL = "max";
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final PersonRepository persons;
+    private final IdentityRepository identities;
+    private final MaxInitDataValidator maxInitData;
     private final InvitationRepository invitations;
     private final InvitationApi invitationApi;
     private final RefreshTokenRepository refreshTokens;
@@ -47,6 +50,8 @@ public class AuthService implements EphemeralPersonApi {
 
     AuthService(
             PersonRepository persons,
+            IdentityRepository identities,
+            MaxInitDataValidator maxInitData,
             InvitationRepository invitations,
             InvitationApi invitationApi,
             RefreshTokenRepository refreshTokens,
@@ -56,6 +61,8 @@ public class AuthService implements EphemeralPersonApi {
             Clock clock,
             @Value("${app.security.refresh-token-days}") long refreshTokenDays) {
         this.persons = persons;
+        this.identities = identities;
+        this.maxInitData = maxInitData;
         this.invitations = invitations;
         this.invitationApi = invitationApi;
         this.refreshTokens = refreshTokens;
@@ -99,6 +106,52 @@ public class AuthService implements EphemeralPersonApi {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
         return issueTokens(person);
+    }
+
+    /**
+     * Вход по initData мини-приложения MAX. Личность определяется только подписанным user.id:
+     * повторный вход находит того же человека, первый создаёт студента и привязку канала.
+     */
+    @Transactional
+    public AuthTokens loginWithMax(String initData) {
+        if (!maxInitData.isConfigured()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "MAX login is not configured");
+        }
+        MaxInitData data;
+        try {
+            data = maxInitData.validate(initData);
+        } catch (InvalidInitDataException exception) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid MAX initData");
+        }
+        String externalId = Long.toString(data.userId());
+        identities.lockExternalId(MAX_CHANNEL, externalId);
+        PersonRecord person = identities
+                .findByExternalId(MAX_CHANNEL, externalId)
+                .flatMap(identity -> persons.findById(identity.personId()))
+                .orElseGet(() -> createMaxStudent(data, externalId));
+        return issueTokens(person);
+    }
+
+    private PersonRecord createMaxStudent(MaxInitData data, String externalId) {
+        UUID personId = UuidV7.generate();
+        PersonRecord person = persons.create(
+                personId,
+                maxDisplayName(data),
+                "max-" + externalId + "@max.local",
+                passwordEncoder.encode(randomToken()),
+                PersonRole.STUDENT);
+        identities.createIdentity(UuidV7.generate(), personId, MAX_CHANNEL, externalId, data.username());
+        return person;
+    }
+
+    private static String maxDisplayName(MaxInitData data) {
+        String name = ((data.firstName() == null ? "" : data.firstName()) + " "
+                        + (data.lastName() == null ? "" : data.lastName()))
+                .trim();
+        if (name.isEmpty()) {
+            name = data.username() == null ? "" : data.username().trim();
+        }
+        return name.isEmpty() ? "Студент MAX" : name;
     }
 
     @Transactional
@@ -203,7 +256,7 @@ public class AuthService implements EphemeralPersonApi {
         String refreshToken = randomToken();
         refreshTokens.create(
                 UuidV7.generate(), person.id(), TokenHasher.sha256(refreshToken), Instant.now(clock).plus(refreshTtl));
-        return new AuthTokens(jwtService.issue(user), refreshToken, person.toProfile());
+        return new AuthTokens(jwtService.issue(user), refreshToken, person.toProfile(), jwtService.accessTtlSeconds());
     }
 
     private void ensureActive(PersonRecord person) {
