@@ -57,6 +57,30 @@ class PollRepository {
                 .optional();
     }
 
+    /** Открытый опрос важнее закрытого; если открытого нет, берётся последний закрытый. */
+    Optional<QuickPoll> findLatestForSession(UUID sessionId) {
+        return jdbc.sql("""
+                        select id, session_id, question_text, options, status,
+                               correct_option_idx, created_at, closed_at
+                        from interaction.quick_polls
+                        where session_id = :sessionId
+                        order by (status = 'OPEN') desc, created_at desc
+                        limit 1
+                        """)
+                .param("sessionId", sessionId)
+                .query(this::map)
+                .optional();
+    }
+
+    Optional<Integer> findVote(UUID pollId, UUID personId) {
+        return jdbc.sql("select option_idx from interaction.poll_responses "
+                        + "where poll_id = :pollId and person_id = :personId")
+                .param("pollId", pollId)
+                .param("personId", personId)
+                .query(Integer.class)
+                .optional();
+    }
+
     Optional<QuickPoll> findById(UUID pollId) {
         return jdbc.sql("""
                         select id, session_id, question_text, options, status,
@@ -87,8 +111,7 @@ class PollRepository {
         int rows = jdbc.sql("""
                         insert into interaction.poll_responses (id, poll_id, person_id, option_idx)
                         values (:id, :pollId, :personId, :optionIdx)
-                        on conflict (poll_id, person_id) do update set option_idx = excluded.option_idx,
-                            answered_at = now()
+                        on conflict (poll_id, person_id) do nothing
                         """)
                 .param("id", id)
                 .param("pollId", pollId)

@@ -5,5 +5,5 @@ import java.util.UUID;
 
 /** SPI для live-модуля: регистрация ответов студентов на активность. */
 public interface ActivityRespondApi {
-    ActivityResponse submitResponse(UUID runId, UUID personId, UUID questionId, JsonNode answer);
+    ActivityResponse submitResponse(UUID sessionId, UUID runId, UUID personId, UUID questionId, JsonNode answer);
 }

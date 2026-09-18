@@ -16,4 +16,6 @@ public record StudentSessionSnapshot(
         StudentSlide currentSlide,
         Map<String, Object> annotations,
         SignalAggregate signalAggregate,
-        ActivePollView activePoll) {}
+        ActivePollView activePoll,
+        /** Выбор текущего студента в опросе; заполняется только в GET-снапшоте с идентификацией, в SSE — null. */
+        Integer myVote) {}

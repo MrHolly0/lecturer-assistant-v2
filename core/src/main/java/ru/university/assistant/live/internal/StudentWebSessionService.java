@@ -36,6 +36,7 @@ import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.interaction.api.ActivePollView;
 import ru.university.assistant.interaction.api.ActivityRespondApi;
 import ru.university.assistant.interaction.api.ActivityResponse;
+import ru.university.assistant.interaction.api.PollVote;
 import ru.university.assistant.interaction.api.QuickPollApi;
 import ru.university.assistant.interaction.api.SubmitActivityResponseRequest;
 import ru.university.assistant.qa.api.QuestionApi;
@@ -89,6 +90,31 @@ public class StudentWebSessionService {
     public StudentSessionSnapshot snapshot(String joinCode) {
         LiveSession session = sessionByCode(joinCode);
         return snapshot(session);
+    }
+
+    /** Снапшот с личными полями студента. Идентификация необязательна: без неё это общий снапшот. */
+    public StudentSessionSnapshot snapshot(String joinCode, AuthenticatedUser user, String participantToken) {
+        LiveSession session = sessionByCode(joinCode);
+        StudentSessionSnapshot shared = snapshot(session);
+        UUID viewer = viewerId(session, user, participantToken);
+        if (viewer == null || shared.activePoll() == null) {
+            return shared;
+        }
+        Integer myVote = quickPolls.myVote(shared.activePoll().pollId(), viewer);
+        return new StudentSessionSnapshot(
+                shared.sessionId(), shared.courseId(), shared.lectureTitle(), shared.status(), shared.joinCode(),
+                shared.currentSlideIdx(), shared.slideCount(), shared.currentSlide(), shared.annotations(),
+                shared.signalAggregate(), shared.activePoll(), myVote);
+    }
+
+    private UUID viewerId(LiveSession session, AuthenticatedUser user, String participantToken) {
+        if (participantToken != null && !participantToken.isBlank()) {
+            return sessions.findWebParticipant(StudentTokenHasher.sha256(participantToken))
+                    .filter(participant -> participant.sessionId().equals(session.id()))
+                    .map(WebParticipant::personId)
+                    .orElse(null);
+        }
+        return user == null ? null : user.id();
     }
 
     @Transactional
@@ -227,19 +253,26 @@ public class StudentWebSessionService {
         ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
         ensureJoinable(current.session());
         ActivityResponse response = activityRespond.submitResponse(
-                runId, current.participant().personId(), request.questionId(), request.answer());
+                current.session().id(),
+                runId,
+                current.participant().personId(),
+                request.questionId(),
+                request.answer());
         touch(current.participant());
         return response;
     }
 
     @Transactional
-    public void pollRespond(
+    public PollVote pollRespond(
             String joinCode, UUID pollId, String participantToken, int optionIdx, AuthenticatedUser user) {
         ParticipantSession current = participantSession(joinCode, participantToken, user);
         ensureJoinable(current.session());
-        quickPolls.respond(pollId, current.participant().personId(), optionIdx);
+        PollVote vote = quickPolls.respond(current.session().id(), pollId, current.participant().personId(), optionIdx);
         touch(current.participant());
-        publisher.publish("poll.response.recorded", current.session());
+        if (vote.accepted()) {
+            publisher.publish("poll.response.recorded", current.session());
+        }
+        return vote;
     }
 
     private StudentSessionSnapshot snapshot(LiveSession session) {
@@ -263,7 +296,8 @@ public class StudentWebSessionService {
                 new StudentSlide(slide.idx(), slide.imageUrl(), slide.textExtract()),
                 session.annotations(),
                 feedback.aggregate(session.id()),
-                activePoll);
+                activePoll,
+                null);
     }
 
     private LiveSession sessionByCode(String joinCode) {

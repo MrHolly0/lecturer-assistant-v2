@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,6 +18,7 @@ import ru.university.assistant.feedback.api.SignalAggregate;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.interaction.api.ActivityResponse;
 import ru.university.assistant.interaction.api.PollResponseRequest;
+import ru.university.assistant.interaction.api.PollVote;
 import ru.university.assistant.interaction.api.SubmitActivityResponseRequest;
 import ru.university.assistant.live.internal.StudentSseBroadcaster;
 import ru.university.assistant.live.internal.StudentWebSessionService;
@@ -41,8 +43,11 @@ class StudentSessionController {
     }
 
     @GetMapping("/api/v1/student/sessions/{joinCode}")
-    public StudentSessionSnapshot snapshot(@PathVariable String joinCode) {
-        return studentSessions.snapshot(joinCode);
+    public StudentSessionSnapshot snapshot(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String joinCode,
+            @RequestHeader(value = "X-Participant-Token", required = false) String participantToken) {
+        return studentSessions.snapshot(joinCode, user, participantToken);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/join")
@@ -79,13 +84,12 @@ class StudentSessionController {
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/polls/{pollId}/respond")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void pollRespond(
+    public PollVote pollRespond(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
             @PathVariable UUID pollId,
             @Valid @RequestBody PollResponseRequest request) {
-        studentSessions.pollRespond(joinCode, pollId, request.participantToken(), request.optionIdx(), user);
+        return studentSessions.pollRespond(joinCode, pollId, request.participantToken(), request.optionIdx(), user);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/activity-runs/{runId}/respond")
