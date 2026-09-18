@@ -66,6 +66,30 @@ textarea {
   width: 100%;
 }
 
+.max-auth-card {
+  gap: 16px;
+}
+
+.max-auth-status {
+  text-align: center;
+}
+
+.max-auth-eyebrow {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.max-auth-card .form-error {
+  line-height: 1.5;
+}
+
+.max-auth-retry {
+  min-height: 44px;
+}
+
 .auth-header {
   display: grid;
   gap: 4px;
@@ -136,7 +160,7 @@ textarea {
   font-size: 0.875rem;
   font-weight: var(--font-weight-medium);
   justify-content: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
   transition:
     opacity 0.15s,
@@ -1141,6 +1165,20 @@ textarea {
   gap: 10px;
 }
 
+.student-profile-join {
+  display: grid;
+  gap: 12px;
+}
+
+.student-profile-join h2,
+.student-profile-join p {
+  margin: 0;
+}
+
+.student-profile-join .btn-primary {
+  min-height: 44px;
+}
+
 .student-signal-grid {
   display: grid;
   gap: 8px;
@@ -1237,6 +1275,7 @@ textarea {
   border-bottom: 2px solid transparent;
   color: var(--muted-foreground);
   cursor: pointer;
+  min-height: 44px;
   padding: 8px 14px;
 }
 

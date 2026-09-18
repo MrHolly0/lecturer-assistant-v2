@@ -1,4 +1,5 @@
 import type { components } from "./schema";
+import { getStoredAuth } from "../auth";
 import { apiFetch, ApiError } from "./http";
 
 export type StudentSessionSnapshot = components["schemas"]["StudentSessionSnapshot"];
@@ -26,18 +27,30 @@ export async function publicFetch(path: string, init?: RequestInit): Promise<Res
   return response;
 }
 
-export async function getStudentSession(joinCode: string): Promise<StudentSessionSnapshot> {
-  const res = await publicFetch(`/student/sessions/${encodeURIComponent(joinCode)}`);
+export function studentFetch(path: string, init?: RequestInit): Promise<Response> {
+  return getStoredAuth() ? apiFetch(path, init) : publicFetch(path, init);
+}
+
+export async function getStudentSession(
+  joinCode: string,
+  participantToken = ""
+): Promise<StudentSessionSnapshot> {
+  const headers = new Headers();
+  if (!getStoredAuth() && participantToken) {
+    headers.set("X-Participant-Token", participantToken);
+  }
+  const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}`, { headers });
   return res.json() as Promise<StudentSessionSnapshot>;
 }
 
 export async function joinStudentSession(
   joinCode: string,
-  displayName: string
+  displayName?: string
 ): Promise<StudentJoinResponse> {
-  const res = await publicFetch(`/student/sessions/${encodeURIComponent(joinCode)}/join`, {
+  const authenticated = Boolean(getStoredAuth());
+  const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/join`, {
     method: "POST",
-    body: JSON.stringify({ displayName })
+    body: authenticated ? undefined : JSON.stringify({ displayName })
   });
   return res.json() as Promise<StudentJoinResponse>;
 }
@@ -47,9 +60,10 @@ export async function submitStudentSignal(
   participantToken: string,
   value: SignalValue
 ): Promise<SignalAggregate> {
-  const res = await publicFetch(`/student/sessions/${encodeURIComponent(joinCode)}/signals`, {
+  const authenticated = Boolean(getStoredAuth());
+  const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/signals`, {
     method: "POST",
-    body: JSON.stringify({ participantToken, value })
+    body: JSON.stringify(authenticated ? { value } : { participantToken, value })
   });
   return res.json() as Promise<SignalAggregate>;
 }
@@ -59,9 +73,10 @@ export async function askStudentQuestion(
   participantToken: string,
   text: string
 ): Promise<StudentQuestion> {
-  const res = await publicFetch(`/student/sessions/${encodeURIComponent(joinCode)}/questions`, {
+  const authenticated = Boolean(getStoredAuth());
+  const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/questions`, {
     method: "POST",
-    body: JSON.stringify({ participantToken, text })
+    body: JSON.stringify(authenticated ? { text } : { participantToken, text })
   });
   return res.json() as Promise<StudentQuestion>;
 }

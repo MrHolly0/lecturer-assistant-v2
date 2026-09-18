@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { HelpCircle, Loader2, MessageSquareText } from "lucide-react";
@@ -14,6 +14,7 @@ import {
   type StudentSessionSnapshot
 } from "../app/api/student-api";
 import { respondToPoll } from "../app/api/interaction-api";
+import { useAuth } from "../app/AuthContext";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 
 interface StudentSessionPageProps {
@@ -27,11 +28,13 @@ const SIGNALS: Array<{ value: SignalValue; label: string; helper: string }> = [
 ];
 
 export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
+  const { user } = useAuth();
   const normalizedCode = joinCode.trim().toUpperCase();
   const storageKey = `student-session:${normalizedCode}`;
-  const [participantToken, setParticipantToken] = useState(
-    () => sessionStorage.getItem(storageKey) ?? ""
+  const [participantToken, setParticipantToken] = useState(() =>
+    user ? "" : sessionStorage.getItem(storageKey) ?? ""
   );
+  const autoJoinRequested = useRef(false);
   const [displayName, setDisplayName] = useState("");
   const [question, setQuestion] = useState("");
   const [lastSignal, setLastSignal] = useState<SignalValue | null>(null);
@@ -39,8 +42,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const [questions, setQuestions] = useState<StudentQuestion[]>([]);
   const [myVote, setMyVote] = useState<number | null>(null);
   const sessionQuery = useQuery({
-    queryKey: ["student-session", normalizedCode],
-    queryFn: () => getStudentSession(normalizedCode),
+    queryKey: ["student-session", normalizedCode, participantToken],
+    queryFn: () => getStudentSession(normalizedCode, participantToken),
     enabled: Boolean(normalizedCode)
   });
   const current = snapshot ?? sessionQuery.data ?? null;
@@ -48,7 +51,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const isJoined = Boolean(participantToken);
 
   const joinMut = useMutation({
-    mutationFn: () => joinStudentSession(normalizedCode, displayName.trim()),
+    mutationFn: () => joinStudentSession(normalizedCode, user ? undefined : displayName.trim()),
     onSuccess: (response) => {
       sessionStorage.setItem(storageKey, response.participantToken);
       setParticipantToken(response.participantToken);
@@ -85,6 +88,13 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   useEffect(() => {
     if (sessionQuery.data) setSnapshot(sessionQuery.data);
   }, [sessionQuery.data]);
+
+  useEffect(() => {
+    if (!user || participantToken || autoJoinRequested.current) return;
+    autoJoinRequested.current = true;
+    sessionStorage.removeItem(storageKey);
+    joinMut.mutate();
+  }, [joinMut, participantToken, storageKey, user]);
 
   useEffect(() => {
     setMyVote(null);
@@ -170,18 +180,43 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
 
       {!isJoined ? (
         <section className="student-action-panel">
-          <h2>Как вас показать преподавателю?</h2>
-          <form onSubmit={join} className="student-join-form">
-            <input
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="Имя на лекции"
-              maxLength={80}
-            />
-            <button className="btn-primary" type="submit" disabled={joinMut.isPending}>
-              Подключиться
-            </button>
-          </form>
+          {user ? (
+            <div className="student-profile-join" aria-live="polite">
+              <h2>Подключаем к лекции</h2>
+              {joinMut.isError ? (
+                <>
+                  <p className="form-error" role="alert">
+                    Не удалось подключиться от имени {user.displayName}.
+                  </p>
+                  <button
+                    className="btn-primary"
+                    type="button"
+                    disabled={joinMut.isPending}
+                    onClick={() => joinMut.mutate()}
+                  >
+                    Попробовать снова
+                  </button>
+                </>
+              ) : (
+                <p className="muted">Имя участника: {user.displayName}</p>
+              )}
+            </div>
+          ) : (
+            <>
+              <h2>Как вас показать преподавателю?</h2>
+              <form onSubmit={join} className="student-join-form">
+                <input
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  placeholder="Имя на лекции"
+                  maxLength={80}
+                />
+                <button className="btn-primary" type="submit" disabled={joinMut.isPending}>
+                  Подключиться
+                </button>
+              </form>
+            </>
+          )}
         </section>
       ) : (
         <section className="student-action-panel">

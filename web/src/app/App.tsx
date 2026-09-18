@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   createHashRouter,
   Navigate,
@@ -29,11 +29,18 @@ import { hideBackButton, showBackButton, subscribeBackButton } from "./max/bridg
 import { useMaxBridge } from "./max/context";
 
 const maxRootPaths = new Set(["/", "/home", "/courses", "/login", "/register"]);
+const maxStartParamPattern = /^[A-Za-z0-9_-]{1,512}$/;
 
 function MaxNavigationRoot() {
-  const { isMax } = useMaxBridge();
+  const { isMax, startParam } = useMaxBridge();
+  const { loading, maxAuthError, retryMaxAuth, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [startParamHandled, setStartParamHandled] = useState(false);
+  const startTarget =
+    user?.role === "STUDENT" && startParam && maxStartParamPattern.test(startParam)
+      ? `/s/${encodeURIComponent(startParam.toUpperCase())}`
+      : null;
 
   useEffect(() => {
     const shouldShowBackButton = isMax && !maxRootPaths.has(location.pathname);
@@ -51,16 +58,48 @@ function MaxNavigationRoot() {
     };
   }, [isMax, location.pathname, navigate]);
 
+  useEffect(() => {
+    if (startParamHandled || !isMax || loading || !user) return;
+    if (!startTarget || location.pathname === startTarget) setStartParamHandled(true);
+  }, [isMax, loading, location.pathname, startParamHandled, startTarget, user]);
+
+  if (isMax && loading) return <LoadingScreen message="Входим через MAX…" />;
+  if (isMax && !user) {
+    return <MaxAuthScreen error={maxAuthError} onRetry={retryMaxAuth} />;
+  }
+  if (isMax && !startParamHandled && startTarget && location.pathname !== startTarget) {
+    return <Navigate to={startTarget} replace />;
+  }
+
   return <Outlet />;
 }
 
-function LoadingScreen() {
+function LoadingScreen({ message = "Загрузка…" }: { message?: string }) {
   return (
-    <div className="auth-shell">
-      <div className="muted" style={{ textAlign: "center" }}>
-        …
-      </div>
+    <div className="auth-shell" aria-busy="true" aria-live="polite">
+      <div className="max-auth-status muted">{message}</div>
     </div>
+  );
+}
+
+function MaxAuthScreen({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  return (
+    <main className="auth-shell">
+      <section className="auth-card max-auth-card" aria-labelledby="max-auth-title">
+        <div className="auth-header">
+          <span className="max-auth-eyebrow">Мини-приложение MAX</span>
+          <h1 className="auth-title" id="max-auth-title">
+            Не удалось войти
+          </h1>
+        </div>
+        <p className="form-error" role="alert">
+          {error ?? "Повторите вход через MAX."}
+        </p>
+        <button className="btn-primary max-auth-retry" type="button" onClick={onRetry}>
+          Попробовать снова
+        </button>
+      </section>
+    </main>
   );
 }
 
