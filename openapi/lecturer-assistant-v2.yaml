@@ -2304,7 +2304,7 @@ components:
           type: integer
     PollResponseRequest:
       type: object
-      required: [participantToken, optionIdx]
+      required: [optionIdx]
       properties:
         participantToken:
           type: string
@@ -2464,7 +2464,7 @@ components:
           type: integer
     SubmitActivityResponseRequest:
       type: object
-      required: [participantToken, questionId, answer]
+      required: [questionId, answer]
       properties:
         participantToken:
           type: string
@@ -2542,11 +2542,16 @@ components:
           $ref: "#/components/schemas/ActivePollView"
     StudentJoinRequest:
       type: object
+      description: >
+        Anonymous entry sends displayName; returning anonymous student sends the previous participantToken and gets
+        the same participant back. A request with a Bearer JWT (for example after /auth/max) joins as that person.
       properties:
         displayName:
           type: string
           minLength: 2
           maxLength: 120
+        participantToken:
+          type: string
     StudentJoinResponse:
       type: object
       required: [participantToken, participantId, identityLevel, snapshot]
@@ -2562,7 +2567,7 @@ components:
           $ref: "#/components/schemas/StudentSessionSnapshot"
     StudentSignalRequest:
       type: object
-      required: [participantToken, value]
+      required: [value]
       properties:
         participantToken:
           type: string
@@ -2570,7 +2575,7 @@ components:
           $ref: "#/components/schemas/SignalValue"
     StudentQuestionRequest:
       type: object
-      required: [participantToken, text]
+      required: [text]
       properties:
         participantToken:
           type: string

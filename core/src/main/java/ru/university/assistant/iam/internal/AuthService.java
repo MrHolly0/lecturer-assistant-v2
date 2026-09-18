@@ -208,7 +208,10 @@ public class AuthService implements EphemeralPersonApi {
     }
 
     public List<UserProfile> listUsers() {
-        return persons.list().stream().map(PersonRecord::toProfile).toList();
+        return persons.list().stream()
+                .filter(person -> person.status() != PersonStatus.EPHEMERAL)
+                .map(PersonRecord::toProfile)
+                .toList();
     }
 
     @Transactional

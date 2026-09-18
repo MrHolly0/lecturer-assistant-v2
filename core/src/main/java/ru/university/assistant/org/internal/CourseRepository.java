@@ -97,6 +97,19 @@ class CourseRepository {
                 .update();
     }
 
+    void addMemberIfAbsent(UUID courseId, UUID personId, CourseRole role) {
+        jdbc.sql(
+                        """
+                        insert into org.course_members (course_id, person_id, role)
+                        values (:courseId, :personId, :role)
+                        on conflict (course_id, person_id) do nothing
+                        """)
+                .param("courseId", courseId)
+                .param("personId", personId)
+                .param("role", role.name())
+                .update();
+    }
+
     void removeMember(UUID courseId, UUID personId) {
         jdbc.sql("delete from org.course_members where course_id = :courseId and person_id = :personId")
                 .param("courseId", courseId)

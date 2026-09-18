@@ -18,6 +18,7 @@ import ru.university.assistant.feedback.api.FeedbackApi;
 import ru.university.assistant.feedback.api.SignalAggregate;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.iam.api.EphemeralPersonApi;
+import ru.university.assistant.iam.api.PersonRole;
 import ru.university.assistant.iam.api.UserProfile;
 import ru.university.assistant.live.api.IdentityLevel;
 import ru.university.assistant.live.api.LiveSession;
@@ -31,7 +32,6 @@ import ru.university.assistant.live.api.StudentSignalRequest;
 import ru.university.assistant.live.api.StudentSlide;
 import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.CourseAccessApi;
-import ru.university.assistant.org.api.CourseRole;
 import ru.university.assistant.interaction.api.ActivePollView;
 import ru.university.assistant.interaction.api.ActivityRespondApi;
 import ru.university.assistant.interaction.api.ActivityResponse;
@@ -88,41 +88,83 @@ public class StudentWebSessionService {
     }
 
     @Transactional
-    public StudentJoinResponse join(String joinCode, StudentJoinRequest request) {
+    public StudentJoinResponse join(String joinCode, StudentJoinRequest request, AuthenticatedUser user) {
         LiveSession session = sessionByCode(joinCode);
         ensureJoinable(session);
+        String presented = request == null ? null : request.participantToken();
+        if (presented != null && !presented.isBlank()) {
+            WebParticipant existing = sessions.findWebParticipant(StudentTokenHasher.sha256(presented))
+                    .filter(participant -> participant.sessionId().equals(session.id()))
+                    .orElse(null);
+            if (existing != null) {
+                sessions.touchWebParticipant(existing.id());
+                return new StudentJoinResponse(presented, existing.id(), existing.identityLevel(), snapshot(session));
+            }
+        }
+        if (user != null) {
+            registerPerson(session, user);
+            sessions.deleteProfileTokens(session.id(), user.id());
+            String token = randomToken();
+            WebParticipant participant = sessions.createWebToken(
+                    UuidV7.generate(), session.id(), user.id(),
+                    StudentTokenHasher.sha256(token), user.displayName(), IdentityLevel.PROFILE);
+            return new StudentJoinResponse(token, participant.id(), IdentityLevel.PROFILE, snapshot(session));
+        }
         UserProfile person = persons.createEphemeralStudent(request == null ? null : request.displayName());
-        memberships.addMemberFromInvitation(session.courseId(), null, person.id(), CourseRole.STUDENT);
-        sessions.joinWeb(session.id(), person.id(), person.displayName());
+        // Гость живёт только в сессии: в постоянный состав курса он не попадает (D-14).
+        publishJoined(
+                session,
+                person.id(),
+                sessions.joinPerson(session.id(), person.id(), person.displayName()),
+                IdentityLevel.EPHEMERAL);
         String token = randomToken();
         WebParticipant participant = sessions.createWebToken(
                 UuidV7.generate(), session.id(), person.id(),
                 StudentTokenHasher.sha256(token), person.displayName(), IdentityLevel.EPHEMERAL);
+        return new StudentJoinResponse(token, participant.id(), participant.identityLevel(), snapshot(session));
+    }
+
+    /** Реальный человек (вход через MAX или по паролю): один участник сессии, студент курса добавляется один раз. */
+    private void registerPerson(LiveSession session, AuthenticatedUser user) {
+        if (user.role() == PersonRole.STUDENT) {
+            memberships.ensureStudentMember(session.courseId(), user.id());
+        }
+        LiveSessionRepository.JoinOutcome outcome = sessions.joinPerson(session.id(), user.id(), user.displayName());
+        if (outcome.kicked()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Вас удалили из этой лекции");
+        }
+        publishJoined(session, user.id(), outcome, IdentityLevel.PROFILE);
+    }
+
+    private void publishJoined(
+            LiveSession session, UUID personId, LiveSessionRepository.JoinOutcome outcome, IdentityLevel level) {
+        if (!outcome.inserted()) {
+            return;
+        }
         events.publish(new DomainEvent(
                 "live.session",
                 session.id(),
                 "participant.joined",
-                person.id(),
+                personId,
                 Map.of("courseId", session.courseId(), "sessionId", session.id(), "lectureId", session.lectureId()),
-                Map.of("channelType", "web", "identityLevel", participant.identityLevel().name())));
+                Map.of("channelType", "web", "identityLevel", level.name())));
         publisher.publish("participant.joined", session);
-        return new StudentJoinResponse(token, participant.id(), participant.identityLevel(), snapshot(session));
     }
 
     @Transactional
-    public SignalAggregate signal(String joinCode, StudentSignalRequest request) {
-        ParticipantSession current = participantSession(joinCode, request.participantToken());
+    public SignalAggregate signal(String joinCode, StudentSignalRequest request, AuthenticatedUser user) {
+        ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
         ensureJoinable(current.session());
         SignalAggregate aggregate = feedback.saveSignal(
                 current.session().id(), current.participant().personId(), "web", request.value());
-        sessions.touchWebParticipant(current.participant().id());
+        touch(current.participant());
         publisher.publish("feedback.signal_submitted", current.session());
         return aggregate;
     }
 
     @Transactional
-    public StudentQuestion ask(String joinCode, StudentQuestionRequest request) {
-        ParticipantSession current = participantSession(joinCode, request.participantToken());
+    public StudentQuestion ask(String joinCode, StudentQuestionRequest request, AuthenticatedUser user) {
+        ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
         ensureJoinable(current.session());
         StudentQuestion question = questions.ask(
                 current.session().id(),
@@ -130,7 +172,7 @@ public class StudentWebSessionService {
                 current.participant().displayName(),
                 "web",
                 request.text());
-        sessions.touchWebParticipant(current.participant().id());
+        touch(current.participant());
         publisher.publish("qa.question_asked", current.session());
         return question;
     }
@@ -143,12 +185,21 @@ public class StudentWebSessionService {
     }
 
     public boolean tokenBelongsToJoinCode(String joinCode, String participantToken) {
-        participantSession(joinCode, participantToken);
+        participantSession(joinCode, participantToken, null);
         return true;
     }
 
-    private ParticipantSession participantSession(String joinCode, String participantToken) {
+    private ParticipantSession participantSession(String joinCode, String participantToken, AuthenticatedUser user) {
         LiveSession session = sessionByCode(joinCode);
+        if (participantToken == null || participantToken.isBlank()) {
+            if (user == null) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Participant token or login is required");
+            }
+            registerPerson(session, user);
+            WebParticipant participant =
+                    new WebParticipant(null, session.id(), user.id(), user.displayName(), IdentityLevel.PROFILE);
+            return new ParticipantSession(session, participant);
+        }
         WebParticipant participant = sessions.findWebParticipant(StudentTokenHasher.sha256(participantToken))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid participant token"));
         if (!participant.sessionId().equals(session.id())) {
@@ -157,23 +208,30 @@ public class StudentWebSessionService {
         return new ParticipantSession(session, participant);
     }
 
+    private void touch(WebParticipant participant) {
+        if (participant.id() != null) {
+            sessions.touchWebParticipant(participant.id());
+        }
+    }
+
     @Transactional
     public ActivityResponse activityRespond(
-            String joinCode, UUID runId, SubmitActivityResponseRequest request) {
-        ParticipantSession current = participantSession(joinCode, request.participantToken());
+            String joinCode, UUID runId, SubmitActivityResponseRequest request, AuthenticatedUser user) {
+        ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
         ensureJoinable(current.session());
         ActivityResponse response = activityRespond.submitResponse(
                 runId, current.participant().personId(), request.questionId(), request.answer());
-        sessions.touchWebParticipant(current.participant().id());
+        touch(current.participant());
         return response;
     }
 
     @Transactional
-    public void pollRespond(String joinCode, UUID pollId, String participantToken, int optionIdx) {
-        ParticipantSession current = participantSession(joinCode, participantToken);
+    public void pollRespond(
+            String joinCode, UUID pollId, String participantToken, int optionIdx, AuthenticatedUser user) {
+        ParticipantSession current = participantSession(joinCode, participantToken, user);
         ensureJoinable(current.session());
         quickPolls.respond(pollId, current.participant().personId(), optionIdx);
-        sessions.touchWebParticipant(current.participant().id());
+        touch(current.participant());
         publisher.publish("poll.response.recorded", current.session());
     }
 

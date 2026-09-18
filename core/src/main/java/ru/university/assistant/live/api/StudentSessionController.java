@@ -47,9 +47,10 @@ class StudentSessionController {
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/join")
     public StudentJoinResponse join(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
             @Valid @RequestBody(required = false) StudentJoinRequest request) {
-        return studentSessions.join(joinCode, request);
+        return studentSessions.join(joinCode, request, user);
     }
 
     @GetMapping(path = "/api/v1/student/sessions/{joinCode}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -62,34 +63,38 @@ class StudentSessionController {
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/signals")
     public SignalAggregate signal(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
             @Valid @RequestBody StudentSignalRequest request) {
-        return studentSessions.signal(joinCode, request);
+        return studentSessions.signal(joinCode, request, user);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/questions")
     @ResponseStatus(HttpStatus.CREATED)
     public StudentQuestion ask(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
             @Valid @RequestBody StudentQuestionRequest request) {
-        return studentSessions.ask(joinCode, request);
+        return studentSessions.ask(joinCode, request, user);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/polls/{pollId}/respond")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void pollRespond(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
             @PathVariable UUID pollId,
             @Valid @RequestBody PollResponseRequest request) {
-        studentSessions.pollRespond(joinCode, pollId, request.participantToken(), request.optionIdx());
+        studentSessions.pollRespond(joinCode, pollId, request.participantToken(), request.optionIdx(), user);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/activity-runs/{runId}/respond")
     @ResponseStatus(HttpStatus.CREATED)
     public ActivityResponse activityRespond(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
             @PathVariable UUID runId,
             @Valid @RequestBody SubmitActivityResponseRequest request) {
-        return studentSessions.activityRespond(joinCode, runId, request);
+        return studentSessions.activityRespond(joinCode, runId, request, user);
     }
 }
