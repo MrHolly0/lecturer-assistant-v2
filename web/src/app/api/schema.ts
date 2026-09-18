@@ -72,6 +72,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/auth/max": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Login by signed initData of the MAX mini app.
+     * @description Verifies the initData signature (HMAC-SHA256, key derived from the bot token) and auth_date freshness, finds or creates the person by MAX user id and returns a JWT.
+     */
+    post: operations["loginWithMax"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/auth/refresh": {
     parameters: {
       query?: never;
@@ -1256,6 +1276,23 @@ export interface components {
       accessToken: string;
       user: components["schemas"]["UserProfile"];
     };
+    MaxAuthRequest: {
+      /** @description Raw window.WebApp.initData string, never initDataUnsafe. */
+      initData: string;
+    };
+    MaxAuthResponse: {
+      accessToken: string;
+      /**
+       * Format: int64
+       * @description Access token lifetime in seconds.
+       */
+      expiresIn: number;
+      /** @enum {string} */
+      role: "ADMIN" | "LECTURER" | "ASSISTANT" | "STUDENT";
+      /** Format: uuid */
+      personId: string;
+      displayName: string;
+    };
     UserProfile: {
       /** Format: uuid */
       id: string;
@@ -1918,6 +1955,60 @@ export interface operations {
       };
       /** @description Invalid credentials. */
       401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  loginWithMax: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["MaxAuthRequest"];
+      };
+    };
+    responses: {
+      /** @description Access token and role of the person. */
+      200: {
+        headers: {
+          /** @description httpOnly refresh token cookie scoped to /api/v1/auth. */
+          "Set-Cookie"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MaxAuthResponse"];
+        };
+      };
+      /** @description initData is blank or longer than 8192 characters. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Signature mismatch, malformed or expired initData. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Person is disabled. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description MAX login is not configured on the server (no bot token). */
+      503: {
         headers: {
           [name: string]: unknown;
         };

@@ -12,12 +12,13 @@ export class ApiError extends Error {
 }
 
 export interface ApiRequestInit extends RequestInit {
+  skipAuthorization?: boolean;
   skipAuthRefresh?: boolean;
 }
 
 export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise<Response> {
-  const { skipAuthRefresh = false, ...requestInit } = init;
-  const accessToken = getStoredAuth()?.accessToken ?? null;
+  const { skipAuthorization = false, skipAuthRefresh = false, ...requestInit } = init;
+  const accessToken = skipAuthorization ? null : getStoredAuth()?.accessToken ?? null;
   let response = await sendRequest(path, requestInit, accessToken);
 
   if (response.status === 401 && !skipAuthRefresh && accessToken) {

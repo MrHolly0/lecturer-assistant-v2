@@ -1,10 +1,18 @@
 import type { components } from "./schema";
 import { apiFetch } from "./http";
-import { getStoredAuth, setStoredAuth } from "../auth";
+import { clearStoredAuth, getStoredAuth, setStoredAuth } from "../auth";
 import { refreshAuthSession } from "./refresh";
 
 type AuthResponse = components["schemas"]["AuthResponse"];
+export type MaxAuthResponse = components["schemas"]["MaxAuthResponse"];
 type UserProfile = components["schemas"]["UserProfile"];
+
+export interface MaxLoginResult {
+  auth: MaxAuthResponse;
+  user: UserProfile;
+}
+
+let maxLoginInFlight: Promise<MaxLoginResult> | null = null;
 
 export async function bootstrapAdmin(
   displayName: string,
@@ -14,6 +22,7 @@ export async function bootstrapAdmin(
   const res = await apiFetch("/auth/bootstrap-admin", {
     method: "POST",
     body: JSON.stringify({ displayName, email, password }),
+    skipAuthorization: true,
     skipAuthRefresh: true
   });
   const data: AuthResponse = await res.json();
@@ -25,6 +34,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
   const res = await apiFetch("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
+    skipAuthorization: true,
     skipAuthRefresh: true
   });
   const data: AuthResponse = await res.json();
@@ -41,6 +51,7 @@ export async function registerByInvitation(
   const res = await apiFetch("/auth/register", {
     method: "POST",
     body: JSON.stringify({ displayName, email, password, invitationCode }),
+    skipAuthorization: true,
     skipAuthRefresh: true
   });
   const data: AuthResponse = await res.json();
@@ -50,6 +61,33 @@ export async function registerByInvitation(
 
 export async function refreshAuth(): Promise<AuthResponse | null> {
   return refreshAuthSession();
+}
+
+export function loginWithMax(initData: string): Promise<MaxLoginResult> {
+  if (maxLoginInFlight) return maxLoginInFlight;
+  maxLoginInFlight = performMaxLogin(initData).finally(() => {
+    maxLoginInFlight = null;
+  });
+  return maxLoginInFlight;
+}
+
+async function performMaxLogin(initData: string): Promise<MaxLoginResult> {
+  clearStoredAuth();
+  try {
+    const res = await apiFetch("/auth/max", {
+      method: "POST",
+      body: JSON.stringify({ initData }),
+      skipAuthorization: true,
+      skipAuthRefresh: true
+    });
+    const auth = (await res.json()) as MaxAuthResponse;
+    setStoredAuth({ accessToken: auth.accessToken });
+    const user = await getCurrentUser();
+    return { auth, user };
+  } catch (error) {
+    clearStoredAuth();
+    throw error;
+  }
 }
 
 export async function logout(): Promise<void> {

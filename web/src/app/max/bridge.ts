@@ -18,6 +18,7 @@ export interface MaxEnvironment {
   version: string | null;
   deviceName: string | null;
   initData: string;
+  startParam: string | null;
   theme: MaxColorScheme;
   viewport: MaxViewportSize;
   hapticsSupported: boolean;
@@ -58,10 +59,23 @@ export function readEnvironment(): MaxEnvironment {
     version: isMax && webApp?.version ? webApp.version : null,
     deviceName: isMax && webApp?.deviceName ? webApp.deviceName : null,
     initData: isMax ? webApp?.initData ?? "" : "",
+    startParam: isMax ? readStartParam(webApp) : null,
     theme: readTheme(isMax ? webApp : null),
     viewport: browserViewport,
     hapticsSupported: isMax && canUseHaptics(webApp)
   };
+}
+
+export function readStartParam(webApp = getMaxWebApp()): string | null {
+  const unsafeValue = webApp?.initDataUnsafe?.start_param;
+  if (typeof unsafeValue === "string" && unsafeValue.length > 0) return unsafeValue;
+  if (!webApp?.initData) return null;
+
+  try {
+    return new URLSearchParams(webApp.initData).get("start_param");
+  } catch {
+    return null;
+  }
 }
 
 export function notifyReady(): boolean {

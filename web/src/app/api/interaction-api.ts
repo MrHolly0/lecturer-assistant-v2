@@ -1,6 +1,7 @@
 import type { components } from "./schema";
+import { getStoredAuth } from "../auth";
 import { apiFetch } from "./http";
-import { publicFetch } from "./student-api";
+import { studentFetch } from "./student-api";
 
 export type PollStatus = components["schemas"]["PollStatus"];
 export type QuickPoll = components["schemas"]["QuickPoll"];
@@ -93,11 +94,9 @@ export async function respondToPoll(
   participantToken: string,
   optionIdx: number
 ): Promise<void> {
-  await publicFetch(
-    `/student/sessions/${encodeURIComponent(joinCode)}/polls/${pollId}/respond`,
-    {
-      method: "POST",
-      body: JSON.stringify({ participantToken, optionIdx })
-    }
-  );
+  const authenticated = Boolean(getStoredAuth());
+  await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/polls/${pollId}/respond`, {
+    method: "POST",
+    body: JSON.stringify(authenticated ? { optionIdx } : { participantToken, optionIdx })
+  });
 }
