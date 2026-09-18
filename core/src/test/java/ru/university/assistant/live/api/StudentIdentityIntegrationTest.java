@@ -164,6 +164,7 @@ class StudentIdentityIntegrationTest {
         assertEquals(1L, count("live.session_participants"));
         assertEquals(1L, count("live.web_participant_tokens"));
         assertEquals(0L, count("org.course_members where role = 'STUDENT'"));
+        assertEquals(1L, count("analytics.events where verb = 'participant.joined' and payload->>'origin' = 'web'"));
     }
 
     @Test
@@ -183,6 +184,7 @@ class StudentIdentityIntegrationTest {
         assertEquals(1L, count("iam.persons where status = 'ACTIVE' and role = 'STUDENT'"));
         assertEquals(0L, count("iam.persons where status = 'EPHEMERAL'"));
         assertEquals(1L, count("analytics.events where verb = 'participant.joined'"));
+        assertEquals(1L, count("analytics.events where verb = 'participant.joined' and payload->>'origin' = 'max'"));
         assertNotEquals(a.get("participantToken").asText(), c.get("participantToken").asText());
     }
 
@@ -209,6 +211,7 @@ class StudentIdentityIntegrationTest {
     void lecturerJoiningOwnSessionKeepsLecturerRole() throws Exception {
         join(lecturerToken, "{}");
 
+        assertEquals(1L, count("analytics.events where payload->>'origin' = 'web' and verb = 'participant.joined'"));
         assertEquals(1L, count("org.course_members where role = 'LECTURER'"));
         assertEquals(0L, count("org.course_members where role = 'STUDENT'"));
     }

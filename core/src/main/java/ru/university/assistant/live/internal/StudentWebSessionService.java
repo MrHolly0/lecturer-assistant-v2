@@ -17,6 +17,7 @@ import ru.university.assistant.content.api.StudentDeckApi;
 import ru.university.assistant.feedback.api.FeedbackApi;
 import ru.university.assistant.feedback.api.SignalAggregate;
 import ru.university.assistant.iam.api.AuthenticatedUser;
+import ru.university.assistant.iam.api.ChannelIdentityApi;
 import ru.university.assistant.iam.api.EphemeralPersonApi;
 import ru.university.assistant.iam.api.PersonRole;
 import ru.university.assistant.iam.api.UserProfile;
@@ -50,6 +51,7 @@ public class StudentWebSessionService {
     private final FeedbackApi feedback;
     private final QuestionApi questions;
     private final EphemeralPersonApi persons;
+    private final ChannelIdentityApi channelIdentities;
     private final CourseMembershipApi memberships;
     private final CourseAccessApi courseAccess;
     private final EventBus events;
@@ -63,6 +65,7 @@ public class StudentWebSessionService {
             FeedbackApi feedback,
             QuestionApi questions,
             EphemeralPersonApi persons,
+            ChannelIdentityApi channelIdentities,
             CourseMembershipApi memberships,
             CourseAccessApi courseAccess,
             EventBus events,
@@ -74,6 +77,7 @@ public class StudentWebSessionService {
         this.feedback = feedback;
         this.questions = questions;
         this.persons = persons;
+        this.channelIdentities = channelIdentities;
         this.memberships = memberships;
         this.courseAccess = courseAccess;
         this.events = events;
@@ -116,7 +120,8 @@ public class StudentWebSessionService {
                 session,
                 person.id(),
                 sessions.joinPerson(session.id(), person.id(), person.displayName()),
-                IdentityLevel.EPHEMERAL);
+                IdentityLevel.EPHEMERAL,
+                "web");
         String token = randomToken();
         WebParticipant participant = sessions.createWebToken(
                 UuidV7.generate(), session.id(), person.id(),
@@ -133,11 +138,13 @@ public class StudentWebSessionService {
         if (outcome.kicked()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Вас удалили из этой лекции");
         }
-        publishJoined(session, user.id(), outcome, IdentityLevel.PROFILE);
+        String origin = channelIdentities.hasIdentity(user.id(), "max") ? "max" : "web";
+        publishJoined(session, user.id(), outcome, IdentityLevel.PROFILE, origin);
     }
 
     private void publishJoined(
-            LiveSession session, UUID personId, LiveSessionRepository.JoinOutcome outcome, IdentityLevel level) {
+            LiveSession session, UUID personId, LiveSessionRepository.JoinOutcome outcome,
+            IdentityLevel level, String origin) {
         if (!outcome.inserted()) {
             return;
         }
@@ -147,7 +154,7 @@ public class StudentWebSessionService {
                 "participant.joined",
                 personId,
                 Map.of("courseId", session.courseId(), "sessionId", session.id(), "lectureId", session.lectureId()),
-                Map.of("channelType", "web", "identityLevel", level.name())));
+                Map.of("channelType", "web", "identityLevel", level.name(), "origin", origin)));
         publisher.publish("participant.joined", session);
     }
 

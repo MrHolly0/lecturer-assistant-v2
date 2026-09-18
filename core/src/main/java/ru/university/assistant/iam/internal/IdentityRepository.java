@@ -75,6 +75,15 @@ class IdentityRepository {
                 .single();
     }
 
+    boolean existsForPerson(UUID personId, String channelType) {
+        return jdbc.sql("select exists(select 1 from iam.channel_identities "
+                        + "where person_id = :personId and channel_type = :channelType)")
+                .param("personId", personId)
+                .param("channelType", channelType)
+                .query(Boolean.class)
+                .single();
+    }
+
     Optional<ChannelIdentityResponse> findByExternalId(String channelType, String externalId) {
         return jdbc.sql(
                         """
