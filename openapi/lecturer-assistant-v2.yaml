@@ -141,6 +141,8 @@ paths:
           description: Person is disabled.
         "409":
           description: linkCode was already used.
+        "429":
+          description: Too many requests from this client (B-13 rate limit).
         "503":
           description: MAX login is not configured on the server (no bot token).
   /auth/refresh:
@@ -1138,6 +1140,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignalAggregate"
+        "429":
+          description: Too many requests from this client (B-13 rate limit).
   /student/sessions/{joinCode}/questions:
     post:
       operationId: askStudentQuestion
