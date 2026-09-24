@@ -1,13 +1,8 @@
 import { useMemo, useState } from "react";
 import type { Lecture, SlideDeck } from "../app/api/content-api";
+import { pluralizeRu } from "../shared/lib/plural";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "../shared/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { ConfirmActionButton } from "./ConfirmActionButton";
 import { PaginationBar, SearchField } from "./ListControls";
@@ -64,7 +59,10 @@ export function LectureList({
     <section className="material-section">
       <div className="section-heading">
         <h2>Лекции</h2>
-        <span className="muted">{activeLectures.length} активных</span>
+        <span className="muted">
+          {activeLectures.length}{" "}
+          {pluralizeRu(activeLectures.length, "активная", "активные", "активных")}
+        </span>
       </div>
       {canManage && (
         <div className="inline-form">

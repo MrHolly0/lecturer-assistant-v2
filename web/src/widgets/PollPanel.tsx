@@ -112,7 +112,13 @@ export function PollPanel({ courseId, sessionId }: Props) {
       <div className="poll-panel">
         <div className="poll-panel-header">
           <span className="poll-panel-title">Новый опрос</span>
-          <button type="button" className="btn-ghost" onClick={() => setView("idle")}>
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => setView("idle")}
+            aria-label="Закрыть редактор опроса"
+            title="Закрыть редактор"
+          >
             <X size={14} />
           </button>
         </div>
@@ -143,6 +149,8 @@ export function PollPanel({ courseId, sessionId }: Props) {
                   type="button"
                   className="btn-ghost"
                   onClick={() => setOptions(options.filter((_, i) => i !== idx))}
+                  aria-label={`Удалить вариант ${idx + 1}`}
+                  title={`Удалить вариант ${idx + 1}`}
                 >
                   <X size={12} />
                 </button>

@@ -71,7 +71,13 @@ export function SlideNotesPanel({
           <NotebookPen size={15} />
           <span>Заметки - слайд {slideIndex}</span>
         </div>
-        <button className="snp-close-btn" type="button" onClick={onClose} title="Закрыть">
+        <button
+          className="snp-close-btn"
+          type="button"
+          onClick={onClose}
+          title="Закрыть"
+          aria-label="Закрыть заметки"
+        >
           <X size={16} />
         </button>
       </div>

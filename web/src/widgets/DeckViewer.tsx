@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, NotebookPen } from "lucide-react";
 import type { SlideDeckDetails } from "../app/api/content-api";
 import { slideImageUrl } from "../app/api/content-api";
+import { pluralizeRu } from "../shared/lib/plural";
 import { SlideNotesPanel } from "./SlideNotesPanel";
 
 interface DeckViewerProps {
@@ -37,7 +38,8 @@ export function DeckViewer({
         <div>
           <h2>{deck.title}</h2>
           <span className="muted">
-            Версия {deck.version}, {deck.slides.length} слайдов
+            Версия {deck.version}, {deck.slides.length}{" "}
+            {pluralizeRu(deck.slides.length, "слайд", "слайда", "слайдов")}
           </span>
         </div>
         <button
@@ -75,6 +77,7 @@ export function DeckViewer({
           disabled={activeIndex === 0}
           onClick={() => onSlideChange(activeIndex - 1)}
           title="Предыдущий слайд"
+          aria-label="Предыдущий слайд"
         >
           <ChevronLeft size={16} />
         </button>
@@ -87,6 +90,7 @@ export function DeckViewer({
           disabled={activeIndex >= deck.slides.length - 1}
           onClick={() => onSlideChange(activeIndex + 1)}
           title="Следующий слайд"
+          aria-label="Следующий слайд"
         >
           <ChevronRight size={16} />
         </button>
@@ -99,6 +103,8 @@ export function DeckViewer({
             type="button"
             className={`slide-thumb ${index === activeIndex ? "slide-thumb--active" : ""}`}
             onClick={() => onSlideChange(index)}
+            aria-label={`Перейти к слайду ${item.idx}`}
+            aria-current={index === activeIndex ? "true" : undefined}
           >
             <img src={slideImageUrl(item)} alt={`Слайд ${item.idx}`} />
             <span>{item.idx}</span>

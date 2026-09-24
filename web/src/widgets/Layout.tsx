@@ -52,7 +52,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <span>Lecturer Assistant</span>
           </Link>
           <button
-            className="lg:hidden"
+            className="icon-touch-target lg:hidden"
             onClick={() => setSidebarOpen(false)}
             aria-label="Закрыть меню"
           >
@@ -117,7 +117,11 @@ export function Layout({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-3 border-b border-neutral-200 bg-white px-4 py-3 lg:hidden">
-          <button onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
+          <button
+            className="icon-touch-target"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Открыть меню"
+          >
             <Menu className="h-5 w-5" />
           </button>
           <BrandMark className="h-6 w-6 text-orange-500" />

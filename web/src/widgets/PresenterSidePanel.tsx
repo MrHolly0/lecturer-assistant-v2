@@ -85,7 +85,10 @@ export function PresenterSidePanel({
         <TabsContent value="students" className="live-panel">
           <div className="section-heading">
             <h2>Студенты</h2>
-            <span className="badge">{activeParticipants.length} на связи</span>
+            <span className="badge">
+              {activeParticipants.length}{" "}
+              {pluralizeRu(activeParticipants.length, "студент", "студента", "студентов")} на связи
+            </span>
           </div>
           {activeParticipants.length === 0 && <p className="muted">Пока никто не подключился.</p>}
           {activeParticipants.length > 0 && (

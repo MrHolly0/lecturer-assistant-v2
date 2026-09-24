@@ -44,6 +44,24 @@ textarea {
   font: inherit;
 }
 
+:where(a, button, input, select, textarea, [role="button"], [tabindex]):focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.icon-touch-target {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  height: 44px;
+  justify-content: center;
+  padding: 0;
+  width: 44px;
+}
+
 .auth-shell {
   align-items: center;
   background: var(--background);
@@ -585,7 +603,7 @@ textarea {
 }
 
 .deck-controls .btn-ghost {
-  min-width: 40px;
+  min-width: 44px;
   padding: 0;
 }
 
@@ -696,12 +714,12 @@ textarea {
   color: #737373;
   cursor: pointer;
   display: flex;
-  height: 24px;
+  height: 44px;
   justify-content: center;
   transition:
     color 0.15s,
     background 0.15s;
-  width: 24px;
+  width: 44px;
 }
 
 .snp-close-btn:hover {
@@ -752,6 +770,8 @@ textarea {
   background: rgba(255, 255, 255, 0.07);
   border-color: rgba(249, 115, 22, 0.5);
   box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.15);
+  outline: 2px solid #f97316;
+  outline-offset: 1px;
 }
 
 .snp-textarea::placeholder {
@@ -839,9 +859,9 @@ textarea {
   color: var(--foreground);
   cursor: pointer;
   display: inline-flex;
-  height: 36px;
+  height: 44px;
   justify-content: center;
-  width: 36px;
+  width: 44px;
 }
 
 .presenter-shell {
@@ -1134,9 +1154,9 @@ textarea {
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
-  height: 28px;
+  height: 44px;
   justify-content: center;
-  min-width: 28px;
+  min-width: 44px;
   padding: 0 6px;
 }
 
@@ -1171,6 +1191,10 @@ textarea {
 
 .live-tabs__list {
   width: 100%;
+}
+
+.live-tabs__list [role="tab"] {
+  min-height: 44px;
 }
 
 .live-panel .section-heading {
@@ -1947,6 +1971,27 @@ textarea {
   padding: 24px;
 }
 
+html[data-max-mini-app="true"] .presenter-shell,
+html[data-max-mini-app="true"] .projection-shell {
+  height: calc(var(--app-viewport-height) - var(--app-safe-area-top) - var(--app-safe-area-bottom));
+}
+
+html[data-max-mini-app="true"] .projection-shell {
+  width: calc(var(--app-viewport-width) - var(--app-safe-area-left) - var(--app-safe-area-right));
+}
+
+html[data-max-mini-app="true"] .auth-shell,
+html[data-max-mini-app="true"] .session-join-shell,
+html[data-max-mini-app="true"] .student-session-shell {
+  min-height: calc(
+    var(--app-viewport-height) - var(--app-safe-area-top) - var(--app-safe-area-bottom)
+  );
+}
+
+html[data-max-mini-app="true"] .student-session-shell {
+  padding: 18px;
+}
+
 .session-join-shell--center {
   align-items: center;
   justify-content: center;
@@ -2494,6 +2539,9 @@ textarea {
   display: flex;
   align-items: center;
   color: inherit;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
 }
 
 .qbank-dialog-footer {

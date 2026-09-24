@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { SlideDeck } from "../app/api/content-api";
+import { pluralizeRu } from "../shared/lib/plural";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { ConfirmActionButton } from "./ConfirmActionButton";
@@ -49,7 +50,9 @@ export function DeckListPanel({
     <section className="material-section">
       <div className="section-heading">
         <h2>Презентации</h2>
-        <span className="muted">{activeDecks.length} активных</span>
+        <span className="muted">
+          {activeDecks.length} {pluralizeRu(activeDecks.length, "активная", "активные", "активных")}
+        </span>
       </div>
       <div className="list-toolbar">
         <Tabs value={tab} onValueChange={(value) => setTab(value as DeckTab)}>
@@ -63,15 +66,21 @@ export function DeckListPanel({
       <div className="deck-list">
         {visibleDecks.length === 0 && (
           <p className="muted">
-            {tab === "archive" ? "В архиве презентаций нет." : "Загрузите первую презентацию курса."}
+            {tab === "archive"
+              ? "В архиве презентаций нет."
+              : "Загрузите первую презентацию курса."}
           </p>
         )}
         {paged.pageItems.map((deck) => (
-          <div key={deck.id} className={`deck-pill ${deck.id === selectedDeckId ? "deck-pill--active" : ""}`}>
+          <div
+            key={deck.id}
+            className={`deck-pill ${deck.id === selectedDeckId ? "deck-pill--active" : ""}`}
+          >
             <button type="button" onClick={() => onSelect(deck.id)}>
               <span>{deck.title}</span>
               <small>
-                v{deck.version} · {deck.slideCount} слайдов
+                v{deck.version} · {deck.slideCount}{" "}
+                {pluralizeRu(deck.slideCount, "слайд", "слайда", "слайдов")}
               </small>
             </button>
             {canManage && !deck.archived && (
