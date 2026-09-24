@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { BookOpen, Home, LogOut, Menu, Shield, UserRound, X } from "lucide-react";
+import { BookOpen, Home, Link2, LogOut, Menu, Shield, UserRound, X } from "lucide-react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthContext";
 import { landingPath } from "../app/routes";
@@ -9,6 +9,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../shared/ui/tooltip";
 const navItems = [
   { path: "/home", icon: Home, label: "Главная", roles: ["STUDENT"] },
   { path: "/courses", icon: BookOpen, label: "Курсы", roles: ["ADMIN", "LECTURER", "ASSISTANT"] },
+  {
+    path: "/settings/max",
+    icon: Link2,
+    label: "Подключить MAX",
+    roles: ["ADMIN", "LECTURER", "ASSISTANT"]
+  },
   { path: "/admin/users", icon: Shield, label: "Пользователи", roles: ["ADMIN"] }
 ];
 
@@ -37,7 +43,10 @@ export function Layout({ children }: { children: ReactNode }) {
         }`}
       >
         <div className="flex items-center justify-between border-b border-neutral-200 p-5">
-          <Link to={user ? landingPath(user.role) : "/login"} className="flex items-center gap-2 text-lg">
+          <Link
+            to={user ? landingPath(user.role) : "/login"}
+            className="flex items-center gap-2 text-lg"
+          >
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500 text-xs text-white">
               L
             </span>

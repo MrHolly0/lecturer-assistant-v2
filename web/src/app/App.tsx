@@ -22,18 +22,29 @@ import { SessionJoinPage } from "../pages/SessionJoinPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { StudentHomePage } from "../pages/StudentHomePage";
 import { StudentSessionPage } from "../pages/StudentSessionPage";
+import { MaxLinkPage } from "../pages/MaxLinkPage";
 import { Layout } from "../widgets/Layout";
 import { Toaster } from "../shared/ui/sonner";
 import { landingPath, type UserRole } from "./routes";
 import { hideBackButton, showBackButton, subscribeBackButton } from "./max/bridge";
 import { useMaxBridge } from "./max/context";
+import { readMaxLinkCode } from "./max/deepLink";
+import { MaxLinkCodeScreen } from "../widgets/MaxLinkCodeScreen";
 
 const maxRootPaths = new Set(["/", "/home", "/courses", "/login", "/register"]);
 const maxStartParamPattern = /^[A-Za-z0-9_-]{1,512}$/;
 
 function MaxNavigationRoot() {
   const { isMax, startParam } = useMaxBridge();
-  const { loading, maxAuthError, retryMaxAuth, user } = useAuth();
+  const {
+    loading,
+    maxAuthError,
+    maxLinkRequired,
+    submitMaxLinkCode,
+    continueMaxAuth,
+    retryMaxAuth,
+    user
+  } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [startParamHandled, setStartParamHandled] = useState(false);
@@ -64,6 +75,16 @@ function MaxNavigationRoot() {
   }, [isMax, loading, location.pathname, startParamHandled, startTarget, user]);
 
   if (isMax && loading) return <LoadingScreen message="Входим через MAX…" />;
+  if (isMax && maxLinkRequired) {
+    return (
+      <MaxLinkCodeScreen
+        initialCode={readMaxLinkCode(startParam) ?? ""}
+        error={maxAuthError}
+        onSubmit={submitMaxLinkCode}
+        onContinue={continueMaxAuth}
+      />
+    );
+  }
   if (isMax && !user) {
     return <MaxAuthScreen error={maxAuthError} onRetry={retryMaxAuth} />;
   }
@@ -241,7 +262,8 @@ const router = createHashRouter([
               { path: "/courses", element: <CoursesPage /> },
               { path: "/courses/:courseId", element: <CourseRoute /> },
               { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
-              { path: "/courses/:courseId/questions", element: <QuestionBankRoute /> }
+              { path: "/courses/:courseId/questions", element: <QuestionBankRoute /> },
+              { path: "/settings/max", element: <MaxLinkPage /> }
             ]
           },
           {
