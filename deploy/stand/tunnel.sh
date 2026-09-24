@@ -16,7 +16,9 @@ env_value() { [ -f .env ] && sed -n "s/^$1=//p" .env | tail -1 || true; }
 
 TUNNEL_PORT="${TUNNEL_PORT:-$(env_value TUNNEL_PORT)}"; TUNNEL_PORT="${TUNNEL_PORT:-18088}"
 NGROK_DOMAIN="${NGROK_DOMAIN:-$(env_value NGROK_DOMAIN)}"
-export TUNNEL_PORT
+# Почта Let's Encrypt за туннелем не используется, но prod-оверлей требует значение.
+ACME_EMAIL="${ACME_EMAIL:-unused@example.invalid}"
+export TUNNEL_PORT ACME_EMAIL
 
 compose() {
   docker compose -p lecturer-stand \
