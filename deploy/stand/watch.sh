@@ -62,7 +62,7 @@ if ! out="$(sh deploy/stand/check.sh "$DOMAIN" 2>&1)"; then
   else
     note "локально не отвечает, поднимаю контейнеры"
     # shellcheck disable=SC2086
-    docker compose -p "$PROJECT" $FILES up -d --wait >> "$LOG" 2>&1
+    docker compose -p "$PROJECT" $FILES up -d --wait >> deploy/stand/watch.out 2>&1
     sleep 5
     if out="$(sh deploy/stand/check.sh "$DOMAIN" 2>&1)"; then
       note "восстановлен после перезапуска контейнеров"
