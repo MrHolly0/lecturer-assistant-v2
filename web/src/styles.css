@@ -175,6 +175,45 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.max-active-session {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  margin: 18px 0 22px;
+  padding: 16px;
+}
+
+.max-active-session__icon {
+  align-items: center;
+  background: var(--secondary);
+  border-radius: var(--radius);
+  display: flex;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
+}
+
+.max-active-session__eyebrow {
+  color: var(--destructive);
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+}
+
+.max-active-session h2,
+.max-active-session p {
+  margin: 0;
+}
+
+.max-active-session h2 {
+  font-size: 1rem;
+}
+
 @media (max-width: 700px) {
   .max-link-panel {
     grid-template-columns: 1fr;
@@ -183,6 +222,14 @@ textarea {
 
   .max-link-copy .btn-primary {
     justify-self: stretch;
+  }
+
+  .max-active-session {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .max-active-session .btn-primary {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1892,7 +1939,7 @@ textarea {
 .session-join-code {
   color: #f97316;
   font-size: 44px;
-  letter-spacing: 2px;
+  letter-spacing: 0;
   line-height: 1;
 }
 
@@ -1909,6 +1956,23 @@ textarea {
 .session-join-panel {
   display: flex;
   justify-content: center;
+}
+
+.session-join-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.session-join-actions .btn-primary {
+  min-width: 220px;
+}
+
+.route-loading {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 50vh;
+  padding: 24px;
 }
 
 .session-join-target {

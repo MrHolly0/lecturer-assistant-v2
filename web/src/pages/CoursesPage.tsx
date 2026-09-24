@@ -12,21 +12,31 @@ import {
   restoreCourse
 } from "../app/api/courses-api";
 import { useAuth } from "../app/AuthContext";
+import { getMyActiveSession } from "../app/api/live-api";
+import { useMaxBridge } from "../app/max/context";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
 import { PaginationBar, SearchField } from "../widgets/ListControls";
+import { MaxActiveSessionBanner } from "../widgets/MaxActiveSessionBanner";
 
 type CourseTab = "active" | "archive";
 
 export function CoursesPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const { isMax } = useMaxBridge();
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
   const [tab, setTab] = useState<CourseTab>("active");
   const [query, setQuery] = useState("");
   const canCreateCourse = user?.role === "ADMIN" || user?.role === "LECTURER";
+  const activeSession = useQuery({
+    queryKey: ["active-session"],
+    queryFn: getMyActiveSession,
+    enabled: Boolean(isMax && user?.role !== "STUDENT"),
+    retry: 1
+  });
 
   const {
     data: courses = [],
@@ -91,6 +101,8 @@ export function CoursesPage() {
           </button>
         )}
       </div>
+
+      {activeSession.data && <MaxActiveSessionBanner session={activeSession.data} />}
 
       {canCreateCourse && showCreate && (
         <form onSubmit={submit} className="inline-form">

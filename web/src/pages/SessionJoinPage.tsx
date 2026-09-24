@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { getLiveSession } from "../app/api/live-api";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { LocalQrCode } from "../widgets/LocalQrCode";
@@ -39,7 +40,8 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
   return (
     <main className="session-join-shell">
       <header className="session-join-head">
-        <span className="muted">Подключение к лекции</span>
+        <span className="muted">Лекция запущена</span>
+        <h1>Покажите студентам</h1>
         <strong className="session-join-code">{code}</strong>
         <small className="muted">Наведите камеру телефона и откройте лекцию в MAX.</small>
       </header>
@@ -54,6 +56,11 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
           <ChannelSoon />
         )}
       </section>
+      <div className="session-join-actions">
+        <Link className="btn-primary" to={`/courses/${courseId}/sessions/${sessionId}/presenter`}>
+          Перейти к лекции
+        </Link>
+      </div>
     </main>
   );
 }

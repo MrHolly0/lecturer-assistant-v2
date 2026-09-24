@@ -26,6 +26,7 @@ import { DeckViewer } from "../widgets/DeckViewer";
 import { LectureList } from "../widgets/LectureList";
 import { startLiveSession } from "../app/api/live-api";
 import { DeckListPanel } from "../widgets/DeckListPanel";
+import { titleFromFileName } from "../shared/lib/fileName";
 
 export function MaterialsPage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
@@ -42,13 +43,11 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const [lectureTitle, setLectureTitle] = useState("");
   const [lectureDeckId, setLectureDeckId] = useState("");
   const [startingLectureId, setStartingLectureId] = useState("");
-
   const courseQuery = useQuery({
     queryKey: ["courses", courseId],
     queryFn: () => getCourse(courseId)
   });
   const canManage = courseQuery.data?.canManage ?? false;
-
   const decksQuery = useQuery({
     queryKey: ["content", courseId, "decks"],
     queryFn: () => listDecks(courseId)
@@ -70,13 +69,11 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     queryFn: () => getDeck(courseId, selectedDeckId),
     enabled: Boolean(selectedDeckId)
   });
-
   const decks = useMemo(() => decksQuery.data ?? [], [decksQuery.data]);
   const activeDecks = useMemo(() => decks.filter((deck) => !deck.archived), [decks]);
   const lectures = useMemo(() => lecturesQuery.data ?? [], [lecturesQuery.data]);
   const selectedDeck = deckQuery.data;
   const latestJob = jobQuery.data ?? job;
-
   useEffect(() => {
     setTitle("");
     setFileName("");
@@ -90,18 +87,22 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     setLectureTitle("");
     setStartingLectureId("");
   }, [courseId]);
-
   useEffect(() => {
     if (!jobQuery.data) return;
     setJob(jobQuery.data);
     setUploadProgress(jobQuery.data.progressPercent);
-    if ((jobQuery.data.status === "COMPLETED" || jobQuery.data.status === "PARTIAL") && jobQuery.data.deckId) {
+    if (
+      (jobQuery.data.status === "COMPLETED" || jobQuery.data.status === "PARTIAL") &&
+      jobQuery.data.deckId
+    ) {
       setSelectedDeckId(jobQuery.data.deckId);
       setLectureDeckId(jobQuery.data.deckId);
       setJob(null);
       setUploadProgress(jobQuery.data.progressPercent);
       if (jobQuery.data.status === "PARTIAL") {
-        toast.warning(jobQuery.data.warningMessage || jobQuery.data.errorMessage || "Импорт завершён частично");
+        toast.warning(
+          jobQuery.data.warningMessage || jobQuery.data.errorMessage || "Импорт завершён частично"
+        );
       }
       void qc.invalidateQueries({ queryKey: ["content", courseId, "decks"] });
     }
@@ -110,7 +111,6 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
       setJob(null);
     }
   }, [courseId, jobQuery.data, qc]);
-
   useEffect(() => {
     if (!selectedDeckId && activeDecks[0]) {
       setSelectedDeckId(activeDecks[0].id);
@@ -124,15 +124,16 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   }, [selectedDeckId]);
 
   const importing = Boolean(
-    latestJob
-      && latestJob.status !== "COMPLETED"
-      && latestJob.status !== "PARTIAL"
-      && latestJob.status !== "FAILED"
+    latestJob &&
+      latestJob.status !== "COMPLETED" &&
+      latestJob.status !== "PARTIAL" &&
+      latestJob.status !== "FAILED"
   );
   const displayedProgress = importing
     ? latestJob?.progressPercent ?? uploadProgress
     : uploadProgress;
-  const selectedDeckTitle = decks.find((deck) => deck.id === selectedDeckId)?.title ?? "Материалы курса";
+  const selectedDeckTitle =
+    decks.find((deck) => deck.id === selectedDeckId)?.title ?? "Материалы курса";
 
   const createLectureMut = useMutation({
     mutationFn: () => createLecture(courseId, lectureTitle.trim(), lectureDeckId),
@@ -193,7 +194,10 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const startSessionMut = useMutation({
     mutationFn: (lectureId: string) => startLiveSession(courseId, lectureId),
     onMutate: (lectureId) => setStartingLectureId(lectureId),
-    onSuccess: (session) => navigate(`/courses/${courseId}/sessions/${session.id}/presenter`),
+    onSuccess: (session) => {
+      void qc.invalidateQueries({ queryKey: ["active-session"] });
+      navigate(`/courses/${courseId}/sessions/${session.id}/join`);
+    },
     onSettled: () => setStartingLectureId("")
   });
 
@@ -292,9 +296,4 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
       />
     </div>
   );
-}
-function titleFromFileName(fileName: string): string {
-  const cleanName = fileName.trim() || "Материалы";
-  const dot = cleanName.lastIndexOf(".");
-  return dot > 0 ? cleanName.slice(0, dot) : cleanName;
 }

@@ -30,6 +30,7 @@ import { hideBackButton, showBackButton, subscribeBackButton } from "./max/bridg
 import { useMaxBridge } from "./max/context";
 import { readMaxLinkCode } from "./max/deepLink";
 import { MaxLinkCodeScreen } from "../widgets/MaxLinkCodeScreen";
+import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
 
 const maxRootPaths = new Set(["/", "/home", "/courses", "/login", "/register"]);
 const maxStartParamPattern = /^[A-Za-z0-9_-]{1,512}$/;
@@ -158,11 +159,6 @@ function RequireRolePage({ roles, children }: { roles: UserRole[]; children: JSX
   return children;
 }
 
-function RoleHome() {
-  const { user } = useAuth();
-  return <Navigate to={user ? landingPath(user.role) : "/login"} replace />;
-}
-
 function RegisterRoute() {
   const [searchParams] = useSearchParams();
   return <RegisterPage code={searchParams.get("code") ?? ""} />;
@@ -254,7 +250,7 @@ const router = createHashRouter([
       {
         element: <ProtectedLayout />,
         children: [
-          { index: true, element: <RoleHome /> },
+          { index: true, element: <RoleHomeRoute /> },
           { path: "/home", element: <StudentHomePage /> },
           {
             element: <RequireRole roles={["ADMIN", "LECTURER", "ASSISTANT"]} />,
@@ -272,7 +268,7 @@ const router = createHashRouter([
           }
         ]
       },
-      { path: "*", element: <RoleHome /> }
+      { path: "*", element: <RoleHomeRoute /> }
     ]
   }
 ]);
