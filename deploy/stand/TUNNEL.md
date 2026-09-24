@@ -70,6 +70,19 @@ NGROK_DOMAIN=<имя>.ngrok-free.app
 Проверять на телефоне первым делом. Если подтвердится, выхода два: VPS с доменом
 (`deploy/stand/README.md`) или платный тариф ngrok без страницы-предупреждения.
 
+## Почему не Cloudflare quick tunnel
+
+Проверено 24.09 с машины разработчика (cloudflared 2025.2.1, туннель на Caddy):
+
+- QUIC: `failed to dial to edge with quic: timeout` — UDP до Cloudflare не проходит;
+- `--protocol http2`: `TLS handshake with edge error: EOF` — TCP 443 до узлов Cloudflare
+  рвётся на рукопожатии;
+- выданный адрес `*.trycloudflare.com` отвечает 530 «Cloudflare Tunnel error».
+
+Кроме того, по документации Cloudflare quick tunnel не поддерживает Server-Sent Events,
+а экран студента получает состояние лекции через SSE
+(`/api/v1/student/sessions/{code}/events`).
+
 ## Переезд на VPS
 
 Туннель и VPS используют одни и те же файлы. Разница только в оверлее и двух переменных:
