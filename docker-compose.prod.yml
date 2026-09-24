@@ -1,40 +1,88 @@
+# Стенд: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Все секреты обязательны и берутся из .env на сервере (deploy/stand/init-env.sh).
+# Наружу открыты только 80 и 443 (Caddy); остальные сервисы доступны внутри сети
+# compose или на 127.0.0.1 сервера.
+
 services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+
   core:
     environment:
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required for prod}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET в .env}
+      SLIDE_IMAGE_URL_SECRET: ${SLIDE_IMAGE_URL_SECRET:?задайте SLIDE_IMAGE_URL_SECRET в .env}
+      CHANNEL_INTERNAL_API_KEY: ${CHANNEL_INTERNAL_API_KEY:?задайте CHANNEL_INTERNAL_API_KEY в .env}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:?задайте MAX_BOT_TOKEN в .env}
       REQUIRE_STRONG_JWT_SECRET: "true"
       REFRESH_COOKIE_SECURE: "true"
 
+  web:
+    ports: !reset []
+
+  max-adapter:
+    environment:
+      CHANNEL_INTERNAL_API_KEY: ${CHANNEL_INTERNAL_API_KEY:?задайте CHANNEL_INTERNAL_API_KEY в .env}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:?задайте MAX_BOT_TOKEN в .env}
+      MAX_WEBAPP_URL: https://${SITE_DOMAIN:?задайте SITE_DOMAIN в .env}/
+      MAX_WEBHOOK_URL: https://${SITE_DOMAIN}${MAX_WEBHOOK_PATH:?задайте MAX_WEBHOOK_PATH в .env}
+      MAX_WEBHOOK_PATH: ${MAX_WEBHOOK_PATH}
+      MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:?задайте MAX_WEBHOOK_SECRET в .env}
+
+  telegram-adapter:
+    environment:
+      CHANNEL_INTERNAL_API_KEY: ${CHANNEL_INTERNAL_API_KEY:?задайте CHANNEL_INTERNAL_API_KEY в .env}
+
   caddy:
-    profiles: ["prod"]
     image: caddy:2.8-alpine
+    restart: unless-stopped
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?задайте SITE_DOMAIN в .env}
+      ACME_EMAIL: ${ACME_EMAIL:?задайте ACME_EMAIL в .env}
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp"
     volumes:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      - web
+      web:
+        condition: service_healthy
 
-  prometheus:
-    profiles: ["prod"]
-    image: prom/prometheus:v2.54.1
+  # Ежедневная резервная копия базы: pg_dump в deploy/stand/backups на сервере, хранится
+  # 14 дней. Первая копия — через 5 минут после старта, когда core уже прогнал миграции.
+  db-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGDATABASE: ${POSTGRES_DB:-lecturer_assistant}
+      PGUSER: ${POSTGRES_USER:-lecturer}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
     volumes:
-      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports:
-      - "9090:9090"
-
-  grafana:
-    profiles: ["prod"]
-    image: grafana/grafana:11.1.4
-    ports:
-      - "3001:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
+      - ./deploy/stand/backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        sleep 300
+        while true; do
+          f=/backups/$${PGDATABASE}-$$(date +%Y%m%d-%H%M%S).dump
+          if pg_dump -Fc -f "$$f.tmp" && mv "$$f.tmp" "$$f"; then
+            echo "backup ok: $$f ($$(du -h "$$f" | cut -f1))"
+          else
+            rm -f "$$f.tmp"; echo "backup FAILED"
+          fi
+          find /backups -name '*.dump' -mtime +$${BACKUP_KEEP_DAYS} -delete
+          sleep 86400
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   caddy-data:
   caddy-config:
-  grafana-data:

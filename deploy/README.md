@@ -1,12 +1,15 @@
 # Deploy
 
-Phase 0 provides compose skeletons only:
+| Файл | Назначение |
+|---|---|
+| `docker-compose.yml` | весь продукт локально: `postgres`, `core`, `converter`, `web`, `max-adapter`, `telegram-adapter` |
+| `docker-compose.prod.yml` | оверлей стенда: Caddy с HTTPS, резервные копии базы, обязательные секреты |
+| `docker-compose.dev.yml` | hot-reload для разработки, профиль `hot-reload` |
+| `docker-compose.tunnel.yml` | временный HTTPS через cloudflared quick tunnel, профиль `tunnel` |
+| `caddy/Caddyfile` | маршруты стенда: `/api`, `/ws`, `/health` → core, `/webhook/*` → адаптер MAX, остальное → web |
+| `converter/` | конвертер презентаций: LibreOffice Impress + poppler, `POST /convert`, `GET /health` |
+| `stand/` | развёртывание стенда, генерация `.env`, проверка доступности — см. [stand/README.md](stand/README.md) |
+| `BUILD_TIME.md` | замер времени сборки образов с условиями |
 
-- `docker-compose.yml` starts `postgres`, `core`, and the web placeholder.
-- `docker-compose.dev.yml --profile hot-reload` starts source-mounted dev services.
-- `docker-compose.prod.yml --profile prod` adds Caddy, Prometheus, Grafana, and a converter placeholder.
-- `docker-compose.standalone.yml --profile standalone` marks local offline mode.
-- `docker-compose.tunnel.yml --profile tunnel` adds cloudflared.
-
-Real tokens stay outside the repository. Use `.env.example` as the shape of local configuration.
-
+Секреты в репозиторий не попадают: локально работают значения по умолчанию из compose,
+на стенде — `.env`, созданный `stand/init-env.sh`.
