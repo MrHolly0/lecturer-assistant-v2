@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { userErrorMessage } from "../app/api/errors";
 import {
   createLecture,
   archiveDeck,
@@ -211,7 +212,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
       setJob(uploadedJob);
       setUploadProgress(uploadedJob.progressPercent);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось загрузить файл");
+      setError(userErrorMessage(err, "Не удалось загрузить файл."));
       setUploadProgress(0);
     }
   }

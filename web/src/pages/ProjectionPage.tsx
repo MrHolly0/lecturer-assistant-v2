@@ -4,6 +4,7 @@ import { getDeck, slideImageUrl } from "../app/api/content-api";
 import { connectLiveSession, getLiveSession, type LiveSession } from "../app/api/live-api";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 import { LocalQrCode } from "../widgets/LocalQrCode";
+import { buildMaxJoinUrl } from "../app/max/deepLink";
 
 export function ProjectionPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const [localSession, setLocalSession] = useState<LiveSession | null>(null);
@@ -22,10 +23,7 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
   const slide =
     deck?.slides.find((item) => item.idx === session?.currentSlideIdx) ?? deck?.slides[0];
   const showJoinCode = slide?.idx === 1;
-  const joinUrl = useMemo(() => {
-    if (!session) return "";
-    return `${window.location.origin}${window.location.pathname}#/s/${session.joinCode}`;
-  }, [session]);
+  const joinUrl = useMemo(() => buildMaxJoinUrl(session?.joinCode ?? ""), [session?.joinCode]);
 
   useEffect(() => {
     if (sessionQuery.data) setLocalSession(sessionQuery.data);
@@ -61,7 +59,11 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
         <div className="projection-code">
           <span>Код подключения</span>
           <strong>{session.joinCode}</strong>
-          <LocalQrCode value={joinUrl} label="QR" />
+          {joinUrl ? (
+            <LocalQrCode value={joinUrl} label="Открыть лекцию в MAX" />
+          ) : (
+            <small>MAX-бот не настроен</small>
+          )}
         </div>
       )}
     </main>

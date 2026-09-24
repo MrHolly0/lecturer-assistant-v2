@@ -3,13 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart2, CheckCircle2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { closePoll, getActivePoll, startPoll } from "../app/api/interaction-api";
+import { pluralizeRu } from "../shared/lib/plural";
 
 interface Props {
   courseId: string;
   sessionId: string;
 }
 
-type View = "idle" | "create" | "active";
+type View = "idle" | "create";
 
 export function PollPanel({ courseId, sessionId }: Props) {
   const qc = useQueryClient();
@@ -24,13 +25,12 @@ export function PollPanel({ courseId, sessionId }: Props) {
     refetchInterval: 1500
   });
   const activePoll = activeQuery.data;
-  const isPolling = Boolean(activePoll && activePoll.poll.status === "OPEN");
 
   const startMut = useMutation({
     mutationFn: () => startPoll(courseId, sessionId, { questionText: question.trim(), options }),
     onSuccess: (result) => {
       qc.setQueryData(["poll", courseId, sessionId, "active"], result);
-      setView("active");
+      setView("idle");
       setQuestion("");
       setOptions(["", ""]);
       setMarkedCorrect(undefined);
@@ -40,8 +40,7 @@ export function PollPanel({ courseId, sessionId }: Props) {
   });
 
   const closeMut = useMutation({
-    mutationFn: (pollId: string) =>
-      closePoll(courseId, sessionId, pollId, markedCorrect),
+    mutationFn: (pollId: string) => closePoll(courseId, sessionId, pollId, markedCorrect),
     onSuccess: (result) => {
       qc.setQueryData(["poll", courseId, sessionId, "active"], result);
       toast.success("Опрос закрыт.");
@@ -49,14 +48,16 @@ export function PollPanel({ courseId, sessionId }: Props) {
     onError: () => toast.error("Не удалось закрыть опрос.")
   });
 
-  if (activePoll && (view === "active" || isPolling)) {
+  if (activePoll) {
     const total = activePoll.totalResponses;
     return (
       <div className="poll-panel">
         <div className="poll-panel-header">
           <BarChart2 size={14} />
           <span className="poll-panel-title">{activePoll.poll.questionText}</span>
-          <span className="poll-response-count">{total} отв.</span>
+          <span className="poll-response-count">
+            {total} {pluralizeRu(total, "ответ", "ответа", "ответов")}
+          </span>
         </div>
         <div className="poll-bars">
           {activePoll.poll.options.map((opt, idx) => {
@@ -72,8 +73,7 @@ export function PollPanel({ courseId, sessionId }: Props) {
                 type="button"
                 className={`poll-bar-row${isCorrect ? " poll-bar-row--correct" : ""}`}
                 onClick={() =>
-                  !isClosed &&
-                  setMarkedCorrect(markedCorrect === idx ? undefined : idx)
+                  !isClosed && setMarkedCorrect(markedCorrect === idx ? undefined : idx)
                 }
               >
                 <span className="poll-bar-label">
@@ -151,11 +151,7 @@ export function PollPanel({ courseId, sessionId }: Props) {
           ))}
         </div>
         {options.length < 6 && (
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => setOptions([...options, ""])}
-          >
+          <button type="button" className="btn-ghost" onClick={() => setOptions([...options, ""])}>
             <Plus size={12} />
             Добавить вариант
           </button>

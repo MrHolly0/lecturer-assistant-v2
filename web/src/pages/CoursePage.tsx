@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { userErrorMessage } from "../app/api/errors";
 import type { components } from "../app/api/schema";
 import {
   changeCourseMemberRole,
@@ -67,7 +68,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
 
   const invalidateCourse = () => qc.invalidateQueries({ queryKey: ["courses", courseId] });
   const onMemberError = (error: unknown) =>
-    toast.error(error instanceof Error ? error.message : "Не удалось изменить участника");
+    toast.error(userErrorMessage(error, "Не удалось изменить участника."));
 
   const changeRoleMut = useMutation({
     mutationFn: (vars: { personId: string; role: CourseRole }) =>

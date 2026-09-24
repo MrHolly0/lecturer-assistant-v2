@@ -9,6 +9,10 @@ export type PollResult = components["schemas"]["PollResult"];
 export type ActivePollView = components["schemas"]["ActivePollView"];
 export type StartPollRequest = components["schemas"]["StartPollRequest"];
 export type ClosePollRequest = components["schemas"]["ClosePollRequest"];
+export interface PollVote {
+  accepted: boolean;
+  myVote: number | null;
+}
 
 export type QuestionType = components["schemas"]["QuestionType"];
 export type QuestionOption = components["schemas"]["QuestionOption"];
@@ -45,13 +49,10 @@ export async function closePoll(
   pollId: string,
   correctOptionIdx?: number
 ): Promise<PollResult> {
-  const res = await apiFetch(
-    `/courses/${courseId}/sessions/${sessionId}/polls/${pollId}/close`,
-    {
-      method: "POST",
-      body: JSON.stringify({ correctOptionIdx })
-    }
-  );
+  const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/polls/${pollId}/close`, {
+    method: "POST",
+    body: JSON.stringify({ correctOptionIdx })
+  });
   return res.json() as Promise<PollResult>;
 }
 
@@ -93,10 +94,14 @@ export async function respondToPoll(
   pollId: string,
   participantToken: string,
   optionIdx: number
-): Promise<void> {
+): Promise<PollVote> {
   const authenticated = Boolean(getStoredAuth());
-  await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/polls/${pollId}/respond`, {
-    method: "POST",
-    body: JSON.stringify(authenticated ? { optionIdx } : { participantToken, optionIdx })
-  });
+  const res = await studentFetch(
+    `/student/sessions/${encodeURIComponent(joinCode)}/polls/${pollId}/respond`,
+    {
+      method: "POST",
+      body: JSON.stringify(authenticated ? { optionIdx } : { participantToken, optionIdx })
+    }
+  );
+  return res.json() as Promise<PollVote>;
 }

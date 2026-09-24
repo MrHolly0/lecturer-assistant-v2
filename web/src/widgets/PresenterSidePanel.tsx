@@ -1,25 +1,29 @@
 import { AlertTriangle, Clock } from "lucide-react";
 import type { Slide } from "../app/api/content-api";
-import type { LiveSession, SessionParticipant } from "../app/api/live-api";
+import type { SessionParticipant } from "../app/api/live-api";
 import type { SignalValue, StudentEngagement } from "../app/api/student-api";
+import { pluralizeRu } from "../shared/lib/plural";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
+import { PollPanel } from "./PollPanel";
 
 interface PresenterSidePanelProps {
-  session: LiveSession;
   slide: Slide;
   participants: SessionParticipant[];
   engagement?: StudentEngagement;
   elapsed: number;
   slideElapsed: number;
+  courseId: string;
+  sessionId: string;
 }
 
 export function PresenterSidePanel({
-  session,
   slide,
   participants,
   engagement,
   elapsed,
-  slideElapsed
+  slideElapsed,
+  courseId,
+  sessionId
 }: PresenterSidePanelProps) {
   const activeParticipants = participants.filter((participant) => !participant.leftAt);
   const signals = engagement?.signalAggregate;
@@ -32,17 +36,36 @@ export function PresenterSidePanel({
         <Clock size={16} />
         Лекция {formatTime(elapsed)} · слайд {formatTime(slideElapsed)}
       </div>
-      <div className="join-panel">
-        <span className="muted">Код подключения</span>
-        <strong>{session.joinCode}</strong>
-        <small>Кнопка «Подключение» сверху — QR и ссылки для веба, Telegram и ВК.</small>
-      </div>
       {redCount > 0 && (
         <div className="signal-alert">
           <AlertTriangle size={14} />
-          {redCount} {pluralStudents(redCount)} не {redCount === 1 ? "понимает" : "понимают"}
+          {redCount} {pluralizeRu(redCount, "студент", "студента", "студентов")} не{" "}
+          {redCount === 1 ? "понимает" : "понимают"}
         </div>
       )}
+      <section className="live-panel signal-summary signal-summary--primary">
+        <div className="section-heading">
+          <h2>Понимание слайда {slide.idx}</h2>
+          <span className="muted">
+            {signals?.total ?? 0}{" "}
+            {pluralizeRu(signals?.total ?? 0, "сигнал", "сигнала", "сигналов")}
+          </span>
+        </div>
+        <SignalRow label="Понятно" value="GREEN" total={signals?.total ?? 0} signals={signals} />
+        <SignalRow
+          label="Есть вопрос"
+          value="YELLOW"
+          total={signals?.total ?? 0}
+          signals={signals}
+        />
+        <SignalRow label="Не понимаю" value="RED" total={signals?.total ?? 0} signals={signals} />
+      </section>
+      <section className="live-poll-panel">
+        <div className="section-heading">
+          <h2>Вопрос-проверка</h2>
+        </div>
+        <PollPanel courseId={courseId} sessionId={sessionId} />
+      </section>
       <Tabs defaultValue="students" className="live-tabs">
         <TabsList className="live-tabs__list">
           <TabsTrigger value="students">
@@ -81,30 +104,6 @@ export function PresenterSidePanel({
               ))}
             </ul>
           )}
-          <div className="signal-summary">
-            <div className="section-heading">
-              <h2>Светофор</h2>
-              <span className="muted">{signals?.total ?? 0} сигналов</span>
-            </div>
-            <SignalRow
-              label="Понятно"
-              value="GREEN"
-              total={signals?.total ?? 0}
-              signals={signals}
-            />
-            <SignalRow
-              label="Есть вопрос"
-              value="YELLOW"
-              total={signals?.total ?? 0}
-              signals={signals}
-            />
-            <SignalRow
-              label="Не понимаю"
-              value="RED"
-              total={signals?.total ?? 0}
-              signals={signals}
-            />
-          </div>
         </TabsContent>
         <TabsContent value="notes" className="live-panel">
           <div className="section-heading">
@@ -116,7 +115,9 @@ export function PresenterSidePanel({
         <TabsContent value="questions" className="live-panel">
           <div className="section-heading">
             <h2>Вопросы</h2>
-            <span className="badge">{questions.length} открыто</span>
+            <span className="badge">
+              {questions.length} {pluralizeRu(questions.length, "вопрос", "вопроса", "вопросов")}
+            </span>
           </div>
           {questions.length === 0 && <p className="muted">Открытых вопросов пока нет.</p>}
           {questions.length > 0 && (
@@ -176,10 +177,4 @@ function formatTime(total: number) {
     .padStart(2, "0");
   const seconds = (total % 60).toString().padStart(2, "0");
   return `${minutes}:${seconds}`;
-}
-
-function pluralStudents(n: number) {
-  if (n % 10 === 1 && n % 100 !== 11) return "студент";
-  if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return "студента";
-  return "студентов";
 }

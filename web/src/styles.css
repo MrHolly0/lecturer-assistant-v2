@@ -716,13 +716,108 @@ textarea {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   gap: 12px;
+  justify-content: space-between;
   min-height: 64px;
   padding: 10px 16px;
 }
 
-.presenter-topbar .breadcrumb,
+.presenter-topbar .presenter-back,
 .presenter-topbar .muted {
   color: #d4d4d4;
+}
+
+.presenter-heading,
+.presenter-actions,
+.presenter-meta {
+  align-items: center;
+  display: flex;
+}
+
+.presenter-heading {
+  flex: 1;
+  gap: 12px;
+  min-width: 0;
+}
+
+.presenter-back {
+  align-items: center;
+  border-radius: calc(var(--radius) - 2px);
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 8px;
+  text-decoration: none;
+}
+
+.presenter-back:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.presenter-title-block {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.presenter-title-block > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presenter-meta {
+  gap: 8px;
+}
+
+.presenter-actions {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.presenter-actions button {
+  min-height: 44px;
+}
+
+.presenter-menu-trigger {
+  white-space: nowrap;
+}
+
+.presenter-action-menu [data-slot="dropdown-menu-item"],
+.presenter-action-menu [data-slot="dropdown-menu-checkbox-item"] {
+  min-height: 44px;
+}
+
+.btn-danger-outline {
+  align-items: center;
+  background: transparent;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  border-radius: calc(var(--radius) - 2px);
+  color: #fecaca;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 7px;
+  justify-content: center;
+  padding: 0 12px;
+}
+
+.btn-danger-outline:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: #f87171;
+  color: #fff;
+}
+
+.presenter-status--live {
+  background: #166534;
+  border-color: #22c55e;
+  color: #fff;
+}
+
+.presenter-status--paused {
+  background: #854d0e;
+  border-color: #eab308;
+  color: #fff;
 }
 
 .live-code {
@@ -783,7 +878,7 @@ textarea {
 }
 
 .live-metric,
-.join-panel {
+.live-poll-panel {
   background: #171717;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius);
@@ -794,21 +889,6 @@ textarea {
   align-items: center;
   display: flex;
   gap: 8px;
-}
-
-.join-panel {
-  display: grid;
-  gap: 6px;
-}
-
-.join-panel strong {
-  color: #f97316;
-  font-size: 42px;
-  letter-spacing: 0;
-}
-
-.join-panel small {
-  color: #a3a3a3;
 }
 
 .projection-shell {
@@ -962,6 +1042,53 @@ textarea {
   padding-top: 14px;
 }
 
+.signal-summary--primary {
+  margin-top: 0;
+}
+
+.live-poll-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.live-poll-panel .section-heading {
+  margin: 0;
+}
+
+.live-poll-panel h2 {
+  font-size: 1rem;
+}
+
+.live-poll-panel .poll-panel {
+  background: transparent;
+  border: 0;
+  max-width: none;
+  min-width: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.live-poll-panel .poll-launch-btn {
+  justify-content: center;
+  min-height: 44px;
+  width: 100%;
+}
+
+.live-poll-panel .poll-question-input,
+.live-poll-panel .poll-option-input {
+  min-height: 44px;
+}
+
+.live-poll-panel .poll-bar-row {
+  color: #fff;
+  min-height: 40px;
+}
+
+.live-poll-panel .poll-response-count,
+.live-poll-panel .poll-bar-pct {
+  color: #d4d4d4;
+}
+
 .signal-row {
   align-items: center;
   display: grid;
@@ -1010,8 +1137,13 @@ textarea {
 }
 
 @keyframes pulse-alert {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 .tab-badge {
@@ -1094,7 +1226,7 @@ textarea {
   margin: 0 auto;
   max-width: 760px;
   min-height: 100vh;
-  padding: 18px;
+  padding: max(18px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom));
 }
 
 .student-session-shell--center {
@@ -1115,8 +1247,63 @@ textarea {
   margin: 2px 0 0;
 }
 
+.student-connection {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 35%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--destructive) 8%, var(--background));
+}
+
+.student-connection--connecting,
+.student-connection--polling {
+  border-color: color-mix(in srgb, #b45309 35%, var(--border));
+  background: color-mix(in srgb, #f59e0b 8%, var(--background));
+}
+
+.student-connection > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.student-connection strong,
+.student-connection span {
+  line-height: 1.25;
+}
+
+.student-connection span {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.student-connection .btn-ghost {
+  min-height: 44px;
+}
+
 .student-status {
   white-space: nowrap;
+}
+
+.student-status--live {
+  background: #166534;
+  color: #fff;
+}
+
+.student-status--paused {
+  background: #854d0e;
+  color: #fff;
+}
+
+.student-status--ended,
+.student-status--archived,
+.student-status--scheduled {
+  background: var(--muted);
+  color: var(--foreground);
 }
 
 .student-slide-card,
@@ -1202,8 +1389,9 @@ textarea {
 }
 
 .student-signal-btn--selected {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
+  border-color: var(--foreground);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--foreground) 22%, transparent);
+  transform: translateY(-1px);
 }
 
 .student-signal-btn--green {
@@ -1221,6 +1409,13 @@ textarea {
 .student-signal-btn span {
   color: var(--muted-foreground);
   font-size: 0.78rem;
+}
+
+.student-signal-btn strong {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  justify-content: center;
 }
 
 .student-question-form textarea {
@@ -1241,8 +1436,41 @@ textarea {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .presenter-grid {
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    padding: 12px;
+  }
+
+  .presenter-topbar {
+    padding-inline: 12px;
+  }
+
+  .presenter-back span,
+  .presenter-menu-trigger > svg:last-child {
+    display: none;
+  }
+
+  .presenter-actions {
+    gap: 6px;
+  }
+
+  .presenter-actions button {
+    padding-inline: 10px;
+  }
+}
+
+@media (max-width: 900px) {
+  .presenter-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+
+  .presenter-grid {
+    display: flex;
+    flex-direction: column;
     grid-template-columns: 1fr;
   }
 
@@ -1250,15 +1478,78 @@ textarea {
     align-items: stretch;
     flex-wrap: wrap;
   }
+
+  .presenter-heading,
+  .presenter-actions {
+    width: 100%;
+  }
+
+  .presenter-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .presenter-main {
+    min-height: 620px;
+  }
+
+  .presenter-stage {
+    min-height: 320px;
+  }
+
+  .presenter-side {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 @media (max-width: 560px) {
+  .presenter-topbar,
+  .presenter-grid {
+    padding: 8px;
+  }
+
+  .presenter-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .presenter-actions button {
+    width: 100%;
+  }
+
+  .presenter-title-block > strong {
+    font-size: 0.95rem;
+  }
+
+  .presenter-main {
+    min-height: 500px;
+  }
+
+  .presenter-stage {
+    min-height: 220px;
+  }
+
   .student-session-shell {
-    padding: 12px;
+    gap: 12px;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(20px, env(safe-area-inset-bottom));
   }
 
   .student-signal-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .student-signal-btn {
+    min-height: 72px;
+    padding: 9px 4px;
+  }
+
+  .student-signal-btn strong {
+    font-size: 0.82rem;
+  }
+
+  .student-signal-btn span {
+    font-size: 0.68rem;
+    line-height: 1.15;
   }
 }
 
@@ -1479,7 +1770,7 @@ textarea {
   }
 }
 
-/* Окно «Подключение» — отдельное окно с QR по каналам (web/TG/VK) */
+/* Окно подключения к мини-приложению MAX. */
 .session-join-shell {
   background: #111;
   box-sizing: border-box;
@@ -1691,17 +1982,30 @@ textarea {
 
 /* ── Student poll card ──────────────────────────────────────────── */
 .student-poll-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 4%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+  border-radius: var(--radius);
+  display: grid;
+  gap: 14px;
   padding: 16px;
-  margin-bottom: 16px;
+}
+
+.student-poll-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.student-poll-kicker {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .student-poll-question {
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  margin-bottom: 12px;
+  margin: 0;
 }
 
 .student-poll-options {
@@ -1711,6 +2015,8 @@ textarea {
 }
 
 .student-poll-option {
+  color: var(--foreground);
+  min-height: 44px;
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1719,7 +2025,9 @@ textarea {
   cursor: pointer;
   font: inherit;
   font-size: 0.95rem;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .student-poll-option:hover:not(:disabled) {
@@ -1738,11 +2046,44 @@ textarea {
   gap: 8px;
 }
 
+.student-poll-waiting {
+  align-items: start;
+  background: color-mix(in srgb, #22c55e 10%, var(--card));
+  border: 1px solid color-mix(in srgb, #22c55e 35%, var(--border));
+  border-radius: calc(var(--radius) - 2px);
+  display: grid;
+  gap: 2px 10px;
+  grid-template-columns: auto 1fr;
+  padding: 12px;
+}
+
+.student-poll-waiting > svg {
+  color: #15803d;
+  margin-top: 2px;
+}
+
+.student-poll-waiting div {
+  display: grid;
+  gap: 2px;
+}
+
+.student-poll-waiting div span,
+.student-poll-waiting p {
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.student-poll-waiting p {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+}
+
 .student-poll-bar-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) 80px 34px;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
 }
 
 .student-poll-bar-row--correct .student-poll-bar-fill {
@@ -1756,10 +2097,17 @@ textarea {
 }
 
 .student-poll-bar-label {
+  display: grid;
   font-size: 0.9rem;
+  gap: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.student-poll-bar-label small {
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 
 .student-poll-bar-track {

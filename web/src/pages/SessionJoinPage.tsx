@@ -2,8 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { getLiveSession } from "../app/api/live-api";
-import { getChannelConfig } from "../app/api/config-api";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
+import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { LocalQrCode } from "../widgets/LocalQrCode";
 
 interface SessionJoinPageProps {
@@ -16,20 +15,8 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
     queryKey: ["live", courseId, sessionId],
     queryFn: () => getLiveSession(courseId, sessionId)
   });
-  const channelQuery = useQuery({
-    queryKey: ["config", "channels"],
-    queryFn: getChannelConfig
-  });
-
   const code = sessionQuery.data?.joinCode ?? "";
-  const webUrl = useMemo(() => {
-    if (!code) return "";
-    return `${window.location.origin}${window.location.pathname}#/s/${code}`;
-  }, [code]);
-  const telegramBot = channelQuery.data?.telegramBot ?? null;
-  const vkBot = channelQuery.data?.vkBot ?? null;
-  const telegramUrl = telegramBot ? `https://t.me/${telegramBot}?start=${code}` : null;
-  const vkUrl = vkBot ? `https://vk.com/${vkBot}` : null;
+  const maxUrl = useMemo(() => buildMaxJoinUrl(code), [code]);
 
   if (sessionQuery.isLoading) {
     return (
@@ -54,44 +41,19 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
       <header className="session-join-head">
         <span className="muted">Подключение к лекции</span>
         <strong className="session-join-code">{code}</strong>
-        <small className="muted">Перетащите окно на второй экран — оно живёт отдельно от презентера.</small>
+        <small className="muted">Наведите камеру телефона и откройте лекцию в MAX.</small>
       </header>
-
-      <Tabs defaultValue="web" className="session-join-tabs">
-        <TabsList className="session-join-tabs__list">
-          <TabsTrigger value="web">Веб</TabsTrigger>
-          <TabsTrigger value="telegram">Telegram</TabsTrigger>
-          <TabsTrigger value="vk">ВКонтакте</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="web" className="session-join-panel">
+      <section className="session-join-panel">
+        {maxUrl ? (
           <JoinTarget
-            qr={webUrl}
-            link={webUrl}
-            hint="Камера телефона → откроется страница лекции, вход без приложения."
+            qr={maxUrl}
+            link={maxUrl}
+            hint="После входа MAX сразу откроет текущую лекцию."
           />
-        </TabsContent>
-
-        <TabsContent value="telegram" className="session-join-panel">
-          {telegramUrl ? (
-            <JoinTarget
-              qr={telegramUrl}
-              link={telegramUrl}
-              hint={`Откроется бот @${telegramBot}, код подставится автоматически.`}
-            />
-          ) : (
-            <ChannelSoon name="Telegram" />
-          )}
-        </TabsContent>
-
-        <TabsContent value="vk" className="session-join-panel">
-          {vkUrl ? (
-            <JoinTarget qr={vkUrl} link={vkUrl} hint="Откроется сообщество во ВКонтакте." />
-          ) : (
-            <ChannelSoon name="ВКонтакте" />
-          )}
-        </TabsContent>
-      </Tabs>
+        ) : (
+          <ChannelSoon />
+        )}
+      </section>
     </main>
   );
 }
@@ -108,14 +70,11 @@ function JoinTarget({ qr, link, hint }: { qr: string; link: string; hint: string
   );
 }
 
-function ChannelSoon({ name }: { name: string }) {
+function ChannelSoon() {
   return (
     <div className="session-join-soon">
-      <strong>{name} скоро подключим</strong>
-      <p className="muted">
-        Канал ещё не настроен на этом сервере. Пока используйте веб-вход — он работает без
-        приложения.
-      </p>
+      <strong>MAX-бот не настроен</strong>
+      <p className="muted">Укажите имя бота в VITE_MAX_BOT_NAME и перезапустите веб-приложение.</p>
     </div>
   );
 }
