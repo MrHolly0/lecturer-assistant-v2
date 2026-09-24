@@ -1058,6 +1058,28 @@ textarea {
   letter-spacing: 0;
 }
 
+.projection-qr-lockup {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+}
+
+.projection-brand {
+  align-items: center;
+  color: #f97316;
+  display: grid;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 8px;
+  justify-items: center;
+  width: 112px;
+}
+
+.projection-brand svg {
+  height: 88px;
+  width: 80px;
+}
+
 .drawing-layer {
   inset: 0;
   pointer-events: none;

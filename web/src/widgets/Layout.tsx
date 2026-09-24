@@ -4,6 +4,7 @@ import { BookOpen, Home, Link2, LogOut, Menu, Shield, UserRound, X } from "lucid
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthContext";
 import { landingPath } from "../app/routes";
+import { BrandMark } from "../shared/brand/BrandMark";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../shared/ui/tooltip";
 
 const navItems = [
@@ -45,12 +46,10 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="flex items-center justify-between border-b border-neutral-200 p-5">
           <Link
             to={user ? landingPath(user.role) : "/login"}
-            className="flex items-center gap-2 text-lg"
+            className="flex items-center gap-2 text-base font-semibold"
           >
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500 text-xs text-white">
-              L
-            </span>
-            LectureApp
+            <BrandMark className="h-8 w-8 shrink-0 text-orange-500" />
+            <span>Lecturer Assistant</span>
           </Link>
           <button
             className="lg:hidden"
@@ -121,7 +120,8 @@ export function Layout({ children }: { children: ReactNode }) {
           <button onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
             <Menu className="h-5 w-5" />
           </button>
-          <span className="text-sm">LectureApp</span>
+          <BrandMark className="h-6 w-6 text-orange-500" />
+          <span className="text-sm font-medium">Lecturer Assistant</span>
         </div>
         <main className="flex-1 overflow-auto">{children}</main>
       </div>

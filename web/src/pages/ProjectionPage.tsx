@@ -5,6 +5,7 @@ import { connectLiveSession, getLiveSession, type LiveSession } from "../app/api
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 import { LocalQrCode } from "../widgets/LocalQrCode";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
+import { BrandMark } from "../shared/brand/BrandMark";
 
 export function ProjectionPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const [localSession, setLocalSession] = useState<LiveSession | null>(null);
@@ -60,7 +61,13 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
           <span>Код подключения</span>
           <strong>{session.joinCode}</strong>
           {joinUrl ? (
-            <LocalQrCode value={joinUrl} label="Открыть лекцию в MAX" />
+            <div className="projection-qr-lockup">
+              <div className="projection-brand">
+                <BrandMark />
+                <span>Lecturer Assistant</span>
+              </div>
+              <LocalQrCode value={joinUrl} label="Открыть лекцию в MAX" />
+            </div>
           ) : (
             <small>MAX-бот не настроен</small>
           )}
