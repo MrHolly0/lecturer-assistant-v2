@@ -1,5 +1,7 @@
 # Стенд: развёртывание
 
+Пока нет VPS — временный стенд через ngrok: [TUNNEL.md](TUNNEL.md). Ниже — VPS.
+
 Сервер: Linux, 2 vCPU, 4 ГБ RAM, Docker Engine с плагином Compose v2, открыты 80 и 443
 (TCP и UDP для HTTP/3). Домен: A-запись указывает на IP сервера.
 
@@ -8,7 +10,7 @@
 ```bash
 git clone <репозиторий> lecturer-assistant && cd lecturer-assistant
 git checkout <ветка сдачи>
-sh deploy/stand/init-env.sh          # спросит домен, почту, токен бота; секреты сгенерирует
+sh deploy/stand/init-env.sh --vps    # спросит домен, почту, токен бота; секреты сгенерирует
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 sh deploy/stand/check.sh <домен>     # все строки OK
 ```
