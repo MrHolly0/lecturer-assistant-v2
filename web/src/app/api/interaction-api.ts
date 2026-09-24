@@ -9,10 +9,7 @@ export type PollResult = components["schemas"]["PollResult"];
 export type ActivePollView = components["schemas"]["ActivePollView"];
 export type StartPollRequest = components["schemas"]["StartPollRequest"];
 export type ClosePollRequest = components["schemas"]["ClosePollRequest"];
-export interface PollVote {
-  accepted: boolean;
-  myVote: number | null;
-}
+export type PollVote = components["schemas"]["PollVote"];
 
 export type QuestionType = components["schemas"]["QuestionType"];
 export type QuestionOption = components["schemas"]["QuestionOption"];

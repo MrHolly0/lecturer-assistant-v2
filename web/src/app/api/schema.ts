@@ -228,6 +228,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/identity/max/link-codes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create a one-time code to link the caller's MAX account to their own person.
+     * @description Requires a browser JWT of a LECTURER. The code is 6 characters from A-Z0-9, valid for 5 minutes, single-use. Pass it as linkCode in the next POST /auth/max from the same person's MAX account to attach that MAX account to this person instead of creating a new student (B-03).
+     */
+    post: operations["createMaxLinkCode"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/identity/link-codes": {
     parameters: {
       query?: never;
@@ -256,6 +276,26 @@ export interface paths {
     put?: never;
     /** Link channel identity by code. */
     post: operations["linkIdentity"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/active-session": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the caller's own currently running (LIVE or PAUSED) lecture, if any.
+     * @description Used by the MAX mini app to drop a lecturer straight into their running lecture instead of a course picker (B-03). Scoped strictly to sessions this person started themselves.
+     */
+    get: operations["getMyActiveSession"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -874,7 +914,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read public student session snapshot by join code. */
+    /**
+     * Read student session snapshot by join code.
+     * @description Personal fields (myVote) are filled when the request is identified by a Bearer JWT or by the X-Participant-Token header. Without identification the shared snapshot is returned.
+     */
     get: operations["getStudentSession"];
     put?: never;
     post?: never;
@@ -1029,7 +1072,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Submit or update student answer to a poll. */
+    /** Submit the student answer to a poll (the first answer wins). */
     post: operations["respondToPoll"];
     delete?: never;
     options?: never;
@@ -1249,6 +1292,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    ActiveSessionSummary: {
+      /** Format: uuid */
+      sessionId: string;
+      /** Format: uuid */
+      courseId: string;
+      joinCode: string;
+      lectureTitle: string;
+      currentSlideIdx: number;
+    };
     SystemInfo: {
       /** @example lecturer-assistant-v2 */
       name: string;
@@ -1279,6 +1331,8 @@ export interface components {
     MaxAuthRequest: {
       /** @description Raw window.WebApp.initData string, never initDataUnsafe. */
       initData: string;
+      /** @description Optional one-time code from POST /identity/max/link-codes. Ignored if this MAX account is already linked to a person (repeat logins never need it). */
+      linkCode?: string;
     };
     MaxAuthResponse: {
       accessToken: string;
@@ -1596,8 +1650,14 @@ export interface components {
       questionText: string;
       options: string[];
       status: components["schemas"]["PollStatus"];
-      correctOptionIdx?: number;
-      votes: number[];
+      /** @description null until the poll is closed. */
+      correctOptionIdx?: number | null;
+      /** @description Distribution by option; null until the poll is closed. */
+      votes?: number[] | null;
+    };
+    PollVote: {
+      accepted: boolean;
+      myVote?: number | null;
     };
     StartPollRequest: {
       questionText: string;
@@ -1607,7 +1667,7 @@ export interface components {
       correctOptionIdx?: number;
     };
     PollResponseRequest: {
-      participantToken: string;
+      participantToken?: string;
       optionIdx: number;
     };
     /** @enum {string} */
@@ -1686,7 +1746,7 @@ export interface components {
       strategyN?: number;
     };
     SubmitActivityResponseRequest: {
-      participantToken: string;
+      participantToken?: string;
       /** Format: uuid */
       questionId: string;
       answer: unknown;
@@ -1717,10 +1777,15 @@ export interface components {
         [key: string]: unknown;
       };
       signalAggregate: components["schemas"]["SignalAggregate"];
+      /** @description Open poll, or the last closed one (with answer and distribution) until the next poll starts. */
       activePoll?: components["schemas"]["ActivePollView"];
+      /** @description The student's choice in activePoll. Filled only in identified GET requests, null in SSE events. */
+      myVote?: number | null;
     };
+    /** @description Anonymous entry sends displayName; returning anonymous student sends the previous participantToken and gets the same participant back. A request with a Bearer JWT (for example after /auth/max) joins as that person. */
     StudentJoinRequest: {
       displayName?: string;
+      participantToken?: string;
     };
     StudentJoinResponse: {
       participantToken: string;
@@ -1730,11 +1795,13 @@ export interface components {
       snapshot: components["schemas"]["StudentSessionSnapshot"];
     };
     StudentSignalRequest: {
-      participantToken: string;
+      participantToken?: string;
       value: components["schemas"]["SignalValue"];
+      /** @description Необязателен и не является источником истины: сервер ставит сигнал на слайд, на котором сам держит сессию сейчас (D-04), номер от клиента не принимается. */
+      slideIdx?: number;
     };
     StudentQuestionRequest: {
-      participantToken: string;
+      participantToken?: string;
       text: string;
     };
     StudentQuestion: {
@@ -1752,8 +1819,15 @@ export interface components {
       createdAt: string;
     };
     StudentEngagement: {
+      /** @description Агрегат по текущему слайду сессии, не по всей лекции. */
       signalAggregate: components["schemas"]["SignalAggregate"];
+      /** @description Слайды, где были сигналы, отсортированы по числу красных (сначала самые проблемные). */
+      problemSlides: components["schemas"]["ProblemSlide"][];
       questions: components["schemas"]["StudentQuestion"][];
+    };
+    ProblemSlide: {
+      slideIdx: number;
+      signals: components["schemas"]["SignalAggregate"];
     };
     ChannelCapabilities: {
       inlineButtons: boolean;
@@ -1986,7 +2060,7 @@ export interface operations {
           "application/json": components["schemas"]["MaxAuthResponse"];
         };
       };
-      /** @description initData is blank or longer than 8192 characters. */
+      /** @description initData is blank or longer than 8192 characters, or linkCode is invalid/expired. */
       400: {
         headers: {
           [name: string]: unknown;
@@ -2002,6 +2076,20 @@ export interface operations {
       };
       /** @description Person is disabled. */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description linkCode was already used. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Too many requests from this client (B-13 rate limit). */
+      429: {
         headers: {
           [name: string]: unknown;
         };
@@ -2201,6 +2289,33 @@ export interface operations {
       };
     };
   };
+  createMaxLinkCode: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Link code. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IdentityLinkCode"];
+        };
+      };
+      /** @description Caller is not a lecturer. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   createIdentityLinkCode: {
     parameters: {
       query?: never;
@@ -2242,6 +2357,33 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ChannelIdentity"];
         };
+      };
+    };
+  };
+  getMyActiveSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description An active session exists. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActiveSessionSummary"];
+        };
+      };
+      /** @description No running session belongs to this person. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -3310,7 +3452,9 @@ export interface operations {
   getStudentSession: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "X-Participant-Token"?: string;
+      };
       path: {
         joinCode: components["parameters"]["JoinCode"];
       };
@@ -3403,6 +3547,13 @@ export interface operations {
           "application/json": components["schemas"]["SignalAggregate"];
         };
       };
+      /** @description Too many requests from this client (B-13 rate limit). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   askStudentQuestion: {
@@ -3455,6 +3606,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["PollResult"];
         };
+      };
+      /** @description Session does not belong to this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description A poll is already open for this session. */
       409: {
@@ -3517,6 +3675,13 @@ export interface operations {
           "application/json": components["schemas"]["PollResult"];
         };
       };
+      /** @description Poll not found, or it does not belong to this session. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   closePoll: {
@@ -3545,6 +3710,13 @@ export interface operations {
           "application/json": components["schemas"]["PollResult"];
         };
       };
+      /** @description Poll not found, or it does not belong to this session. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       /** @description Poll already closed. */
       409: {
         headers: {
@@ -3570,15 +3742,17 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Answer recorded. */
-      204: {
+      /** @description accepted=false when the student already answered or the poll is closed; myVote is the fixed choice. */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["PollVote"];
+        };
       };
-      /** @description Poll is already closed. */
-      409: {
+      /** @description Poll does not belong to this session. */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -3657,6 +3831,13 @@ export interface operations {
           "application/json": components["schemas"]["QuestionBankEntry"];
         };
       };
+      /** @description Question not found, or it does not belong to this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   updateQuestion: {
@@ -3684,6 +3865,13 @@ export interface operations {
           "application/json": components["schemas"]["QuestionBankEntry"];
         };
       };
+      /** @description Question not found, or it does not belong to this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   archiveQuestion: {
@@ -3700,6 +3888,13 @@ export interface operations {
     responses: {
       /** @description Archived. */
       204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Question not found, or it does not belong to this course. */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -3776,6 +3971,13 @@ export interface operations {
           "application/json": components["schemas"]["ActivityDefinition"];
         };
       };
+      /** @description Activity definition not found, or it does not belong to this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   startActivityRun: {
@@ -3799,6 +4001,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ActivityRun"];
         };
+      };
+      /** @description Session or activity definition does not belong to this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -3824,6 +4033,13 @@ export interface operations {
           "application/json": components["schemas"]["ActivityRun"];
         };
       };
+      /** @description Run not found, or it does not belong to this session. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   getActivityResponses: {
@@ -3847,6 +4063,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ActivityResponse"][];
         };
+      };
+      /** @description Run not found, or it does not belong to this session. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

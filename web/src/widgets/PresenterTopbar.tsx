@@ -56,6 +56,7 @@ export function PresenterTopbar({
   onResume,
   onEnd
 }: PresenterTopbarProps) {
+  const sessionActive = session.status === "LIVE" || session.status === "PAUSED";
   const openProjection = () =>
     window.open(
       `/#/courses/${courseId}/sessions/${sessionId}/projection`,
@@ -107,66 +108,75 @@ export function PresenterTopbar({
               <Monitor />
               Открыть проектор
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={openConnection}>
-              <QrCode />
-              QR для MAX
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="btn-ghost presenter-menu-trigger" type="button">
-              <Wrench size={16} />
-              Инструменты
-              <ChevronDown size={14} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="presenter-action-menu">
-            <DropdownMenuCheckboxItem
-              checked={drawing}
-              onCheckedChange={(checked) => onDrawingChange(Boolean(checked))}
+        {sessionActive && (
+          <>
+            <button
+              className="btn-primary presenter-connect"
+              type="button"
+              onClick={openConnection}
             >
-              <PenLine />
-              Рисование
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <QrCode size={16} />
+              Подключить студентов
+            </button>
 
-        {session.status === "PAUSED" ? (
-          <button
-            className="btn-primary"
-            type="button"
-            title="Продолжить показ слайдов"
-            disabled={resumePending}
-            onClick={onResume}
-          >
-            <Play size={16} />
-            Продолжить
-          </button>
-        ) : (
-          <button
-            className="btn-ghost"
-            type="button"
-            title="Поставить лекцию на паузу"
-            disabled={pausePending}
-            onClick={onPause}
-          >
-            <Pause size={16} />
-            Пауза
-          </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="btn-ghost presenter-menu-trigger" type="button">
+                  <Wrench size={16} />
+                  Инструменты
+                  <ChevronDown size={14} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="presenter-action-menu">
+                <DropdownMenuCheckboxItem
+                  checked={drawing}
+                  onCheckedChange={(checked) => onDrawingChange(Boolean(checked))}
+                >
+                  <PenLine />
+                  Рисование
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {session.status === "PAUSED" ? (
+              <button
+                className="btn-primary"
+                type="button"
+                title="Продолжить показ слайдов"
+                disabled={resumePending}
+                onClick={onResume}
+              >
+                <Play size={16} />
+                Продолжить
+              </button>
+            ) : (
+              <button
+                className="btn-ghost"
+                type="button"
+                title="Поставить лекцию на паузу"
+                disabled={pausePending}
+                onClick={onPause}
+              >
+                <Pause size={16} />
+                Пауза
+              </button>
+            )}
+            <ConfirmActionButton
+              title="Завершить лекцию?"
+              description="Завершение необратимо: рассылка и управление этой сессией остановятся."
+              confirmLabel="Завершить"
+              className="btn-danger-outline"
+              disabled={endPending}
+              onConfirm={onEnd}
+            >
+              <Square size={16} />
+              Завершить
+            </ConfirmActionButton>
+          </>
         )}
-        <ConfirmActionButton
-          title="Завершить лекцию?"
-          description="Завершение необратимо: рассылка и управление этой сессией остановятся."
-          confirmLabel="Завершить"
-          className="btn-danger-outline"
-          disabled={endPending}
-          onConfirm={onEnd}
-        >
-          <Square size={16} />
-          Завершить
-        </ConfirmActionButton>
       </div>
     </header>
   );

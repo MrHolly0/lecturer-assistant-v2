@@ -4,15 +4,10 @@ import { apiErrorFromResponse } from "./errors";
 import { apiFetch } from "./http";
 
 type GeneratedStudentSessionSnapshot = components["schemas"]["StudentSessionSnapshot"];
-type GeneratedActivePoll = components["schemas"]["ActivePollView"];
 
-export type StudentActivePoll = Omit<GeneratedActivePoll, "correctOptionIdx" | "votes"> & {
-  correctOptionIdx?: number | null;
-  votes?: number[] | null;
-};
+export type StudentActivePoll = components["schemas"]["ActivePollView"];
 export type StudentSessionSnapshot = Omit<GeneratedStudentSessionSnapshot, "activePoll"> & {
   activePoll?: StudentActivePoll | null;
-  myVote?: number | null;
 };
 export type StudentJoinResponse = components["schemas"]["StudentJoinResponse"];
 export type SignalAggregate = components["schemas"]["SignalAggregate"];

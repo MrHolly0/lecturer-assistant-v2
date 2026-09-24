@@ -1,14 +1,21 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { BookOpen, Home, LogOut, Menu, Shield, UserRound, X } from "lucide-react";
+import { BookOpen, Home, Link2, LogOut, Menu, Shield, UserRound, X } from "lucide-react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthContext";
 import { landingPath } from "../app/routes";
+import { BrandMark } from "../shared/brand/BrandMark";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../shared/ui/tooltip";
 
 const navItems = [
   { path: "/home", icon: Home, label: "Главная", roles: ["STUDENT"] },
   { path: "/courses", icon: BookOpen, label: "Курсы", roles: ["ADMIN", "LECTURER", "ASSISTANT"] },
+  {
+    path: "/settings/max",
+    icon: Link2,
+    label: "Подключить MAX",
+    roles: ["ADMIN", "LECTURER", "ASSISTANT"]
+  },
   { path: "/admin/users", icon: Shield, label: "Пользователи", roles: ["ADMIN"] }
 ];
 
@@ -37,11 +44,12 @@ export function Layout({ children }: { children: ReactNode }) {
         }`}
       >
         <div className="flex items-center justify-between border-b border-neutral-200 p-5">
-          <Link to={user ? landingPath(user.role) : "/login"} className="flex items-center gap-2 text-lg">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500 text-xs text-white">
-              L
-            </span>
-            LectureApp
+          <Link
+            to={user ? landingPath(user.role) : "/login"}
+            className="flex items-center gap-2 text-base font-semibold"
+          >
+            <BrandMark className="h-8 w-8 shrink-0 text-orange-500" />
+            <span>Lecturer Assistant</span>
           </Link>
           <button
             className="lg:hidden"
@@ -112,7 +120,8 @@ export function Layout({ children }: { children: ReactNode }) {
           <button onClick={() => setSidebarOpen(true)} aria-label="Открыть меню">
             <Menu className="h-5 w-5" />
           </button>
-          <span className="text-sm">LectureApp</span>
+          <BrandMark className="h-6 w-6 text-orange-500" />
+          <span className="text-sm font-medium">Lecturer Assistant</span>
         </div>
         <main className="flex-1 overflow-auto">{children}</main>
       </div>

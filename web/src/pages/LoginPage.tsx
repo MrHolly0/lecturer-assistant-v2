@@ -6,6 +6,7 @@ import { login, bootstrapAdmin } from "../app/api/auth-api";
 import { useAuth } from "../app/AuthContext";
 import { ApiError } from "../app/api/http";
 import { landingPath } from "../app/routes";
+import { BrandMark } from "../shared/brand/BrandMark";
 
 type Mode = "login" | "bootstrap";
 
@@ -59,6 +60,7 @@ export function LoginPage() {
     <div className="auth-shell">
       <div className="auth-card">
         <div className="auth-header">
+          <BrandMark className="mx-auto h-16 w-16 text-orange-500" />
           <h1 className="auth-title">Lecturer Assistant</h1>
           <p className="auth-sub">v2</p>
         </div>

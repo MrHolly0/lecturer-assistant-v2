@@ -7,6 +7,20 @@ export type LiveSession = components["schemas"]["LiveSession"];
 export type SessionParticipant = components["schemas"]["SessionParticipant"];
 export type LiveSessionMessage = { type: string; session: LiveSession };
 
+export interface ActiveSession {
+  sessionId: string;
+  courseId: string;
+  joinCode: string;
+  lectureTitle: string;
+  currentSlideIdx: number;
+}
+
+export async function getMyActiveSession(): Promise<ActiveSession | null> {
+  const response = await apiFetch("/me/active-session");
+  if (response.status === 204) return null;
+  return response.json() as Promise<ActiveSession>;
+}
+
 export async function startLiveSession(courseId: string, lectureId: string): Promise<LiveSession> {
   const res = await apiFetch(`/courses/${courseId}/lectures/${lectureId}/sessions`, {
     method: "POST"

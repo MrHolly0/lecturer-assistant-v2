@@ -97,8 +97,9 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     mutationFn: ({ pollId, optionIdx }: { pollId: string; optionIdx: number }) =>
       respondToPoll(normalizedCode, pollId, participantToken, optionIdx),
     onSuccess: (result) => {
-      setMyVote(result.myVote);
-      setSnapshot((value) => (value ? { ...value, myVote: result.myVote } : value));
+      const acceptedVote = result.myVote ?? null;
+      setMyVote(acceptedVote);
+      setSnapshot((value) => (value ? { ...value, myVote: acceptedVote } : value));
       toast.success(result.accepted ? "Ответ принят." : "Ваш первый ответ уже сохранён.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить ответ.")),

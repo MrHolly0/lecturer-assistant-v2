@@ -6,6 +6,7 @@ import { refreshAuthSession } from "./refresh";
 type AuthResponse = components["schemas"]["AuthResponse"];
 export type MaxAuthResponse = components["schemas"]["MaxAuthResponse"];
 type UserProfile = components["schemas"]["UserProfile"];
+type MaxAuthRequest = components["schemas"]["MaxAuthRequest"] & { linkCode?: string };
 
 export interface MaxLoginResult {
   auth: MaxAuthResponse;
@@ -63,20 +64,22 @@ export async function refreshAuth(): Promise<AuthResponse | null> {
   return refreshAuthSession();
 }
 
-export function loginWithMax(initData: string): Promise<MaxLoginResult> {
+export function loginWithMax(initData: string, linkCode?: string): Promise<MaxLoginResult> {
   if (maxLoginInFlight) return maxLoginInFlight;
-  maxLoginInFlight = performMaxLogin(initData).finally(() => {
+  maxLoginInFlight = performMaxLogin(initData, linkCode).finally(() => {
     maxLoginInFlight = null;
   });
   return maxLoginInFlight;
 }
 
-async function performMaxLogin(initData: string): Promise<MaxLoginResult> {
+async function performMaxLogin(initData: string, linkCode?: string): Promise<MaxLoginResult> {
   clearStoredAuth();
   try {
+    const request: MaxAuthRequest = { initData };
+    if (linkCode) request.linkCode = linkCode;
     const res = await apiFetch("/auth/max", {
       method: "POST",
-      body: JSON.stringify({ initData }),
+      body: JSON.stringify(request),
       skipAuthorization: true,
       skipAuthRefresh: true
     });
