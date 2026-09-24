@@ -2,7 +2,7 @@
 
 Lecturer Assistant помогает преподавателю вести очную лекцию с синхронным экраном студента: показывать текущий слайд, получать сигналы понимания и вопросы, запускать короткие опросы. Преподаватель работает в веб-интерфейсе на компьютере, студент — в браузере или мини-приложении MAX.
 
-Документ описывает состояние ветки `v2/phase-5-web-student-channel` на 24.09.2026. Связный реализованный путь — веб-сценарий без завершённого опроса; его нужно повторно прогнать на чистом стенде перед сдачей. Для MAX реализованы проверка подписанного `initData`, вход и действия студента по JWT, чтение `start_param`, тема, кнопка «Назад» и отдельный адаптер бота. Адаптер не входит в compose и не проверен с живым MAX, а экран опроса ещё не согласован с серверным контрактом. Ограничения перечислены ниже.
+Документ описывает состояние ветки `v2/phase-5-web-student-channel` на 24.09.2026, ревизия `bb4386a`. Веб-сценарий, сигналы по слайдам и полный цикл короткого опроса реализованы в коде; MAX-адаптер входит в compose. Сквозной путь с живым ботом и временным ngrok-стендом ещё не зафиксирован ручным прогоном. Ограничения перечислены ниже.
 
 ## Назначение и пользователи
 
@@ -28,7 +28,7 @@ Lecturer Assistant помогает преподавателю вести очн
 8. Преподаватель запускает быстрый опрос. Сервер принимает первый ответ студента, скрывает распределение до закрытия и сохраняет закрытый результат. Текущий экран студента ещё не согласован с новым контрактом API и после выбора варианта может завершиться ошибкой отображения.
 9. Преподаватель ставит лекцию на паузу, продолжает её или завершает.
 
-MAX-часть работает только частично. Мини-приложение загружает Bridge с CDN MAX, передаёт `initData` серверу, получает JWT и при наличии `start_param` вида `ABC123` открывает `#/s/ABC123`. Сервер проверяет HMAC-подпись и срок `auth_date`, затем находит или создаёт пользователя по MAX `user.id`; повторный вход использует того же человека, а сигналы и вопросы принимаются по JWT без анонимного токена. `adapters/max` принимает `/start` и `bot_started` через long polling или webhook и отвечает кнопкой `open_app` с `?startapp=<код>`. Полный путь «бот → кнопка → лекция → опрос» пока не готов: адаптер запускается отдельно, живой MAX не проверен, а фронтенд опроса отстаёт от серверного контракта.
+MAX-часть загружает Bridge с CDN MAX, передаёт `initData` серверу, получает JWT и по `start_param` вида `ABC123` открывает `#/s/ABC123`. Сервер проверяет HMAC-подпись и срок `auth_date`, затем находит или создаёт пользователя по MAX `user.id`; повторный вход использует того же человека, а сигналы, вопросы и ответы на опрос принимаются по JWT. `adapters/max` принимает `/start` и `bot_started` через long polling или webhook и отвечает кнопкой `open_app` с `?startapp=<код>`. Адаптер входит в compose, но путь «живой бот → временный ngrok → мини-приложение» ещё не подтверждён сквозным прогоном.
 
 ## Архитектура
 
@@ -42,7 +42,7 @@ flowchart LR
     C -->|POST /convert| R[Python converter]
     R -->|LibreOffice и Poppler| V
     T[Telegram adapter вручную] -->|Channel SPI| C
-    A[MAX adapter вручную] -->|Channel SPI| C
+    A[MAX adapter в compose] -->|Channel SPI| C
     A -->|Bot API| X[MAX]
     M[MAX Bridge CDN] --> S
 ```
@@ -56,7 +56,7 @@ flowchart LR
 | `deploy/converter/` | Python 3.12, LibreOffice, Poppler | Проверка и преобразование PDF, PPT, PPTX и ODP в PNG слайдов и извлечение текста |
 | `postgres` | PostgreSQL 16 | Пользователи, курсы, лекции, сессии, сигналы, вопросы, опросы, события |
 | `adapters/telegram/` | Node.js без внешних npm-зависимостей | Экспериментальный long-poll адаптер Telegram; запускается отдельно |
-| `adapters/max/` | Node.js без внешних npm-зависимостей | Long polling или webhook MAX, `/start`, `bot_started`, кнопка `open_app` и доставка из Channel SPI; запускается отдельно |
+| `adapters/max/` | Node.js без внешних npm-зависимостей | Long polling или webhook MAX, `/start`, `bot_started`, кнопка `open_app` и доставка из Channel SPI; входит в compose |
 | `adapters/echo/` | Node.js без внешних npm-зависимостей | Консольная заглушка для проверки Channel SPI |
 
 Ядро — модульный монолит. Границы модулей и решения описаны в [архитектуре](docs/ARCHITECTURE_V2.md), [ADR](docs/adr/) и [модели прав](docs/permissions.md). Контракт HTTP API находится в [OpenAPI](openapi/lecturer-assistant-v2.yaml).
@@ -71,48 +71,94 @@ flowchart LR
 docker compose up --build
 ```
 
-Команда собирает и запускает PostgreSQL, `core`, конвертер и веб-интерфейс. После запуска откройте `http://localhost:3000`.
+Команда собирает и запускает PostgreSQL, `core`, конвертер, веб-интерфейс, MAX- и Telegram-адаптеры. Без токена соответствующий адаптер остаётся в ожидающем контейнере и не мешает веб-сценарию. После запуска откройте `http://localhost:3000`.
 
 Значения по умолчанию подходят только для локальной проверки. Для стенда создайте `.env` из `.env.example`, замените пароли и секреты и задайте `MAX_BOT_TOKEN`. Файл `.env` исключён из Git.
 
-Холодная сборка пока не подтверждает требование хакатона «не более 5 минут». Последний замер из `docs/hackathon/research/PACKAGING_GAPS.md` от 18.09.2026: 7 минут 50 секунд при прогретых базовых образах; 468 секунд заняла Maven-стадия. После изменений Dockerfile замер нужно повторить.
+Последний документированный холодный замер находится в `deploy/BUILD_TIME.md`: 24.09.2026 образы `core`, конвертера и адаптеров собрались за 57 секунд, web отдельно — за 22 секунды, суммарно около 1 минуты 20 секунд. Базовые образы были прогреты, внутренний build-кэш очищен. Web в том замере собирался на более ранней ревизии; production-сборка текущего `bb4386a` проверена отдельно и проходит. Результат зависит от скорости сети и не заменяет контрольный холодный замер финального commit hash.
 
 ## Переменные окружения
 
-Таблица объединяет `.env.example`, фактический `docker-compose.yml` и переменные отдельного MAX-адаптера. Пустое значение означает, что интеграция отключена.
+Ниже приведена построчная сверка корневого `.env.example`, `core/src/main/resources/application.yml`, compose-файлов и процессов адаптеров. Значения по умолчанию предназначены для разработки; секреты стенда создаёт `deploy/stand/init-env.sh` и в Git не добавляет.
 
-| Переменная | Пример или значение по умолчанию | Назначение и фактическое состояние |
+### Core: все переменные из `application.yml`
+
+| Переменная | Дефолт приложения | В корневом `.env.example` | Фактическое использование |
+|---|---|:---:|---|
+| `DB_URL` | `jdbc:postgresql://localhost:5432/lecturer_assistant` | да | Compose передаёт адрес `postgres:5432` |
+| `DB_USERNAME` | `lecturer` | да | Пользователь JDBC |
+| `DB_PASSWORD` | `lecturer_dev_password` | да | Пароль JDBC; в prod берётся из `POSTGRES_PASSWORD` |
+| `MAX_UPLOAD_SIZE` | `100MB` | да | Лимит одного multipart-файла и запроса Spring |
+| `SERVER_PORT` | `8080` | нет | В контейнере compose жёстко задан `8080`; хостовый порт меняет `CORE_PORT` |
+| `APP_VERSION` | `0.0.1-SNAPSHOT` | нет | Возвращается в системной информации; compose допускает переопределение |
+| `JWT_SECRET` | небезопасный dev-дефолт | да | Подпись JWT; prod-оверлей требует непустое значение |
+| `REQUIRE_STRONG_JWT_SECRET` | `false` | да | Prod-оверлей принудительно задаёт `true` |
+| `ACCESS_TOKEN_MINUTES` | `15` | да | Срок access token |
+| `REFRESH_TOKEN_DAYS` | `30` | да | Срок refresh token |
+| `REFRESH_COOKIE_SECURE` | `true` | да | `Secure` для refresh-cookie; на локальном HTTP может понадобиться `false` |
+| `BLOB_ROOT` | `./data/blobs` | да | В контейнере зафиксирован `/data/blobs` |
+| `MAX_UPLOAD_BYTES` | `104857600` | да | Прикладной предел загрузки, 100 MiB |
+| `SLIDE_IMAGE_URL_SECRET` | значение `JWT_SECRET` | нет | Подпись URL изображений; в базовом compose имеет отдельный dev-дефолт, в prod обязательна |
+| `SLIDE_IMAGE_URL_TTL` | `PT1H` | нет | Срок окна подписи URL слайда |
+| `CONVERTER_CONNECT_TIMEOUT` | `PT5S` | нет | Таймаут соединения core с конвертером |
+| `CONVERTER_READ_TIMEOUT` | `PT20M` | нет | Таймаут чтения потока конвертации |
+| `CONTENT_IMPORT_CORE_POOL_SIZE` | `1` | нет | Основное число потоков импорта |
+| `CONTENT_IMPORT_MAX_POOL_SIZE` | `2` | нет | Максимальное число потоков импорта |
+| `CONTENT_IMPORT_QUEUE_CAPACITY` | `8` | нет | Ёмкость очереди импорта |
+| `MAX_BOT_TOKEN` | пусто | да | Проверка подписи MAX `initData`; также используется адаптером |
+| `MAX_INIT_DATA_MAX_AGE` | `PT1H` | да | Максимальный возраст `initData` |
+| `CHANNEL_INTERNAL_API_KEY` | небезопасный dev-дефолт | да | Ключ Channel SPI; compose передаёт его core и адаптерам, prod требует значение |
+| `CHANNEL_DELIVERY_WORKER_DELAY_MS` | `5000` | да | Интервал чтения outbox |
+| `TELEGRAM_BOT` | пусто | нет | Имя Telegram-бота в конфигурации каналов |
+| `VK_BOT` | пусто | нет | Имя VK-бота в конфигурации каналов |
+
+Итого: в `application.yml` используются 26 переменных, из них 11 отсутствуют в корневом `.env.example`: `SERVER_PORT`, `APP_VERSION`, `SLIDE_IMAGE_URL_SECRET`, `SLIDE_IMAGE_URL_TTL`, `CONVERTER_CONNECT_TIMEOUT`, `CONVERTER_READ_TIMEOUT`, `CONTENT_IMPORT_CORE_POOL_SIZE`, `CONTENT_IMPORT_MAX_POOL_SIZE`, `CONTENT_IMPORT_QUEUE_CAPACITY`, `TELEGRAM_BOT`, `VK_BOT`.
+
+### Compose, стенд, адаптеры и web
+
+| Переменная | Дефолт | Где читается | В корневом `.env.example` |
+|---|---|---|:---:|
+| `POSTGRES_DB` | `lecturer_assistant` | PostgreSQL и backup | да |
+| `POSTGRES_USER` | `lecturer` | PostgreSQL и backup | да |
+| `POSTGRES_PASSWORD` | dev-пароль | PostgreSQL; в prod обязательна | да |
+| `POSTGRES_PORT` | `5432` | Публикация PostgreSQL на `127.0.0.1` | нет |
+| `CORE_PORT` | `8080` | Хостовый порт core | да |
+| `WEB_PORT` | `3000` | Хостовый порт web | да |
+| `CLOUDFLARED_TOKEN` | пусто | Не читается кодом или compose; зарезервированная запись | да |
+| `SITE_DOMAIN` | нет | Prod Caddy и URL мини-приложения/webhook | нет |
+| `ACME_EMAIL` | нет | Регистрация сертификата Caddy | нет |
+| `BACKUP_KEEP_DAYS` | `14` | Срок хранения `pg_dump` на стенде | нет |
+| `MAX_WEBAPP_URL` | нет | MAX-адаптер; compose передаёт значение, prod строит из `SITE_DOMAIN` | нет |
+| `MAX_API_BASE` | `https://platform-api2.max.ru` | MAX-адаптер при прямом запуске | нет |
+| `MAX_WEBHOOK_URL` | пусто | Переключает MAX-адаптер с long polling на webhook | нет |
+| `MAX_WEBHOOK_SECRET` | пусто | Проверка заголовка webhook; в prod обязательна | нет |
+| `MAX_WEBHOOK_PORT` | `8090` | MAX-адаптер; в compose зафиксирован `8090` | нет |
+| `MAX_WEBHOOK_PATH` | хеш токена | Путь webhook; в prod создаётся `init-env.sh` | нет |
+| `MAX_RATE_LIMIT_RPS` | `15` | Ограничитель запросов MAX-адаптера | нет |
+| `CORE_URL` | `http://localhost:8080` | MAX- и Telegram-адаптеры; compose задаёт `http://core:8080` | нет |
+| `TELEGRAM_BOT_TOKEN` | пусто | Telegram-адаптер | нет |
+| `VITE_MAX_BOT_NAME` | плейсхолдер в `web/.env.example` | Build-time настройка MAX-ссылки и QR-кода | нет; есть только в `web/.env.example` |
+
+`VITE_MAX_BOT_NAME` встраивается Vite во время сборки. Одного изменения серверной `.env` после сборки недостаточно; web нужно пересобрать. Текущий `web/Dockerfile` не объявляет отдельный build argument, поэтому значение должно быть доступно Vite в контексте сборки.
+
+### Конвертер
+
+Все параметры ниже читаются `deploy/converter/server.py`, отсутствуют в `.env.example` и не передаются compose; сейчас используются дефолты кода.
+
+| Переменная | Дефолт | Назначение |
 |---|---:|---|
-| `POSTGRES_DB` | `lecturer_assistant` | Имя базы PostgreSQL |
-| `POSTGRES_USER` | `lecturer` | Пользователь PostgreSQL |
-| `POSTGRES_PASSWORD` | `lecturer_dev_password` | Пароль PostgreSQL; заменить вне локальной разработки |
-| `DB_URL` | `jdbc:postgresql://postgres:5432/lecturer_assistant` | JDBC URL для `core` |
-| `DB_USERNAME` | `lecturer` | Пользователь БД для `core` |
-| `DB_PASSWORD` | `lecturer_dev_password` | Пароль БД для `core`; заменить на стенде |
-| `CORE_PORT` | `8080` | Порт `core` на хосте |
-| `WEB_PORT` | `3000` | Порт веб-интерфейса на хосте |
-| `CLOUDFLARED_TOKEN` | пусто | Зарезервирован, но текущими compose-файлами не используется |
-| `JWT_SECRET` | `change-me-to-a-long-random-secret` | Ключ подписи JWT; в базовом compose при отсутствии `.env` используется небезопасный dev-дефолт |
-| `REQUIRE_STRONG_JWT_SECRET` | `false` | Проверка сложности `JWT_SECRET`; prod-оверлей принудительно включает её |
-| `MAX_BOT_TOKEN` | пусто | Токен бота MAX для проверки подписи `initData`; без него `POST /api/v1/auth/max` возвращает 503 |
-| `MAX_INIT_DATA_MAX_AGE` | `PT1H` | Максимальный возраст `initData` в ISO-8601 Duration |
-| `MAX_WEBAPP_URL` | не задано | Зарегистрированный HTTPS-адрес мини-приложения; обязателен для отдельного процесса `adapters/max` |
-| `MAX_API_BASE` | `https://platform-api2.max.ru` | Базовый адрес Bot API только для `adapters/max` |
-| `MAX_WEBHOOK_URL` | пусто | Публичный URL webhook; если не задан, адаптер использует long polling |
-| `MAX_WEBHOOK_SECRET` | пусто | Секрет проверки заголовка webhook; обязателен при `MAX_WEBHOOK_URL` |
-| `MAX_WEBHOOK_PORT` | `8090` | Локальный порт webhook-сервера адаптера |
-| `MAX_WEBHOOK_PATH` | `/webhook/<sha256(MAX_BOT_TOKEN)>` | Путь webhook; вычисляется из токена, если не переопределён |
-| `MAX_RATE_LIMIT_RPS` | `15` | Глобальное ограничение частоты запросов адаптера к Bot API |
-| `CHANNEL_INTERNAL_API_KEY` | `change-this-internal-adapter-key` | Ключ Channel SPI. В базовом compose сейчас не передаётся в `core`, поэтому значение из `.env` не применяется |
-| `CHANNEL_DELIVERY_WORKER_DELAY_MS` | `5000` | Интервал worker канальной доставки. В базовом compose сейчас не передаётся в `core` |
-| `ACCESS_TOKEN_MINUTES` | `15` | Срок жизни access token |
-| `REFRESH_TOKEN_DAYS` | `30` | Срок жизни refresh token |
-| `REFRESH_COOKIE_SECURE` | `true` | Флаг `Secure` refresh-cookie; для локального HTTP может понадобиться `false` |
-| `BLOB_ROOT` | `/data/blobs` | Каталог файлов. Базовый compose жёстко задаёт `/data/blobs`, значение из `.env` не применяется |
-| `MAX_UPLOAD_BYTES` | `104857600` | Максимальный размер файла на уровне прикладной проверки, 100 MiB |
-| `MAX_UPLOAD_SIZE` | `100MB` | Лимит multipart Spring |
-
-Переменные `MAX_WEBAPP_URL`, `MAX_API_BASE`, `MAX_WEBHOOK_*` и `MAX_RATE_LIMIT_RPS` читаются адаптером, но пока не внесены в `.env.example` и compose. Дополнительные настройки `application.yml` и конвертера также не вынесены в `.env.example`. Среди них `SLIDE_IMAGE_URL_SECRET`, таймауты и размеры пула импорта, `TELEGRAM_BOT`, `VK_BOT`, а также `CONVERTER_*` из `deploy/converter/server.py`.
+| `CONVERTER_MAX_SLIDES` | `300` | Максимум обрабатываемых слайдов |
+| `CONVERTER_BASE_DPI` | `150` | Базовое разрешение рендера |
+| `CONVERTER_LARGE_DECK_THRESHOLD` | `120` | Порог большой презентации по числу страниц |
+| `CONVERTER_LARGE_FILE_BYTES` | `83886080` | Порог большого файла, 80 MiB |
+| `CONVERTER_LARGE_DECK_DPI` | `110` | DPI для большой презентации |
+| `CONVERTER_MAX_LONG_EDGE` | `1600` | Максимальная длинная сторона PNG |
+| `CONVERTER_OFFICE_TIMEOUT_SECONDS` | `240` | Таймаут LibreOffice |
+| `CONVERTER_OFFICE_QUEUE_TIMEOUT_SECONDS` | `600` | Ожидание слота LibreOffice |
+| `CONVERTER_PAGE_TIMEOUT_SECONDS` | `60` | Таймаут обработки страницы |
+| `CONVERTER_SOFFICE_CONCURRENCY` | `1` | Число одновременных процессов LibreOffice |
+| `CONVERTER_ZIP_BOMB_RATIO` | `120` | Порог коэффициента распаковки архива |
+| `CONVERTER_ZIP_BOMB_UNCOMPRESSED_BYTES` | `367001600` | Порог распакованного объёма, 350 MiB |
 
 ## Порты
 
@@ -120,12 +166,10 @@ docker compose up --build
 |---:|---|---|
 | `3000` | хост, изменяется через `WEB_PORT` | веб-интерфейс и reverse proxy к API |
 | `8080` | хост, изменяется через `CORE_PORT` | REST API и WebSocket `core` |
-| `5432` | хост, сейчас не параметризован | PostgreSQL |
+| `5432` | только `127.0.0.1`, изменяется через `POSTGRES_PORT` | PostgreSQL |
 | `8000` | только сеть compose | конвертер презентаций |
-| `8090` | только при ручном запуске webhook-режима; изменяется через `MAX_WEBHOOK_PORT` | MAX-адаптер |
-| `80`, `443` | prod-профиль | Caddy; текущий `Caddyfile` слушает только HTTP на `:80`, автоматический HTTPS не настроен |
-| `9090` | prod-профиль | Prometheus |
-| `3001` | prod-профиль | Grafana |
+| `8090` | только сеть compose; при прямом запуске меняется через `MAX_WEBHOOK_PORT` | MAX-адаптер |
+| `80`, `443` | prod-оверлей | Caddy с автоматическим TLS для `SITE_DOMAIN` |
 
 Если 3000 или 8080 заняты:
 
@@ -133,7 +177,7 @@ docker compose up --build
 WEB_PORT=13000 CORE_PORT=18080 docker compose up --build
 ```
 
-Порт PostgreSQL зафиксирован как `5432:5432`; изменить его без правки compose сейчас нельзя.
+Хостовый порт PostgreSQL можно изменить, например `POSTGRES_PORT=15432 docker compose up --build`.
 
 ## Зависимости
 
@@ -143,7 +187,7 @@ WEB_PORT=13000 CORE_PORT=18080 docker compose up --build
 - Web: `web/package.json` и `web/package-lock.json`; сборка выполняется через `npm ci` в `node:22-alpine`, runtime — `nginx:1.27-alpine`.
 - База: `postgres:16-alpine`.
 - Конвертер: `python:3.12-slim`, пакеты Debian `libreoffice`, `poppler-utils`, `fonts-dejavu`; их версии не зафиксированы.
-- Prod-оверлей: `caddy:2.8-alpine`, `prom/prometheus:v2.54.1`, `grafana/grafana:11.1.4`.
+- Prod-оверлей: `caddy:2.8-alpine` и `postgres:16-alpine` для резервного копирования.
 - Tunnel-оверлей: `cloudflare/cloudflared:2025.2.1`.
 
 Полный список Java- и npm-библиотек находится в соответствующих manifest-файлах. Maven Wrapper отсутствует. У Node-адаптеров нет `package.json`, потому что они используют только встроенные модули Node.js и `fetch`.
@@ -153,12 +197,12 @@ WEB_PORT=13000 CORE_PORT=18080 docker compose up --build
 | Интеграция | Что реализовано | Что требуется для работы |
 |---|---|---|
 | MAX Web App | Bridge подключается как `https://st.max.ru/js/max-web-app.js`; читаются `initData`, `start_param`, тема, viewport и BackButton; сервер проверяет подпись и выдаёт JWT | Зарегистрированное мини-приложение, HTTPS-адрес веба и `MAX_BOT_TOKEN` |
-| MAX Bot API | `adapters/max` поддерживает long polling и webhook, `/start`, `bot_started`, кнопку `open_app`, регистрацию возможностей и доставку из outbox | Отдельный запуск Node-процесса, `MAX_BOT_TOKEN`, `MAX_WEBAPP_URL`; для webhook — публичный HTTPS, secret и маршрутизация на порт адаптера. В compose не входит, с живым API не проверен |
-| Telegram Bot API | Есть минимальный long-poll адаптер | Ручной запуск Node-процесса и `TELEGRAM_BOT_TOKEN`; в compose не входит |
+| MAX Bot API | `adapters/max` входит в compose и поддерживает long polling и webhook, `/start`, `bot_started`, кнопку `open_app`, регистрацию возможностей и доставку из outbox | `MAX_BOT_TOKEN`, `MAX_WEBAPP_URL`; для webhook — публичный HTTPS, secret и маршрутизация через Caddy. С живым API сквозной путь не проверен |
+| Telegram Bot API | Минимальный long-poll адаптер входит в compose | `TELEGRAM_BOT_TOKEN`; без токена контейнер ожидает, не запуская адаптер |
 | VK | В конфигурации канала есть имя бота | Внешнего адаптера нет |
 | Cloudflare quick tunnel | Оверлей направляет публичный tunnel на `web:80` | `docker compose -f docker-compose.yml -f docker-compose.tunnel.yml --profile tunnel up` |
-| Caddy | Reverse proxy для `/api/*`, `/ws/*` и web | Prod-оверлей; домен и TLS в текущем `Caddyfile` не настроены |
-| Prometheus и Grafana | Сервисы описаны в prod-оверлее | Метрика `/actuator/prometheus` сейчас недоступна: в `core` нет Prometheus registry |
+| Caddy | Reverse proxy для `/api/*`, `/ws/*`, webhook MAX и web; автоматически получает TLS-сертификат | Prod-оверлей, `SITE_DOMAIN` и `ACME_EMAIL` |
+| ngrok | Временно предоставляет HTTPS-адрес текущего стенда | URL меняется при перезапуске и не хранится в репозитории; перед отправкой его нужно проверить и сообщить отдельно |
 
 ## Данные и тестовые данные
 
@@ -169,7 +213,7 @@ WEB_PORT=13000 CORE_PORT=18080 docker compose up --build
 - структуру обучения: курсы, участники, группы и приглашения;
 - материалы: исходные презентации, PNG слайдов, извлечённый текст, заметки и вложения;
 - живую лекцию: код входа, текущий слайд, аннотации, участники и журнал переходов;
-- обратную связь: последнее значение сигнала на участника в рамках сессии, вопросы и ответы на опросы;
+- обратную связь: последнее значение сигнала участника для каждого слайда, вопросы и ответы на опросы;
 - технические события и refresh-токены; в БД сохраняются только хеши refresh-токенов и токенов анонимного участника.
 
 Метаданные находятся в PostgreSQL volume `postgres-data`, файлы — в `blob-data`. Access token хранится в `sessionStorage` браузера, refresh token — в `HttpOnly` cookie.
@@ -233,7 +277,7 @@ curl http://localhost:8080/api/v1/system/info
 3. На устройстве студента выберите вариант.
 4. На компьютере отметьте правильный вариант и нажмите «Закрыть и показать результат».
 
-Ожидаемый серверный результат: первый ответ принимается, повторный не изменяет выбор; до закрытия студенту не выдаются распределение и правильный вариант; после закрытия сервер возвращает распределение, правильный вариант и собственный ответ студента. Текущий фронтенд не обрабатывает ответ `PollVote` и пытается отрисовать отсутствующий до закрытия массив `votes`, поэтому этот шаг нельзя считать пройденным через интерфейс.
+Ожидаемый результат: первый ответ принимается, повторный не изменяет выбор; до закрытия студент видит сохранённый вариант без распределения и правильного ответа; после закрытия появляются распределение, правильный вариант и собственный ответ студента. Core-тесты и production-сборка web проходят; ручной двухустройственный прогон нужно выполнить перед сдачей.
 
 ### 7. Завершение
 
@@ -245,19 +289,19 @@ curl http://localhost:8080/api/v1/system/info
 
 ## Известные ограничения
 
-- MAX-адаптер реализует long polling, webhook, `/start`, `bot_started`, `open_app` и чтение outbox, но не входит в compose и не проверен с живым Bot API. Core пока не создаёт в outbox итоговые сообщения, поэтому после лекции бот ничего не рассылает.
+- MAX-адаптер входит в compose и реализует long polling, webhook, `/start`, `bot_started`, `open_app` и чтение outbox, но сквозной прогон с живым Bot API не зафиксирован. Core пока не создаёт в outbox итоговые сообщения, поэтому после лекции бот ничего не рассылает.
 - MAX-вход, повторная идентификация, переход по `start_param`, сигналы и вопросы по JWT реализованы на сервере и покрыты интеграционными тестами, но не зафиксирован ручной прогон в реальном webview MAX.
-- Экран «Подключение» строит веб-, Telegram- и VK-ссылки, но не ссылку `max.ru/...?...startapp=...`.
-- Сигнал понимания хранится на сессию, а не на слайд; один участник имеет одно текущее значение. История проблемных слайдов не формируется.
+- Экран «Подключение» строит ссылку и QR-код `max.ru/<бот>?startapp=<код>` только если `VITE_MAX_BOT_NAME` был задан при сборке; в `web/.env.example` пока стоит плейсхолдер.
+- Сигналы привязаны к слайдам и история проблемных слайдов формируется; поведение подтверждено интеграционным тестом, но не нагрузочным прогоном.
 - Сервер хранит статусы и текст ответа на вопрос, но интерфейс преподавателя показывает только открытые вопросы и не даёт ответить или закрыть их.
-- Сервер сохраняет последний закрытый опрос и личный выбор студента, но текущий фронтенд ожидает распределение уже после открытого ответа и не читает `PollVote`; экран опроса требует синхронизации с обновлённым API.
+- Привязка MAX-аккаунта к преподавателю находится в работе и отсутствует в текущей базовой ревизии.
 - Тестовых данных, seed-скрипта и готовых тестовых учётных записей нет.
 - Новое приватное окно без сохранённого токена создаёт нового временного участника. Временный участник больше не добавляется в постоянный состав курса; возврат в том же окне использует сохранённый токен.
-- Базовый compose не запускает канальные адаптеры, не передаёт настройки Channel SPI из `.env`, публикует PostgreSQL на непараметризованном порту 5432 и не задаёт `restart` или healthcheck для `core`, `web` и конвертера.
-- Сборка дольше пяти минут по последнему зафиксированному замеру; актуальный замер после оптимизации отсутствует.
-- Prod-оверлей не настраивает домен и HTTPS, а Prometheus указан без серверной зависимости, создающей `/actuator/prometheus`.
+- Корневой `.env.example` не перечисляет 11 переменных core, параметры стенда и адаптеров, build-time `VITE_MAX_BOT_NAME` и настройки конвертера; полный реестр приведён выше.
+- Последний холодный замер укладывается в пять минут, но web измерялся на более ранней ревизии, а время заметно зависит от сети; нужен финальный замер на commit hash отправки.
+- Текущий публичный адрес выдаёт ngrok и меняется после перезапуска; постоянный домен не подтверждён.
 - OpenAPI не содержит `GET /api/v1/config/channels`; пути `/internal/v1/**` записаны относительно общего `servers.url: /api/v1` и требуют исправления или отдельного server block.
-- Ручной прогон в мобильной, веб- и desktop-версиях MAX в репозитории не зафиксирован. Интервью с преподавателями и пилот не проведены.
+- Сценарий k6 на 150 SSE-клиентов существует, но сохранённого результата прогона нет. Ручной прогон в мобильной, веб- и desktop-версиях MAX также не зафиксирован. Интервью с преподавателями и пилот не проведены.
 
 ## Остановка и повторный запуск
 
