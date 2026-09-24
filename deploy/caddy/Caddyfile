@@ -1,9 +1,40 @@
-:80 {
-    request_body {
-        max_size 100MB
-    }
+{
+	# Адрес для уведомлений Let's Encrypt о сроке сертификата.
+	email {$ACME_EMAIL}
+}
 
-    reverse_proxy /api/* core:8080
-    reverse_proxy /ws/* core:8080
-    reverse_proxy web:80
+# Сертификат выпускается автоматически у Let's Encrypt: MAX не принимает
+# самоподписанные сертификаты и вебхуки по HTTP. При SITE_DOMAIN=localhost
+# Caddy выдаёт сертификат своего локального CA — только для проверки маршрутов.
+{$SITE_DOMAIN} {
+	encode gzip
+
+	request_body {
+		max_size 100MB
+	}
+
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Вебхук MAX: адаптер сам сверяет путь и заголовок x-max-bot-api-secret.
+	handle /webhook/* {
+		reverse_proxy max-adapter:8090
+	}
+
+	# Проверка доступности для внешнего мониторинга.
+	handle /health {
+		rewrite * /actuator/health
+		reverse_proxy core:8080
+	}
+
+	handle /api/* {
+		reverse_proxy core:8080
+	}
+
+	handle /ws/* {
+		reverse_proxy core:8080
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
 }
