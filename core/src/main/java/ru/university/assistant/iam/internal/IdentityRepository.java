@@ -49,6 +49,44 @@ class IdentityRepository {
                 .update();
     }
 
+    void createMaxLinkCode(UUID id, UUID personId, String code, Instant expiresAt) {
+        jdbc.sql(
+                        """
+                        insert into iam.max_link_codes (id, person_id, code, expires_at)
+                        values (:id, :personId, :code, :expiresAt)
+                        """)
+                .param("id", id)
+                .param("personId", personId)
+                .param("code", code)
+                .param("expiresAt", Timestamp.from(expiresAt))
+                .update();
+    }
+
+    /**
+     * Атомарно гасит код и отдаёт person_id одним запросом — конкурентные попытки погасить
+     * один и тот же код не могут обе получить успех (UPDATE берёт блокировку на строку).
+     */
+    Optional<UUID> tryConsumeMaxLinkCode(String code) {
+        return jdbc.sql(
+                        """
+                        update iam.max_link_codes
+                        set used_at = now()
+                        where code = :code and used_at is null and expires_at > now()
+                        returning person_id
+                        """)
+                .param("code", code)
+                .query(UUID.class)
+                .optional();
+    }
+
+    /** Только для различения причины отказа (просрочен / уже использован) после неудачного tryConsume. */
+    Optional<Instant> findMaxLinkCodeUsedAt(String code) {
+        return jdbc.sql("select used_at from iam.max_link_codes where code = :code and used_at is not null")
+                .param("code", code)
+                .query((rs, row) -> rs.getTimestamp("used_at").toInstant())
+                .optional();
+    }
+
     /** Сериализует первый вход одного внешнего пользователя, чтобы параллельные запросы не создали двух людей. */
     void lockExternalId(String channelType, String externalId) {
         jdbc.sql("select pg_advisory_xact_lock(hashtextextended(:key, 0))")

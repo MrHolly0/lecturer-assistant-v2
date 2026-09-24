@@ -110,10 +110,13 @@ public class AuthService implements EphemeralPersonApi {
 
     /**
      * Вход по initData мини-приложения MAX. Личность определяется только подписанным user.id:
-     * повторный вход находит того же человека, первый создаёт студента и привязку канала.
+     * повторный вход находит того же человека и берёт его роль, код привязки не нужен.
+     * Первый вход без валидного linkCode создаёт нового студента; с валидным (B-03) —
+     * связывает MAX-аккаунт с уже существующей личностью (например, преподавателем),
+     * не создавая никого нового и не меняя её роль.
      */
     @Transactional
-    public AuthTokens loginWithMax(String initData) {
+    public AuthTokens loginWithMax(String initData, String linkCode) {
         if (!maxInitData.isConfigured()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "MAX login is not configured");
         }
@@ -128,8 +131,25 @@ public class AuthService implements EphemeralPersonApi {
         PersonRecord person = identities
                 .findByExternalId(MAX_CHANNEL, externalId)
                 .flatMap(identity -> persons.findById(identity.personId()))
-                .orElseGet(() -> createMaxStudent(data, externalId));
+                .orElseGet(() -> linkCode != null && !linkCode.isBlank()
+                        ? linkMaxAccountByCode(linkCode, data, externalId)
+                        : createMaxStudent(data, externalId));
         return issueTokens(person);
+    }
+
+    private PersonRecord linkMaxAccountByCode(String linkCode, MaxInitData data, String externalId) {
+        String code = linkCode.trim().toUpperCase();
+        UUID personId = identities.tryConsumeMaxLinkCode(code).orElseThrow(() -> {
+            boolean alreadyUsed = identities.findMaxLinkCodeUsedAt(code).isPresent();
+            return alreadyUsed
+                    ? new ResponseStatusException(HttpStatus.CONFLICT, "Link code already used")
+                    : new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired link code");
+        });
+        PersonRecord person = persons
+                .findById(personId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid link code"));
+        identities.createIdentity(UuidV7.generate(), personId, MAX_CHANNEL, externalId, data.username());
+        return person;
     }
 
     private PersonRecord createMaxStudent(MaxInitData data, String externalId) {

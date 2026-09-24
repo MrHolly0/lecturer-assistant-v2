@@ -12,6 +12,7 @@ import ru.university.assistant.iam.api.ChannelIdentityApi;
 import ru.university.assistant.iam.api.ChannelIdentityResponse;
 import ru.university.assistant.iam.api.IdentityLinkCodeResponse;
 import ru.university.assistant.iam.api.LinkIdentityRequest;
+import ru.university.assistant.iam.api.PersonRole;
 import ru.university.assistant.shared.api.CodeGenerator;
 import ru.university.assistant.shared.api.UuidV7;
 
@@ -30,6 +31,18 @@ public class IdentityService implements ChannelIdentityApi {
         String code = CodeGenerator.readableCode(8);
         var expiresAt = clock.instant().plus(Duration.ofMinutes(15));
         identities.createLinkCode(UuidV7.generate(), user.id(), code, expiresAt);
+        return new IdentityLinkCodeResponse(code, expiresAt);
+    }
+
+    /** B-03: код, которым преподаватель в браузере привязывает свой MAX-аккаунт к своей же личности. */
+    @Transactional
+    public IdentityLinkCodeResponse createMaxLinkCode(AuthenticatedUser user) {
+        if (user.role() != PersonRole.LECTURER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a lecturer can link a MAX account");
+        }
+        String code = CodeGenerator.readableCode(6);
+        var expiresAt = clock.instant().plus(Duration.ofMinutes(5));
+        identities.createMaxLinkCode(UuidV7.generate(), user.id(), code, expiresAt);
         return new IdentityLinkCodeResponse(code, expiresAt);
     }
 

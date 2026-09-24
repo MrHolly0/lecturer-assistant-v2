@@ -134,11 +134,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/MaxAuthResponse"
         "400":
-          description: initData is blank or longer than 8192 characters.
+          description: initData is blank or longer than 8192 characters, or linkCode is invalid/expired.
         "401":
           description: Signature mismatch, malformed or expired initData.
         "403":
           description: Person is disabled.
+        "409":
+          description: linkCode was already used.
         "503":
           description: MAX login is not configured on the server (no bot token).
   /auth/refresh:
@@ -267,6 +269,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Invitation"
+  /identity/max/link-codes:
+    post:
+      operationId: createMaxLinkCode
+      summary: Create a one-time code to link the caller's MAX account to their own person.
+      description: >
+        Requires a browser JWT of a LECTURER. The code is 6 characters from A-Z0-9, valid for 5 minutes,
+        single-use. Pass it as linkCode in the next POST /auth/max from the same person's MAX account
+        to attach that MAX account to this person instead of creating a new student (B-03).
+      tags: [identity]
+      responses:
+        "201":
+          description: Link code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityLinkCode"
+        "403":
+          description: Caller is not a lecturer.
   /identity/link-codes:
     post:
       operationId: createIdentityLinkCode
@@ -298,6 +318,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ChannelIdentity"
+  /me/active-session:
+    get:
+      operationId: getMyActiveSession
+      summary: Read the caller's own currently running (LIVE or PAUSED) lecture, if any.
+      description: >
+        Used by the MAX mini app to drop a lecturer straight into their running lecture instead of
+        a course picker (B-03). Scoped strictly to sessions this person started themselves.
+      tags: [live]
+      responses:
+        "200":
+          description: An active session exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveSessionSummary"
+        "204":
+          description: No running session belongs to this person.
   /courses:
     get:
       operationId: listCourses
@@ -1662,6 +1699,22 @@ components:
         type: string
         enum: [telegram, vk, web, echo]
   schemas:
+    ActiveSessionSummary:
+      type: object
+      required: [sessionId, courseId, joinCode, lectureTitle, currentSlideIdx]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        courseId:
+          type: string
+          format: uuid
+        joinCode:
+          type: string
+        lectureTitle:
+          type: string
+        currentSlideIdx:
+          type: integer
     SystemInfo:
       type: object
       required: [name, version, status]
@@ -1722,6 +1775,12 @@ components:
           type: string
           maxLength: 8192
           description: Raw window.WebApp.initData string, never initDataUnsafe.
+        linkCode:
+          type: string
+          maxLength: 32
+          description: >
+            Optional one-time code from POST /identity/max/link-codes. Ignored if this MAX account is
+            already linked to a person (repeat logins never need it).
     MaxAuthResponse:
       type: object
       required: [accessToken, expiresIn, role, personId, displayName]
