@@ -1247,6 +1247,44 @@ textarea {
   margin: 2px 0 0;
 }
 
+.student-connection {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 35%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--destructive) 8%, var(--background));
+}
+
+.student-connection--connecting,
+.student-connection--polling {
+  border-color: color-mix(in srgb, #b45309 35%, var(--border));
+  background: color-mix(in srgb, #f59e0b 8%, var(--background));
+}
+
+.student-connection > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.student-connection strong,
+.student-connection span {
+  line-height: 1.25;
+}
+
+.student-connection span {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.student-connection .btn-ghost {
+  min-height: 44px;
+}
+
 .student-status {
   white-space: nowrap;
 }
