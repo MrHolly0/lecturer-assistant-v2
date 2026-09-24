@@ -1,2 +1,4 @@
 .tunnel/
 check.log
+.watch-state
+watch.out
