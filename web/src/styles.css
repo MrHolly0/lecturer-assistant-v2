@@ -716,13 +716,108 @@ textarea {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   gap: 12px;
+  justify-content: space-between;
   min-height: 64px;
   padding: 10px 16px;
 }
 
-.presenter-topbar .breadcrumb,
+.presenter-topbar .presenter-back,
 .presenter-topbar .muted {
   color: #d4d4d4;
+}
+
+.presenter-heading,
+.presenter-actions,
+.presenter-meta {
+  align-items: center;
+  display: flex;
+}
+
+.presenter-heading {
+  flex: 1;
+  gap: 12px;
+  min-width: 0;
+}
+
+.presenter-back {
+  align-items: center;
+  border-radius: calc(var(--radius) - 2px);
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 8px;
+  text-decoration: none;
+}
+
+.presenter-back:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.presenter-title-block {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.presenter-title-block > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presenter-meta {
+  gap: 8px;
+}
+
+.presenter-actions {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.presenter-actions button {
+  min-height: 44px;
+}
+
+.presenter-menu-trigger {
+  white-space: nowrap;
+}
+
+.presenter-action-menu [data-slot="dropdown-menu-item"],
+.presenter-action-menu [data-slot="dropdown-menu-checkbox-item"] {
+  min-height: 44px;
+}
+
+.btn-danger-outline {
+  align-items: center;
+  background: transparent;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  border-radius: calc(var(--radius) - 2px);
+  color: #fecaca;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 7px;
+  justify-content: center;
+  padding: 0 12px;
+}
+
+.btn-danger-outline:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: #f87171;
+  color: #fff;
+}
+
+.presenter-status--live {
+  background: #166534;
+  border-color: #22c55e;
+  color: #fff;
+}
+
+.presenter-status--paused {
+  background: #854d0e;
+  border-color: #eab308;
+  color: #fff;
 }
 
 .live-code {
@@ -783,7 +878,7 @@ textarea {
 }
 
 .live-metric,
-.join-panel {
+.live-poll-panel {
   background: #171717;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius);
@@ -794,21 +889,6 @@ textarea {
   align-items: center;
   display: flex;
   gap: 8px;
-}
-
-.join-panel {
-  display: grid;
-  gap: 6px;
-}
-
-.join-panel strong {
-  color: #f97316;
-  font-size: 42px;
-  letter-spacing: 0;
-}
-
-.join-panel small {
-  color: #a3a3a3;
 }
 
 .projection-shell {
@@ -960,6 +1040,53 @@ textarea {
   gap: 10px;
   margin-top: 14px;
   padding-top: 14px;
+}
+
+.signal-summary--primary {
+  margin-top: 0;
+}
+
+.live-poll-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.live-poll-panel .section-heading {
+  margin: 0;
+}
+
+.live-poll-panel h2 {
+  font-size: 1rem;
+}
+
+.live-poll-panel .poll-panel {
+  background: transparent;
+  border: 0;
+  max-width: none;
+  min-width: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.live-poll-panel .poll-launch-btn {
+  justify-content: center;
+  min-height: 44px;
+  width: 100%;
+}
+
+.live-poll-panel .poll-question-input,
+.live-poll-panel .poll-option-input {
+  min-height: 44px;
+}
+
+.live-poll-panel .poll-bar-row {
+  color: #fff;
+  min-height: 40px;
+}
+
+.live-poll-panel .poll-response-count,
+.live-poll-panel .poll-bar-pct {
+  color: #d4d4d4;
 }
 
 .signal-row {
@@ -1271,8 +1398,41 @@ textarea {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .presenter-grid {
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    padding: 12px;
+  }
+
+  .presenter-topbar {
+    padding-inline: 12px;
+  }
+
+  .presenter-back span,
+  .presenter-menu-trigger > svg:last-child {
+    display: none;
+  }
+
+  .presenter-actions {
+    gap: 6px;
+  }
+
+  .presenter-actions button {
+    padding-inline: 10px;
+  }
+}
+
+@media (max-width: 900px) {
+  .presenter-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+
+  .presenter-grid {
+    display: flex;
+    flex-direction: column;
     grid-template-columns: 1fr;
   }
 
@@ -1280,9 +1440,57 @@ textarea {
     align-items: stretch;
     flex-wrap: wrap;
   }
+
+  .presenter-heading,
+  .presenter-actions {
+    width: 100%;
+  }
+
+  .presenter-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .presenter-main {
+    min-height: 620px;
+  }
+
+  .presenter-stage {
+    min-height: 320px;
+  }
+
+  .presenter-side {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 @media (max-width: 560px) {
+  .presenter-topbar,
+  .presenter-grid {
+    padding: 8px;
+  }
+
+  .presenter-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .presenter-actions button {
+    width: 100%;
+  }
+
+  .presenter-title-block > strong {
+    font-size: 0.95rem;
+  }
+
+  .presenter-main {
+    min-height: 500px;
+  }
+
+  .presenter-stage {
+    min-height: 220px;
+  }
+
   .student-session-shell {
     gap: 12px;
     padding: max(12px, env(safe-area-inset-top)) 12px max(20px, env(safe-area-inset-bottom));
@@ -1524,7 +1732,7 @@ textarea {
   }
 }
 
-/* Окно «Подключение» — отдельное окно с QR по каналам (web/TG/VK) */
+/* Окно подключения к мини-приложению MAX. */
 .session-join-shell {
   background: #111;
   box-sizing: border-box;

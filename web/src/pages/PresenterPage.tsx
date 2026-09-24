@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { Monitor, Pause, Play, QrCode, Square } from "lucide-react";
 import { toast } from "sonner";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
 import { getStudentEngagement } from "../app/api/student-api";
@@ -18,16 +16,15 @@ import {
 } from "../app/api/live-api";
 import { precacheDeck } from "../app/offline";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
-import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
-import { PollPanel } from "../widgets/PollPanel";
 import { PresenterSidePanel } from "../widgets/PresenterSidePanel";
+import { PresenterTopbar } from "../widgets/PresenterTopbar";
 
 export function PresenterPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const qc = useQueryClient();
   const channelRef = useRef<BroadcastChannel | null>(null);
   const [localSession, setLocalSession] = useState<LiveSession | null>(null);
   const [drawing, setDrawing] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   const [slideElapsed, setSlideElapsed] = useState(0);
 
   const sessionQuery = useQuery({
@@ -35,6 +32,10 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     queryFn: () => getLiveSession(courseId, sessionId)
   });
   const session = localSession ?? sessionQuery.data;
+  const elapsed = useMemo(() => {
+    const startedAt = session?.startedAt ? Date.parse(session.startedAt) : now;
+    return Math.max(0, Math.floor((now - startedAt) / 1000));
+  }, [now, session?.startedAt]);
   const liveSessionId = session?.id;
   const deckQuery = useQuery({
     queryKey: ["content", courseId, "decks", session?.deckId],
@@ -106,7 +107,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   }, [session?.status]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setElapsed((value) => value + 1), 1000);
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -136,7 +137,13 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     if (!session || !deck || idx < 1 || idx > deck.slides.length) return;
     const next = { ...session, currentSlideIdx: idx };
     setSession(next);
-    slideMut.mutate(idx, { onSuccess: (saved) => setSession(saved) });
+    slideMut.mutate(idx, {
+      onSuccess: (saved) => setSession(saved),
+      onError: () => {
+        setSession(session);
+        toast.error("Не удалось переключить слайд.");
+      }
+    });
   }
 
   if (!session || !deck || !slide) {
@@ -145,80 +152,34 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
 
   return (
     <div className="presenter-shell">
-      <header className="presenter-topbar">
-        <Link to={`/courses/${courseId}/materials`} className="breadcrumb">
-          ← Материалы
-        </Link>
-        <strong>{session.lectureTitle}</strong>
-        <span className="badge">{session.status}</span>
-        <span className="live-code">Код: {session.joinCode}</span>
-        <button
-          className="btn-ghost"
-          type="button"
-          title="Открыть проектор в отдельном окне"
-          onClick={() =>
-            window.open(
-              `/#/courses/${courseId}/sessions/${sessionId}/projection`,
-              "projection",
-              "width=1280,height=720"
-            )
-          }
-        >
-          <Monitor size={16} />
-          Проектор
-        </button>
-        <button
-          className="btn-ghost"
-          type="button"
-          title="Показать QR и ссылки для подключения — окно можно унести на другой экран"
-          onClick={() =>
-            window.open(
-              `/#/courses/${courseId}/sessions/${sessionId}/join`,
-              "session-join",
-              "width=560,height=760"
-            )
-          }
-        >
-          <QrCode size={16} />
-          Подключение
-        </button>
-        <button className="btn-ghost" type="button" onClick={() => setDrawing((value) => !value)}>
-          Рисование
-        </button>
-        <PollPanel courseId={courseId} sessionId={sessionId} />
-        {session.status === "PAUSED" ? (
-          <button
-            className="btn-primary"
-            type="button"
-            title="Продолжить показ слайдов"
-            onClick={() => resumeMut.mutate(undefined, { onSuccess: (saved) => setSession(saved) })}
-          >
-            <Play size={16} />
-            Продолжить
-          </button>
-        ) : (
-          <button
-            className="btn-ghost"
-            type="button"
-            title="Поставить лекцию на паузу"
-            onClick={() => pauseMut.mutate(undefined, { onSuccess: (saved) => setSession(saved) })}
-          >
-            <Pause size={16} />
-            Пауза
-          </button>
-        )}
-        <ConfirmActionButton
-          title="Завершить лекцию?"
-          description="Завершение необратимо: рассылка и управление этой сессией остановятся."
-          confirmLabel="Завершить"
-          className="btn-ghost"
-          disabled={endMut.isPending}
-          onConfirm={() => endMut.mutate(undefined, { onSuccess: (saved) => setSession(saved) })}
-        >
-          <Square size={16} />
-          Завершить
-        </ConfirmActionButton>
-      </header>
+      <PresenterTopbar
+        courseId={courseId}
+        sessionId={sessionId}
+        session={session}
+        drawing={drawing}
+        pausePending={pauseMut.isPending}
+        resumePending={resumeMut.isPending}
+        endPending={endMut.isPending}
+        onDrawingChange={setDrawing}
+        onPause={() =>
+          pauseMut.mutate(undefined, {
+            onSuccess: (saved) => setSession(saved),
+            onError: () => toast.error("Не удалось поставить лекцию на паузу.")
+          })
+        }
+        onResume={() =>
+          resumeMut.mutate(undefined, {
+            onSuccess: (saved) => setSession(saved),
+            onError: () => toast.error("Не удалось продолжить лекцию.")
+          })
+        }
+        onEnd={() =>
+          endMut.mutate(undefined, {
+            onSuccess: (saved) => setSession(saved),
+            onError: () => toast.error("Не удалось завершить лекцию.")
+          })
+        }
+      />
 
       <main className="presenter-grid">
         <section className="presenter-main">
@@ -270,12 +231,13 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
           </div>
         </section>
         <PresenterSidePanel
-          session={session}
           slide={slide}
           participants={participants}
           engagement={engagementQuery.data}
           elapsed={elapsed}
           slideElapsed={slideElapsed}
+          courseId={courseId}
+          sessionId={sessionId}
         />
       </main>
     </div>
