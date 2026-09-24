@@ -1,57 +1,78 @@
 #!/usr/bin/env sh
-# Создаёт .env для стенда со случайными секретами. Запускать на сервере из корня
-# репозитория: sh deploy/stand/init-env.sh
-# Существующий .env не перезаписывается. Секреты после создания сохранить в менеджер
-# паролей; в git .env не попадает (.gitignore).
+# Готовит .env стенда: генерирует секреты, которых нет, которые пусты или совпадают с
+# шаблоном из .env.example. Остальные значения (в том числе токен бота) не трогает.
+# Перед правкой сохраняет копию в .env.bak. Запускать из корня репозитория:
+#   sh deploy/stand/init-env.sh          — туннель ngrok (домен подставит tunnel.sh)
+#   sh deploy/stand/init-env.sh --vps    — VPS: дополнительно спросит домен и почту
+# После запуска сохраните .env в менеджер паролей; в git он не попадает (.gitignore).
 set -eu
 
 ENV_FILE="${ENV_FILE:-.env}"
+EXAMPLE_FILE="${EXAMPLE_FILE:-.env.example}"
+MODE="${1:-tunnel}"
 
-if [ -e "$ENV_FILE" ]; then
-  echo "$ENV_FILE уже существует — не трогаю. Удалите его сами, если нужно создать заново." >&2
-  exit 1
-fi
+touch "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+[ -s "$ENV_FILE" ] && cp -p "$ENV_FILE" "$ENV_FILE.bak"
 
-rand() { openssl rand -hex "$1"; }
+current() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1; }
+example() { [ -f "$EXAMPLE_FILE" ] && sed -n "s/^$1=//p" "$EXAMPLE_FILE" | tail -1 || true; }
 
-printf 'Домен стенда (A-запись уже указывает на этот сервер), например lecture.example.ru: '
-read -r SITE_DOMAIN
-printf 'Почта для уведомлений Let'"'"'s Encrypt: '
-read -r ACME_EMAIL
-printf 'Токен бота MAX (ввод скрыт): '
-stty -echo 2>/dev/null || true
-read -r MAX_BOT_TOKEN
-stty echo 2>/dev/null || true
-echo
-
-[ -n "$SITE_DOMAIN" ] && [ -n "$ACME_EMAIL" ] && [ -n "$MAX_BOT_TOKEN" ] || {
-  echo "Домен, почта и токен обязательны." >&2
-  exit 1
+set_value() {
+  key="$1"; value="$2"
+  if grep -q "^$key=" "$ENV_FILE"; then
+    tmp="$(mktemp)"
+    awk -v k="$key" -v v="$value" 'index($0, k"=")==1 {print k"="v; next} {print}' "$ENV_FILE" > "$tmp"
+    cat "$tmp" > "$ENV_FILE" && rm -f "$tmp"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+  echo "  $key — задан"
 }
 
-POSTGRES_PASSWORD="$(rand 24)"
+# Секрет генерируется, если его нет, он пуст или равен шаблону из .env.example.
+ensure_secret() {
+  key="$1"; bytes="$2"; prefix="${3:-}"
+  value="$(current "$key")"
+  if [ -z "$value" ] || [ "$value" = "$(example "$key")" ]; then
+    set_value "$key" "$prefix$(openssl rand -hex "$bytes")"
+  fi
+}
 
-umask 077
-cat > "$ENV_FILE" <<EOF
-# Стенд. Создано deploy/stand/init-env.sh $(date +%Y-%m-%d). Не коммитить.
-SITE_DOMAIN=$SITE_DOMAIN
-ACME_EMAIL=$ACME_EMAIL
+ensure_plain() {
+  key="$1"; value="$2"
+  [ "$(current "$key")" = "$value" ] || set_value "$key" "$value"
+}
 
-POSTGRES_DB=lecturer_assistant
-POSTGRES_USER=lecturer
-POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-DB_USERNAME=lecturer
-DB_PASSWORD=$POSTGRES_PASSWORD
+ask() {
+  key="$1"; prompt="$2"; secret="${3:-}"
+  [ -n "$(current "$key")" ] && return 0
+  printf '%s: ' "$prompt"
+  [ -n "$secret" ] && { stty -echo 2>/dev/null || true; }
+  read -r answer
+  [ -n "$secret" ] && { stty echo 2>/dev/null || true; echo; }
+  [ -n "$answer" ] || { echo "$key обязателен" >&2; exit 1; }
+  set_value "$key" "$answer"
+}
 
-JWT_SECRET=$(rand 48)
-SLIDE_IMAGE_URL_SECRET=$(rand 48)
-CHANNEL_INTERNAL_API_KEY=$(rand 32)
-REQUIRE_STRONG_JWT_SECRET=true
-REFRESH_COOKIE_SECURE=true
+echo "Проверяю $ENV_FILE:"
+ask MAX_BOT_TOKEN "Токен бота MAX (ввод скрыт)" secret
+if [ "$MODE" = "--vps" ]; then
+  ask SITE_DOMAIN "Домен стенда (A-запись уже указывает на этот сервер)"
+  ask ACME_EMAIL "Почта для уведомлений Let's Encrypt"
+fi
 
-MAX_BOT_TOKEN=$MAX_BOT_TOKEN
-MAX_WEBHOOK_PATH=/webhook/$(rand 24)
-MAX_WEBHOOK_SECRET=$(rand 32)
-EOF
+ensure_secret POSTGRES_PASSWORD 24
+ensure_plain DB_PASSWORD "$(current POSTGRES_PASSWORD)"
+ensure_secret JWT_SECRET 48
+ensure_secret SLIDE_IMAGE_URL_SECRET 48
+ensure_secret CHANNEL_INTERNAL_API_KEY 32
+ensure_secret MAX_WEBHOOK_SECRET 32
+ensure_secret MAX_WEBHOOK_PATH 24 /webhook/
+ensure_secret SEED_PASSWORD_ADMIN 12
+ensure_secret SEED_PASSWORD_LECTURER 12
+ensure_secret SEED_PASSWORD_ASSISTANT 12
+ensure_plain REQUIRE_STRONG_JWT_SECRET true
+ensure_plain REFRESH_COOKIE_SECURE true
 
-echo "Готово: $ENV_FILE (права 600). Сохраните его содержимое в менеджер паролей."
+echo "Готово. Права на $ENV_FILE — 600. Сохраните его в менеджер паролей."

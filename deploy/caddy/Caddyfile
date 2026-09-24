@@ -3,10 +3,10 @@
 	email {$ACME_EMAIL}
 }
 
-# Сертификат выпускается автоматически у Let's Encrypt: MAX не принимает
-# самоподписанные сертификаты и вебхуки по HTTP. При SITE_DOMAIN=localhost
-# Caddy выдаёт сертификат своего локального CA — только для проверки маршрутов.
-{$SITE_DOMAIN} {
+# SITE_ADDRESS на VPS — домен стенда: сертификат выпускается автоматически у
+# Let's Encrypt (MAX не принимает самоподписанные сертификаты и вебхуки по HTTP).
+# В режиме туннеля SITE_ADDRESS=:80 — HTTPS снаружи обеспечивает ngrok.
+{$SITE_ADDRESS} {
 	encode gzip
 
 	request_body {
