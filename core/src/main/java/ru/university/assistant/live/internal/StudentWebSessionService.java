@@ -17,7 +17,9 @@ import ru.university.assistant.content.api.StudentDeckApi;
 import ru.university.assistant.feedback.api.FeedbackApi;
 import ru.university.assistant.feedback.api.SignalAggregate;
 import ru.university.assistant.iam.api.AuthenticatedUser;
+import ru.university.assistant.iam.api.ChannelIdentityApi;
 import ru.university.assistant.iam.api.EphemeralPersonApi;
+import ru.university.assistant.iam.api.PersonRole;
 import ru.university.assistant.iam.api.UserProfile;
 import ru.university.assistant.live.api.IdentityLevel;
 import ru.university.assistant.live.api.LiveSession;
@@ -31,10 +33,10 @@ import ru.university.assistant.live.api.StudentSignalRequest;
 import ru.university.assistant.live.api.StudentSlide;
 import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.CourseAccessApi;
-import ru.university.assistant.org.api.CourseRole;
 import ru.university.assistant.interaction.api.ActivePollView;
 import ru.university.assistant.interaction.api.ActivityRespondApi;
 import ru.university.assistant.interaction.api.ActivityResponse;
+import ru.university.assistant.interaction.api.PollVote;
 import ru.university.assistant.interaction.api.QuickPollApi;
 import ru.university.assistant.interaction.api.SubmitActivityResponseRequest;
 import ru.university.assistant.qa.api.QuestionApi;
@@ -50,6 +52,7 @@ public class StudentWebSessionService {
     private final FeedbackApi feedback;
     private final QuestionApi questions;
     private final EphemeralPersonApi persons;
+    private final ChannelIdentityApi channelIdentities;
     private final CourseMembershipApi memberships;
     private final CourseAccessApi courseAccess;
     private final EventBus events;
@@ -63,6 +66,7 @@ public class StudentWebSessionService {
             FeedbackApi feedback,
             QuestionApi questions,
             EphemeralPersonApi persons,
+            ChannelIdentityApi channelIdentities,
             CourseMembershipApi memberships,
             CourseAccessApi courseAccess,
             EventBus events,
@@ -74,6 +78,7 @@ public class StudentWebSessionService {
         this.feedback = feedback;
         this.questions = questions;
         this.persons = persons;
+        this.channelIdentities = channelIdentities;
         this.memberships = memberships;
         this.courseAccess = courseAccess;
         this.events = events;
@@ -87,42 +92,112 @@ public class StudentWebSessionService {
         return snapshot(session);
     }
 
+    /** Снапшот с личными полями студента. Идентификация необязательна: без неё это общий снапшот. */
+    public StudentSessionSnapshot snapshot(String joinCode, AuthenticatedUser user, String participantToken) {
+        LiveSession session = sessionByCode(joinCode);
+        StudentSessionSnapshot shared = snapshot(session);
+        UUID viewer = viewerId(session, user, participantToken);
+        if (viewer == null || shared.activePoll() == null) {
+            return shared;
+        }
+        Integer myVote = quickPolls.myVote(shared.activePoll().pollId(), viewer);
+        return new StudentSessionSnapshot(
+                shared.sessionId(), shared.courseId(), shared.lectureTitle(), shared.status(), shared.joinCode(),
+                shared.currentSlideIdx(), shared.slideCount(), shared.currentSlide(), shared.annotations(),
+                shared.signalAggregate(), shared.activePoll(), myVote);
+    }
+
+    private UUID viewerId(LiveSession session, AuthenticatedUser user, String participantToken) {
+        if (participantToken != null && !participantToken.isBlank()) {
+            return sessions.findWebParticipant(StudentTokenHasher.sha256(participantToken))
+                    .filter(participant -> participant.sessionId().equals(session.id()))
+                    .map(WebParticipant::personId)
+                    .orElse(null);
+        }
+        return user == null ? null : user.id();
+    }
+
     @Transactional
-    public StudentJoinResponse join(String joinCode, StudentJoinRequest request) {
+    public StudentJoinResponse join(String joinCode, StudentJoinRequest request, AuthenticatedUser user) {
         LiveSession session = sessionByCode(joinCode);
         ensureJoinable(session);
+        String presented = request == null ? null : request.participantToken();
+        if (presented != null && !presented.isBlank()) {
+            WebParticipant existing = sessions.findWebParticipant(StudentTokenHasher.sha256(presented))
+                    .filter(participant -> participant.sessionId().equals(session.id()))
+                    .orElse(null);
+            if (existing != null) {
+                sessions.touchWebParticipant(existing.id());
+                return new StudentJoinResponse(presented, existing.id(), existing.identityLevel(), snapshot(session));
+            }
+        }
+        if (user != null) {
+            registerPerson(session, user);
+            sessions.deleteProfileTokens(session.id(), user.id());
+            String token = randomToken();
+            WebParticipant participant = sessions.createWebToken(
+                    UuidV7.generate(), session.id(), user.id(),
+                    StudentTokenHasher.sha256(token), user.displayName(), IdentityLevel.PROFILE);
+            return new StudentJoinResponse(token, participant.id(), IdentityLevel.PROFILE, snapshot(session));
+        }
         UserProfile person = persons.createEphemeralStudent(request == null ? null : request.displayName());
-        memberships.addMemberFromInvitation(session.courseId(), null, person.id(), CourseRole.STUDENT);
-        sessions.joinWeb(session.id(), person.id(), person.displayName());
+        // Гость живёт только в сессии: в постоянный состав курса он не попадает (D-14).
+        publishJoined(
+                session,
+                person.id(),
+                sessions.joinPerson(session.id(), person.id(), person.displayName()),
+                IdentityLevel.EPHEMERAL,
+                "web");
         String token = randomToken();
         WebParticipant participant = sessions.createWebToken(
                 UuidV7.generate(), session.id(), person.id(),
                 StudentTokenHasher.sha256(token), person.displayName(), IdentityLevel.EPHEMERAL);
+        return new StudentJoinResponse(token, participant.id(), participant.identityLevel(), snapshot(session));
+    }
+
+    /** Реальный человек (вход через MAX или по паролю): один участник сессии, студент курса добавляется один раз. */
+    private void registerPerson(LiveSession session, AuthenticatedUser user) {
+        if (user.role() == PersonRole.STUDENT) {
+            memberships.ensureStudentMember(session.courseId(), user.id());
+        }
+        LiveSessionRepository.JoinOutcome outcome = sessions.joinPerson(session.id(), user.id(), user.displayName());
+        if (outcome.kicked()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Вас удалили из этой лекции");
+        }
+        String origin = channelIdentities.hasIdentity(user.id(), "max") ? "max" : "web";
+        publishJoined(session, user.id(), outcome, IdentityLevel.PROFILE, origin);
+    }
+
+    private void publishJoined(
+            LiveSession session, UUID personId, LiveSessionRepository.JoinOutcome outcome,
+            IdentityLevel level, String origin) {
+        if (!outcome.inserted()) {
+            return;
+        }
         events.publish(new DomainEvent(
                 "live.session",
                 session.id(),
                 "participant.joined",
-                person.id(),
+                personId,
                 Map.of("courseId", session.courseId(), "sessionId", session.id(), "lectureId", session.lectureId()),
-                Map.of("channelType", "web", "identityLevel", participant.identityLevel().name())));
+                Map.of("channelType", "web", "identityLevel", level.name(), "origin", origin)));
         publisher.publish("participant.joined", session);
-        return new StudentJoinResponse(token, participant.id(), participant.identityLevel(), snapshot(session));
     }
 
     @Transactional
-    public SignalAggregate signal(String joinCode, StudentSignalRequest request) {
-        ParticipantSession current = participantSession(joinCode, request.participantToken());
+    public SignalAggregate signal(String joinCode, StudentSignalRequest request, AuthenticatedUser user) {
+        ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
         ensureJoinable(current.session());
         SignalAggregate aggregate = feedback.saveSignal(
                 current.session().id(), current.participant().personId(), "web", request.value());
-        sessions.touchWebParticipant(current.participant().id());
+        touch(current.participant());
         publisher.publish("feedback.signal_submitted", current.session());
         return aggregate;
     }
 
     @Transactional
-    public StudentQuestion ask(String joinCode, StudentQuestionRequest request) {
-        ParticipantSession current = participantSession(joinCode, request.participantToken());
+    public StudentQuestion ask(String joinCode, StudentQuestionRequest request, AuthenticatedUser user) {
+        ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
         ensureJoinable(current.session());
         StudentQuestion question = questions.ask(
                 current.session().id(),
@@ -130,7 +205,7 @@ public class StudentWebSessionService {
                 current.participant().displayName(),
                 "web",
                 request.text());
-        sessions.touchWebParticipant(current.participant().id());
+        touch(current.participant());
         publisher.publish("qa.question_asked", current.session());
         return question;
     }
@@ -143,12 +218,21 @@ public class StudentWebSessionService {
     }
 
     public boolean tokenBelongsToJoinCode(String joinCode, String participantToken) {
-        participantSession(joinCode, participantToken);
+        participantSession(joinCode, participantToken, null);
         return true;
     }
 
-    private ParticipantSession participantSession(String joinCode, String participantToken) {
+    private ParticipantSession participantSession(String joinCode, String participantToken, AuthenticatedUser user) {
         LiveSession session = sessionByCode(joinCode);
+        if (participantToken == null || participantToken.isBlank()) {
+            if (user == null) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Participant token or login is required");
+            }
+            registerPerson(session, user);
+            WebParticipant participant =
+                    new WebParticipant(null, session.id(), user.id(), user.displayName(), IdentityLevel.PROFILE);
+            return new ParticipantSession(session, participant);
+        }
         WebParticipant participant = sessions.findWebParticipant(StudentTokenHasher.sha256(participantToken))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid participant token"));
         if (!participant.sessionId().equals(session.id())) {
@@ -157,24 +241,38 @@ public class StudentWebSessionService {
         return new ParticipantSession(session, participant);
     }
 
+    private void touch(WebParticipant participant) {
+        if (participant.id() != null) {
+            sessions.touchWebParticipant(participant.id());
+        }
+    }
+
     @Transactional
     public ActivityResponse activityRespond(
-            String joinCode, UUID runId, SubmitActivityResponseRequest request) {
-        ParticipantSession current = participantSession(joinCode, request.participantToken());
+            String joinCode, UUID runId, SubmitActivityResponseRequest request, AuthenticatedUser user) {
+        ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
         ensureJoinable(current.session());
         ActivityResponse response = activityRespond.submitResponse(
-                runId, current.participant().personId(), request.questionId(), request.answer());
-        sessions.touchWebParticipant(current.participant().id());
+                current.session().id(),
+                runId,
+                current.participant().personId(),
+                request.questionId(),
+                request.answer());
+        touch(current.participant());
         return response;
     }
 
     @Transactional
-    public void pollRespond(String joinCode, UUID pollId, String participantToken, int optionIdx) {
-        ParticipantSession current = participantSession(joinCode, participantToken);
+    public PollVote pollRespond(
+            String joinCode, UUID pollId, String participantToken, int optionIdx, AuthenticatedUser user) {
+        ParticipantSession current = participantSession(joinCode, participantToken, user);
         ensureJoinable(current.session());
-        quickPolls.respond(pollId, current.participant().personId(), optionIdx);
-        sessions.touchWebParticipant(current.participant().id());
-        publisher.publish("poll.response.recorded", current.session());
+        PollVote vote = quickPolls.respond(current.session().id(), pollId, current.participant().personId(), optionIdx);
+        touch(current.participant());
+        if (vote.accepted()) {
+            publisher.publish("poll.response.recorded", current.session());
+        }
+        return vote;
     }
 
     private StudentSessionSnapshot snapshot(LiveSession session) {
@@ -198,7 +296,8 @@ public class StudentWebSessionService {
                 new StudentSlide(slide.idx(), slide.imageUrl(), slide.textExtract()),
                 session.annotations(),
                 feedback.aggregate(session.id()),
-                activePoll);
+                activePoll,
+                null);
     }
 
     private LiveSession sessionByCode(String joinCode) {

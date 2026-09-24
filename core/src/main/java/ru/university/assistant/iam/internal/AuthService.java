@@ -194,7 +194,7 @@ public class AuthService implements EphemeralPersonApi {
     @Transactional
     public UserProfile createEphemeralStudent(String displayName) {
         UUID personId = UuidV7.generate();
-        String cleanName = displayName == null || displayName.isBlank()
+        String cleanName = displayName == null || displayName.trim().length() < 2
                 ? "Гость " + personId.toString().substring(0, 8)
                 : displayName.trim();
         return persons.createWithStatus(
@@ -208,7 +208,10 @@ public class AuthService implements EphemeralPersonApi {
     }
 
     public List<UserProfile> listUsers() {
-        return persons.list().stream().map(PersonRecord::toProfile).toList();
+        return persons.list().stream()
+                .filter(person -> person.status() != PersonStatus.EPHEMERAL)
+                .map(PersonRecord::toProfile)
+                .toList();
     }
 
     @Transactional

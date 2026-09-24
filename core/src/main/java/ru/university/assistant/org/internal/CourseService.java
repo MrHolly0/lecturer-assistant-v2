@@ -180,6 +180,12 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
 
     @Override
     @Transactional
+    public void ensureStudentMember(UUID courseId, UUID personId) {
+        courses.addMemberIfAbsent(courseId, personId, CourseRole.STUDENT);
+    }
+
+    @Override
+    @Transactional
     public void addMemberFromInvitation(UUID courseId, UUID groupId, UUID personId, CourseRole role) {
         courses.addMember(courseId, personId, role);
         if (groupId != null) {

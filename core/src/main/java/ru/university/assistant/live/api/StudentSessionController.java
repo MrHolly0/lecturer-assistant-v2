@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,6 +18,7 @@ import ru.university.assistant.feedback.api.SignalAggregate;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.interaction.api.ActivityResponse;
 import ru.university.assistant.interaction.api.PollResponseRequest;
+import ru.university.assistant.interaction.api.PollVote;
 import ru.university.assistant.interaction.api.SubmitActivityResponseRequest;
 import ru.university.assistant.live.internal.StudentSseBroadcaster;
 import ru.university.assistant.live.internal.StudentWebSessionService;
@@ -41,15 +43,19 @@ class StudentSessionController {
     }
 
     @GetMapping("/api/v1/student/sessions/{joinCode}")
-    public StudentSessionSnapshot snapshot(@PathVariable String joinCode) {
-        return studentSessions.snapshot(joinCode);
+    public StudentSessionSnapshot snapshot(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String joinCode,
+            @RequestHeader(value = "X-Participant-Token", required = false) String participantToken) {
+        return studentSessions.snapshot(joinCode, user, participantToken);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/join")
     public StudentJoinResponse join(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
             @Valid @RequestBody(required = false) StudentJoinRequest request) {
-        return studentSessions.join(joinCode, request);
+        return studentSessions.join(joinCode, request, user);
     }
 
     @GetMapping(path = "/api/v1/student/sessions/{joinCode}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -62,34 +68,37 @@ class StudentSessionController {
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/signals")
     public SignalAggregate signal(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
             @Valid @RequestBody StudentSignalRequest request) {
-        return studentSessions.signal(joinCode, request);
+        return studentSessions.signal(joinCode, request, user);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/questions")
     @ResponseStatus(HttpStatus.CREATED)
     public StudentQuestion ask(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
             @Valid @RequestBody StudentQuestionRequest request) {
-        return studentSessions.ask(joinCode, request);
+        return studentSessions.ask(joinCode, request, user);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/polls/{pollId}/respond")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void pollRespond(
+    public PollVote pollRespond(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
             @PathVariable UUID pollId,
             @Valid @RequestBody PollResponseRequest request) {
-        studentSessions.pollRespond(joinCode, pollId, request.participantToken(), request.optionIdx());
+        return studentSessions.pollRespond(joinCode, pollId, request.participantToken(), request.optionIdx(), user);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/activity-runs/{runId}/respond")
     @ResponseStatus(HttpStatus.CREATED)
     public ActivityResponse activityRespond(
+            @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
             @PathVariable UUID runId,
             @Valid @RequestBody SubmitActivityResponseRequest request) {
-        return studentSessions.activityRespond(joinCode, runId, request);
+        return studentSessions.activityRespond(joinCode, runId, request, user);
     }
 }

@@ -11,6 +11,7 @@ import ru.university.assistant.interaction.api.ActivePollView;
 import ru.university.assistant.interaction.api.ClosePollRequest;
 import ru.university.assistant.interaction.api.PollResult;
 import ru.university.assistant.interaction.api.PollStatus;
+import ru.university.assistant.interaction.api.PollVote;
 import ru.university.assistant.interaction.api.QuickPoll;
 import ru.university.assistant.interaction.api.QuickPollApi;
 import ru.university.assistant.interaction.api.StartPollRequest;
@@ -35,7 +36,7 @@ public class PollService implements QuickPollApi {
     }
 
     public PollResult getActive(UUID sessionId) {
-        QuickPoll poll = polls.findOpenForSession(sessionId)
+        QuickPoll poll = polls.findLatestForSession(sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No active poll"));
         return result(poll);
     }
@@ -59,22 +60,28 @@ public class PollService implements QuickPollApi {
 
     @Transactional
     @Override
-    public void respond(UUID pollId, UUID personId, int optionIdx) {
+    public PollVote respond(UUID sessionId, UUID pollId, UUID personId, int optionIdx) {
         QuickPoll poll = polls.findById(pollId)
+                .filter(found -> found.sessionId().equals(sessionId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Poll not found"));
         if (poll.status() == PollStatus.CLOSED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Poll is already closed");
+            return new PollVote(false, polls.findVote(pollId, personId).orElse(null));
         }
         if (optionIdx < 0 || optionIdx >= poll.options().size()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid option index");
         }
-        polls.respond(UuidV7.generate(), pollId, personId, optionIdx);
+        boolean accepted = polls.respond(UuidV7.generate(), pollId, personId, optionIdx);
+        return new PollVote(accepted, polls.findVote(pollId, personId).orElse(null));
+    }
+
+    @Override
+    public Integer myVote(UUID pollId, UUID personId) {
+        return polls.findVote(pollId, personId).orElse(null);
     }
 
     @Override
     public Optional<ActivePollView> activePollForSession(UUID sessionId) {
-        return polls.findOpenForSession(sessionId)
-                .map(poll -> toView(poll, polls.voteCounts(poll.id(), poll.options().size())));
+        return polls.findLatestForSession(sessionId).map(this::toView);
     }
 
     private PollResult result(QuickPoll poll) {
@@ -83,10 +90,11 @@ public class PollService implements QuickPollApi {
         return new PollResult(poll, votes, total);
     }
 
-    private ActivePollView toView(QuickPoll poll, List<Integer> votes) {
-        // Expose correctOptionIdx only after poll is closed
-        Integer correct = poll.status() == PollStatus.CLOSED ? poll.correctOptionIdx() : null;
-        return new ActivePollView(
-                poll.id(), poll.questionText(), poll.options(), poll.status(), correct, votes);
+    private ActivePollView toView(QuickPoll poll) {
+        boolean closed = poll.status() == PollStatus.CLOSED;
+        // До закрытия студент не видит ни правильного ответа, ни распределения (D-08).
+        Integer correct = closed ? poll.correctOptionIdx() : null;
+        List<Integer> votes = closed ? polls.voteCounts(poll.id(), poll.options().size()) : null;
+        return new ActivePollView(poll.id(), poll.questionText(), poll.options(), poll.status(), correct, votes);
     }
 }

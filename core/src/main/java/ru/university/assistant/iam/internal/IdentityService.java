@@ -53,6 +53,11 @@ public class IdentityService implements ChannelIdentityApi {
     }
 
     @Override
+    public boolean hasIdentity(java.util.UUID personId, String channelType) {
+        return identities.existsForPerson(personId, channelType.toLowerCase());
+    }
+
+    @Override
     public Optional<ChannelIdentityResponse> findByExternalId(String channelType, String externalId) {
         return identities.findByExternalId(channelType.toLowerCase(), externalId);
     }

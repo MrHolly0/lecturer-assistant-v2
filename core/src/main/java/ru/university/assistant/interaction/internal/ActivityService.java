@@ -62,9 +62,10 @@ public class ActivityService implements ActivityRespondApi {
 
     @Transactional
     @Override
-    public ActivityResponse submitResponse(UUID runId, UUID personId, UUID questionId,
+    public ActivityResponse submitResponse(UUID sessionId, UUID runId, UUID personId, UUID questionId,
             JsonNode answer) {
         ActivityRun run = activities.findRunById(runId)
+                .filter(found -> found.sessionId().equals(sessionId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Activity run not found"));
         if (run.status() == ActivityRunStatus.CLOSED) {

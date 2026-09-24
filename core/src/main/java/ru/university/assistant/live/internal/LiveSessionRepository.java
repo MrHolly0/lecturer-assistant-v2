@@ -198,6 +198,37 @@ class LiveSessionRepository {
                 .single();
     }
 
+    /** Регистрирует человека участником сессии; повторный вызов ничего не дублирует. */
+    JoinOutcome joinPerson(UUID sessionId, UUID personId, String displayName) {
+        return jdbc.sql(
+                        """
+                        insert into live.session_participants (session_id, person_id, channel_type, display_name)
+                        values (:sessionId, :personId, 'web', :displayName)
+                        on conflict (session_id, person_id, channel_type)
+                        do update set left_at = null
+                        returning (xmax = 0) as inserted, kicked
+                        """)
+                .param("sessionId", sessionId)
+                .param("personId", personId)
+                .param("displayName", displayName)
+                .query((rs, row) -> new JoinOutcome(rs.getBoolean("inserted"), rs.getBoolean("kicked")))
+                .single();
+    }
+
+    /** Один PROFILE-токен на пару «сессия + человек»: новый вход заменяет прежний. */
+    void deleteProfileTokens(UUID sessionId, UUID personId) {
+        jdbc.sql(
+                        """
+                        delete from live.web_participant_tokens
+                        where session_id = :sessionId and person_id = :personId and identity_level = 'PROFILE'
+                        """)
+                .param("sessionId", sessionId)
+                .param("personId", personId)
+                .update();
+    }
+
+    record JoinOutcome(boolean inserted, boolean kicked) {}
+
     WebParticipant createWebToken(
             UUID id, UUID sessionId, UUID personId, String tokenHash, String displayName, IdentityLevel level) {
         jdbc.sql(

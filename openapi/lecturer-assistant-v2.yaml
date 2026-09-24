@@ -1023,11 +1023,19 @@ paths:
   /student/sessions/{joinCode}:
     get:
       operationId: getStudentSession
-      summary: Read public student session snapshot by join code.
+      summary: Read student session snapshot by join code.
+      description: >
+        Personal fields (myVote) are filled when the request is identified by a Bearer JWT or by the
+        X-Participant-Token header. Without identification the shared snapshot is returned.
       tags: [student]
       security: []
       parameters:
         - $ref: "#/components/parameters/JoinCode"
+        - name: X-Participant-Token
+          in: header
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Student session snapshot.
@@ -1197,7 +1205,7 @@ paths:
   /student/sessions/{joinCode}/polls/{pollId}/respond:
     post:
       operationId: respondToPoll
-      summary: Submit or update student answer to a poll.
+      summary: Submit the student answer to a poll (the first answer wins).
       tags: [student]
       security: []
       parameters:
@@ -1210,10 +1218,15 @@ paths:
             schema:
               $ref: "#/components/schemas/PollResponseRequest"
       responses:
-        "204":
-          description: Answer recorded.
-        "409":
-          description: Poll is already closed.
+        "200":
+          description: >
+            accepted=false when the student already answered or the poll is closed; myVote is the fixed choice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollVote"
+        "404":
+          description: Poll does not belong to this session.
   /courses/{courseId}/questions:
     post:
       operationId: createQuestion
@@ -2264,7 +2277,7 @@ components:
           type: integer
     ActivePollView:
       type: object
-      required: [pollId, questionText, options, status, votes]
+      required: [pollId, questionText, options, status]
       properties:
         pollId:
           type: string
@@ -2279,10 +2292,23 @@ components:
           $ref: "#/components/schemas/PollStatus"
         correctOptionIdx:
           type: integer
+          nullable: true
+          description: null until the poll is closed.
         votes:
           type: array
+          nullable: true
+          description: Distribution by option; null until the poll is closed.
           items:
             type: integer
+    PollVote:
+      type: object
+      required: [accepted]
+      properties:
+        accepted:
+          type: boolean
+        myVote:
+          type: integer
+          nullable: true
     StartPollRequest:
       type: object
       required: [questionText, options]
@@ -2304,7 +2330,7 @@ components:
           type: integer
     PollResponseRequest:
       type: object
-      required: [participantToken, optionIdx]
+      required: [optionIdx]
       properties:
         participantToken:
           type: string
@@ -2464,7 +2490,7 @@ components:
           type: integer
     SubmitActivityResponseRequest:
       type: object
-      required: [participantToken, questionId, answer]
+      required: [questionId, answer]
       properties:
         participantToken:
           type: string
@@ -2540,13 +2566,23 @@ components:
           $ref: "#/components/schemas/SignalAggregate"
         activePoll:
           $ref: "#/components/schemas/ActivePollView"
+          description: Open poll, or the last closed one (with answer and distribution) until the next poll starts.
+        myVote:
+          type: integer
+          nullable: true
+          description: The student's choice in activePoll. Filled only in identified GET requests, null in SSE events.
     StudentJoinRequest:
       type: object
+      description: >
+        Anonymous entry sends displayName; returning anonymous student sends the previous participantToken and gets
+        the same participant back. A request with a Bearer JWT (for example after /auth/max) joins as that person.
       properties:
         displayName:
           type: string
           minLength: 2
           maxLength: 120
+        participantToken:
+          type: string
     StudentJoinResponse:
       type: object
       required: [participantToken, participantId, identityLevel, snapshot]
@@ -2562,7 +2598,7 @@ components:
           $ref: "#/components/schemas/StudentSessionSnapshot"
     StudentSignalRequest:
       type: object
-      required: [participantToken, value]
+      required: [value]
       properties:
         participantToken:
           type: string
@@ -2570,7 +2606,7 @@ components:
           $ref: "#/components/schemas/SignalValue"
     StudentQuestionRequest:
       type: object
-      required: [participantToken, text]
+      required: [text]
       properties:
         participantToken:
           type: string
