@@ -62,7 +62,9 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     enabled: Boolean(
       job && job.status !== "COMPLETED" && job.status !== "PARTIAL" && job.status !== "FAILED"
     ),
-    refetchInterval: 1000
+    refetchInterval: 1000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: "always"
   });
   const deckQuery = useQuery({
     queryKey: ["content", courseId, "decks", selectedDeckId],
@@ -122,7 +124,6 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     setActiveSlide(0);
     setNotesOpen(false);
   }, [selectedDeckId]);
-
   const importing = Boolean(
     latestJob &&
       latestJob.status !== "COMPLETED" &&

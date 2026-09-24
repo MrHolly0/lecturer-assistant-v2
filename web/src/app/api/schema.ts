@@ -228,6 +228,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/identity/max/link-codes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create a one-time code to link the caller's MAX account to their own person.
+     * @description Requires a browser JWT of a LECTURER. The code is 6 characters from A-Z0-9, valid for 5 minutes, single-use. Pass it as linkCode in the next POST /auth/max from the same person's MAX account to attach that MAX account to this person instead of creating a new student (B-03).
+     */
+    post: operations["createMaxLinkCode"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/identity/link-codes": {
     parameters: {
       query?: never;
@@ -256,6 +276,26 @@ export interface paths {
     put?: never;
     /** Link channel identity by code. */
     post: operations["linkIdentity"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/active-session": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the caller's own currently running (LIVE or PAUSED) lecture, if any.
+     * @description Used by the MAX mini app to drop a lecturer straight into their running lecture instead of a course picker (B-03). Scoped strictly to sessions this person started themselves.
+     */
+    get: operations["getMyActiveSession"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1252,6 +1292,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    ActiveSessionSummary: {
+      /** Format: uuid */
+      sessionId: string;
+      /** Format: uuid */
+      courseId: string;
+      joinCode: string;
+      lectureTitle: string;
+      currentSlideIdx: number;
+    };
     SystemInfo: {
       /** @example lecturer-assistant-v2 */
       name: string;
@@ -1282,6 +1331,8 @@ export interface components {
     MaxAuthRequest: {
       /** @description Raw window.WebApp.initData string, never initDataUnsafe. */
       initData: string;
+      /** @description Optional one-time code from POST /identity/max/link-codes. Ignored if this MAX account is already linked to a person (repeat logins never need it). */
+      linkCode?: string;
     };
     MaxAuthResponse: {
       accessToken: string;
@@ -2009,7 +2060,7 @@ export interface operations {
           "application/json": components["schemas"]["MaxAuthResponse"];
         };
       };
-      /** @description initData is blank or longer than 8192 characters. */
+      /** @description initData is blank or longer than 8192 characters, or linkCode is invalid/expired. */
       400: {
         headers: {
           [name: string]: unknown;
@@ -2025,6 +2076,20 @@ export interface operations {
       };
       /** @description Person is disabled. */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description linkCode was already used. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Too many requests from this client (B-13 rate limit). */
+      429: {
         headers: {
           [name: string]: unknown;
         };
@@ -2224,6 +2289,33 @@ export interface operations {
       };
     };
   };
+  createMaxLinkCode: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Link code. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IdentityLinkCode"];
+        };
+      };
+      /** @description Caller is not a lecturer. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   createIdentityLinkCode: {
     parameters: {
       query?: never;
@@ -2265,6 +2357,33 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ChannelIdentity"];
         };
+      };
+    };
+  };
+  getMyActiveSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description An active session exists. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActiveSessionSummary"];
+        };
+      };
+      /** @description No running session belongs to this person. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -3427,6 +3546,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["SignalAggregate"];
         };
+      };
+      /** @description Too many requests from this client (B-13 rate limit). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
