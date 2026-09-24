@@ -48,14 +48,17 @@ class ActivityRepository {
                 .single();
     }
 
-    Optional<ActivityDefinition> findDefinitionById(UUID id) {
+    // D-10: определение активности обязано принадлежать курсу из пути, иначе чужой преподаватель
+    // может запустить прогон по чужому банку вопросов через свою собственную сессию.
+    Optional<ActivityDefinition> findDefinitionByIdAndCourse(UUID id, UUID courseId) {
         return jdbc.sql("""
                         select id, course_id, title, question_ids, strategy, strategy_n,
                                archived, created_at
                         from interaction.activity_definitions
-                        where id = :id and not archived
+                        where id = :id and course_id = :courseId and not archived
                         """)
                 .param("id", id)
+                .param("courseId", courseId)
                 .query(this::mapDefinition)
                 .optional();
     }

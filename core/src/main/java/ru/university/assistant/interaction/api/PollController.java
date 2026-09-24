@@ -38,7 +38,7 @@ class PollController {
             @PathVariable UUID sessionId,
             @Valid @RequestBody StartPollRequest request) {
         courseAccess.requireManage(user, courseId);
-        PollResult result = pollService.start(sessionId, user.id(), request);
+        PollResult result = pollService.start(courseId, sessionId, user.id(), request);
         publishPollUpdate(sessionId, result);
         return result;
     }
@@ -49,7 +49,7 @@ class PollController {
             @PathVariable UUID courseId,
             @PathVariable UUID sessionId) {
         courseAccess.requireManage(user, courseId);
-        return pollService.getActive(sessionId);
+        return pollService.getActive(courseId, sessionId);
     }
 
     @GetMapping("/polls/{pollId}")
@@ -59,7 +59,7 @@ class PollController {
             @PathVariable UUID sessionId,
             @PathVariable UUID pollId) {
         courseAccess.requireManage(user, courseId);
-        return pollService.getResult(pollId);
+        return pollService.getResult(courseId, sessionId, pollId);
     }
 
     @PostMapping("/polls/{pollId}/close")
@@ -70,7 +70,7 @@ class PollController {
             @PathVariable UUID pollId,
             @RequestBody(required = false) ClosePollRequest request) {
         courseAccess.requireManage(user, courseId);
-        PollResult result = pollService.close(pollId,
+        PollResult result = pollService.close(courseId, sessionId, pollId,
                 request != null ? request : new ClosePollRequest(null));
         publishPollUpdate(sessionId, result);
         return result;

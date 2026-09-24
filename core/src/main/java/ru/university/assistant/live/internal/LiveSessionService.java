@@ -14,6 +14,7 @@ import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.live.api.ChangeSlideRequest;
 import ru.university.assistant.live.api.JoinSessionRequest;
 import ru.university.assistant.live.api.LiveSession;
+import ru.university.assistant.live.api.LiveSessionAccessApi;
 import ru.university.assistant.live.api.SaveAnnotationsRequest;
 import ru.university.assistant.live.api.SessionParticipant;
 import ru.university.assistant.live.api.SessionStatus;
@@ -22,7 +23,7 @@ import ru.university.assistant.shared.api.CodeGenerator;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
-public class LiveSessionService {
+public class LiveSessionService implements LiveSessionAccessApi {
     private final CourseAccessApi courseAccess;
     private final LiveSessionRepository sessions;
     private final EventBus events;
@@ -126,6 +127,11 @@ public class LiveSessionService {
     private LiveSession session(UUID courseId, UUID sessionId) {
         return sessions.findByCourse(courseId, sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+    }
+
+    @Override
+    public LiveSession requireSessionInCourse(UUID courseId, UUID sessionId) {
+        return session(courseId, sessionId);
     }
 
     private void ensureActive(LiveSession session) {

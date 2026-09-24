@@ -15,18 +15,25 @@ import ru.university.assistant.interaction.api.PollVote;
 import ru.university.assistant.interaction.api.QuickPoll;
 import ru.university.assistant.interaction.api.QuickPollApi;
 import ru.university.assistant.interaction.api.StartPollRequest;
+import ru.university.assistant.live.api.LiveSessionAccessApi;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
 public class PollService implements QuickPollApi {
     private final PollRepository polls;
+    private final LiveSessionAccessApi liveSessions;
 
-    PollService(PollRepository polls) {
+    PollService(PollRepository polls, LiveSessionAccessApi liveSessions) {
         this.polls = polls;
+        this.liveSessions = liveSessions;
     }
 
+    // Преподавательские методы ниже принимают courseId и в первую очередь проверяют, что
+    // sessionId принадлежит этому курсу (D-10) — тем же приёмом, что и live/content.
+
     @Transactional
-    public PollResult start(UUID sessionId, UUID createdBy, StartPollRequest request) {
+    public PollResult start(UUID courseId, UUID sessionId, UUID createdBy, StartPollRequest request) {
+        liveSessions.requireSessionInCourse(courseId, sessionId);
         polls.findOpenForSession(sessionId).ifPresent(existing -> {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A poll is already open for this session");
         });
@@ -35,28 +42,37 @@ public class PollService implements QuickPollApi {
         return result(poll);
     }
 
-    public PollResult getActive(UUID sessionId) {
+    public PollResult getActive(UUID courseId, UUID sessionId) {
+        liveSessions.requireSessionInCourse(courseId, sessionId);
         QuickPoll poll = polls.findLatestForSession(sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No active poll"));
         return result(poll);
     }
 
-    public PollResult getResult(UUID pollId) {
-        QuickPoll poll = polls.findById(pollId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Poll not found"));
-        return result(poll);
+    public PollResult getResult(UUID courseId, UUID sessionId, UUID pollId) {
+        liveSessions.requireSessionInCourse(courseId, sessionId);
+        return result(pollInSession(sessionId, pollId));
     }
 
     @Transactional
-    public PollResult close(UUID pollId, ClosePollRequest request) {
-        QuickPoll poll = polls.findById(pollId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Poll not found"));
+    public PollResult close(UUID courseId, UUID sessionId, UUID pollId, ClosePollRequest request) {
+        liveSessions.requireSessionInCourse(courseId, sessionId);
+        QuickPoll poll = pollInSession(sessionId, pollId);
         if (poll.status() == PollStatus.CLOSED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Poll already closed");
         }
         QuickPoll closed = polls.close(pollId, request.correctOptionIdx());
         return result(closed);
     }
+
+    private QuickPoll pollInSession(UUID sessionId, UUID pollId) {
+        return polls.findById(pollId)
+                .filter(found -> found.sessionId().equals(sessionId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Poll not found"));
+    }
+
+    // Студенческий путь (QuickPollApi) — sessionId уже доверенный (взят сервером из joinCode/JWT,
+    // не из тела запроса), courseId здесь не нужен; принадлежность pollId сессии — D-09, из B-05.
 
     @Transactional
     @Override

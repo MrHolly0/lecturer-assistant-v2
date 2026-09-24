@@ -25,8 +25,11 @@ public class QuestionBankService {
                 request.text(), request.questionType(), request.options(), tags);
     }
 
-    public QuestionBankEntry get(UUID id) {
-        return questions.findById(id)
+    // D-10: вопрос обязан принадлежать курсу из пути, иначе чужой преподаватель мог прочитать
+    // (а через update/archive — и поменять) содержимое банка вопросов другого курса вместе
+    // с правильными ответами, зная только id вопроса.
+    public QuestionBankEntry get(UUID courseId, UUID id) {
+        return questions.findByIdAndCourse(id, courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found"));
     }
 
@@ -35,15 +38,15 @@ public class QuestionBankService {
     }
 
     @Transactional
-    public QuestionBankEntry update(UUID id, CreateQuestionRequest request) {
+    public QuestionBankEntry update(UUID courseId, UUID id, CreateQuestionRequest request) {
         List<String> tags = request.tags() == null ? List.of() : request.tags();
-        return questions.update(id, request.text(), request.options(), tags)
+        return questions.update(id, courseId, request.text(), request.options(), tags)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found"));
     }
 
     @Transactional
-    public void archive(UUID id) {
-        if (!questions.archive(id)) {
+    public void archive(UUID courseId, UUID id) {
+        if (!questions.archive(id, courseId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found");
         }
     }

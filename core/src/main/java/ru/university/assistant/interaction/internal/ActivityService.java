@@ -17,6 +17,7 @@ import ru.university.assistant.interaction.api.ActivityRun;
 import ru.university.assistant.interaction.api.ActivityRunStatus;
 import ru.university.assistant.interaction.api.ActivityStrategy;
 import ru.university.assistant.interaction.api.CreateActivityRequest;
+import ru.university.assistant.live.api.LiveSessionAccessApi;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
@@ -24,9 +25,11 @@ public class ActivityService implements ActivityRespondApi {
     private static final Random RANDOM = new Random();
 
     private final ActivityRepository activities;
+    private final LiveSessionAccessApi liveSessions;
 
-    ActivityService(ActivityRepository activities) {
+    ActivityService(ActivityRepository activities, LiveSessionAccessApi liveSessions) {
         this.activities = activities;
+        this.liveSessions = liveSessions;
     }
 
     @Transactional
@@ -36,8 +39,8 @@ public class ActivityService implements ActivityRespondApi {
                 request.title(), request.questionIds(), request.strategy(), request.strategyN());
     }
 
-    public ActivityDefinition getDefinition(UUID id) {
-        return activities.findDefinitionById(id)
+    public ActivityDefinition getDefinition(UUID courseId, UUID definitionId) {
+        return activities.findDefinitionByIdAndCourse(definitionId, courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Activity definition not found"));
     }
@@ -47,14 +50,17 @@ public class ActivityService implements ActivityRespondApi {
     }
 
     @Transactional
-    public ActivityRun startRun(UUID definitionId, UUID sessionId) {
-        ActivityDefinition def = getDefinition(definitionId);
+    public ActivityRun startRun(UUID courseId, UUID sessionId, UUID definitionId) {
+        liveSessions.requireSessionInCourse(courseId, sessionId);
+        ActivityDefinition def = getDefinition(courseId, definitionId);
         List<UUID> questionIds = selectQuestions(def);
         return activities.createRun(UuidV7.generate(), definitionId, sessionId, questionIds);
     }
 
     @Transactional
-    public ActivityRun closeRun(UUID runId) {
+    public ActivityRun closeRun(UUID courseId, UUID sessionId, UUID runId) {
+        liveSessions.requireSessionInCourse(courseId, sessionId);
+        runInSession(sessionId, runId);
         return activities.closeRun(runId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Activity run not found or already closed"));
@@ -64,10 +70,7 @@ public class ActivityService implements ActivityRespondApi {
     @Override
     public ActivityResponse submitResponse(UUID sessionId, UUID runId, UUID personId, UUID questionId,
             JsonNode answer) {
-        ActivityRun run = activities.findRunById(runId)
-                .filter(found -> found.sessionId().equals(sessionId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Activity run not found"));
+        ActivityRun run = runInSession(sessionId, runId);
         if (run.status() == ActivityRunStatus.CLOSED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Activity run is already closed");
         }
@@ -78,8 +81,19 @@ public class ActivityService implements ActivityRespondApi {
         return activities.submitResponse(UuidV7.generate(), runId, personId, questionId, answer);
     }
 
-    public List<ActivityResponse> getResponses(UUID runId) {
+    public List<ActivityResponse> getResponses(UUID courseId, UUID sessionId, UUID runId) {
+        liveSessions.requireSessionInCourse(courseId, sessionId);
+        runInSession(sessionId, runId);
         return activities.findResponsesByRun(runId);
+    }
+
+    // D-09/D-10 одним приёмом: прогон обязан принадлежать той самой сессии, что названа в пути,
+    // а сессия (там, где это преподавательский путь) — тому самому курсу.
+    private ActivityRun runInSession(UUID sessionId, UUID runId) {
+        return activities.findRunById(runId)
+                .filter(found -> found.sessionId().equals(sessionId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Activity run not found"));
     }
 
     private List<UUID> selectQuestions(ActivityDefinition def) {

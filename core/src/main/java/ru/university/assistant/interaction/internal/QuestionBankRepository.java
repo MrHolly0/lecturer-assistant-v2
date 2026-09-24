@@ -49,13 +49,16 @@ class QuestionBankRepository {
                 .single();
     }
 
-    Optional<QuestionBankEntry> findById(UUID id) {
+    // D-10: без courseId в WHERE любой преподаватель мог прочитать чужой вопрос вместе
+    // с правильным ответом, зная только его id.
+    Optional<QuestionBankEntry> findByIdAndCourse(UUID id, UUID courseId) {
         return jdbc.sql("""
                         select id, course_id, text, question_type, options, tags, archived, created_at
                         from interaction.question_bank
-                        where id = :id and not archived
+                        where id = :id and course_id = :courseId and not archived
                         """)
                 .param("id", id)
+                .param("courseId", courseId)
                 .query(this::map)
                 .optional();
     }
@@ -81,18 +84,19 @@ class QuestionBankRepository {
         return q.query(this::map).list();
     }
 
-    Optional<QuestionBankEntry> update(UUID id, String text, List<QuestionOption> options,
+    Optional<QuestionBankEntry> update(UUID id, UUID courseId, String text, List<QuestionOption> options,
             List<String> tags) {
         String optionsJson = toJson(options);
         String[] tagsArray = tags == null ? new String[0] : tags.toArray(new String[0]);
         return jdbc.sql("""
                         update interaction.question_bank
                         set text = :text, options = :options::jsonb, tags = :tags
-                        where id = :id and not archived
+                        where id = :id and course_id = :courseId and not archived
                         returning id, course_id, text, question_type, options, tags,
                                   archived, created_at
                         """)
                 .param("id", id)
+                .param("courseId", courseId)
                 .param("text", text)
                 .param("options", optionsJson)
                 .param("tags", tagsArray)
@@ -100,13 +104,14 @@ class QuestionBankRepository {
                 .optional();
     }
 
-    boolean archive(UUID id) {
+    boolean archive(UUID id, UUID courseId) {
         return jdbc.sql("""
                         update interaction.question_bank
                         set archived = true
-                        where id = :id and not archived
+                        where id = :id and course_id = :courseId and not archived
                         """)
                 .param("id", id)
+                .param("courseId", courseId)
                 .update() > 0;
     }
 

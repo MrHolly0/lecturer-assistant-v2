@@ -51,7 +51,7 @@ class ActivityController {
             @PathVariable UUID courseId,
             @PathVariable UUID definitionId) {
         courseAccess.requireManage(user, courseId);
-        return service.getDefinition(definitionId);
+        return service.getDefinition(courseId, definitionId);
     }
 
     @PostMapping("/sessions/{sessionId}/activities/{definitionId}/runs")
@@ -62,7 +62,7 @@ class ActivityController {
             @PathVariable UUID sessionId,
             @PathVariable UUID definitionId) {
         courseAccess.requireManage(user, courseId);
-        return service.startRun(definitionId, sessionId);
+        return service.startRun(courseId, sessionId, definitionId);
     }
 
     @PostMapping("/sessions/{sessionId}/activity-runs/{runId}/close")
@@ -72,7 +72,7 @@ class ActivityController {
             @PathVariable UUID sessionId,
             @PathVariable UUID runId) {
         courseAccess.requireManage(user, courseId);
-        return service.closeRun(runId);
+        return service.closeRun(courseId, sessionId, runId);
     }
 
     @GetMapping("/sessions/{sessionId}/activity-runs/{runId}/responses")
@@ -82,6 +82,6 @@ class ActivityController {
             @PathVariable UUID sessionId,
             @PathVariable UUID runId) {
         courseAccess.requireManage(user, courseId);
-        return service.getResponses(runId);
+        return service.getResponses(courseId, sessionId, runId);
     }
 }

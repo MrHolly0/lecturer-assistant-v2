@@ -1145,6 +1145,8 @@ paths:
                 $ref: "#/components/schemas/PollResult"
         "409":
           description: A poll is already open for this session.
+        "404":
+          description: Session does not belong to this course.
   /courses/{courseId}/sessions/{sessionId}/polls/active:
     get:
       operationId: getActivePoll
@@ -1178,6 +1180,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PollResult"
+        "404":
+          description: Poll not found, or it does not belong to this session.
   /courses/{courseId}/sessions/{sessionId}/polls/{pollId}/close:
     post:
       operationId: closePoll
@@ -1200,6 +1204,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PollResult"
+        "404":
+          description: Poll not found, or it does not belong to this session.
         "409":
           description: Poll already closed.
   /student/sessions/{joinCode}/polls/{pollId}/respond:
@@ -1282,6 +1288,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuestionBankEntry"
+        "404":
+          description: Question not found, or it does not belong to this course.
     put:
       operationId: updateQuestion
       summary: Update question text, options, or tags.
@@ -1302,6 +1310,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuestionBankEntry"
+        "404":
+          description: Question not found, or it does not belong to this course.
     delete:
       operationId: archiveQuestion
       summary: Archive (soft-delete) a question.
@@ -1312,6 +1322,8 @@ paths:
       responses:
         "204":
           description: Archived.
+        "404":
+          description: Question not found, or it does not belong to this course.
   /courses/{courseId}/activities:
     post:
       operationId: createActivity
@@ -1362,6 +1374,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ActivityDefinition"
+        "404":
+          description: Activity definition not found, or it does not belong to this course.
   /courses/{courseId}/sessions/{sessionId}/activities/{definitionId}/runs:
     post:
       operationId: startActivityRun
@@ -1378,6 +1392,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ActivityRun"
+        "404":
+          description: Session or activity definition does not belong to this course.
   /courses/{courseId}/sessions/{sessionId}/activity-runs/{runId}/close:
     post:
       operationId: closeActivityRun
@@ -1394,6 +1410,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ActivityRun"
+        "404":
+          description: Run not found, or it does not belong to this session.
   /courses/{courseId}/sessions/{sessionId}/activity-runs/{runId}/responses:
     get:
       operationId: getActivityResponses
@@ -1412,6 +1430,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ActivityResponse"
+        "404":
+          description: Run not found, or it does not belong to this session.
   /student/sessions/{joinCode}/activity-runs/{runId}/respond:
     post:
       operationId: respondToActivity

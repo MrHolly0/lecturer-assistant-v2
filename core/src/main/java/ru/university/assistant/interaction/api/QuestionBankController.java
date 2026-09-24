@@ -55,7 +55,7 @@ class QuestionBankController {
             @PathVariable UUID courseId,
             @PathVariable UUID questionId) {
         courseAccess.requireManage(user, courseId);
-        return service.get(questionId);
+        return service.get(courseId, questionId);
     }
 
     @PutMapping("/{questionId}")
@@ -65,7 +65,7 @@ class QuestionBankController {
             @PathVariable UUID questionId,
             @Valid @RequestBody CreateQuestionRequest request) {
         courseAccess.requireManage(user, courseId);
-        return service.update(questionId, request);
+        return service.update(courseId, questionId, request);
     }
 
     @DeleteMapping("/{questionId}")
@@ -75,6 +75,6 @@ class QuestionBankController {
             @PathVariable UUID courseId,
             @PathVariable UUID questionId) {
         courseAccess.requireManage(user, courseId);
-        service.archive(questionId);
+        service.archive(courseId, questionId);
     }
 }
