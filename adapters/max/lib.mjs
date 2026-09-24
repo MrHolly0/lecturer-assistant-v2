@@ -28,9 +28,20 @@ export function openAppButton(webAppUrl, text, joinCode) {
   };
 }
 
+// User-объект MAX (bot_started.user, message.sender, callback.user): по официальному SDK
+// (max-bot-api-client-ts, src/core/network/api/types/user.ts) поле называется user_id, а не id.
+// MAX_API_NOTES.md приводил id по неполному пересказу — 24.09 подтверждено на живом боте
+// (bot_started с чтением .id молчал). Проверяем оба варианта, id — как отступление на случай
+// расхождения версий API.
+export function extractUserId(user) {
+  return user?.user_id ?? user?.id;
+}
+
 export function extractSenderId(update) {
   const message = update.message;
-  return message?.sender?.user_id ?? message?.sender?.id ?? message?.from?.id ?? message?.user?.id;
+  return (
+      extractUserId(message?.sender) ?? extractUserId(message?.from) ?? extractUserId(message?.user)
+  );
 }
 
 export function parseStartCommand(text) {

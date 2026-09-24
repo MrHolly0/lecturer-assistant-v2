@@ -46,7 +46,7 @@ function startFakeMax() {
         if (!updatesServed) {
           updatesServed = true;
           response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({
-            updates: [{ update_type: "bot_started", timestamp: Date.now(), user: { id: 555 }, payload: "ABC234" }],
+            updates: [{ update_type: "bot_started", timestamp: Date.now(), user: { user_id: 555 }, payload: "ABC234" }],
             marker: 1,
           }));
         } else {
@@ -178,14 +178,14 @@ test("webhook mode checks the secret and the path before accepting an update", a
     const wrongSecret = await fetchWithRetry(`${base}${path}`, {
       method: "POST",
       headers: { "x-max-bot-api-secret": "not-the-secret" },
-      body: JSON.stringify({ update_type: "bot_started", user: { id: 1 } }),
+      body: JSON.stringify({ update_type: "bot_started", user: { user_id: 1 } }),
     });
     assert.equal(wrongSecret.status, 404);
 
     const okResponse = await fetchWithRetry(`${base}${path}`, {
       method: "POST",
       headers: { "x-max-bot-api-secret": secret },
-      body: JSON.stringify({ update_type: "bot_started", user: { id: 999 }, payload: "ZZZ999" }),
+      body: JSON.stringify({ update_type: "bot_started", user: { user_id: 999 }, payload: "ZZZ999" }),
     });
     assert.equal(okResponse.status, 200);
 

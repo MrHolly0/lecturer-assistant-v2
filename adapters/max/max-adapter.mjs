@@ -12,6 +12,7 @@ import {
   createRateLimiter,
   extractJoinCode,
   extractSenderId,
+  extractUserId,
   openAppButton,
   parseStartCommand,
   renderKeyboard,
@@ -134,7 +135,7 @@ async function sendMessage(userId, text, buttonRows) {
 // ---------- обработка событий бота ----------
 
 async function handleBotStarted(update) {
-  const userId = update.user?.id;
+  const userId = extractUserId(update.user);
   if (!userId) {
     return;
   }
@@ -271,6 +272,20 @@ async function pollCoreOutbox() {
   }
 }
 
+// Опрос outbox уже сам обрабатывает сбой отправки в MAX на каждое сообщение (try/catch внутри
+// pollCoreOutbox), но обращение к самому core (outbox/delivery-reports) может кратко упасть
+// при рестарте контейнера core — без этой обвязки один такой сбой рушил бы весь процесс адаптера.
+async function runOutboxLoop() {
+  for (;;) {
+    try {
+      await pollCoreOutbox();
+    } catch (error) {
+      console.error("[max-adapter] outbox poll error:", error.message);
+      await sleep(1000);
+    }
+  }
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -285,6 +300,4 @@ if (webhookUrl) {
 } else {
   runLongPolling();
 }
-for (;;) {
-  await pollCoreOutbox();
-}
+runOutboxLoop();
