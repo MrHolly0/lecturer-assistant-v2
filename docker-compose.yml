@@ -129,6 +129,24 @@ services:
       core:
         condition: service_healthy
 
+  # Тестовые данные: docker compose run --rm seed  (после up; пароли — SEED_PASSWORD_* в .env)
+  seed:
+    profiles: ["seed"]
+    image: node:22-alpine
+    working_dir: /seed
+    command: ["node", "seed.mjs"]
+    volumes:
+      - ./deploy/seed:/seed:ro
+    environment:
+      SEED_BASE_URL: ${SEED_BASE_URL:-http://web:80}
+      SEED_PUBLIC_URL: ${SEED_PUBLIC_URL:-http://localhost:${WEB_PORT:-3000}}
+      SEED_PASSWORD_ADMIN: ${SEED_PASSWORD_ADMIN:-}
+      SEED_PASSWORD_LECTURER: ${SEED_PASSWORD_LECTURER:-}
+      SEED_PASSWORD_ASSISTANT: ${SEED_PASSWORD_ASSISTANT:-}
+    depends_on:
+      web:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   blob-data:
