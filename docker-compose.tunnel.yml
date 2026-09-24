@@ -1,7 +1,7 @@
-# Временный стенд за ngrok. Подключается поверх prod-оверлея:
+# Временный стенд за туннелем (Tuna или ngrok). Подключается поверх prod-оверлея:
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tunnel.yml up -d
-# Запускать через deploy/stand/tunnel.sh — он же поднимает ngrok и подставляет адрес.
-# Отличия от VPS: Caddy слушает HTTP на 127.0.0.1:TUNNEL_PORT, TLS снаружи даёт ngrok;
+# Запускать через deploy/stand/tunnel.sh — он подставляет адрес (PUBLIC_DOMAIN или ngrok).
+# Отличия от VPS: Caddy слушает HTTP на 127.0.0.1:TUNNEL_PORT, TLS снаружи даёт туннель;
 # core и Postgres наружу не публикуются вовсе (на машине могут быть заняты 8080 и 5432).
 
 services:

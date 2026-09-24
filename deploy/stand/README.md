@@ -1,6 +1,6 @@
 # Стенд: развёртывание
 
-Пока нет VPS — временный стенд через ngrok: [TUNNEL.md](TUNNEL.md). Ниже — VPS.
+Пока нет VPS — временный стенд за туннелем Tuna (https://lecturer-assistant.ru.tuna.am): [TUNNEL.md](TUNNEL.md). Ниже — VPS.
 
 Сервер: Linux, 2 vCPU, 4 ГБ RAM, Docker Engine с плагином Compose v2, открыты 80 и 443
 (TCP и UDP для HTTP/3). Домен: A-запись указывает на IP сервера.
