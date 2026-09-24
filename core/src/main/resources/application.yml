@@ -43,6 +43,13 @@ app:
     access-token-minutes: ${ACCESS_TOKEN_MINUTES:15}
     refresh-token-days: ${REFRESH_TOKEN_DAYS:30}
     refresh-cookie-secure: ${REFRESH_COOKIE_SECURE:true}
+    # B-13: на стенде web и core — один и тот же SITE_DOMAIN за Caddy (путевая маршрутизация,
+    # запросы уже same-origin), поэтому в проде сюда достаточно поставить https://<SITE_DOMAIN>.
+    # Локальные порты dev-профиля (docker-compose.dev.yml: WEB_PORT/CORE_PORT) — в дефолте.
+    cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+    rate-limit:
+      auth-max-per-minute: ${RATE_LIMIT_AUTH_MAX_PER_MINUTE:120}
+      signal-per-minute: ${RATE_LIMIT_SIGNAL_PER_MINUTE:120}
   content:
     blob-root: ${BLOB_ROOT:./data/blobs}
     max-upload-bytes: ${MAX_UPLOAD_BYTES:104857600}

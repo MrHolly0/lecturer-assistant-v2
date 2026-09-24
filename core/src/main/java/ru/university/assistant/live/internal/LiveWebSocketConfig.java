@@ -4,6 +4,7 @@ import java.security.Principal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -19,6 +20,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.iam.api.TokenAuthenticationApi;
 import ru.university.assistant.org.api.CourseAccessApi;
+import ru.university.assistant.shared.api.OriginList;
 
 @Configuration
 @EnableWebSocketMessageBroker
@@ -26,11 +28,17 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final TokenAuthenticationApi tokens;
     private final LiveSessionRepository sessions;
     private final CourseAccessApi courseAccess;
+    private final List<String> allowedOrigins;
 
-    LiveWebSocketConfig(TokenAuthenticationApi tokens, LiveSessionRepository sessions, CourseAccessApi courseAccess) {
+    LiveWebSocketConfig(
+            TokenAuthenticationApi tokens,
+            LiveSessionRepository sessions,
+            CourseAccessApi courseAccess,
+            @Value("${app.security.cors-allowed-origins}") String allowedOrigins) {
         this.tokens = tokens;
         this.sessions = sessions;
         this.courseAccess = courseAccess;
+        this.allowedOrigins = OriginList.parse(allowedOrigins);
     }
 
     @Override
@@ -41,7 +49,10 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws/session/{sessionId}").setAllowedOriginPatterns("*");
+        // B-13: раньше принимал любой origin ("*"); теперь — только адрес(а) стенда/dev,
+        // тот же список, что и в HTTP CORS (app.security.cors-allowed-origins).
+        registry.addEndpoint("/ws/session/{sessionId}")
+                .setAllowedOriginPatterns(allowedOrigins.toArray(new String[0]));
     }
 
     @Override
