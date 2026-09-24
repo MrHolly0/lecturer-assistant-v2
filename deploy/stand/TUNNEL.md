@@ -140,7 +140,8 @@ compose-проект `lecturer-stand`**: чужие контейнеры на м
 
 ```bash
 sh deploy/stand/tunnel.sh stop     # на машине владельца; затем закрыть клиент Tuna
-sh deploy/stand/vps-up.sh          # на VPS, в клоне репозитория
+sh deploy/stand/vps-up.sh --seed   # на VPS, в клоне репозитория; --seed добавляет тестовые данные
+sh deploy/stand/watch-install.sh remove   # на машине владельца: снять сторожа и защиту от сна
 ```
 
 `vps-up.sh` делает всё остальное:
