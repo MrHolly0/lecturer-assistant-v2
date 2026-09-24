@@ -1,6 +1,7 @@
 import type { components } from "./schema";
 import { getStoredAuth } from "../auth";
-import { apiFetch, ApiError } from "./http";
+import { apiErrorFromResponse } from "./errors";
+import { apiFetch } from "./http";
 
 type GeneratedStudentSessionSnapshot = components["schemas"]["StudentSessionSnapshot"];
 type GeneratedActivePoll = components["schemas"]["ActivePollView"];
@@ -36,16 +37,7 @@ export async function publicFetch(path: string, init?: RequestInit): Promise<Res
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
   const response = await fetch(`/api/v1${path}`, { ...init, headers });
-  if (!response.ok) {
-    let message = `Запрос завершился с ошибкой ${response.status}`;
-    try {
-      const data = (await response.clone().json()) as { message?: string; detail?: string };
-      message = data.message ?? data.detail ?? message;
-    } catch {
-      // non-json response body
-    }
-    throw new ApiError(response.status, message);
-  }
+  if (!response.ok) throw await apiErrorFromResponse(response);
   return response;
 }
 

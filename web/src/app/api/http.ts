@@ -1,15 +1,8 @@
 import { expireStoredAuth, getStoredAuth } from "../auth";
 import { refreshAuthSession } from "./refresh";
+import { apiErrorFromResponse, ApiError } from "./errors";
 
-export class ApiError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
+export { ApiError } from "./errors";
 
 export interface ApiRequestInit extends RequestInit {
   skipAuthorization?: boolean;
@@ -56,15 +49,5 @@ async function sendRequest(
 }
 
 async function assertSuccessful(response: Response): Promise<void> {
-  if (!response.ok) {
-    let message = `Запрос завершился с ошибкой ${response.status}`;
-    try {
-      const data = (await response.clone().json()) as { message?: string; detail?: string };
-      if (data?.message) message = data.message;
-      else if (data?.detail) message = data.detail;
-    } catch {
-      // тело ответа не JSON — оставляем сообщение по умолчанию
-    }
-    throw new ApiError(response.status, message);
-  }
+  if (!response.ok) throw await apiErrorFromResponse(response);
 }

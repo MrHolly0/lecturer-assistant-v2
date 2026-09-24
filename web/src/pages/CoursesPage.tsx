@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { userErrorMessage } from "../app/api/errors";
 import {
   archiveCourse,
   createCourse,
@@ -45,8 +46,7 @@ export function CoursesPage() {
     }
   });
 
-  const onCourseError = (error: unknown) =>
-    toast.error(error instanceof Error ? error.message : "Не удалось выполнить действие");
+  const onCourseError = (error: unknown) => toast.error(userErrorMessage(error));
   const archiveMut = useMutation({
     mutationFn: (courseId: string) => archiveCourse(courseId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses"] }),

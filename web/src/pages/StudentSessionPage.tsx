@@ -14,6 +14,7 @@ import {
   type StudentSessionSnapshot
 } from "../app/api/student-api";
 import { respondToPoll } from "../app/api/interaction-api";
+import { userErrorMessage } from "../app/api/errors";
 import { mutationRetryDelay, shouldRetryMutation } from "../app/api/retry";
 import { useAuth } from "../app/AuthContext";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
@@ -79,7 +80,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       setLastSignal(value);
       toast.success("Сигнал отправлен.");
     },
-    onError: () => toast.error("Не удалось отправить сигнал. Попробуйте ещё раз."),
+    onError: (error) =>
+      toast.error(userErrorMessage(error, "Не удалось отправить сигнал. Попробуйте ещё раз.")),
     retry: shouldRetryMutation,
     retryDelay: mutationRetryDelay
   });
@@ -99,7 +101,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       setSnapshot((value) => (value ? { ...value, myVote: result.myVote } : value));
       toast.success(result.accepted ? "Ответ принят." : "Ваш первый ответ уже сохранён.");
     },
-    onError: () => toast.error("Не удалось отправить ответ."),
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить ответ.")),
     retry: shouldRetryMutation,
     retryDelay: mutationRetryDelay
   });
