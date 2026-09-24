@@ -189,7 +189,8 @@ public class StudentWebSessionService {
         ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
         ensureJoinable(current.session());
         SignalAggregate aggregate = feedback.saveSignal(
-                current.session().id(), current.participant().personId(), "web", request.value());
+                current.session().id(), current.participant().personId(), "web",
+                current.session().currentSlideIdx(), request.value());
         touch(current.participant());
         publisher.publish("feedback.signal_submitted", current.session());
         return aggregate;
@@ -212,9 +213,12 @@ public class StudentWebSessionService {
 
     public StudentEngagement engagement(AuthenticatedUser user, UUID courseId, UUID sessionId) {
         courseAccess.requireManage(user, courseId);
-        sessions.findByCourse(courseId, sessionId)
+        LiveSession session = sessions.findByCourse(courseId, sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
-        return new StudentEngagement(feedback.aggregate(sessionId), questions.openQuestions(sessionId));
+        return new StudentEngagement(
+                feedback.aggregate(sessionId, session.currentSlideIdx()),
+                feedback.problemSlides(sessionId),
+                questions.openQuestions(sessionId));
     }
 
     public boolean tokenBelongsToJoinCode(String joinCode, String participantToken) {
@@ -295,7 +299,7 @@ public class StudentWebSessionService {
                 deck.slideCount(),
                 new StudentSlide(slide.idx(), slide.imageUrl(), slide.textExtract()),
                 session.annotations(),
-                feedback.aggregate(session.id()),
+                feedback.aggregate(session.id(), session.currentSlideIdx()),
                 activePoll,
                 null);
     }

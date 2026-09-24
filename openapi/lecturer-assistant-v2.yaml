@@ -2604,6 +2604,11 @@ components:
           type: string
         value:
           $ref: "#/components/schemas/SignalValue"
+        slideIdx:
+          type: integer
+          description: >
+            Необязателен и не является источником истины: сервер ставит сигнал на слайд, на
+            котором сам держит сессию сейчас (D-04), номер от клиента не принимается.
     StudentQuestionRequest:
       type: object
       required: [text]
@@ -2639,14 +2644,28 @@ components:
           format: date-time
     StudentEngagement:
       type: object
-      required: [signalAggregate, questions]
+      required: [signalAggregate, problemSlides, questions]
       properties:
         signalAggregate:
           $ref: "#/components/schemas/SignalAggregate"
+          description: Агрегат по текущему слайду сессии, не по всей лекции.
+        problemSlides:
+          type: array
+          description: Слайды, где были сигналы, отсортированы по числу красных (сначала самые проблемные).
+          items:
+            $ref: "#/components/schemas/ProblemSlide"
         questions:
           type: array
           items:
             $ref: "#/components/schemas/StudentQuestion"
+    ProblemSlide:
+      type: object
+      required: [slideIdx, signals]
+      properties:
+        slideIdx:
+          type: integer
+        signals:
+          $ref: "#/components/schemas/SignalAggregate"
     ChannelCapabilities:
       type: object
       required: [inlineButtons, editMessage, images, maxTextLength, maxButtonsPerRow]

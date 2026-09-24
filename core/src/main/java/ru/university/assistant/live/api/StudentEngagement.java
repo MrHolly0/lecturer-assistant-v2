@@ -1,7 +1,9 @@
 package ru.university.assistant.live.api;
 
 import java.util.List;
+import ru.university.assistant.feedback.api.ProblemSlide;
 import ru.university.assistant.feedback.api.SignalAggregate;
 import ru.university.assistant.qa.api.StudentQuestion;
 
-public record StudentEngagement(SignalAggregate signalAggregate, List<StudentQuestion> questions) {}
+public record StudentEngagement(
+        SignalAggregate signalAggregate, List<ProblemSlide> problemSlides, List<StudentQuestion> questions) {}
