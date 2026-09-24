@@ -25,7 +25,7 @@
 
 Твой каталог: `web/`. Каталоги `core/`, `adapters/`, `deploy/`, `openapi/` не трогаешь — там работает бэкенд параллельно. Типы обновляешь генерацией из OpenAPI, руками `src/app/api/schema.ts` не правишь.
 
-Во `web/src/pages/PresenterPage.tsx`, `web/src/styles.css` и `web/src/widgets/PresenterSidePanel.tsx` есть незакоммиченные правки владельца проекта. Разобраться с ними до начала работы: закоммитить или отложить, но не потерять.
+Правки владельца в `PresenterPage.tsx`, `styles.css` и `PresenterSidePanel.tsx` (уведомления, индикатор непонимания, счётчики во вкладках) вынесены в ветку `feat/presenter-live-indicators` и вливаются в базу. Ветвись от базы `v2/phase-5-web-student-channel`, ветки `main` в репозитории нет. Эти наработки не переписывай: достраивай, в том числе переиспользуй готовое склонение «студент / студента / студентов».
 
 ## Правила
 
@@ -71,7 +71,7 @@
 
 | Метод и путь | Запрос | Ответ |
 |---|---|---|
-| `POST /api/v1/auth/max` | `{ initData }` | `{ accessToken, expiresIn, role, personId, displayName }` |
+| `POST /api/v1/auth/max` | `{ initData }` | `{ accessToken, expiresIn, role, personId, displayName }` + `Set-Cookie` с refresh-токеном (`HttpOnly`, `Secure`; `SameSite` уточняется после проверки веб-версии MAX на фрейм) |
 | `GET /api/v1/me/active-session` | — | `{ sessionId, courseId, joinCode, lectureTitle, currentSlideIdx }` или 204 |
 | `GET /api/v1/student/sessions/{joinCode}` | — | снапшот: `status`, `lectureTitle`, `currentSlide`, `slideCount`, `signalAggregate`, `activePoll` (в том числе закрытый, с `correctOptionIdx` и `votes`), `myVote`, `myQuestions` |
 | `POST /api/v1/student/sessions/{joinCode}/signals` | `{ value, slideIdx }` | агрегат по текущему слайду |
@@ -83,6 +83,29 @@
 
 После входа через MAX авторизация — обычный JWT в заголовке. Отдельный `participantToken` остаётся только для анонимного входа по коду.
 
+Реализовано 18.09 (B-02, коммит `81b26c2`): срок жизни `initData` — 1 час (`MAX_INIT_DATA_MAX_AGE`), человек ищется по MAX `user.id` в `iam.channel_identities`. На реальном `initData` из MAX ещё не проверено: нет токена бота.
+
+Дополнение 18.09 (B-04, коммит `fd9b4a6`): `POST /api/v1/student/sessions/{joinCode}/join` возвращает `participantToken` всегда, в том числе при входе с JWT. Токен нужен только для потока событий (`EventSource` не передаёт заголовки), остальные запросы идут с `Authorization: Bearer`. Замена на одноразовый билет — в D-12 вместе с B-13. Анонимный вход принимает `participantToken` в теле и возвращает того же участника; в участники курса гость не попадает.
+
+Дополнение 18.09 (B-05, коммит `319af2d`):
+- Снапшот и `GET .../polls/active` отдают открытый опрос, а если его нет — последний закрытый; закрытый остаётся до старта следующего.
+- Пока опрос открыт, `activePoll.votes` и `activePoll.correctOptionIdx` равны `null`. Код, который строит полосы распределения, обязан это проверять.
+- `myVote` приходит только в `GET /api/v1/student/sessions/{joinCode}` при идентификации через `Authorization: Bearer` или заголовок `X-Participant-Token`. В событиях потока `myVote` всегда `null`: клиент не должен затирать им уже известное значение.
+- `POST .../polls/{pollId}/respond` отвечает `200 { accepted, myVote }` вместо 204. Первый ответ фиксируется, повторный и ответ после закрытия дают `accepted: false`.
+- Ответ на опрос или активность чужой сессии даёт 404.
+- `GET .../polls/active` без единого опроса в сессии по-прежнему даёт 404 (нормализация — D-18).
+- Анонимный вход с пустым именем получает имя «Гость …» вместо ошибки 400.
+
 ## Отчёт
+
+Дополнение 24.09 (B-03, привязка MAX к преподавателю). Контракт зафиксирован, реализуется параллельно бэкендом и фронтендом:
+
+| Метод и путь | Запрос | Ответ |
+|---|---|---|
+| `POST /api/v1/identity/max/link-codes` (нужен JWT преподавателя из браузера) | — | `{ code, expiresAt }`, код из 6 символов A–Z и 0–9, живёт 5 минут, одноразовый |
+| `POST /api/v1/auth/max` | `{ initData, linkCode? }` | как раньше; если передан валидный `linkCode`, MAX-аккаунт связывается с этим человеком и в ответе приходит его роль. Невалидный или просроченный код — 400, уже использованный — 409 |
+| `GET /api/v1/me/active-session` | — | `{ sessionId, courseId, joinCode, lectureTitle, currentSlideIdx }` или 204, если идущей лекции нет |
+
+Без кода вход через MAX по-прежнему создаёт студента. Повторный вход того же MAX-пользователя берёт роль из уже связанной личности, код больше не нужен.
 
 В конце каждого дня короткое сообщение: что закрыто по номерам, что проверено в MAX и на каком устройстве, где застрял, что нужно от бэкенда или оркестратора.
