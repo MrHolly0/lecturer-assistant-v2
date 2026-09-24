@@ -259,7 +259,7 @@ export function App() {
   return (
     <AuthProvider>
       <RouterProvider router={router} />
-      <Toaster richColors closeButton />
+      <Toaster position="top-center" richColors closeButton />
     </AuthProvider>
   );
 }

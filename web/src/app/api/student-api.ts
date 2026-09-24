@@ -2,7 +2,17 @@ import type { components } from "./schema";
 import { getStoredAuth } from "../auth";
 import { apiFetch, ApiError } from "./http";
 
-export type StudentSessionSnapshot = components["schemas"]["StudentSessionSnapshot"];
+type GeneratedStudentSessionSnapshot = components["schemas"]["StudentSessionSnapshot"];
+type GeneratedActivePoll = components["schemas"]["ActivePollView"];
+
+export type StudentActivePoll = Omit<GeneratedActivePoll, "correctOptionIdx" | "votes"> & {
+  correctOptionIdx?: number | null;
+  votes?: number[] | null;
+};
+export type StudentSessionSnapshot = Omit<GeneratedStudentSessionSnapshot, "activePoll"> & {
+  activePoll?: StudentActivePoll | null;
+  myVote?: number | null;
+};
 export type StudentJoinResponse = components["schemas"]["StudentJoinResponse"];
 export type SignalAggregate = components["schemas"]["SignalAggregate"];
 export type SignalValue = components["schemas"]["SignalValue"];
@@ -58,12 +68,15 @@ export async function joinStudentSession(
 export async function submitStudentSignal(
   joinCode: string,
   participantToken: string,
-  value: SignalValue
+  value: SignalValue,
+  slideIdx: number
 ): Promise<SignalAggregate> {
   const authenticated = Boolean(getStoredAuth());
   const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/signals`, {
     method: "POST",
-    body: JSON.stringify(authenticated ? { value } : { participantToken, value })
+    body: JSON.stringify(
+      authenticated ? { value, slideIdx } : { participantToken, value, slideIdx }
+    )
   });
   return res.json() as Promise<SignalAggregate>;
 }

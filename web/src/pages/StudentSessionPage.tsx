@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { HelpCircle, Loader2, MessageSquareText } from "lucide-react";
+import { Check, CheckCircle2, HelpCircle, Loader2, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
 import {
   askStudentQuestion,
@@ -26,6 +26,14 @@ const SIGNALS: Array<{ value: SignalValue; label: string; helper: string }> = [
   { value: "YELLOW", label: "Есть вопрос", helper: "нужно медленнее" },
   { value: "RED", label: "Не понимаю", helper: "нужна остановка" }
 ];
+
+const STATUS_LABELS: Record<StudentSessionSnapshot["status"], string> = {
+  SCHEDULED: "Запланирована",
+  LIVE: "В эфире",
+  PAUSED: "Пауза",
+  ENDED: "Завершена",
+  ARCHIVED: "В архиве"
+};
 
 export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const { user } = useAuth();
@@ -61,11 +69,15 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   });
   const signalMut = useMutation({
     mutationFn: (value: SignalValue) =>
-      submitStudentSignal(normalizedCode, participantToken, value),
-    onSuccess: (signalAggregate) => {
-      setSnapshot((value) => (value ? { ...value, signalAggregate } : value));
+      submitStudentSignal(normalizedCode, participantToken, value, current?.currentSlideIdx ?? 0),
+    onSuccess: (signalAggregate, value) => {
+      setSnapshot((currentSnapshot) =>
+        currentSnapshot ? { ...currentSnapshot, signalAggregate } : currentSnapshot
+      );
+      setLastSignal(value);
       toast.success("Сигнал отправлен.");
-    }
+    },
+    onError: () => toast.error("Не удалось отправить сигнал. Попробуйте ещё раз.")
   });
   const questionMut = useMutation({
     mutationFn: () => askStudentQuestion(normalizedCode, participantToken, question.trim()),
@@ -78,15 +90,18 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const pollMut = useMutation({
     mutationFn: ({ pollId, optionIdx }: { pollId: string; optionIdx: number }) =>
       respondToPoll(normalizedCode, pollId, participantToken, optionIdx),
-    onSuccess: (_, { optionIdx }) => {
-      setMyVote(optionIdx);
-      toast.success("Ответ принят.");
+    onSuccess: (result) => {
+      setMyVote(result.myVote);
+      setSnapshot((value) => (value ? { ...value, myVote: result.myVote } : value));
+      toast.success(result.accepted ? "Ответ принят." : "Ваш первый ответ уже сохранён.");
     },
     onError: () => toast.error("Не удалось отправить ответ.")
   });
 
   useEffect(() => {
-    if (sessionQuery.data) setSnapshot(sessionQuery.data);
+    if (!sessionQuery.data) return;
+    setSnapshot(sessionQuery.data);
+    setMyVote(sessionQuery.data.myVote ?? null);
   }, [sessionQuery.data]);
 
   useEffect(() => {
@@ -97,12 +112,23 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   }, [joinMut, participantToken, storageKey, user]);
 
   useEffect(() => {
-    setMyVote(null);
-  }, [current?.activePoll?.pollId]);
+    setMyVote(current?.myVote ?? null);
+  }, [current?.activePoll?.pollId, current?.myVote]);
+
+  useEffect(() => {
+    setLastSignal(null);
+  }, [current?.currentSlideIdx]);
 
   useEffect(() => {
     if (!participantToken || !normalizedCode) return undefined;
-    const disconnect = connectStudentSession(normalizedCode, participantToken, setSnapshot);
+    const disconnect = connectStudentSession(normalizedCode, participantToken, (next) => {
+      setSnapshot((previous) => ({
+        ...next,
+        myVote:
+          next.myVote ??
+          (previous?.activePoll?.pollId === next.activePoll?.pollId ? previous?.myVote : null)
+      }));
+    });
     return disconnect;
   }, [normalizedCode, participantToken]);
 
@@ -123,7 +149,6 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   }
 
   function sendSignal(value: SignalValue) {
-    setLastSignal(value);
     signalMut.mutate(value);
   }
 
@@ -154,7 +179,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           <h1>{current.lectureTitle}</h1>
         </div>
         <span className={`badge student-status student-status--${current.status.toLowerCase()}`}>
-          {current.status}
+          {STATUS_LABELS[current.status]}
         </span>
       </header>
 
@@ -222,7 +247,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         <section className="student-action-panel">
           {current.activePoll && (
             <div className="student-poll-card">
-              <h2 className="student-poll-question">{current.activePoll.questionText}</h2>
+              <div className="student-poll-heading">
+                <span className="student-poll-kicker">
+                  {current.activePoll.status === "OPEN" ? "Вопрос-проверка" : "Результат"}
+                </span>
+                <h2 className="student-poll-question">{current.activePoll.questionText}</h2>
+              </div>
               {current.activePoll.status === "OPEN" && myVote === null ? (
                 <div className="student-poll-options">
                   {current.activePoll.options.map((opt, idx) => (
@@ -231,6 +261,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
                       type="button"
                       className="student-poll-option"
                       disabled={pollMut.isPending || !isLive}
+                      aria-label={`Ответить: ${opt}`}
                       onClick={() =>
                         pollMut.mutate({ pollId: current.activePoll!.pollId, optionIdx: idx })
                       }
@@ -239,10 +270,19 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
                     </button>
                   ))}
                 </div>
+              ) : current.activePoll.status === "OPEN" ? (
+                <div className="student-poll-waiting" role="status">
+                  <CheckCircle2 size={20} />
+                  <div>
+                    <strong>Ваш ответ сохранён</strong>
+                    <span>{current.activePoll.options[myVote ?? -1]}</span>
+                  </div>
+                  <p>Результат появится, когда преподаватель закроет опрос.</p>
+                </div>
               ) : (
                 <div className="student-poll-bars">
                   {current.activePoll.options.map((opt, idx) => {
-                    const votes = current.activePoll!.votes;
+                    const votes = current.activePoll!.votes ?? [];
                     const total = votes.reduce((a, b) => a + b, 0);
                     const count = votes[idx] ?? 0;
                     const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -259,12 +299,16 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
                           .filter(Boolean)
                           .join(" ")}
                       >
-                        <span className="student-poll-bar-label">{opt}</span>
+                        <span className="student-poll-bar-label">
+                          {opt}
+                          <small>
+                            {isCorrect && "Правильный ответ"}
+                            {isCorrect && isMyVote && " · "}
+                            {isMyVote && "Ваш ответ"}
+                          </small>
+                        </span>
                         <div className="student-poll-bar-track">
-                          <div
-                            className="student-poll-bar-fill"
-                            style={{ width: `${pct}%` }}
-                          />
+                          <div className="student-poll-bar-fill" style={{ width: `${pct}%` }} />
                         </div>
                         <span className="student-poll-bar-pct">{pct}%</span>
                       </div>
@@ -272,14 +316,13 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
                   })}
                 </div>
               )}
-              {current.activePoll.status === "CLOSED" && (
-                <p className="student-poll-closed muted">Опрос завершён</p>
+              {current.activePoll.status === "CLOSED" && myVote === null && (
+                <p className="student-poll-closed muted">Вы не отвечали на этот вопрос.</p>
               )}
             </div>
           )}
           <div className="section-heading">
             <h2>Сигнал преподавателю</h2>
-            <span className="muted">{current.signalAggregate.total} ответов</span>
           </div>
           <div className="student-signal-grid">
             {SIGNALS.map((item) => (
@@ -294,9 +337,13 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
                   .filter(Boolean)
                   .join(" ")}
                 disabled={!isLive || signalMut.isPending}
+                aria-pressed={lastSignal === item.value}
                 onClick={() => sendSignal(item.value)}
               >
-                <strong>{item.label}</strong>
+                <strong>
+                  {lastSignal === item.value && <Check size={16} aria-hidden="true" />}
+                  {item.label}
+                </strong>
                 <span>{item.helper}</span>
               </button>
             ))}
