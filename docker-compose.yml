@@ -1,12 +1,20 @@
+# Весь продукт одной командой: docker compose up --build
+# Значения по умолчанию годятся только для локального запуска. На стенде секреты
+# задаются в .env, а docker-compose.prod.yml делает их обязательными.
+
+x-restart: &restart
+  restart: unless-stopped
+
 services:
   postgres:
+    <<: *restart
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lecturer_assistant}
       POSTGRES_USER: ${POSTGRES_USER:-lecturer}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lecturer_dev_password}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -16,6 +24,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
   core:
+    <<: *restart
     build:
       context: .
       dockerfile: core/Dockerfile
@@ -23,43 +32,101 @@ services:
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/lecturer_assistant}
       DB_USERNAME: ${DB_USERNAME:-lecturer}
       DB_PASSWORD: ${DB_PASSWORD:-lecturer_dev_password}
-      JWT_SECRET: ${JWT_SECRET:-phase-1-local-development-secret-change-me}
+      JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-not-for-production}
+      SLIDE_IMAGE_URL_SECRET: ${SLIDE_IMAGE_URL_SECRET:-local-dev-slide-url-secret-not-for-production}
+      SLIDE_IMAGE_URL_TTL: ${SLIDE_IMAGE_URL_TTL:-PT1H}
       ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-15}
       REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-30}
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-true}
       REQUIRE_STRONG_JWT_SECRET: ${REQUIRE_STRONG_JWT_SECRET:-false}
       MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
       MAX_INIT_DATA_MAX_AGE: ${MAX_INIT_DATA_MAX_AGE:-PT1H}
+      CHANNEL_INTERNAL_API_KEY: ${CHANNEL_INTERNAL_API_KEY:-local-dev-channel-key-not-for-production}
+      CHANNEL_DELIVERY_WORKER_DELAY_MS: ${CHANNEL_DELIVERY_WORKER_DELAY_MS:-5000}
+      TELEGRAM_BOT: ${TELEGRAM_BOT:-}
+      VK_BOT: ${VK_BOT:-}
       BLOB_ROOT: /data/blobs
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-104857600}
       MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-100MB}
+      CONVERTER_CONNECT_TIMEOUT: ${CONVERTER_CONNECT_TIMEOUT:-PT5S}
+      CONVERTER_READ_TIMEOUT: ${CONVERTER_READ_TIMEOUT:-PT20M}
+      CONTENT_IMPORT_CORE_POOL_SIZE: ${CONTENT_IMPORT_CORE_POOL_SIZE:-1}
+      CONTENT_IMPORT_MAX_POOL_SIZE: ${CONTENT_IMPORT_MAX_POOL_SIZE:-2}
+      CONTENT_IMPORT_QUEUE_CAPACITY: ${CONTENT_IMPORT_QUEUE_CAPACITY:-8}
+      APP_VERSION: ${APP_VERSION:-0.0.1-SNAPSHOT}
       APP_CONTENT_CONVERTER_URL: http://converter:8000
       SERVER_PORT: 8080
     ports:
-      - "${CORE_PORT:-8080}:8080"
+      - "127.0.0.1:${CORE_PORT:-8080}:8080"
     volumes:
       - blob-data:/data/blobs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 60s
+      retries: 6
     depends_on:
       postgres:
         condition: service_healthy
       converter:
-        condition: service_started
+        condition: service_healthy
 
   converter:
+    <<: *restart
     build:
       context: .
       dockerfile: deploy/converter/Dockerfile
     volumes:
       - blob-data:/data/blobs
+    # healthcheck задан в deploy/converter/Dockerfile (GET /health)
 
   web:
+    <<: *restart
     build:
       context: .
       dockerfile: web/Dockerfile
     ports:
       - "${WEB_PORT:-3000}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
     depends_on:
-      - core
+      core:
+        condition: service_healthy
+
+  # Адаптеры каналов. Без токена бота контейнер пишет об этом в лог и ждёт,
+  # остальной продукт работает (вход через веб).
+  max-adapter:
+    <<: *restart
+    build:
+      context: adapters/max
+    environment:
+      CORE_URL: http://core:8080
+      CHANNEL_INTERNAL_API_KEY: ${CHANNEL_INTERNAL_API_KEY:-local-dev-channel-key-not-for-production}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+      MAX_WEBAPP_URL: ${MAX_WEBAPP_URL:-}
+      MAX_WEBHOOK_URL: ${MAX_WEBHOOK_URL:-}
+      MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:-}
+      MAX_WEBHOOK_PORT: 8090
+      MAX_RATE_LIMIT_RPS: ${MAX_RATE_LIMIT_RPS:-15}
+    depends_on:
+      core:
+        condition: service_healthy
+
+  telegram-adapter:
+    <<: *restart
+    build:
+      context: adapters/telegram
+    environment:
+      CORE_URL: http://core:8080
+      CHANNEL_INTERNAL_API_KEY: ${CHANNEL_INTERNAL_API_KEY:-local-dev-channel-key-not-for-production}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    depends_on:
+      core:
+        condition: service_healthy
 
 volumes:
   postgres-data:

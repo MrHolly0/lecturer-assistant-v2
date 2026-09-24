@@ -1,9 +1,0 @@
-services:
-  core:
-    profiles: ["standalone"]
-    environment:
-      APP_MODE: standalone
-
-  web:
-    profiles: ["standalone"]
-
