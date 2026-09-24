@@ -7,6 +7,9 @@ export function registerServiceWorker() {
 }
 
 export function precacheDeck(urls: string[]) {
-  if (!navigator.serviceWorker.controller) return;
-  navigator.serviceWorker.controller.postMessage({ type: "PRECACHE_DECK", urls });
+  if (!("serviceWorker" in navigator) || urls.length === 0) return;
+  void navigator.serviceWorker.ready.then((registration) => {
+    const worker = navigator.serviceWorker.controller ?? registration.active;
+    worker?.postMessage({ type: "PRECACHE_DECK", urls });
+  });
 }

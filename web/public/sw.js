@@ -1,15 +1,16 @@
-const CACHE_NAME = "lecturer-assistant-decks-v1";
-const SHELL_CACHE = "lecturer-assistant-shell-v1";
-const SHELL_ASSETS = ["/", "/manifest.webmanifest", "/icon.svg"];
+const CACHE_NAME = "lecturer-assistant-decks-v2";
+const SHELL_CACHE = "lecturer-assistant-shell-v2";
+const STATIC_SHELL_ASSETS = [
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/apple-touch-icon.png"
+];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches
-      .open(SHELL_CACHE)
-      .then((cache) => cache.addAll(SHELL_ASSETS))
-      .catch(() => undefined)
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil(precacheShell().then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -29,37 +30,38 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("message", (event) => {
   if (event.data?.type !== "PRECACHE_DECK") return;
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(event.data.urls || [])));
+  event.waitUntil(precacheDeckImages(event.data.urls || []));
 });
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  // Никогда не трогаем API, SSE и WebSocket — они должны идти в сеть напрямую.
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws/")) return;
 
-  // Навигация (загрузка/перезагрузка SPA) — сеть с откатом на закэшированную оболочку.
-  if (request.mode === "navigate") {
+  // Slide image is the only API resource cached for offline presentation mode.
+  if (isSlideImage(url)) {
+    const cacheKey = slideCacheKey(url);
     event.respondWith(
-      fetch(request).catch(() => caches.match("/", { ignoreSearch: true }))
+      caches.open(CACHE_NAME).then((cache) =>
+        cache.match(cacheKey).then((cached) => {
+          if (cached) return cached;
+          return fetch(request).then(async (response) => {
+            if (response.ok) await cache.put(cacheKey, response.clone());
+            return response;
+          });
+        })
+      )
     );
     return;
   }
 
-  // Картинки слайдов — кэш в первую очередь (офлайн-показ дека).
-  if (url.pathname.includes("/slides/") && url.pathname.endsWith("/image")) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          return response;
-        });
-      })
-    );
+  // Other API, SSE and WebSocket requests must always go directly to the network.
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws/")) return;
+
+  // Навигация (загрузка/перезагрузка SPA) — сеть с откатом на закэшированную оболочку.
+  if (request.mode === "navigate") {
+    event.respondWith(fetch(request).catch(() => caches.match("/", { ignoreSearch: true })));
     return;
   }
 
@@ -80,3 +82,41 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+async function precacheShell() {
+  const cache = await caches.open(SHELL_CACHE);
+  const shellResponse = await fetch("/", { cache: "no-store" });
+  if (!shellResponse.ok) throw new Error(`Shell request failed: ${shellResponse.status}`);
+
+  const html = await shellResponse.clone().text();
+  const hashedAssets = Array.from(
+    new Set(
+      Array.from(html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g), (match) => match[1])
+    )
+  );
+
+  await cache.put("/", shellResponse);
+  await cache.addAll([...STATIC_SHELL_ASSETS, ...hashedAssets]);
+}
+
+async function precacheDeckImages(urls) {
+  const cache = await caches.open(CACHE_NAME);
+  await Promise.all(
+    urls.map(async (rawUrl) => {
+      const request = new Request(rawUrl, { credentials: "same-origin" });
+      const response = await fetch(request);
+      if (!response.ok) throw new Error(`Slide request failed: ${response.status}`);
+      await cache.put(slideCacheKey(new URL(request.url)), response);
+    })
+  );
+}
+
+function isSlideImage(url) {
+  return url.pathname.includes("/slides/") && url.pathname.endsWith("/image");
+}
+
+function slideCacheKey(url) {
+  const normalized = new URL(url.toString());
+  normalized.searchParams.delete("t");
+  return normalized.toString();
+}
