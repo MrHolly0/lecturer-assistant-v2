@@ -6,6 +6,13 @@ type DrawAction = { color: string; size: number; points: Point[]; erase?: boolea
 export type LiveAnnotations = Record<string, DrawAction[]>;
 
 const COLORS = ["#dc2626", "#2563eb", "#16a34a", "#eab308", "#111827"];
+const COLOR_LABELS: Record<string, string> = {
+  "#dc2626": "красный",
+  "#2563eb": "синий",
+  "#16a34a": "зелёный",
+  "#eab308": "жёлтый",
+  "#111827": "чёрный"
+};
 const PEN_SIZES = [2, 5, 9];
 const ERASER_SIZES = [12, 24, 36];
 
@@ -85,16 +92,18 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
         }}
       />
       {active && (
-        <div className="drawing-toolbar">
+        <div className="drawing-toolbar" role="toolbar" aria-label="Инструменты рисования">
           <button
             type="button"
             className={`icon-button ${!erase ? "icon-button--active" : ""}`}
             onClick={() => setErase(false)}
             title="Карандаш"
+            aria-label="Карандаш"
+            aria-pressed={!erase}
           >
             <Pencil size={16} />
           </button>
-          <div className="drawing-swatches" aria-label="Цвет пера">
+          <div className="drawing-swatches" role="group" aria-label="Цвет пера">
             {COLORS.map((item) => (
               <button
                 key={item}
@@ -105,11 +114,13 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
                   setColor(item);
                   setErase(false);
                 }}
-                title={`Цвет ${item}`}
+                title={`Цвет пера: ${COLOR_LABELS[item]}`}
+                aria-label={`Цвет пера: ${COLOR_LABELS[item]}`}
+                aria-pressed={color === item && !erase}
               />
             ))}
           </div>
-          <div className="drawing-sizes" aria-label="Толщина пера">
+          <div className="drawing-sizes" role="group" aria-label="Толщина пера">
             {PEN_SIZES.map((item) => (
               <button
                 key={item}
@@ -120,6 +131,8 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
                   setErase(false);
                 }}
                 title={`Перо ${item}px`}
+                aria-label={`Толщина пера ${item} пикселей`}
+                aria-pressed={size === item && !erase}
               >
                 {item}
               </button>
@@ -130,10 +143,12 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
             className={`icon-button ${erase ? "icon-button--active" : ""}`}
             onClick={() => setErase(true)}
             title="Ластик"
+            aria-label="Ластик"
+            aria-pressed={erase}
           >
             <Eraser size={16} />
           </button>
-          <div className="drawing-sizes" aria-label="Толщина ластика">
+          <div className="drawing-sizes" role="group" aria-label="Толщина ластика">
             {ERASER_SIZES.map((item) => (
               <button
                 key={item}
@@ -144,6 +159,8 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
                   setErase(true);
                 }}
                 title={`Ластик ${item}px`}
+                aria-label={`Толщина ластика ${item} пикселей`}
+                aria-pressed={eraserSize === item && erase}
               >
                 {item}
               </button>
@@ -154,10 +171,19 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
             className="icon-button"
             onClick={() => commit(actions.slice(0, -1))}
             title="Отменить"
+            aria-label="Отменить последнее действие"
+            disabled={actions.length === 0}
           >
             <Undo2 size={16} />
           </button>
-          <button type="button" className="icon-button" onClick={() => commit([])} title="Очистить">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => commit([])}
+            title="Очистить"
+            aria-label="Очистить рисунок"
+            disabled={actions.length === 0}
+          >
             <Trash2 size={16} />
           </button>
         </div>
