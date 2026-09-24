@@ -22,8 +22,21 @@ class SignedSlideUrlService {
     }
 
     String token(UUID courseId, UUID deckId) {
-        long expiresAt = Instant.now(clock).plus(properties.slideImageUrlTtl()).getEpochSecond();
+        long expiresAt = windowExpiry();
         return expiresAt + "." + signature(courseId, deckId, expiresAt);
+    }
+
+    /**
+     * D-03: expiresAt привязан не к моменту вызова, а к окну шириной TTL от начала эпохи —
+     * иначе каждый вызов (а снапшот студента считается на каждый тик SSE) даёт новую подпись
+     * и, значит, новый URL картинки, и браузер перекачивает один и тот же слайд заново.
+     * В пределах одного окна expiresAt, а с ним и весь токен, не меняется.
+     */
+    private long windowExpiry() {
+        long ttlSeconds = Math.max(1, properties.slideImageUrlTtl().getSeconds());
+        long now = Instant.now(clock).getEpochSecond();
+        long windowStart = (now / ttlSeconds) * ttlSeconds;
+        return windowStart + ttlSeconds;
     }
 
     boolean isValid(String token, UUID courseId, UUID deckId) {
