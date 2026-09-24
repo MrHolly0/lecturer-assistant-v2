@@ -16,6 +16,7 @@ services:
       CHANNEL_INTERNAL_API_KEY: ${CHANNEL_INTERNAL_API_KEY:?задайте CHANNEL_INTERNAL_API_KEY в .env}
       MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:?задайте MAX_BOT_TOKEN в .env}
       REQUIRE_STRONG_JWT_SECRET: "true"
+      APP_CORS_ALLOWED_ORIGINS: https://${SITE_DOMAIN:?задайте SITE_DOMAIN в .env}
       REFRESH_COOKIE_SECURE: "true"
 
   web:
