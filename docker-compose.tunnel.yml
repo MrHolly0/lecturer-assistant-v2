@@ -1,7 +1,19 @@
+# Временный стенд за ngrok. Подключается поверх prod-оверлея:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tunnel.yml up -d
+# Запускать через deploy/stand/tunnel.sh — он же поднимает ngrok и подставляет адрес.
+# Отличия от VPS: Caddy слушает HTTP на 127.0.0.1:TUNNEL_PORT, TLS снаружи даёт ngrok;
+# core и Postgres наружу не публикуются вовсе (на машине могут быть заняты 8080 и 5432).
+
 services:
-  cloudflared:
-    profiles: ["tunnel"]
-    image: cloudflare/cloudflared:2025.2.1
-    command: tunnel --no-autoupdate --url http://web:80
-    depends_on:
-      - web
+  postgres:
+    ports: !reset []
+
+  core:
+    ports: !reset []
+
+  caddy:
+    environment:
+      SITE_ADDRESS: ":80"
+      ACME_EMAIL: unused@example.invalid
+    ports: !override
+      - "127.0.0.1:${TUNNEL_PORT:-18088}:80"

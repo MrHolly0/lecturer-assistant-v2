@@ -64,7 +64,13 @@ class MaxAuthIntegrationTest {
 
     @BeforeEach
     void reset() {
-        jdbc.sql("truncate table iam.channel_identities, iam.refresh_tokens, iam.persons restart identity cascade")
+        jdbc.sql(
+                        """
+                        truncate table
+                            iam.max_link_codes, iam.channel_identities, iam.refresh_tokens,
+                            iam.invitations, iam.persons
+                        restart identity cascade
+                        """)
                 .update();
     }
 
@@ -156,6 +162,124 @@ class MaxAuthIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    // ---- B-03: привязка MAX-аккаунта к преподавателю ----
+
+    @Test
+    void lecturerLinkingMaxAccountWithValidCodeGetsLecturerRoleAndNoNewPerson() throws Exception {
+        String lecturerToken = registerLecturer();
+        String lecturerId = json(get("/api/v1/auth/me").header("Authorization", "Bearer " + lecturerToken), 200)
+                .get("id")
+                .asText();
+        String code = requestMaxLinkCode(lecturerToken);
+
+        JsonNode body = loginWithCode(signed(701, Instant.now()), code, 200);
+
+        assertEquals("LECTURER", body.get("role").asText());
+        assertEquals(lecturerId, body.get("personId").asText());
+        assertEquals(2L, count("iam.persons")); // admin + lecturer, ни одного нового
+        assertEquals(1L, count("iam.channel_identities where channel_type = 'max'"));
+        assertEquals(
+                lecturerId,
+                jdbc.sql("select person_id from iam.channel_identities where channel_type = 'max'")
+                        .query(String.class)
+                        .single());
+    }
+
+    @Test
+    void secondMaxLoginOfLinkedLecturerReusesRoleWithoutCode() throws Exception {
+        String lecturerToken = registerLecturer();
+        String code = requestMaxLinkCode(lecturerToken);
+        loginWithCode(signed(701, Instant.now()), code, 200);
+
+        JsonNode again = login(signed(701, Instant.now()), 200); // без linkCode
+
+        assertEquals("LECTURER", again.get("role").asText());
+        assertEquals(2L, count("iam.persons"));
+    }
+
+    @Test
+    void reusingAnAlreadyConsumedCodeIsRejectedWithConflict() throws Exception {
+        String lecturerToken = registerLecturer();
+        String code = requestMaxLinkCode(lecturerToken);
+        loginWithCode(signed(701, Instant.now()), code, 200);
+
+        // другой MAX-пользователь тем же кодом — код уже использован, не «повторный вход»
+        loginWithCode(signed(702, Instant.now()), code, 409);
+
+        assertEquals(2L, count("iam.persons")); // второй MAX-пользователь студентом тоже не стал
+        assertEquals(1L, count("iam.channel_identities where channel_type = 'max'"));
+    }
+
+    @Test
+    void expiredCodeIsRejectedAsBadRequest() throws Exception {
+        String lecturerToken = registerLecturer();
+        String code = requestMaxLinkCode(lecturerToken);
+        jdbc.sql("update iam.max_link_codes set expires_at = now() - interval '1 minute' where code = :code")
+                .param("code", code)
+                .update();
+
+        loginWithCode(signed(701, Instant.now()), code, 400);
+
+        assertEquals(2L, count("iam.persons")); // admin + преподаватель, студент из-за плохого кода не создан
+    }
+
+    @Test
+    void unknownCodeIsRejectedAsBadRequest() throws Exception {
+        loginWithCode(signed(701, Instant.now()), "ZZZZZZ", 400);
+
+        assertEquals(0L, count("iam.persons"));
+    }
+
+    @Test
+    void loginWithoutCodeStillCreatesAStudent() throws Exception {
+        JsonNode body = login(signed(701, Instant.now()), 200);
+
+        assertEquals("STUDENT", body.get("role").asText());
+        assertEquals(1L, count("iam.persons"));
+    }
+
+    @Test
+    void onlyALecturerCanRequestAMaxLinkCode() throws Exception {
+        String studentToken = login(signed(701, Instant.now()), 200).get("accessToken").asText();
+
+        mockMvc.perform(post("/api/v1/identity/max/link-codes")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
+    }
+
+    private String registerLecturer() throws Exception {
+        String adminToken = json(post("/api/v1/auth/bootstrap-admin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"Admin\",\"email\":\"admin@example.test\","
+                                + "\"password\":\"password-123\"}"),
+                        200)
+                .get("accessToken")
+                .asText();
+        String invite = json(post("/api/v1/admin/invitations")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"LECTURER\"}"),
+                        201)
+                .get("code")
+                .asText();
+        return json(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"invitationCode\":\"" + invite + "\",\"displayName\":\"Lecturer\","
+                                + "\"email\":\"lecturer@example.test\",\"password\":\"password-123\"}"),
+                        200)
+                .get("accessToken")
+                .asText();
+    }
+
+    private String requestMaxLinkCode(String lecturerToken) throws Exception {
+        JsonNode response = json(post("/api/v1/identity/max/link-codes")
+                        .header("Authorization", "Bearer " + lecturerToken),
+                        201);
+        String code = response.get("code").asText();
+        assertEquals(6, code.length());
+        return code;
+    }
+
     private Map<String, String> params(long userId, Instant authDate) {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("auth_date", String.valueOf(authDate.getEpochSecond()));
@@ -169,12 +293,24 @@ class MaxAuthIntegrationTest {
     }
 
     private JsonNode login(String initData, int expectedStatus) throws Exception {
-        String content = objectMapper.writeValueAsString(Map.of("initData", initData));
-        var result = mockMvc.perform(post("/api/v1/auth/max")
+        return loginWithCode(initData, null, expectedStatus);
+    }
+
+    private JsonNode loginWithCode(String initData, String linkCode, int expectedStatus) throws Exception {
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("initData", initData);
+        if (linkCode != null) {
+            body.put("linkCode", linkCode);
+        }
+        return json(post("/api/v1/auth/max")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(content))
-                .andExpect(status().is(expectedStatus))
-                .andReturn();
+                        .content(objectMapper.writeValueAsString(body)),
+                        expectedStatus);
+    }
+
+    private JsonNode json(org.springframework.test.web.servlet.RequestBuilder request, int expectedStatus)
+            throws Exception {
+        var result = mockMvc.perform(request).andExpect(status().is(expectedStatus)).andReturn();
         String response = result.getResponse().getContentAsString();
         return response.isBlank() ? objectMapper.createObjectNode() : objectMapper.readTree(response);
     }

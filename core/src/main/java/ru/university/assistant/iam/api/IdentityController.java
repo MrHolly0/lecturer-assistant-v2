@@ -25,6 +25,12 @@ public class IdentityController {
         return identityService.createLinkCode(user);
     }
 
+    @PostMapping("/max/link-codes")
+    @ResponseStatus(HttpStatus.CREATED)
+    public IdentityLinkCodeResponse createMaxLinkCode(@AuthenticationPrincipal AuthenticatedUser user) {
+        return identityService.createMaxLinkCode(user);
+    }
+
     @PostMapping("/link")
     public ChannelIdentityResponse link(@Valid @RequestBody LinkIdentityRequest request) {
         return identityService.link(request);

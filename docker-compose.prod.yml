@@ -38,7 +38,7 @@ services:
     image: caddy:2.8-alpine
     restart: unless-stopped
     environment:
-      SITE_DOMAIN: ${SITE_DOMAIN:?задайте SITE_DOMAIN в .env}
+      SITE_ADDRESS: ${SITE_DOMAIN:?задайте SITE_DOMAIN в .env}
       ACME_EMAIL: ${ACME_EMAIL:?задайте ACME_EMAIL в .env}
     ports:
       - "80:80"

@@ -2,6 +2,7 @@ package ru.university.assistant.live.internal;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -54,6 +55,11 @@ public class LiveSessionService implements LiveSessionAccessApi {
         event(user, session, "session.started", Map.of("joinCode", session.joinCode()));
         publisher.publish("session.started", session);
         return session;
+    }
+
+    /** B-03: чтобы из мини-приложения преподаватель попадал сразу в свою идущую лекцию. */
+    public Optional<LiveSession> activeSessionFor(AuthenticatedUser user) {
+        return sessions.findActiveForCreator(user.id());
     }
 
     public LiveSession get(AuthenticatedUser user, UUID courseId, UUID sessionId) {

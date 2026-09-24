@@ -101,6 +101,23 @@ class LiveSessionRepository {
                 .optional();
     }
 
+    /** B-03: самая свежая ещё идущая (LIVE/PAUSED) лекция, запущенная этим человеком. */
+    Optional<LiveSession> findActiveForCreator(UUID personId) {
+        return jdbc.sql(
+                        """
+                        select s.id, l.course_id, s.lecture_id, l.deck_id, l.title as lecture_title, s.status,
+                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
+                        from live.sessions s
+                        join live.lectures l on l.id = s.lecture_id
+                        where s.created_by = :personId and s.status in ('LIVE', 'PAUSED')
+                        order by s.started_at desc
+                        limit 1
+                        """)
+                .param("personId", personId)
+                .query(this::mapSession)
+                .optional();
+    }
+
     boolean lectureBelongsToCourse(UUID courseId, UUID lectureId) {
         return jdbc.sql("select count(*) from live.lectures where course_id = :courseId and id = :lectureId")
                 .param("courseId", courseId)

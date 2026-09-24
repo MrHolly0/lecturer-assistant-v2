@@ -5,6 +5,7 @@ import {
   createRateLimiter,
   extractJoinCode,
   extractSenderId,
+  extractUserId,
   openAppButton,
   parseStartCommand,
   renderKeyboard,
@@ -51,10 +52,19 @@ test("parseStartCommand recognizes /start with and without a payload", () => {
   assert.equal(parseStartCommand(""), undefined);
 });
 
+test("extractUserId prefers the official SDK's user_id over id", () => {
+  // 24.09, подтверждено на живом боте: bot_started.user использует user_id, не id —
+  // чтение .id молчало на реальном MAX (см. коммит с этим фиксом).
+  assert.equal(extractUserId({ user_id: 555, id: 1 }), 555);
+  assert.equal(extractUserId({ id: 1 }), 1); // отступление на случай расхождения версий API
+  assert.equal(extractUserId(undefined), undefined);
+  assert.equal(extractUserId({}), undefined);
+});
+
 test("extractSenderId tries the documented and best-effort fields in order", () => {
   assert.equal(extractSenderId({ message: { sender: { user_id: 1 } } }), 1);
   assert.equal(extractSenderId({ message: { sender: { id: 2 } } }), 2);
-  assert.equal(extractSenderId({ message: { from: { id: 3 } } }), 3);
+  assert.equal(extractSenderId({ message: { from: { user_id: 3 } } }), 3);
   assert.equal(extractSenderId({ message: { user: { id: 4 } } }), 4);
   assert.equal(extractSenderId({ message: {} }), undefined);
   assert.equal(extractSenderId({}), undefined);
