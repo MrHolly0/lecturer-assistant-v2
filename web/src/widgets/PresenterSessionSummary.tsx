@@ -1,5 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, BarChart3, Clock3, MessageSquareText, UsersRound } from "lucide-react";
+import {
+  ArrowLeft,
+  BarChart3,
+  Clock3,
+  MessageSquareText,
+  PauseCircle,
+  PlayCircle,
+  UsersRound
+} from "lucide-react";
 import { userErrorMessage } from "../app/api/errors";
 import { getLectureSummary, type LectureSummary, type LiveSession } from "../app/api/live-api";
 import { pluralizeRu } from "../shared/lib/plural";
@@ -53,8 +61,18 @@ export function PresenterSessionSummary({
           <section className="session-summary-metrics" aria-label="Основные показатели">
             <SummaryMetric
               icon={Clock3}
-              label="Длительность"
+              label="Общее время"
               value={formatDuration(summary.durationSeconds)}
+            />
+            <SummaryMetric
+              icon={PlayCircle}
+              label="В эфире"
+              value={formatDuration(summary.activeDurationSeconds)}
+            />
+            <SummaryMetric
+              icon={PauseCircle}
+              label="На паузе"
+              value={formatDuration(summary.pausedDurationSeconds, true)}
             />
             <SummaryMetric
               icon={UsersRound}
@@ -169,9 +187,10 @@ function SummaryMetric({
   );
 }
 
-function formatDuration(seconds: number) {
+function formatDuration(seconds: number, allowZero = false) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   if (hours > 0) return `${hours} ч ${minutes} мин`;
+  if (allowZero && seconds === 0) return "0 мин";
   return `${Math.max(1, minutes)} мин`;
 }

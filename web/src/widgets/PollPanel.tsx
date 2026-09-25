@@ -31,7 +31,8 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
   const activeQuery = useQuery({
     queryKey: ["poll", courseId, sessionId, "active"],
     queryFn: () => getActivePoll(courseId, sessionId),
-    refetchInterval: 1500
+    refetchInterval: (query) =>
+      query.state.data?.poll.status === "OPEN" ? 1500 : false
   });
   const activePoll = activeQuery.data;
 
