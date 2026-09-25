@@ -5,7 +5,7 @@
 - компьютер преподавателя с браузером;
 - телефон с MAX или второе окно веб-MAX для студента.
 
-Состояние сверено 25.09.2026 после backend-коммита `0b8813b` и frontend-исправлений до `4587114`; релизный hash ещё не зафиксирован. Стенд: [https://lecturer-assistant.ru.tuna.am](https://lecturer-assistant.ru.tuna.am). Backend `0b8813b` + web `4587114` развёрнуты и прошли авторизованный browser-smoke. Пароли, токен бота и другие секреты в документ не включаются.
+Состояние сверено 25.09.2026 после backend-коммита `0b8813b` и frontend-исправлений до `dc4a5ef`; релизный hash ещё не зафиксирован. Стенд: [https://lecturer-assistant.ru.tuna.am](https://lecturer-assistant.ru.tuna.am). Backend `0b8813b` + web `dc4a5ef` развёрнуты и прошли авторизованный browser-smoke. Пароли, токен бота и другие секреты в документ не включаются.
 
 ## Контроль готовности
 
@@ -13,7 +13,7 @@
 
 | Что проверяется | Статус | Фактическое состояние на 25.09.2026 | Кто закрывает остаток |
 |---|:---:|---|---|
-| Постоянный HTTPS-стенд | ✅ | Backend `0b8813b` + web `4587114` healthy, `/health` — 200; авторизованный browser-smoke новых функций прошёл | Повторить на frozen hash и после слияния незавершённой UX-правки слайдов |
+| Постоянный HTTPS-стенд | ✅ | Backend `0b8813b` + web `dc4a5ef` healthy, `/health` — 200; авторизованный browser-smoke новых функций прошёл | Повторить на frozen hash и в живом MAX со студентом |
 | Сторож стенда | ✅ | launchd-проверка раз в 300 секунд; журнал `deploy/stand/check.log`, диагностика `deploy/stand/watch.out` | DevOps |
 | Seed и тестовые роли | ✅ | `docker compose run --rm seed`; admin, lecturer и assistant на домене `lecturer-assistant.test`; пароли только закрытым каналом | Владелец подтверждает данные стенда |
 | Бот MAX и webhook | ◐ | `@t428_hakaton_max_bot` встроен в web bundle, webhook route доступен. Это deploy smoke, а не живой студенческий MAX-прогон | Команда проходит полный протокол 26.09 |

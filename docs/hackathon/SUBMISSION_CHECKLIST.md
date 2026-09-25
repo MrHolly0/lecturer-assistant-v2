@@ -14,7 +14,7 @@
 | Паспорт данных | `DATA-API.yaml`, пока с пометкой о неподтверждённой схеме | ◐ | Документация + владелец | 28.09 |
 | Сценарий жюри | `docs/hackathon/JURY_WALKTHROUGH.md` | ◐ | Документация + ведущий прогона | 29.09 |
 | Содержание презентации | `docs/hackathon/PRESENTATION_CONTENT.md`; итоговый PDF оформляет команда | ◐ | Продукт + дизайнер | 29.09 |
-| Стенд | `https://lecturer-assistant.ru.tuna.am`; backend `0b8813b` + web `4587114` healthy и прошли авторизованный smoke | ✅ | DevOps | Повтор после финального UI и контроль до 14.10 |
+| Стенд | `https://lecturer-assistant.ru.tuna.am`; backend `0b8813b` + web `dc4a5ef` healthy и прошли авторизованный smoke | ✅ | DevOps | Контроль на frozen hash и до 14.10 |
 | Бот и мини-приложение MAX | `@t428_hakaton_max_bot`, `https://max.ru/t428_hakaton_max_bot`; токен не публикуется | ✅ | Владелец бота | Подтверждено 25.09 |
 | Тестовые данные | Seed-курс, презентация, лекция и два вопроса банка | ✅ | Владелец данных | Контроль 28.09 |
 | Публичные тестовые логины | `admin@lecturer-assistant.test`, `lecturer@lecturer-assistant.test`, `assistant@lecturer-assistant.test`; только нужные форме роли | ✅ | Владелец данных | 28.09 |
@@ -63,7 +63,7 @@
 | Seed | `docker compose run --rm seed`; три роли и тестовая лекция | ✅ | DevOps | Повторить 29.09 |
 | Сборка | Чистый клон `12856ce`: пять образов за 59,24 с; smoke и повторный seed успешны | ✅ | DevOps | Финальный hash 29.09 |
 | Compose | `docker compose config --quiet` | ✅ | DevOps | Финальный hash 29.09 |
-| Стенд | Backend `0b8813b` + web `4587114` healthy; `/health` — 200; авторизованный smoke пройден | ✅ | DevOps | Deploy финального UI и повтор на frozen hash |
+| Стенд | Backend `0b8813b` + web `dc4a5ef` healthy; `/health` — 200; авторизованный smoke пройден | ✅ | DevOps | Повтор на frozen hash |
 | Сторож | Проверка раз в 300 секунд, журналы доступны | ✅ | DevOps | До 14.10 |
 | Привязка преподавателя MAX | Вход через одноразовый код в живом MAX | ✅ со слов владельца | Владелец | Сохранить дату/среду |
 | Полный студент MAX | На 25.09 PASS нет; второй аккаунт/устройство будет 26.09. Нужны вход, слайд, сигнал, вопрос, опрос и завершение на двух устройствах | ☐ | Вся команда | 26.09 |
