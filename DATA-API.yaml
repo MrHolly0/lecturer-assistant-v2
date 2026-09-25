@@ -2,25 +2,24 @@
 # организаторами хакатона MAX до отправки решения.
 schema_version: draft-0.1-unconfirmed
 document_status: requires_organizer_confirmation
-prepared_at: "2026-09-24"
-source_revision: "bb4386a"
+prepared_at: "2026-09-25"
+source_revision: "81ffb70"
 
 confirmation_required:
   - "Подтвердить официальную схему, версию и регистр имён полей DATA-API.yaml."
   - "Уточнить, нужен ли DATA-API как паспорт данных, машиночитаемый контракт выгрузки или дополнение к OpenAPI."
   - "Уточнить обязательные значения для владельца данных, правового основания, срока хранения и контакта команды."
-  - "Подставить публичные URL репозитория, стенда и OpenAPI после их утверждения владельцем."
-  - "Добавить реальные тестовые учётные записи и набор тестовых данных после их создания; пароли в файл не включать."
+  - "Подставить URL репозитория и публичный URL OpenAPI после их утверждения владельцем."
+  - "Подтвердить перед отправкой финальный адрес стенда, публичное имя бота и перечень тестовых логинов; пароли в файл не включать."
 
 project:
   name: lecturer-assistant-v2
   product_name: Lecturer Assistant
   description: >-
-    Веб-приложение и частично реализованное мини-приложение MAX для проведения
-    лекции с синхронным показом слайда, сигналами понимания, вопросами студентов
-    и быстрыми опросами.
+    Веб-приложение и мини-приложение MAX для проведения лекции с синхронным
+    показом слайда, сигналами понимания, вопросами студентов и быстрыми опросами.
   repository_url: null
-  deployment_url: null
+  deployment_url: https://lecturer-assistant.ru.tuna.am
   owner: null
   contact: null
 
@@ -50,8 +49,6 @@ api:
     - method: x_internal_api_key
       scope: /internal/v1/channels/*
   known_contract_gaps:
-    - "GET /api/v1/config/channels существует в коде, но отсутствует в OpenAPI."
-    - "Пути /internal/v1/** записаны относительно общего server /api/v1 и требуют отдельного server block или исправления."
     - "WebSocket /ws/session/{sessionId} не описан отдельным AsyncAPI-контрактом."
 
 data_sources:
@@ -272,6 +269,7 @@ data_categories:
       - answer_options
       - correct_option_idx
       - selected_option_idx
+      - source_question_id
       - activity_answer
       - tags
       - created_at
@@ -298,6 +296,10 @@ data_categories:
       - adapter_message_id
       - last_error
       - occurred_at
+    pilot_metrics_export:
+      file: docs/hackathon/research/metrics.sql
+      contains_personal_data: false
+      verification: "MetricsSqlIntegrationTest прошёл 25.09.2026."
 
 storage:
   database:
@@ -317,6 +319,8 @@ storage:
     mechanism: daily_pg_dump
     retention_days_default: 14
     location: deploy/stand/backups
+    database_restore_tested_at: "2026-09-25"
+    blob_volume_backup_status: not_confirmed
   encryption_at_rest:
     configured_in_repository: false
   retention_policy:
@@ -333,12 +337,13 @@ external_transfers:
   - provider: MAX_Bot_API
     direction: bidirectional
     data: "События бота, идентификатор пользователя, текст команды и исходящие сообщения с кнопками."
-    status: implemented_in_compose_unverified_live
+    status: implemented_in_compose_partially_verified_live
     note: >-
       adapters/max входит в compose, поддерживает long polling и webhook, /start,
-      bot_started, open_app и доставку из channel.outbox. Проверен с локальными
-      заглушками, но не сквозным прогоном с живым MAX; core пока не создаёт
-      итоговые сообщения в outbox.
+      bot_started, open_app и доставку из channel.outbox. Владелец проверил вход
+      преподавателя через одноразовый код в живом MAX. Полный студенческий сценарий
+      должен быть подтверждён отдельным двухустройственным протоколом; core пока
+      не создаёт итоговые сообщения в outbox.
   - provider: MAX_CDN
     direction: outbound_request_from_client
     data: "Загрузка JavaScript Bridge без прикладных данных проекта в URL."
@@ -347,10 +352,10 @@ external_transfers:
     direction: bidirectional
     data: "Команды, сообщения и идентификатор чата."
     status: adapter_in_compose_requires_token
-  - provider: Cloudflare_quick_tunnel
+  - provider: Tuna
     direction: network_proxy
-    data: "HTTP-трафик стенда при включённом tunnel-профиле."
-    status: optional
+    data: "HTTPS-трафик постоянного демонстрационного стенда к локальному Caddy."
+    status: active_at_https://lecturer-assistant.ru.tuna.am
 
 security_controls:
   implemented:
@@ -361,34 +366,37 @@ security_controls:
     - "Webhook MAX проверяет секретный заголовок и скрытый путь, вычисленный из хеша токена."
     - "URL изображений слайдов подписываются и имеют срок действия."
     - "Роли и права курсов проверяются в прикладных сервисах."
+    - "HTTP CORS и WebSocket origins ограничиваются APP_CORS_ALLOWED_ORIGINS."
+    - "Для входа через MAX и отправки сигналов действует настраиваемое ограничение частоты запросов."
   known_gaps:
     - "Небезопасные dev-дефолты разрешены базовым compose."
-    - "CORS явно не настроен, WebSocket разрешает любой origin."
-    - "Ограничение частоты входа и сигналов не реализовано."
-    - "Корневой .env.example не перечисляет все переменные core, адаптеров, стенда и конвертера."
+    - "Ограничитель частоты работает в памяти одного процесса и не является общим для нескольких экземпляров core."
+    - "Политика сроков хранения персональных данных и шифрование данных на диске не утверждены."
 
 test_data:
-  repository_seed_available: false
-  deployment_accounts_available: unconfirmed
+  repository_seed_available: true
+  seed_command: docker compose run --rm seed
+  seed_presentation: deploy/seed/test-lecture.pptx
+  deployment_accounts_available: owner_confirmation_required_before_submission
   required_accounts:
     - role: ADMIN
-      login: null
+      login: admin@lecturer-assistant.test
       password_delivery: closed_channel_only
     - role: LECTURER
-      login: null
+      login: lecturer@lecturer-assistant.test
       password_delivery: closed_channel_only
     - role: ASSISTANT
-      login: null
+      login: assistant@lecturer-assistant.test
       password_delivery: closed_channel_only
     - role: STUDENT
       login: null
       note: "Для целевого сценария предполагается вход через тестовый аккаунт MAX."
       password_delivery: not_applicable_for_MAX_login
-  required_dataset:
-    - "Тестовый курс с явной пометкой TEST."
-    - "Небольшая тестовая презентация без персональных данных."
-    - "Лекция, созданная из тестовой презентации."
-    - "Не менее одного короткого вопроса с вариантами ответа."
+  seeded_dataset:
+    - "Курс [ТЕСТ] Цифровые образовательные решения."
+    - "Тестовая презентация deploy/seed/test-lecture.pptx без персональных данных."
+    - "Лекция [ТЕСТ] Лекция 1. Обратная связь на лекции."
+    - "Два вопроса в банке."
   prohibited_content:
     - secrets
     - bot_tokens
@@ -397,6 +405,8 @@ test_data:
 
 limitations:
   - "Официальная схема DATA-API.yaml не получена; этот файл нельзя считать финальным контрактом."
-  - "Тестовые данные и аккаунты не создаются автоматически."
-  - "MAX-адаптер входит в compose, но сквозной прогон с живым Bot API не зафиксирован; публичный ngrok-адрес меняется при перезапуске."
+  - "Вход преподавателя через код в живом MAX проверен владельцем; web-MAX дошёл только до экрана входа, а проверки через web API и mock API не заменяют отдельный протокол полного студенческого сценария."
+  - "Текущий Tuna-стенд развёрнут на ревизии 3f5c0d8c7d43faea1270658efc079cfaab801673: web bundle не содержит новых экранов банка вопросов и итога лекции и собран без VITE_MAX_BOT_NAME; нужен полный rebuild из frozen hash."
+  - "Восстановление резервной копии PostgreSQL проверено 25.09.2026; отдельная копия тома blob-data пока не подтверждена."
+  - "Финальные публичные URL и наличие seed-учёток на сдаваемом стенде подтверждает владелец перед отправкой."
   - "Правовое основание, сроки хранения и ответственный за обработку данных должны быть определены владельцем."
