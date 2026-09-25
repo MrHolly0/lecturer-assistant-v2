@@ -13,6 +13,7 @@ import { getLectureSummary, type LectureSummary, type LiveSession } from "../app
 import { pluralizeRu } from "../shared/lib/plural";
 import { Button, LinkButton } from "../shared/ui/button";
 import { SessionGroups } from "./SessionGroups";
+import { PollOptionText } from "./PollOptionText";
 
 interface PresenterSessionSummaryProps {
   courseId: string;
@@ -215,8 +216,8 @@ function PollResults({ summary }: { summary: LectureSummary }) {
                     key={index}
                     className={`summary-poll-row${poll.correctOptionIdx === index ? " summary-poll-row--correct" : ""}`}
                   >
-                    <span>{option}</span>
-                    <div>
+                    <PollOptionText text={option} />
+                    <div className="summary-poll-track">
                       <i style={{ width: `${percent}%` }} />
                     </div>
                     <strong>{percent}%</strong>

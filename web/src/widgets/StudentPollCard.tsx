@@ -1,5 +1,7 @@
 import { CheckCircle2 } from "lucide-react";
 import type { StudentActivePoll } from "../app/api/student-api";
+import { Button } from "../shared/ui/button";
+import { PollOptionText } from "./PollOptionText";
 
 interface StudentPollCardProps {
   poll: StudentActivePoll;
@@ -27,16 +29,18 @@ export function StudentPollCard({
       {poll.status === "OPEN" && myVote === null ? (
         <div className="student-poll-options">
           {poll.options.map((option, idx) => (
-            <button
-              key={idx}
-              type="button"
-              className="student-poll-option"
-              disabled={isPending || !isLive}
-              aria-label={`Ответить: ${option}`}
-              onClick={() => onAnswer(idx)}
-            >
-              {option}
-            </button>
+            <article key={idx} className="student-poll-option-card">
+              <PollOptionText text={option} />
+              <Button
+                type="button"
+                variant="outline"
+                className="student-poll-option"
+                disabled={isPending || !isLive}
+                onClick={() => onAnswer(idx)}
+              >
+                Выбрать вариант {idx + 1}
+              </Button>
+            </article>
           ))}
         </div>
       ) : poll.status === "OPEN" ? (
@@ -80,14 +84,14 @@ function PollResult({ poll, myVote }: { poll: StudentActivePoll; myVote: number 
               .filter(Boolean)
               .join(" ")}
           >
-            <span className="student-poll-bar-label">
-              {option}
+            <div className="student-poll-bar-label">
+              <PollOptionText text={option} />
               <small>
                 {isCorrect && "Правильный ответ"}
                 {isCorrect && isMyVote && " · "}
                 {isMyVote && "Ваш ответ"}
               </small>
-            </span>
+            </div>
             <div className="student-poll-bar-track">
               <div className="student-poll-bar-fill" style={{ width: `${percent}%` }} />
             </div>

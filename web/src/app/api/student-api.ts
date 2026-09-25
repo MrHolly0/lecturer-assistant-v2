@@ -15,6 +15,7 @@ export type StudentJoinResponse = components["schemas"]["StudentJoinResponse"];
 export type SignalAggregate = components["schemas"]["SignalAggregate"];
 export type SignalValue = components["schemas"]["SignalValue"];
 export type StudentQuestion = components["schemas"]["StudentQuestion"];
+export type StudentQuestionAnswer = components["schemas"]["StudentQuestionAnswer"];
 export type UpdateStudentQuestionRequest = components["schemas"]["UpdateStudentQuestionRequest"];
 export type StudentEngagement = components["schemas"]["StudentEngagement"];
 export type StudentConnectionState =

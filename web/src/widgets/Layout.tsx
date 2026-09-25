@@ -34,13 +34,13 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="flex h-screen bg-background text-foreground">
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          className="fixed inset-0 z-20 bg-black/40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       <aside
-        className={`fixed z-50 flex h-full w-64 flex-col border-r border-border bg-card text-card-foreground transition-transform duration-200 lg:static ${
+        className={`fixed z-30 flex h-full w-64 flex-col border-r border-border bg-card text-card-foreground transition-transform duration-200 lg:static ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >

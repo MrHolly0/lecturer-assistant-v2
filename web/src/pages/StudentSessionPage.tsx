@@ -285,6 +285,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             lastSignal={lastSignal}
             question={question}
             questions={questions}
+            answers={current.questionAnswers ?? []}
             onSignal={(value) => signalMut.mutate(value)}
             onQuestionChange={setQuestion}
             onQuestionSubmit={() => questionMut.mutate()}

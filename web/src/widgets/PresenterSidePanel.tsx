@@ -6,6 +6,8 @@ import { pluralizeRu } from "../shared/lib/plural";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { PollPanel } from "./PollPanel";
 import { formatSessionTime } from "../app/live/useSessionTimers";
+import { LiveSlideNotesEditor } from "./LiveSlideNotesEditor";
+import { TeacherRemoteQuestions } from "./TeacherRemoteQuestions";
 
 interface PresenterSidePanelProps {
   slide: Slide;
@@ -116,32 +118,10 @@ export function PresenterSidePanel({
             <h2>Заметки</h2>
             <span className="muted">слайд {slide.idx}</span>
           </div>
-          <p className="presenter-note">{slide.note?.content || "Для этого слайда заметок нет."}</p>
+          <LiveSlideNotesEditor courseId={courseId} deckId={slide.deckId} slide={slide} />
         </TabsContent>
         <TabsContent value="questions" className="live-panel">
-          <div className="section-heading">
-            <h2>Вопросы</h2>
-            <span className="badge">
-              {questions.length} {pluralizeRu(questions.length, "вопрос", "вопроса", "вопросов")}
-            </span>
-          </div>
-          {questions.length === 0 && <p className="muted">Открытых вопросов пока нет.</p>}
-          {questions.length > 0 && (
-            <ul className="live-question-list">
-              {questions.map((question) => (
-                <li key={question.id}>
-                  <p>{question.text}</p>
-                  <small>
-                    {question.displayName} ·{" "}
-                    {new Date(question.createdAt).toLocaleTimeString("ru-RU", {
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    })}
-                  </small>
-                </li>
-              ))}
-            </ul>
-          )}
+          <TeacherRemoteQuestions courseId={courseId} sessionId={sessionId} questions={questions} />
         </TabsContent>
       </Tabs>
     </aside>

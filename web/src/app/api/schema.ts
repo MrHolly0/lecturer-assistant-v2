@@ -1095,7 +1095,7 @@ export interface paths {
     get?: never;
     /**
      * Mark a live student question as answered or dismissed.
-     * @description Requires course management permission. An exact retry is idempotent.
+     * @description Requires course management permission and a running session. ANSWERED requires non-blank answerText and an explicit answerVisibility. An exact retry is idempotent.
      */
     put: operations["updateLiveStudentQuestion"];
     post?: never;
@@ -1134,7 +1134,7 @@ export interface paths {
     };
     /**
      * Read student session snapshot by join code.
-     * @description Personal fields (myVote) are filled when the request is identified by a Bearer JWT or by the X-Participant-Token header. Without identification the shared snapshot is returned.
+     * @description Personal fields (myVote and AUTHOR question answers) are filled when the request is identified by a Bearer JWT or by the X-Participant-Token header. Without identification only SESSION question answers are returned.
      */
     get: operations["getStudentSession"];
     put?: never;
@@ -1169,7 +1169,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** SSE stream with current student session state. */
+    /** Personalized SSE stream with current student session state and question answers. */
     get: operations["streamStudentSession"];
     put?: never;
     post?: never;
@@ -2206,6 +2206,8 @@ export interface components {
       signalAggregate: components["schemas"]["SignalAggregate"];
       /** @description Open poll, or the last closed one (with answer and distribution) until the next poll starts. */
       activePoll?: components["schemas"]["ActivePollView"];
+      /** @description SESSION answers plus AUTHOR answers owned by the identified participant. */
+      questionAnswers: components["schemas"]["StudentQuestionAnswer"][];
       /** @description The student's choice in activePoll. Filled only in identified GET requests, null in SSE events. */
       myVote?: number | null;
     };
@@ -2258,11 +2260,25 @@ export interface components {
       answerText?: string | null;
       /** Format: date-time */
       answeredAt?: string | null;
+      answerVisibility?: components["schemas"]["QuestionAnswerVisibility"] | null;
+    };
+    /** @enum {string} */
+    QuestionAnswerVisibility: "AUTHOR" | "SESSION";
+    /** @description Student-safe answer without the question author's identity. */
+    StudentQuestionAnswer: {
+      /** Format: uuid */
+      questionId: string;
+      questionText: string;
+      answerText: string;
+      answerVisibility: components["schemas"]["QuestionAnswerVisibility"];
+      /** Format: date-time */
+      answeredAt: string;
     };
     UpdateStudentQuestionRequest: {
       /** @enum {string} */
       status: "ANSWERED" | "DISMISSED";
       answerText?: string | null;
+      answerVisibility?: components["schemas"]["QuestionAnswerVisibility"] | null;
     };
     StudentEngagement: {
       /** @description Агрегат по текущему слайду сессии, не по всей лекции. */
@@ -4452,7 +4468,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description The question was already resolved with a different status or answer. */
+      /** @description Session is not running, or the question was resolved differently. */
       409: {
         headers: {
           [name: string]: unknown;
@@ -4577,7 +4593,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Server-sent student session events. */
+      /** @description Emits snapshot events filtered for the participant and immediate question-answer events. */
       200: {
         headers: {
           [name: string]: unknown;

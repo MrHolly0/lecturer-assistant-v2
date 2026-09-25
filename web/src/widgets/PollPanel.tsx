@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart2, CheckCircle2, ChevronDown, ChevronUp, History, Plus } from "lucide-react";
+import {
+  BarChart2,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Circle,
+  History,
+  Plus
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   closePoll,
@@ -14,6 +22,7 @@ import { userErrorMessage } from "../app/api/errors";
 import { pluralizeRu } from "../shared/lib/plural";
 import { PollComposer, type PollDraft } from "./PollComposer";
 import { Button } from "../shared/ui/button";
+import { PollOptionText } from "./PollOptionText";
 
 interface Props {
   courseId: string;
@@ -31,8 +40,7 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
   const activeQuery = useQuery({
     queryKey: ["poll", courseId, sessionId, "active"],
     queryFn: () => getActivePoll(courseId, sessionId),
-    refetchInterval: (query) =>
-      query.state.data?.poll.status === "OPEN" ? 1500 : false
+    refetchInterval: (query) => (query.state.data?.poll.status === "OPEN" ? 1500 : false)
   });
   const activePoll = activeQuery.data;
 
@@ -120,35 +128,44 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
                 ? activePoll.poll.correctOptionIdx === idx
                 : markedCorrect === idx;
               return (
-                <button
+                <div
                   key={idx}
-                  type="button"
                   className={`poll-bar-row${isCorrect ? " poll-bar-row--correct" : ""}`}
-                  disabled={isClosed}
-                  onClick={() =>
-                    !isClosed && setMarkedCorrect(markedCorrect === idx ? undefined : idx)
-                  }
                 >
-                  <span className="poll-bar-label">
-                    {isCorrect && <CheckCircle2 size={12} />}
-                    {opt}
-                  </span>
+                  <button
+                    type="button"
+                    className="poll-bar-correct-toggle"
+                    aria-label={`Отметить вариант ${idx + 1} правильным`}
+                    aria-pressed={isCorrect}
+                    disabled={isClosed}
+                    onClick={() => setMarkedCorrect(isCorrect ? undefined : idx)}
+                  >
+                    {isCorrect ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                  </button>
+                  <PollOptionText text={opt} className="poll-bar-label" />
                   <div className="poll-bar-track">
                     <div className="poll-bar-fill" style={{ width: `${pct}%` }} />
                   </div>
                   <span className="poll-bar-pct">{pct}%</span>
-                </button>
+                </div>
               );
             })}
           </div>
           {activePoll.poll.status === "OPEN" && (
-            <Button
-              type="button"
-              disabled={closeMut.isPending}
-              onClick={() => closeMut.mutate(activePoll.poll.id)}
-            >
-              Закрыть и показать результат
-            </Button>
+            <>
+              <p className="poll-correct-hint">
+                {markedCorrect === undefined
+                  ? "Выберите правильный вариант перед закрытием."
+                  : "Выбранный правильный ответ станет виден студентам после закрытия."}
+              </p>
+              <Button
+                type="button"
+                disabled={closeMut.isPending || markedCorrect === undefined}
+                onClick={() => closeMut.mutate(activePoll.poll.id)}
+              >
+                Закрыть и показать результат
+              </Button>
+            </>
           )}
           {activePoll.poll.status === "CLOSED" && (
             <Button
@@ -305,8 +322,8 @@ function ClosedPollResult({
                 key={index}
                 className={`poll-history__row${correct ? " poll-history__row--correct" : ""}`}
               >
-                <span>{option}</span>
-                <div>
+                <PollOptionText text={option} />
+                <div className="poll-history__track">
                   <i style={{ width: `${percent}%` }} />
                 </div>
                 <strong>{percent}%</strong>

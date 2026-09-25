@@ -26,6 +26,7 @@ import { TeacherRemoteConnection } from "../widgets/TeacherRemoteConnection";
 import { TeacherRemoteQuestions } from "../widgets/TeacherRemoteQuestions";
 import { TeacherRemoteScheduledState } from "../widgets/TeacherRemoteScheduledState";
 import { TeacherRemoteSignals } from "../widgets/TeacherRemoteSignals";
+import { LiveSlideNotesEditor } from "../widgets/LiveSlideNotesEditor";
 
 export function TeacherRemotePage({
   courseId,
@@ -229,6 +230,7 @@ export function TeacherRemotePage({
             Вопросы{" "}
             {openQuestionCount > 0 && <span className="tab-badge">{openQuestionCount}</span>}
           </TabsTrigger>
+          <TabsTrigger value="notes">Заметки</TabsTrigger>
         </TabsList>
         <TabsContent value="control">
           <TeacherRemoteSignals engagement={engagementQuery.data} />
@@ -238,6 +240,11 @@ export function TeacherRemotePage({
         </TabsContent>
         <TabsContent value="questions">
           <TeacherRemoteQuestions courseId={courseId} sessionId={sessionId} questions={questions} />
+        </TabsContent>
+        <TabsContent value="notes" className="teacher-remote-notes">
+          {slide && (
+            <LiveSlideNotesEditor courseId={courseId} deckId={slide.deckId} slide={slide} />
+          )}
         </TabsContent>
       </Tabs>
     </main>

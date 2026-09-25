@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { userErrorMessage } from "../app/api/errors";
 import {
@@ -17,6 +18,14 @@ import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import { CourseInvitePanel } from "../widgets/CourseInvitePanel";
 import { CourseGroupManager } from "../widgets/CourseGroupManager";
 import { Button, LinkButton } from "../shared/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "../shared/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 
 type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
@@ -30,6 +39,8 @@ export function CoursePage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<"members" | "groups" | "invite">("members");
   const [groupName, setGroupName] = useState("");
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [preferredGroupId, setPreferredGroupId] = useState<string>();
 
   const {
     data: course,
@@ -49,9 +60,12 @@ export function CoursePage({ courseId }: { courseId: string }) {
 
   const createGroupMut = useMutation({
     mutationFn: () => createStudyGroup(courseId, { name: groupName }),
-    onSuccess: () => {
+    onSuccess: (created) => {
       void qc.invalidateQueries({ queryKey: ["courses", courseId] });
+      setPreferredGroupId(created.id);
+      setGroupDialogOpen(false);
       setGroupName("");
+      toast.success(`Группа «${created.name}» создана и выбрана.`);
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось создать группу."))
   });
@@ -187,32 +201,66 @@ export function CoursePage({ courseId }: { courseId: string }) {
 
         {canManage && activeTab === "groups" && (
           <>
+            <div className="course-groups-toolbar">
+              <div>
+                <h3>Учебные группы</h3>
+                <p className="muted">Создавайте группы и распределяйте студентов по составам.</p>
+              </div>
+              <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button type="button">
+                    <Plus size={17} aria-hidden="true" /> Новая группа
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Новая группа</DialogTitle>
+                    <DialogDescription>
+                      После создания группа будет выбрана в списке составов.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form
+                    className="course-group-create-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      createGroupMut.mutate();
+                    }}
+                  >
+                    <label className="field">
+                      <span>Название группы</span>
+                      <input
+                        autoFocus
+                        value={groupName}
+                        onChange={(event) => setGroupName(event.target.value)}
+                        placeholder="Например, ИВТ-21"
+                        required
+                        minLength={2}
+                      />
+                    </label>
+                    <div className="course-group-create-form__actions">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setGroupDialogOpen(false)}
+                      >
+                        Отмена
+                      </Button>
+                      <Button type="submit" disabled={createGroupMut.isPending}>
+                        {createGroupMut.isPending ? "Создаём…" : "Создать группу"}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
             <CourseGroupManager
               courseId={courseId}
               groups={course.groups}
               courseMembers={course.members}
+              preferredGroupId={preferredGroupId}
               deleting={deleteGroupMut.isPending}
               onDelete={(groupId) => deleteGroupMut.mutate(groupId)}
             />
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                createGroupMut.mutate();
-              }}
-              className="inline-form"
-              style={{ marginTop: 16 }}
-            >
-              <input
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                placeholder="Название группы"
-                required
-                minLength={2}
-              />
-              <Button type="submit" disabled={createGroupMut.isPending}>
-                Создать группу
-              </Button>
-            </form>
           </>
         )}
 

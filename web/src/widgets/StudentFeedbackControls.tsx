@@ -1,7 +1,12 @@
 import type { FormEvent } from "react";
 import { Check, MessageSquareText } from "lucide-react";
-import type { SignalValue, StudentQuestion } from "../app/api/student-api";
+import type {
+  SignalValue,
+  StudentQuestion,
+  StudentQuestionAnswer
+} from "../app/api/student-api";
 import { Button } from "../shared/ui/button";
+import { StudentQuestionAnswers } from "./StudentQuestionAnswers";
 
 const SIGNALS: Array<{ value: SignalValue; label: string; helper: string }> = [
   { value: "GREEN", label: "Понятно", helper: "идём дальше" },
@@ -16,6 +21,7 @@ interface StudentFeedbackControlsProps {
   lastSignal: SignalValue | null;
   question: string;
   questions: StudentQuestion[];
+  answers: StudentQuestionAnswer[];
   onSignal: (value: SignalValue) => void;
   onQuestionChange: (value: string) => void;
   onQuestionSubmit: () => void;
@@ -75,6 +81,8 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
           Отправить
         </Button>
       </form>
+
+      <StudentQuestionAnswers answers={props.answers} />
 
       {props.questions.length > 0 && (
         <ul className="student-question-list">

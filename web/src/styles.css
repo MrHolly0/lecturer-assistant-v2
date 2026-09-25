@@ -1565,11 +1565,21 @@ textarea {
 }
 
 .live-tabs__list [role="tab"] {
+  box-sizing: border-box;
+  font-size: 0.78rem;
+  gap: 4px;
   line-height: 1.15;
   min-height: 44px;
   min-width: 0;
+  overflow: hidden;
   padding-inline: 4px;
+  text-overflow: ellipsis;
   white-space: normal;
+}
+
+.live-tabs__list .tab-badge {
+  flex: 0 0 auto;
+  min-width: 20px;
 }
 
 .live-panel .section-heading {
@@ -1579,6 +1589,40 @@ textarea {
 
 .live-panel h2 {
   font-size: 1rem;
+}
+
+.live-note-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.live-note-editor textarea {
+  background: var(--input-background);
+  color: var(--foreground);
+  min-height: 132px;
+  resize: vertical;
+  width: 100%;
+}
+
+.live-note-editor__meta {
+  color: var(--muted-foreground);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  gap: 4px 10px;
+  justify-content: space-between;
+}
+
+.live-note-editor__actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.live-note-editor__actions .ui-button {
+  min-height: 44px;
+  min-width: 0;
 }
 
 .participant-list {
@@ -1770,22 +1814,22 @@ textarea {
 }
 
 .poll-history__row {
-  align-items: center;
+  align-items: start;
   display: grid;
   font-size: 0.78rem;
   gap: 6px;
   grid-template-columns: minmax(80px, 1fr) minmax(44px, 72px) 34px;
 }
 
-.poll-history__row > span {
+.poll-history__row > .poll-option-text {
   min-width: 0;
-  overflow-wrap: anywhere;
 }
 
-.poll-history__row > div {
+.poll-history__track {
   background: var(--muted);
   border-radius: 999px;
   height: 7px;
+  margin-top: 6px;
   overflow: hidden;
 }
 
@@ -1889,6 +1933,68 @@ textarea {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.student-question-answers {
+  background: color-mix(in srgb, var(--chart-2) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--chart-2) 36%, var(--border));
+  border-radius: var(--radius);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.student-question-answers__heading {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.student-question-answers__heading h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.student-question-answers ul {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.student-question-answers li {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.student-question-answers p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.student-question-answers__question {
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.student-question-answers__answer {
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.student-question-answers small {
+  align-items: center;
+  color: var(--muted-foreground);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.74rem;
+  gap: 4px;
 }
 
 .live-question-list li,
@@ -3161,16 +3267,17 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .summary-poll-row {
-  align-items: center;
+  align-items: start;
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(100px, 1fr) 90px 38px;
 }
 
-.summary-poll-row > div {
+.summary-poll-track {
   background: var(--muted);
   border-radius: 999px;
   height: 8px;
+  margin-top: 7px;
   overflow: hidden;
 }
 
@@ -3180,7 +3287,7 @@ html[data-max-mini-app="true"] .student-session-shell {
   height: 100%;
 }
 
-.summary-poll-row--correct > span,
+.summary-poll-row--correct > .poll-option-text,
 .summary-poll-row--correct > strong {
   color: var(--chart-2);
 }
@@ -3280,19 +3387,16 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .poll-bar-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  border-radius: 4px;
-  cursor: pointer;
+  align-items: start;
+  background: transparent;
   border: 1px solid transparent;
-  background: none;
-  text-align: left;
-  font: inherit;
+  border-radius: calc(var(--radius) - 2px);
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 44px minmax(0, 1fr) 34px;
+  padding: 6px;
   width: 100%;
-  transition: background 0.15s;
+  transition: background 150ms ease-out;
 }
 
 .poll-bar-row:hover {
@@ -3305,21 +3409,42 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .poll-bar-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
   font-size: 0.82rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  grid-column: 2 / -1;
+}
+
+.poll-bar-correct-toggle {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  display: inline-flex;
+  grid-row: 1 / span 2;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
+}
+
+.poll-bar-correct-toggle[aria-pressed="true"] {
+  border-color: var(--chart-2);
+  color: var(--chart-2);
+}
+
+.poll-bar-correct-toggle:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .poll-bar-track {
-  width: 60px;
-  height: 6px;
   background: var(--muted);
   border-radius: 3px;
+  grid-column: 2;
+  height: 7px;
+  margin-top: 5px;
   overflow: hidden;
+  width: 100%;
 }
 
 .poll-bar-fill {
@@ -3332,8 +3457,62 @@ html[data-max-mini-app="true"] .student-session-shell {
 .poll-bar-pct {
   font-size: 0.75rem;
   color: var(--muted-foreground);
-  width: 28px;
+  grid-column: 3;
+  width: 34px;
   text-align: right;
+}
+
+.poll-correct-hint {
+  color: var(--muted-foreground);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.poll-option-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.poll-option-text__content {
+  display: -webkit-box;
+  line-height: 1.35;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.poll-option-text__content--expanded {
+  display: block;
+  max-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+.poll-option-text__toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--primary);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.74rem;
+  gap: 3px;
+  justify-self: start;
+  min-height: 44px;
+  padding: 4px 0;
+  text-align: left;
+}
+
+.poll-option-text__toggle:focus-visible,
+.poll-bar-correct-toggle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 /* ── Student poll card ──────────────────────────────────────────── */
@@ -3369,30 +3548,18 @@ html[data-max-mini-app="true"] .student-session-shell {
   gap: 8px;
 }
 
-.student-poll-option {
-  color: var(--foreground);
-  min-height: 44px;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+.student-poll-option-card {
   background: var(--background);
-  text-align: left;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.95rem;
-  transition:
-    background 0.15s,
-    border-color 0.15s;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 8px;
+  padding: 12px;
 }
 
-.student-poll-option:hover:not(:disabled) {
-  background: var(--muted);
-  border-color: var(--primary);
-}
-
-.student-poll-option:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.student-poll-option {
+  justify-self: stretch;
+  min-height: 44px;
 }
 
 .student-poll-bars {
@@ -3435,8 +3602,8 @@ html[data-max-mini-app="true"] .student-session-shell {
 
 .student-poll-bar-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 80px 34px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: start;
   gap: 8px;
   min-height: 44px;
 }
@@ -3455,8 +3622,6 @@ html[data-max-mini-app="true"] .student-session-shell {
   display: grid;
   font-size: 0.9rem;
   gap: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .student-poll-bar-label small {
@@ -3466,7 +3631,8 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .student-poll-bar-track {
-  width: 80px;
+  grid-column: 1;
+  width: 100%;
   height: 8px;
   background: var(--muted);
   border-radius: 4px;
@@ -3495,9 +3661,12 @@ html[data-max-mini-app="true"] .student-session-shell {
 
 /* ── Question bank page ─────────────────────────────────────────── */
 .qbank-shell {
+  box-sizing: border-box;
   padding: 24px;
   max-width: 1040px;
   margin: 0 auto;
+  min-width: 0;
+  width: 100%;
 }
 
 .qbank-toolbar {
@@ -3514,6 +3683,7 @@ html[data-max-mini-app="true"] .student-session-shell {
 .qbank-filters {
   display: flex;
   gap: 8px;
+  min-width: 0;
 }
 
 .qbank-tag-filter {
@@ -3551,6 +3721,34 @@ html[data-max-mini-app="true"] .student-session-shell {
   border-radius: 99px;
   background: var(--muted);
   color: var(--muted-foreground);
+  grid-column: 2;
+  grid-row: 2;
+  text-align: right;
+}
+
+@media (max-width: 420px) {
+  .poll-history__row,
+  .summary-poll-row {
+    grid-template-columns: minmax(0, 1fr) 36px;
+  }
+
+  .poll-history__row > .poll-option-text,
+  .summary-poll-row > .poll-option-text {
+    grid-column: 1 / -1;
+  }
+
+  .poll-history__track,
+  .summary-poll-track {
+    grid-column: 1;
+    width: 100%;
+  }
+
+  .poll-history__row > strong,
+  .summary-poll-row > strong {
+    grid-column: 2;
+    grid-row: 2;
+    text-align: right;
+  }
 }
 
 .qbank-item-text {
@@ -3597,6 +3795,7 @@ html[data-max-mini-app="true"] .student-session-shell {
 
 .qbank-dialog {
   max-width: 540px;
+  width: min(calc(100vw - 24px), 540px);
 }
 
 .qbank-tab {
@@ -3638,6 +3837,11 @@ html[data-max-mini-app="true"] .student-session-shell {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.qbank-option-edit-row > input {
+  min-width: 0;
 }
 
 .qbank-tag-editor {
@@ -3911,6 +4115,38 @@ html[data-max-mini-app="true"] .student-session-shell {
 
 .course-settings__tabs {
   margin-bottom: 16px;
+}
+
+.course-groups-toolbar {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+}
+
+.course-groups-toolbar h3,
+.course-groups-toolbar p {
+  margin: 0;
+}
+
+.course-groups-toolbar > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.course-group-create-form {
+  display: grid;
+  gap: 18px;
+}
+
+.course-group-create-form__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .member-row {
@@ -4421,6 +4657,33 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 @media (max-width: 720px) {
+  .page,
+  .qbank-shell {
+    padding: 20px max(14px, var(--app-safe-area-right)) max(24px, var(--app-safe-area-bottom))
+      max(14px, var(--app-safe-area-left));
+  }
+
+  .page-header {
+    align-items: stretch;
+  }
+
+  .page-header > .ui-button,
+  .page-header > [role="button"] {
+    width: 100%;
+  }
+
+  .inline-form {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .inline-form input,
+  .inline-form .ui-button {
+    min-width: 0;
+    width: 100%;
+  }
+
   .course-page-header__copy h1,
   .qbank-page-header h1 {
     font-size: 1.6rem;
@@ -4483,6 +4746,37 @@ html[data-max-mini-app="true"] .student-session-shell {
 
   .course-settings__heading > .muted {
     display: none;
+  }
+
+  .course-settings__tabs > [role="tablist"] {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    height: auto;
+    width: 100%;
+  }
+
+  .course-settings__tabs [role="tab"] {
+    font-size: 0.78rem;
+    line-height: 1.15;
+    min-height: 44px;
+    min-width: 0;
+    padding-inline: 4px;
+    white-space: normal;
+  }
+
+  .course-groups-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .course-groups-toolbar .ui-button,
+  .course-group-create-form__actions .ui-button {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .course-group-create-form__actions {
+    flex-direction: column-reverse;
   }
 
   .member-row {
@@ -4560,6 +4854,40 @@ html[data-max-mini-app="true"] .student-session-shell {
   .qbank-toolbar h2,
   .qbank-filters,
   .qbank-tag-filter {
+    width: 100%;
+  }
+
+  .qbank-filters {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .qbank-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qbank-item-actions {
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: stretch;
+  }
+
+  .qbank-item-actions .ui-button {
+    flex: 1 1 0;
+    min-height: 44px;
+  }
+
+  .qbank-option-edit-row,
+  .qbank-tag-input-row,
+  .qbank-dialog-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .qbank-option-edit-row .ui-button,
+  .qbank-tag-input-row .ui-button,
+  .qbank-dialog-footer .ui-button {
+    min-height: 44px;
     width: 100%;
   }
 
@@ -4797,16 +5125,20 @@ html[data-max-mini-app="true"] .student-session-shell {
 
 .teacher-remote-tabs__list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   height: auto;
   width: 100%;
 }
 
 .teacher-remote-tabs__list [role="tab"] {
   gap: 5px;
+  line-height: 1.15;
   min-height: 44px;
   min-width: 0;
+  overflow: hidden;
   padding-inline: 6px;
+  text-overflow: ellipsis;
+  white-space: normal;
 }
 
 .teacher-remote-tabs__list .tab-badge {
@@ -4960,11 +5292,19 @@ html[data-max-mini-app="true"] .student-session-shell {
   min-height: 48px;
 }
 
+.teacher-question-sheet__actions .ui-button:last-child {
+  grid-column: 1 / -1;
+}
+
 .teacher-remote-poll .poll-panel,
 .teacher-remote-poll .poll-history {
   max-width: none;
   min-width: 0;
   width: 100%;
+}
+
+.teacher-remote-notes {
+  padding-top: 14px;
 }
 
 .teacher-remote-poll .poll-source-tabs {
@@ -4997,6 +5337,19 @@ html[data-max-mini-app="true"] .student-session-shell {
 
   .teacher-remote-controls .ui-button {
     font-size: 0.75rem;
+  }
+
+  .teacher-remote-tabs__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teacher-question-sheet__actions,
+  .live-note-editor__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .teacher-question-sheet__actions .ui-button:last-child {
+    grid-column: auto;
   }
 }
 

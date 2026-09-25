@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { UserMinus, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ interface CourseGroupManagerProps {
   courseId: string;
   groups: StudyGroup[];
   courseMembers: CourseMember[];
+  preferredGroupId?: string;
   deleting: boolean;
   onDelete: (groupId: string) => void;
 }
@@ -28,10 +29,12 @@ export function CourseGroupManager({
   courseId,
   groups,
   courseMembers,
+  preferredGroupId,
   deleting,
   onDelete
 }: CourseGroupManagerProps) {
   const qc = useQueryClient();
+  const appliedPreferredGroupId = useRef<string>();
   const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id ?? "");
   const [personId, setPersonId] = useState("");
   const memberQueries = useQueries({
@@ -50,11 +53,21 @@ export function CourseGroupManager({
   );
 
   useEffect(() => {
+    if (
+      preferredGroupId &&
+      appliedPreferredGroupId.current !== preferredGroupId &&
+      groups.some((group) => group.id === preferredGroupId)
+    ) {
+      appliedPreferredGroupId.current = preferredGroupId;
+      setSelectedGroupId(preferredGroupId);
+      setPersonId("");
+      return;
+    }
     if (!groups.some((group) => group.id === selectedGroupId)) {
       setSelectedGroupId(groups[0]?.id ?? "");
       setPersonId("");
     }
-  }, [groups, selectedGroupId]);
+  }, [groups, preferredGroupId, selectedGroupId]);
 
   const refreshGroups = () => qc.invalidateQueries({ queryKey: ["courses", courseId, "groups"] });
   const assignMutation = useMutation({

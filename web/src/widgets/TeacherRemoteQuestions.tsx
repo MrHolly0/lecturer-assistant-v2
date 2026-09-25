@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronRight, MessageCircleQuestion } from "lucide-react";
+import { CheckCircle2, ChevronRight, Globe2, LockKeyhole, MessageCircleQuestion } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -23,11 +23,19 @@ export function TeacherRemoteQuestions({
   const [answerText, setAnswerText] = useState("");
   const openQuestions = questions.filter((question) => question.status === "OPEN");
   const updateMutation = useMutation({
-    mutationFn: (status: "ANSWERED" | "DISMISSED") => {
+    mutationFn: ({
+      status,
+      answerVisibility
+    }: {
+      status: "ANSWERED" | "DISMISSED";
+      answerVisibility?: "AUTHOR" | "SESSION";
+    }) => {
       if (!selected) throw new Error("Вопрос не выбран");
       return updateStudentQuestion(courseId, sessionId, selected.id, {
         status,
-        answerText: status === "ANSWERED" ? answerText.trim() || null : null
+        ...(status === "ANSWERED"
+          ? { answerText: answerText.trim(), answerVisibility }
+          : {})
       });
     },
     onSuccess: (updated) => {
@@ -44,7 +52,7 @@ export function TeacherRemoteQuestions({
             : current
       );
       setSelected(null);
-      toast.success(updated.status === "ANSWERED" ? "Вопрос отмечен отвеченным." : "Вопрос скрыт.");
+      toast.success(updated.status === "ANSWERED" ? "Ответ отправлен." : "Вопрос скрыт.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось обновить вопрос."))
   });
@@ -92,28 +100,39 @@ export function TeacherRemoteQuestions({
           <div className="teacher-question-sheet__body">
             <p>{selected?.text}</p>
             <label className="field">
-              <span>Короткий ответ (необязательно)</span>
+              <span>Ответ студенту</span>
               <Textarea
                 value={answerText}
                 maxLength={4000}
                 rows={3}
-                placeholder="Что вы ответили аудитории"
+                placeholder="Напишите ответ"
                 onChange={(event) => setAnswerText(event.target.value)}
               />
             </label>
             <div className="teacher-question-sheet__actions">
               <Button
                 type="button"
-                disabled={updateMutation.isPending}
-                onClick={() => updateMutation.mutate("ANSWERED")}
+                disabled={updateMutation.isPending || !answerText.trim()}
+                onClick={() =>
+                  updateMutation.mutate({ status: "ANSWERED", answerVisibility: "AUTHOR" })
+                }
               >
-                <CheckCircle2 size={17} aria-hidden="true" /> Ответ дан
+                <LockKeyhole size={17} aria-hidden="true" /> Ответить автору
+              </Button>
+              <Button
+                type="button"
+                disabled={updateMutation.isPending || !answerText.trim()}
+                onClick={() =>
+                  updateMutation.mutate({ status: "ANSWERED", answerVisibility: "SESSION" })
+                }
+              >
+                <Globe2 size={17} aria-hidden="true" /> Показать всем
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 disabled={updateMutation.isPending}
-                onClick={() => updateMutation.mutate("DISMISSED")}
+                onClick={() => updateMutation.mutate({ status: "DISMISSED" })}
               >
                 Скрыть вопрос
               </Button>
