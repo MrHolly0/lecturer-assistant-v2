@@ -1318,7 +1318,7 @@ textarea {
   background: color-mix(in srgb, var(--destructive) 15%, var(--card));
   border: 1px solid color-mix(in srgb, var(--destructive) 40%, var(--border));
   border-radius: 8px;
-  color: var(--destructive);
+  color: var(--foreground);
   display: flex;
   font-size: 0.8125rem;
   font-weight: 600;
