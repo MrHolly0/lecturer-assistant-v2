@@ -1550,7 +1550,22 @@ paths:
                 $ref: "#/components/schemas/ActivityResponse"
         "409":
           description: Activity run already closed.
+  /config/channels:
+    get:
+      operationId: getChannelJoinConfig
+      summary: Read configured channel connection targets.
+      description: Null values mean that the corresponding channel is not configured.
+      tags: [channel]
+      responses:
+        "200":
+          description: Telegram and VK connection targets used by the web client.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelJoinConfig"
   /internal/v1/channels/{channelType}/capabilities:
+    servers:
+      - url: /
     put:
       operationId: registerChannelCapabilities
       summary: Register adapter capabilities.
@@ -1569,6 +1584,8 @@ paths:
         "204":
           description: Capabilities stored.
   /internal/v1/channels/{channelType}/outbox:
+    servers:
+      - url: /
     get:
       operationId: pollChannelOutbox
       summary: Long-poll outbound messages for an adapter.
@@ -1597,6 +1614,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/OutboxBatch"
   /internal/v1/channels/{channelType}/delivery-reports:
+    servers:
+      - url: /
     post:
       operationId: reportChannelDelivery
       summary: Report adapter delivery results.
@@ -1615,6 +1634,8 @@ paths:
         "204":
           description: Reports accepted.
   /internal/v1/channels/{channelType}/inbound:
+    servers:
+      - url: /
     post:
       operationId: submitChannelInbound
       summary: Submit a normalized inbound event.
@@ -2948,6 +2969,16 @@ components:
         closedAt:
           type: string
           format: date-time
+          nullable: true
+    ChannelJoinConfig:
+      type: object
+      required: [telegramBot, vkBot]
+      properties:
+        telegramBot:
+          type: string
+          nullable: true
+        vkBot:
+          type: string
           nullable: true
     ChannelCapabilities:
       type: object
