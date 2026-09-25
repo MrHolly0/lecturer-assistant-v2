@@ -7,4 +7,11 @@ public interface QuestionApi {
     StudentQuestion ask(UUID sessionId, UUID personId, String displayName, String channelType, String text);
 
     List<StudentQuestion> openQuestions(UUID sessionId);
+
+    StudentQuestion resolve(
+            UUID sessionId,
+            UUID questionId,
+            UUID actorPersonId,
+            QuestionStatus status,
+            String answerText);
 }

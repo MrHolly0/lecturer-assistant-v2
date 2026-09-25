@@ -1306,6 +1306,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudentEngagement"
+  /courses/{courseId}/sessions/{sessionId}/questions/{questionId}:
+    put:
+      operationId: updateLiveStudentQuestion
+      summary: Mark a live student question as answered or dismissed.
+      description: Requires course management permission. An exact retry is idempotent.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+        - name: questionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStudentQuestionRequest"
+      responses:
+        "200":
+          description: Updated question.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentQuestion"
+        "400":
+          description: OPEN is not a valid target status.
+        "403":
+          description: The caller cannot manage this course.
+        "404":
+          description: Session or question not found in this course and session.
+        "409":
+          description: The question was already resolved with a different status or answer.
   /courses/{courseId}/sessions/{sessionId}/summary:
     get:
       operationId: getLectureSummary
@@ -3433,6 +3469,24 @@ components:
         createdAt:
           type: string
           format: date-time
+        answerText:
+          type: string
+          nullable: true
+        answeredAt:
+          type: string
+          format: date-time
+          nullable: true
+    UpdateStudentQuestionRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ANSWERED, DISMISSED]
+        answerText:
+          type: string
+          nullable: true
+          maxLength: 4000
     StudentEngagement:
       type: object
       required: [signalAggregate, problemSlides, questions]

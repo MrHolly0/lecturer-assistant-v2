@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /** B-03: GET /api/v1/me/active-session — идущая лекция преподавателя, или 204. */
@@ -52,5 +53,18 @@ class ActiveSessionIntegrationTest extends LiveFlowTestBase {
                 .asText();
 
         json(get("/api/v1/me/active-session").header("Authorization", "Bearer " + otherLecturerToken), 204);
+    }
+
+    @Test
+    void activeSessionLookupRechecksCurrentManagementPermission() throws Exception {
+        String studentToken = maxLogin(4101);
+        join(studentToken, null);
+        String studentId = personIdOf(studentToken);
+        jdbc.sql("update live.sessions set created_by = :personId where id = :sessionId")
+                .param("personId", UUID.fromString(studentId))
+                .param("sessionId", sessionId)
+                .update();
+
+        json(get("/api/v1/me/active-session").header("Authorization", "Bearer " + studentToken), 403);
     }
 }

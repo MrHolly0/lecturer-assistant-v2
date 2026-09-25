@@ -125,7 +125,8 @@ class LectureSummaryRepository {
 
     List<StudentQuestion> unansweredQuestions(UUID sessionId) {
         return jdbc.sql("""
-                        select id, session_id, display_name, channel_type, text, status, created_at
+                        select id, session_id, display_name, channel_type, text, status, created_at,
+                               answer_text, answered_at
                         from qa.questions
                         where session_id = :sessionId and status = 'OPEN'
                         order by created_at asc
@@ -228,7 +229,9 @@ class LectureSummaryRepository {
                 rs.getString("channel_type"),
                 rs.getString("text"),
                 QuestionStatus.valueOf(rs.getString("status")),
-                rs.getTimestamp("created_at").toInstant());
+                rs.getTimestamp("created_at").toInstant(),
+                rs.getString("answer_text"),
+                rs.getTimestamp("answered_at") == null ? null : rs.getTimestamp("answered_at").toInstant());
     }
 
     private List<String> options(String json) {

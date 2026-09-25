@@ -3,7 +3,6 @@ package ru.university.assistant.interaction.api;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,6 +14,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.interaction.internal.PollService;
+import ru.university.assistant.live.api.LiveSessionAccessApi;
 import ru.university.assistant.org.api.CourseAccessApi;
 
 @RestController
@@ -22,13 +22,12 @@ import ru.university.assistant.org.api.CourseAccessApi;
 class PollController {
     private final PollService pollService;
     private final CourseAccessApi courseAccess;
-    private final SimpMessagingTemplate messaging;
+    private final LiveSessionAccessApi liveSessions;
 
-    PollController(PollService pollService, CourseAccessApi courseAccess,
-            SimpMessagingTemplate messaging) {
+    PollController(PollService pollService, CourseAccessApi courseAccess, LiveSessionAccessApi liveSessions) {
         this.pollService = pollService;
         this.courseAccess = courseAccess;
-        this.messaging = messaging;
+        this.liveSessions = liveSessions;
     }
 
     @PostMapping("/polls")
@@ -40,7 +39,7 @@ class PollController {
             @Valid @RequestBody StartPollRequest request) {
         courseAccess.requireManage(user, courseId);
         PollResult result = pollService.start(courseId, sessionId, user.id(), request);
-        publishPollUpdate(sessionId, result);
+        liveSessions.publishSessionUpdate(sessionId, "interaction.poll_started");
         return result;
     }
 
@@ -53,7 +52,7 @@ class PollController {
             @Valid @RequestBody StartBankPollRequest request) {
         courseAccess.requireManage(user, courseId);
         PollResult result = pollService.startFromBank(courseId, sessionId, user.id(), request.questionId());
-        publishPollUpdate(sessionId, result);
+        liveSessions.publishSessionUpdate(sessionId, "interaction.poll_started");
         return result;
     }
 
@@ -97,14 +96,7 @@ class PollController {
         courseAccess.requireManage(user, courseId);
         PollResult result = pollService.close(courseId, sessionId, pollId, user.id(),
                 request != null ? request : new ClosePollRequest(null));
-        publishPollUpdate(sessionId, result);
+        liveSessions.publishSessionUpdate(sessionId, "interaction.poll_closed");
         return result;
     }
-
-    private void publishPollUpdate(UUID sessionId, PollResult result) {
-        messaging.convertAndSend("/topic/session/" + sessionId,
-                new PollUpdateMessage("poll.updated", result));
-    }
-
-    private record PollUpdateMessage(String type, PollResult pollResult) {}
 }

@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.university.assistant.feedback.api.SignalAggregate;
@@ -40,6 +41,16 @@ class StudentSessionController {
             @PathVariable UUID courseId,
             @PathVariable UUID sessionId) {
         return studentSessions.engagement(user, courseId, sessionId);
+    }
+
+    @PutMapping("/api/v1/courses/{courseId}/sessions/{sessionId}/questions/{questionId}")
+    public StudentQuestion updateQuestion(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID sessionId,
+            @PathVariable UUID questionId,
+            @Valid @RequestBody UpdateStudentQuestionRequest request) {
+        return studentSessions.updateQuestion(user, courseId, sessionId, questionId, request);
     }
 
     @GetMapping("/api/v1/student/sessions/{joinCode}")

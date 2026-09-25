@@ -31,6 +31,7 @@ import ru.university.assistant.live.api.StudentQuestionRequest;
 import ru.university.assistant.live.api.StudentSessionSnapshot;
 import ru.university.assistant.live.api.StudentSignalRequest;
 import ru.university.assistant.live.api.StudentSlide;
+import ru.university.assistant.live.api.UpdateStudentQuestionRequest;
 import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.org.api.GroupSelectionRequiredException;
@@ -238,6 +239,22 @@ public class StudentWebSessionService {
                 questions.openQuestions(sessionId));
     }
 
+    @Transactional
+    public StudentQuestion updateQuestion(
+            AuthenticatedUser user,
+            UUID courseId,
+            UUID sessionId,
+            UUID questionId,
+            UpdateStudentQuestionRequest request) {
+        courseAccess.requireManage(user, courseId);
+        LiveSession session = sessions.findByCourse(courseId, sessionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        StudentQuestion updated = questions.resolve(
+                sessionId, questionId, user.id(), request.status(), request.answerText());
+        publisher.publish("qa.question_updated", session);
+        return updated;
+    }
+
     public boolean tokenBelongsToJoinCode(String joinCode, String participantToken) {
         participantSession(joinCode, participantToken, null);
         return true;
@@ -291,7 +308,7 @@ public class StudentWebSessionService {
         PollVote vote = quickPolls.respond(current.session().id(), pollId, current.participant().personId(), optionIdx);
         touch(current.participant());
         if (vote.accepted()) {
-            publisher.publish("poll.response.recorded", current.session());
+            publisher.publish("interaction.poll_answered", current.session());
         }
         return vote;
     }

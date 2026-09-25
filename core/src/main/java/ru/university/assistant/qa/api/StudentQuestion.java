@@ -10,4 +10,6 @@ public record StudentQuestion(
         String channelType,
         String text,
         QuestionStatus status,
-        Instant createdAt) {}
+        Instant createdAt,
+        String answerText,
+        Instant answeredAt) {}

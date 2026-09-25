@@ -108,7 +108,9 @@ public class LiveSessionService implements LiveSessionAccessApi {
 
     /** B-03: чтобы из мини-приложения преподаватель попадал сразу в свою идущую лекцию. */
     public Optional<LiveSession> activeSessionFor(AuthenticatedUser user) {
-        return sessions.findActiveForCreator(user.id());
+        Optional<LiveSession> active = sessions.findActiveForCreator(user.id());
+        active.ifPresent(session -> courseAccess.requireManage(user, session.courseId()));
+        return active;
     }
 
     public LiveSession get(AuthenticatedUser user, UUID courseId, UUID sessionId) {
@@ -191,6 +193,11 @@ public class LiveSessionService implements LiveSessionAccessApi {
     @Override
     public LiveSession requireSessionInCourse(UUID courseId, UUID sessionId) {
         return session(courseId, sessionId);
+    }
+
+    @Override
+    public void publishSessionUpdate(UUID sessionId, String type) {
+        publisher.publish(type, requireSession(sessionId));
     }
 
     private void ensureLive(LiveSession session) {

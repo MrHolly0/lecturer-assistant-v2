@@ -95,7 +95,7 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
                     UUID sessionId = UUID.fromString(destination.substring("/topic/session/".length()));
                     sessions.findById(sessionId)
                             .ifPresentOrElse(
-                                    session -> courseAccess.requireVisible(principal.user(), session.courseId()),
+                                    session -> courseAccess.requireManage(principal.user(), session.courseId()),
                                     () -> {
                                         throw new IllegalArgumentException("Session not found");
                                     });

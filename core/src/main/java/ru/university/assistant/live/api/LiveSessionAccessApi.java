@@ -12,4 +12,7 @@ public interface LiveSessionAccessApi {
 
     /** 404, если сессии с таким id в этом курсе нет. */
     LiveSession requireSessionInCourse(UUID courseId, UUID sessionId);
+
+    /** Публикует безопасный session envelope для преподавательских клиентов. */
+    void publishSessionUpdate(UUID sessionId, String type);
 }
