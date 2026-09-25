@@ -280,7 +280,7 @@ export function App() {
   return (
     <AuthProvider>
       <RouterProvider router={router} />
-      <Toaster theme={theme} position="top-center" richColors closeButton />
+      <Toaster theme={theme} position="top-center" richColors />
     </AuthProvider>
   );
 }

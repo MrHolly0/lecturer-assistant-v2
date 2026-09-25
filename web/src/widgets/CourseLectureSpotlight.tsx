@@ -96,11 +96,6 @@ export function CourseLectureSpotlight({
         <span className="course-live-card__status"><BookOpenText size={15} /> Готова к запуску</span>
         <h2>{firstLecture.title}</h2>
         <p>{firstLecture.deckTitle} · версия {firstLecture.deckVersion}</p>
-        <div className="course-live-signals" aria-label="На лекции доступны сигналы понимания">
-          <span className="course-live-signals__green">Понятно</span>
-          <span className="course-live-signals__yellow">Есть вопрос</span>
-          <span className="course-live-signals__red">Не понимаю</span>
-        </div>
       </div>
       <div className="course-live-card__actions">
         {canManage && (

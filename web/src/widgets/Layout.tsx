@@ -53,7 +53,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <span className="truncate">Lecturer Assistant</span>
           </Link>
           <IconButton
-            className="icon-touch-target shrink-0 lg:hidden"
+            className="icon-touch-target layout-sidebar-close shrink-0"
             onClick={() => setSidebarOpen(false)}
             label="Закрыть меню"
           >

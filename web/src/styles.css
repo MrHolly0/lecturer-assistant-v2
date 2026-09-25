@@ -186,6 +186,12 @@ textarea {
   width: var(--control-height-touch);
 }
 
+@media (min-width: 1024px) {
+  .layout-sidebar-close {
+    display: none;
+  }
+}
+
 @media (pointer: coarse), (max-width: 720px) {
   .ui-button:not(.ui-button--link) {
     min-height: var(--control-height-touch);
@@ -696,7 +702,7 @@ textarea {
   justify-content: center;
 }
 
-.deck-controls .ui-button {
+.deck-controls .ui-button--icon {
   min-width: 44px;
   padding: 0;
 }
@@ -1360,7 +1366,7 @@ textarea {
   align-items: center;
   display: grid;
   gap: 8px;
-  grid-template-columns: 92px minmax(0, 1fr) 28px;
+  grid-template-columns: 112px minmax(0, 1fr) 28px;
 }
 
 .signal-row__track {
@@ -2469,18 +2475,17 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .poll-panel-header {
-  display: flex;
   align-items: center;
+  display: flex;
   gap: 6px;
 }
 
 .poll-panel-title {
   flex: 1;
-  font-weight: 600;
   font-size: 0.85rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .poll-response-count {
@@ -3031,24 +3036,6 @@ html[data-max-mini-app="true"] .student-session-shell {
 .lecture-empty-state p {
   margin: 0;
 }
-
-.course-live-signals {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.course-live-signals span {
-  border-bottom: 3px solid;
-  color: var(--foreground);
-  font-size: 0.78rem;
-  padding: 5px 1px;
-}
-
-.course-live-signals__green { border-color: var(--chart-2); }
-.course-live-signals__yellow { border-color: var(--chart-4); }
-.course-live-signals__red { border-color: var(--destructive); }
 
 .course-live-card__actions {
   align-items: center;
