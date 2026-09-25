@@ -125,7 +125,10 @@ export function DeckSlideStrip({
                           <MoreVertical size={17} aria-hidden="true" />
                         </IconButton>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="slide-position-menu">
+                      <DropdownMenuContent
+                        align={index === 0 ? "start" : "end"}
+                        className="slide-position-menu"
+                      >
                         <DropdownMenuLabel>Переместить в позицию</DropdownMenuLabel>
                         <DropdownMenuRadioGroup
                           value={String(index)}
