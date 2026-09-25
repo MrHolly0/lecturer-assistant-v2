@@ -69,9 +69,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       setSnapshot(response.snapshot);
       toast.success("Вы подключены к лекции.");
     },
-    onError: (error) => toast.error(userErrorMessage(error, "Не удалось подключиться к лекции.")),
-    retry: shouldRetryMutation,
-    retryDelay: mutationRetryDelay
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось подключиться к лекции."))
   });
   const signalMut = useMutation({
     mutationFn: (value: SignalValue) =>
@@ -95,9 +93,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       setQuestion("");
       toast.success("Вопрос отправлен преподавателю.");
     },
-    onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить вопрос.")),
-    retry: shouldRetryMutation,
-    retryDelay: mutationRetryDelay
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить вопрос."))
   });
   const pollMut = useMutation({
     mutationFn: ({ pollId, optionIdx }: { pollId: string; optionIdx: number }) =>

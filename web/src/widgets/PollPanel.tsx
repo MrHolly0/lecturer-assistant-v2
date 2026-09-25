@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart2, CheckCircle2, Plus, X } from "lucide-react";
+import { BarChart2, CheckCircle2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { closePoll, getActivePoll, startPoll } from "../app/api/interaction-api";
+import { userErrorMessage } from "../app/api/errors";
 import { pluralizeRu } from "../shared/lib/plural";
+import { PollComposer, type PollDraft } from "./PollComposer";
 
 interface Props {
   courseId: string;
@@ -15,8 +17,6 @@ type View = "idle" | "create";
 export function PollPanel({ courseId, sessionId }: Props) {
   const qc = useQueryClient();
   const [view, setView] = useState<View>("idle");
-  const [question, setQuestion] = useState("");
-  const [options, setOptions] = useState(["", ""]);
   const [markedCorrect, setMarkedCorrect] = useState<number | undefined>(undefined);
 
   const activeQuery = useQuery({
@@ -27,16 +27,18 @@ export function PollPanel({ courseId, sessionId }: Props) {
   const activePoll = activeQuery.data;
 
   const startMut = useMutation({
-    mutationFn: () => startPoll(courseId, sessionId, { questionText: question.trim(), options }),
-    onSuccess: (result) => {
+    mutationFn: (draft: PollDraft) =>
+      startPoll(courseId, sessionId, {
+        questionText: draft.questionText,
+        options: draft.options
+      }),
+    onSuccess: (result, draft) => {
       qc.setQueryData(["poll", courseId, sessionId, "active"], result);
       setView("idle");
-      setQuestion("");
-      setOptions(["", ""]);
-      setMarkedCorrect(undefined);
+      setMarkedCorrect(draft.correctOptionIdx);
       toast.success("Опрос запущен.");
     },
-    onError: () => toast.error("Не удалось запустить опрос.")
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось запустить опрос."))
   });
 
   const closeMut = useMutation({
@@ -45,8 +47,34 @@ export function PollPanel({ courseId, sessionId }: Props) {
       qc.setQueryData(["poll", courseId, sessionId, "active"], result);
       toast.success("Опрос закрыт.");
     },
-    onError: () => toast.error("Не удалось закрыть опрос.")
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось закрыть опрос."))
   });
+
+  useEffect(() => {
+    if (activePoll?.poll.status === "CLOSED") setMarkedCorrect(undefined);
+  }, [activePoll?.poll.id, activePoll?.poll.status]);
+
+  if (activeQuery.isError) {
+    return (
+      <div className="poll-panel poll-panel-error" role="alert">
+        <p>{userErrorMessage(activeQuery.error, "Не удалось проверить состояние опроса.")}</p>
+        <button type="button" className="btn-ghost" onClick={() => activeQuery.refetch()}>
+          Повторить
+        </button>
+      </div>
+    );
+  }
+
+  if (view === "create") {
+    return (
+      <PollComposer
+        courseId={courseId}
+        pending={startMut.isPending}
+        onCancel={() => setView("idle")}
+        onStart={(draft) => startMut.mutate(draft)}
+      />
+    );
+  }
 
   if (activePoll) {
     const total = activePoll.totalResponses;
@@ -98,80 +126,12 @@ export function PollPanel({ courseId, sessionId }: Props) {
             Закрыть и показать результат
           </button>
         )}
-      </div>
-    );
-  }
-
-  if (view === "create") {
-    const canStart =
-      !startMut.isPending &&
-      question.trim().length > 0 &&
-      options.length >= 2 &&
-      options.every((o) => o.trim().length > 0);
-    return (
-      <div className="poll-panel">
-        <div className="poll-panel-header">
-          <span className="poll-panel-title">Новый опрос</span>
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => setView("idle")}
-            aria-label="Закрыть редактор опроса"
-            title="Закрыть редактор"
-          >
-            <X size={14} />
-          </button>
-        </div>
-        <textarea
-          className="poll-question-input"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Текст вопроса"
-          rows={2}
-          maxLength={500}
-        />
-        <div className="poll-options-list">
-          {options.map((opt, idx) => (
-            <div key={idx} className="poll-option-row">
-              <input
-                className="poll-option-input"
-                value={opt}
-                onChange={(e) => {
-                  const next = [...options];
-                  next[idx] = e.target.value;
-                  setOptions(next);
-                }}
-                placeholder={`Вариант ${idx + 1}`}
-                maxLength={200}
-              />
-              {options.length > 2 && (
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => setOptions(options.filter((_, i) => i !== idx))}
-                  aria-label={`Удалить вариант ${idx + 1}`}
-                  title={`Удалить вариант ${idx + 1}`}
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-        {options.length < 6 && (
-          <button type="button" className="btn-ghost" onClick={() => setOptions([...options, ""])}>
-            <Plus size={12} />
-            Добавить вариант
+        {activePoll.poll.status === "CLOSED" && (
+          <button type="button" className="btn-ghost" onClick={() => setView("create")}>
+            <Plus size={14} />
+            Новая проверка
           </button>
         )}
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={!canStart}
-          onClick={() => startMut.mutate()}
-        >
-          Запустить опрос
-        </button>
       </div>
     );
   }

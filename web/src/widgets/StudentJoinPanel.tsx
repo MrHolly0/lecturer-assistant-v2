@@ -49,8 +49,14 @@ export function StudentJoinPanel({
               onChange={(event) => onDisplayNameChange(event.target.value)}
               placeholder="Имя на лекции"
               maxLength={80}
+              minLength={2}
+              required
             />
-            <button className="btn-primary" type="submit" disabled={isPending}>
+            <button
+              className="btn-primary"
+              type="submit"
+              disabled={isPending || displayName.trim().length < 2}
+            >
               Подключиться
             </button>
           </form>

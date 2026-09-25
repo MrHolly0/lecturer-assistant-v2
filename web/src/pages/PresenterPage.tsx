@@ -17,6 +17,7 @@ import {
 import { precacheDeck } from "../app/offline";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 import { PresenterSidePanel } from "../widgets/PresenterSidePanel";
+import { PresenterSessionSummary } from "../widgets/PresenterSessionSummary";
 import { PresenterTopbar } from "../widgets/PresenterTopbar";
 
 export function PresenterPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
@@ -146,9 +147,22 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     });
   }
 
-  if (!session || !deck || !slide) {
+  if (!session) {
     return <div className="presenter-shell">Загрузка...</div>;
   }
+
+  if (session.status === "ENDED") {
+    return (
+      <PresenterSessionSummary
+        courseId={courseId}
+        session={session}
+        participants={participants}
+        engagement={engagementQuery.data}
+      />
+    );
+  }
+
+  if (!deck || !slide) return <div className="presenter-shell">Загрузка...</div>;
 
   return (
     <div className="presenter-shell">
