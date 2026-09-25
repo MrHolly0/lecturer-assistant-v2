@@ -242,7 +242,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
                 title={`Перейти к слайду ${item.idx}`}
               >
                 <img src={slideImageUrl(item)} alt={`Слайд ${item.idx}`} />
-                <span>{index + 1}</span>
+                <span className="slide-thumb__number">{index + 1}</span>
               </button>
             ))}
           </div>

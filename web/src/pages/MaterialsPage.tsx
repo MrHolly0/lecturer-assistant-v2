@@ -288,7 +288,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
               onNotesOpenChange={setNotesOpen}
               onSaveNote={(content) => noteActions.save(content).then(() => undefined)}
               onClearNote={() => noteActions.clear()}
-              onMoveSlide={slideActions.moveActiveSlide}
+              onReorderSlide={slideActions.reorderSlide}
               onDeleteSlide={slideActions.deleteActiveSlide}
             />
           </div>

@@ -5,6 +5,7 @@ import { pluralizeRu } from "../shared/lib/plural";
 import { SlideNotesPanel } from "./SlideNotesPanel";
 import { IconButton } from "../shared/ui/button";
 import { ConfirmActionButton } from "./ConfirmActionButton";
+import { DeckSlideStrip } from "./DeckSlideStrip";
 
 interface DeckViewerProps {
   deck: SlideDeckDetails;
@@ -17,7 +18,7 @@ interface DeckViewerProps {
   onNotesOpenChange: (open: boolean) => void;
   onSaveNote: (content: string) => Promise<void>;
   onClearNote: () => void;
-  onMoveSlide: (direction: -1 | 1) => void;
+  onReorderSlide: (fromIndex: number, targetIndex: number) => void;
   onDeleteSlide: () => void;
 }
 
@@ -32,7 +33,7 @@ export function DeckViewer({
   onNotesOpenChange,
   onSaveNote,
   onClearNote,
-  onMoveSlide,
+  onReorderSlide,
   onDeleteSlide
 }: DeckViewerProps) {
   const slide = deck.slides[activeIndex];
@@ -54,38 +55,18 @@ export function DeckViewer({
         </div>
         <div className="deck-viewer__actions">
           {canManage && (
-            <>
-              <IconButton
-                type="button"
-                variant="outline"
-                disabled={editing || activeIndex === 0}
-                onClick={() => onMoveSlide(-1)}
-                label="Сдвинуть слайд влево"
-              >
-                <ChevronLeft size={16} />
-              </IconButton>
-              <IconButton
-                type="button"
-                variant="outline"
-                disabled={editing || activeIndex >= deck.slides.length - 1}
-                onClick={() => onMoveSlide(1)}
-                label="Сдвинуть слайд вправо"
-              >
-                <ChevronRight size={16} />
-              </IconButton>
-              <ConfirmActionButton
-                title={`Удалить слайд ${slideNumber}?`}
-                description="Слайд и его заметка будут удалены. Для презентации с историей сервер создаст новую версию."
-                confirmLabel="Удалить слайд"
-                variant="outline"
-                size="icon"
-                label={`Удалить слайд ${slideNumber}`}
-                disabled={editing || deck.slides.length <= 1}
-                onConfirm={onDeleteSlide}
-              >
-                <Trash2 size={16} />
-              </ConfirmActionButton>
-            </>
+            <ConfirmActionButton
+              title={`Удалить слайд ${slideNumber}?`}
+              description="Слайд и его заметка будут удалены. Для презентации с историей сервер создаст новую версию."
+              confirmLabel="Удалить слайд"
+              variant="outline"
+              size="icon"
+              label={`Удалить слайд ${slideNumber}`}
+              disabled={editing || deck.slides.length <= 1}
+              onConfirm={onDeleteSlide}
+            >
+              <Trash2 size={16} />
+            </ConfirmActionButton>
           )}
           <button
             type="button"
@@ -140,21 +121,14 @@ export function DeckViewer({
         </IconButton>
       </div>
 
-      <div className="slide-strip">
-        {deck.slides.map((item, index) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`slide-thumb ${index === activeIndex ? "slide-thumb--active" : ""}`}
-            onClick={() => onSlideChange(index)}
-            aria-label={`Перейти к слайду ${item.idx}`}
-            aria-current={index === activeIndex ? "true" : undefined}
-          >
-            <img src={slideImageUrl(item)} alt={`Слайд ${item.idx}`} />
-            <span>{item.idx}</span>
-          </button>
-        ))}
-      </div>
+      <DeckSlideStrip
+        slides={deck.slides}
+        activeIndex={activeIndex}
+        canManage={canManage}
+        editing={editing}
+        onSlideChange={onSlideChange}
+        onReorder={onReorderSlide}
+      />
     </section>
   );
 }

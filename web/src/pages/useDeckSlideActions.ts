@@ -56,13 +56,21 @@ export function useDeckSlideActions({
       const slide = deck?.slides[activeIndex];
       if (slide) deleteMutation.mutate(slide.id);
     },
-    moveActiveSlide: (direction: -1 | 1) => {
+    reorderSlide: (fromIndex: number, targetIndex: number) => {
       if (!deck) return;
-      const target = activeIndex + direction;
-      if (target < 0 || target >= deck.slides.length) return;
+      if (
+        fromIndex < 0 ||
+        fromIndex >= deck.slides.length ||
+        targetIndex < 0 ||
+        targetIndex >= deck.slides.length ||
+        fromIndex === targetIndex
+      ) {
+        return;
+      }
       const slideIds = deck.slides.map((slide) => slide.id);
-      [slideIds[activeIndex], slideIds[target]] = [slideIds[target], slideIds[activeIndex]];
-      reorderMutation.mutate({ slideIds, targetIndex: target });
+      const [movedSlideId] = slideIds.splice(fromIndex, 1);
+      slideIds.splice(targetIndex, 0, movedSlideId);
+      reorderMutation.mutate({ slideIds, targetIndex });
     }
   };
 }

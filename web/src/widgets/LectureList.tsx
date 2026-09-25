@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Presentation, Play } from "lucide-react";
+import { Archive, Plus, Presentation, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { Lecture, SlideDeck } from "../app/api/content-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
@@ -103,11 +103,7 @@ export function LectureList({
               ))}
             </SelectContent>
           </Select>
-          <Button
-            type="button"
-            disabled={!title || !deckId || creating}
-            onClick={onCreate}
-          >
+          <Button type="button" disabled={!title || !deckId || creating} onClick={onCreate}>
             Создать
           </Button>
           <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
@@ -119,7 +115,9 @@ export function LectureList({
         <div className="lecture-empty-state">
           <Presentation size={28} aria-hidden="true" />
           <div>
-            <strong>{decks.length === 0 ? "Сначала добавьте презентацию" : "Соберите первую лекцию"}</strong>
+            <strong>
+              {decks.length === 0 ? "Сначала добавьте презентацию" : "Соберите первую лекцию"}
+            </strong>
             <p className="muted">
               {decks.length === 0
                 ? "После загрузки презентации здесь появится быстрый запуск занятия."
@@ -215,25 +213,28 @@ function LectureRows({
               <ConfirmActionButton
                 title="Архивировать лекцию?"
                 description="Лекция уйдёт в архив, её можно будет восстановить."
+                confirmLabel="Архивировать"
+                variant="outline"
                 disabled={startingId === lecture.id}
                 onConfirm={() => onArchive?.(lecture.id)}
               >
-                В архив
+                <Archive size={16} aria-hidden="true" /> Архивировать
               </ConfirmActionButton>
             </div>
           )}
           {canManage && lecture.archived && (
             <div className="lecture-row__actions">
               <Button type="button" variant="outline" onClick={() => onRestore?.(lecture.id)}>
-                Восстановить
+                <RotateCcw size={16} aria-hidden="true" /> Восстановить
               </Button>
               <ConfirmActionButton
                 title="Удалить лекцию навсегда?"
                 description="История сессий и вложения этой лекции будут удалены."
                 confirmLabel="Удалить навсегда"
+                variant="destructive"
                 onConfirm={() => onHardDelete?.(lecture.id)}
               >
-                Удалить навсегда
+                <Trash2 size={16} aria-hidden="true" /> Удалить навсегда
               </ConfirmActionButton>
             </div>
           )}

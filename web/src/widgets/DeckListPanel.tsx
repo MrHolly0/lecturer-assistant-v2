@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
+import { Archive, ChevronDown, History, RotateCcw, Trash2 } from "lucide-react";
 import type { SlideDeck } from "../app/api/content-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
-import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { Button } from "../shared/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../shared/ui/collapsible";
+import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { ConfirmActionButton } from "./ConfirmActionButton";
 import { PaginationBar, SearchField } from "./ListControls";
 
 type DeckTab = "active" | "archive";
+
+interface DeckVersionGroup {
+  title: string;
+  current: SlideDeck;
+  history: SlideDeck[];
+}
 
 interface DeckListPanelProps {
   decks: SlideDeck[];
@@ -22,32 +30,29 @@ interface DeckListPanelProps {
   onHardDelete: (deckId: string) => void;
 }
 
-export function DeckListPanel({
-  decks,
-  selectedDeckId,
-  canManage,
-  archivePending,
-  restorePending,
-  hardDeletePending,
-  onSelect,
-  onArchive,
-  onRestore,
-  onHardDelete
-}: DeckListPanelProps) {
-  const activeDecks = decks.filter((deck) => !deck.archived);
-  const archivedDecks = decks.filter((deck) => deck.archived);
+export function DeckListPanel(props: DeckListPanelProps) {
+  const { decks } = props;
   const [tab, setTab] = useState<DeckTab>("active");
   const [query, setQuery] = useState("");
-  const visibleDecks = useMemo(
+  const activeGroups = useMemo(() => groupActiveDecks(decks), [decks]);
+  const archivedDecks = useMemo(() => decks.filter((deck) => deck.archived), [decks]);
+  const visibleGroups = useMemo(
     () =>
-      (tab === "archive" ? archivedDecks : activeDecks).filter((deck) =>
-        includesQuery(query, deck.title, deck.sourceFilename)
+      activeGroups.filter((group) =>
+        group.history
+          .concat(group.current)
+          .some((deck) => includesQuery(query, deck.title, deck.sourceFilename))
       ),
-    [activeDecks, archivedDecks, query, tab]
+    [activeGroups, query]
   );
-  const paged = usePagedList(visibleDecks, 20);
+  const visibleArchived = useMemo(
+    () => archivedDecks.filter((deck) => includesQuery(query, deck.title, deck.sourceFilename)),
+    [archivedDecks, query]
+  );
+  const activePaged = usePagedList(visibleGroups, 20);
+  const archivePaged = usePagedList(visibleArchived, 20);
   const showTabs = archivedDecks.length > 0;
-  const showSearch = activeDecks.length + archivedDecks.length > 5 || Boolean(query);
+  const showSearch = activeGroups.length + archivedDecks.length > 5 || Boolean(query);
 
   useEffect(() => {
     if (!showTabs && tab === "archive") setTab("active");
@@ -60,7 +65,7 @@ export function DeckListPanel({
           {showTabs && (
             <Tabs value={tab} onValueChange={(value) => setTab(value as DeckTab)}>
               <TabsList>
-                <TabsTrigger value="active">Активные ({activeDecks.length})</TabsTrigger>
+                <TabsTrigger value="active">Доступные ({activeGroups.length})</TabsTrigger>
                 <TabsTrigger value="archive">Архив ({archivedDecks.length})</TabsTrigger>
               </TabsList>
             </Tabs>
@@ -70,62 +75,141 @@ export function DeckListPanel({
           )}
         </div>
       )}
-      <div className="deck-list">
-        {visibleDecks.length === 0 && (
-          <p className="muted">
-            {tab === "archive"
-              ? "В архиве презентаций нет."
-              : "Загрузите первую презентацию курса."}
-          </p>
-        )}
-        {paged.pageItems.map((deck) => (
-          <div
-            key={deck.id}
-            className={`deck-pill ${deck.id === selectedDeckId ? "deck-pill--active" : ""}`}
-          >
-            <button type="button" onClick={() => onSelect(deck.id)}>
-              <span>{deck.title}</span>
-              <small>
-                v{deck.version} · {deck.slideCount}{" "}
-                {pluralizeRu(deck.slideCount, "слайд", "слайда", "слайдов")}
-              </small>
-            </button>
-            {canManage && !deck.archived && (
-              <ConfirmActionButton
-                title="Архивировать презентацию?"
-                description="Презентация исчезнет из активного списка, но её можно восстановить."
-                confirmLabel="Архивировать"
-                disabled={archivePending}
-                onConfirm={() => onArchive(deck.id)}
-              >
-                Архив
-              </ConfirmActionButton>
-            )}
-            {canManage && deck.archived && (
-              <>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={restorePending}
-                  onClick={() => onRestore(deck.id)}
-                >
-                  Восстановить
-                </Button>
-                <ConfirmActionButton
-                  title="Удалить презентацию навсегда?"
-                  description="Удаление возможно только если дек не привязан к лекциям."
-                  confirmLabel="Удалить навсегда"
-                  disabled={hardDeletePending}
-                  onConfirm={() => onHardDelete(deck.id)}
-                >
-                  Удалить навсегда
-                </ConfirmActionButton>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-      <PaginationBar {...paged} onPageChange={paged.setPage} />
+
+      {tab === "active" ? (
+        <div className="deck-list">
+          {visibleGroups.length === 0 && (
+            <p className="muted">
+              {query ? "По запросу презентаций нет." : "Загрузите первую презентацию курса."}
+            </p>
+          )}
+          {activePaged.pageItems.map((group) => (
+            <DeckVersionSection key={group.title} group={group} {...props} />
+          ))}
+        </div>
+      ) : (
+        <div className="deck-list">
+          {visibleArchived.length === 0 && <p className="muted">В архиве презентаций нет.</p>}
+          {archivePaged.pageItems.map((deck) => (
+            <DeckRow key={deck.id} deck={deck} context="archive" {...props} />
+          ))}
+        </div>
+      )}
+
+      {tab === "active" ? (
+        <PaginationBar {...activePaged} onPageChange={activePaged.setPage} />
+      ) : (
+        <PaginationBar {...archivePaged} onPageChange={archivePaged.setPage} />
+      )}
     </section>
   );
+}
+
+function DeckVersionSection({ group, ...props }: DeckListPanelProps & { group: DeckVersionGroup }) {
+  const selectedInHistory = group.history.some((deck) => deck.id === props.selectedDeckId);
+  return (
+    <article className="deck-version-group">
+      <DeckRow deck={group.current} context="current" {...props} />
+      {group.history.length > 0 && (
+        <Collapsible defaultOpen={selectedInHistory}>
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="outline" className="deck-history__trigger">
+              <History size={16} aria-hidden="true" />
+              История версий ({group.history.length})
+              <ChevronDown className="deck-history__chevron" size={16} aria-hidden="true" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="deck-history__content">
+            {group.history.map((deck) => (
+              <DeckRow key={deck.id} deck={deck} context="history" {...props} />
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </article>
+  );
+}
+
+function DeckRow({
+  deck,
+  context,
+  selectedDeckId,
+  canManage,
+  archivePending,
+  restorePending,
+  hardDeletePending,
+  onSelect,
+  onArchive,
+  onRestore,
+  onHardDelete
+}: DeckListPanelProps & { deck: SlideDeck; context: "current" | "history" | "archive" }) {
+  const status =
+    context === "current"
+      ? "Последняя доступная версия"
+      : context === "history"
+        ? "Предыдущая версия"
+        : "В архиве";
+  return (
+    <div className={`deck-pill${deck.id === selectedDeckId ? " deck-pill--active" : ""}`}>
+      <button className="deck-pill__open" type="button" onClick={() => onSelect(deck.id)}>
+        <span>{deck.title}</span>
+        <small>
+          {status} · v{deck.version} · {deck.slideCount}{" "}
+          {pluralizeRu(deck.slideCount, "слайд", "слайда", "слайдов")}
+        </small>
+      </button>
+      {canManage && (
+        <div className="deck-pill__actions">
+          {!deck.archived ? (
+            <ConfirmActionButton
+              title="Архивировать презентацию?"
+              description="Презентация исчезнет из активного списка, но её можно восстановить."
+              confirmLabel="Архивировать"
+              variant="outline"
+              disabled={archivePending}
+              onConfirm={() => onArchive(deck.id)}
+            >
+              <Archive size={16} aria-hidden="true" /> Архивировать
+            </ConfirmActionButton>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={restorePending}
+                onClick={() => onRestore(deck.id)}
+              >
+                <RotateCcw size={16} aria-hidden="true" /> Восстановить
+              </Button>
+              <ConfirmActionButton
+                title="Удалить презентацию навсегда?"
+                description="Удаление возможно только если дек не привязан к лекциям."
+                confirmLabel="Удалить навсегда"
+                variant="destructive"
+                disabled={hardDeletePending}
+                onConfirm={() => onHardDelete(deck.id)}
+              >
+                <Trash2 size={16} aria-hidden="true" /> Удалить навсегда
+              </ConfirmActionButton>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function groupActiveDecks(decks: SlideDeck[]): DeckVersionGroup[] {
+  const byTitle = new Map<string, SlideDeck[]>();
+  decks
+    .filter((deck) => !deck.archived)
+    .forEach((deck) => {
+      byTitle.set(deck.title, [...(byTitle.get(deck.title) ?? []), deck]);
+    });
+  return Array.from(byTitle.entries())
+    .map(([title, versions]) => {
+      const sorted = [...versions].sort((a, b) => b.version - a.version);
+      return { title, current: sorted[0], history: sorted.slice(1) };
+    })
+    .sort((a, b) => b.current.createdAt.localeCompare(a.current.createdAt));
 }
