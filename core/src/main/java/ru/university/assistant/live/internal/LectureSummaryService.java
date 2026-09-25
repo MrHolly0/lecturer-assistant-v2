@@ -11,6 +11,7 @@ import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.analytics.api.DomainEvent;
 import ru.university.assistant.analytics.api.EventBus;
 import ru.university.assistant.iam.api.AuthenticatedUser;
+import ru.university.assistant.live.api.LectureGroupSummary;
 import ru.university.assistant.live.api.LectureSummary;
 import ru.university.assistant.live.api.LiveSession;
 import ru.university.assistant.live.api.SessionParticipant;
@@ -71,7 +72,19 @@ public class LectureSummaryService {
                 summaries.pollResults(sessionId),
                 summaries.questionCount(sessionId),
                 unanswered.size(),
-                unanswered);
+                unanswered,
+                session.groups().stream()
+                        .map(group -> new LectureGroupSummary(
+                                group,
+                                (int) participants.stream()
+                                        .filter(participant -> group.id().equals(participant.groupId()))
+                                        .count(),
+                                summaries.signalTotals(sessionId, group.id()),
+                                summaries.problemSlides(sessionId, group.id()),
+                                summaries.pollResults(sessionId, group.id()),
+                                summaries.questionCount(sessionId, group.id()),
+                                summaries.unansweredQuestionCount(sessionId, group.id())))
+                        .toList());
         events.publish(new DomainEvent(
                 "live.session",
                 session.id(),

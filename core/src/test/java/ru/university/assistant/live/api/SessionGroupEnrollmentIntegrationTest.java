@@ -151,6 +151,60 @@ class SessionGroupEnrollmentIntegrationTest extends LiveFlowTestBase {
     }
 
     @Test
+    void lectureSummarySeparatesSignalsPollsAndQuestionsByJoinSnapshot() throws Exception {
+        JsonNode multi = start(lectureId, "{\"groups\":[{\"groupId\":\"" + groupId
+                + "\"},{\"groupName\":\"Группа Б\"}]}");
+        sessionId = UUID.fromString(multi.get("id").asText());
+        joinCode = multi.get("joinCode").asText();
+        UUID secondGroup = UUID.fromString(multi.get("groups").get(1).get("id").asText());
+        String firstStudent = maxLogin(2501);
+        String secondStudent = maxLogin(2502);
+        joinGroup(firstStudent, groupId);
+        joinGroup(secondStudent, secondGroup);
+        signal(firstStudent, "RED");
+        signal(secondStudent, "GREEN");
+        json(post("/api/v1/student/sessions/{code}/questions", joinCode)
+                .header("Authorization", "Bearer " + firstStudent)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"text\":\"Вопрос группы А\"}"), 201);
+
+        JsonNode bankQuestion = json(post("/api/v1/courses/{c}/questions", courseId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"text\":\"Проверка\",\"questionType\":\"CHOICE\",\"options\":"
+                        + "[{\"text\":\"A\",\"correct\":true},{\"text\":\"B\",\"correct\":false}]}"), 201);
+        JsonNode started = json(post("/api/v1/courses/{c}/sessions/{s}/polls/from-bank", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"questionId\":\"" + bankQuestion.get("id").asText() + "\"}"), 201);
+        UUID pollId = UUID.fromString(started.at("/poll/id").asText());
+        poll(firstStudent, pollId, 0);
+        poll(secondStudent, pollId, 1);
+        json(post("/api/v1/courses/{c}/sessions/{s}/polls/{p}/close", courseId, sessionId, pollId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        end(sessionId);
+
+        JsonNode summary = json(get("/api/v1/courses/{c}/sessions/{s}/summary", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        JsonNode first = summaryGroup(summary, groupId);
+        JsonNode second = summaryGroup(summary, secondGroup);
+        assertEquals(1, first.get("participantCount").asInt());
+        assertEquals(1, first.at("/signalTotals/red").asInt());
+        assertEquals(0, first.at("/signalTotals/green").asInt());
+        assertEquals("[1,0]", first.at("/pollResults/0/votes").toString());
+        assertEquals(1, first.get("questionsCount").asInt());
+        assertEquals(1, first.get("unansweredQuestionCount").asInt());
+        assertEquals(1, first.get("problemSlides").size());
+        assertEquals(1, second.get("participantCount").asInt());
+        assertEquals(0, second.at("/signalTotals/red").asInt());
+        assertEquals(1, second.at("/signalTotals/green").asInt());
+        assertEquals("[0,1]", second.at("/pollResults/0/votes").toString());
+        assertEquals(0, second.get("questionsCount").asInt());
+        assertEquals(0, second.get("unansweredQuestionCount").asInt());
+        assertEquals(0, second.get("problemSlides").size());
+    }
+
+    @Test
     void invalidAndEndedCodesCannotBeJoined() throws Exception {
         json(post("/api/v1/student/sessions/NOPE00/join")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -218,6 +272,20 @@ class SessionGroupEnrollmentIntegrationTest extends LiveFlowTestBase {
                 .content("{\"value\":\"" + value + "\"}"), 200);
     }
 
+    private void joinGroup(String jwt, UUID selectedGroup) throws Exception {
+        json(post("/api/v1/student/sessions/{code}/join", joinCode)
+                .header("Authorization", "Bearer " + jwt)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"groupId\":\"" + selectedGroup + "\"}"), 200);
+    }
+
+    private void poll(String jwt, UUID pollId, int optionIdx) throws Exception {
+        json(post("/api/v1/student/sessions/{code}/polls/{poll}/respond", joinCode, pollId)
+                .header("Authorization", "Bearer " + jwt)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"optionIdx\":" + optionIdx + "}"), 200);
+    }
+
     private JsonNode group(JsonNode response, UUID id) {
         for (JsonNode group : response.get("groups")) {
             if (id.toString().equals(group.get("groupId").asText())) {
@@ -225,5 +293,14 @@ class SessionGroupEnrollmentIntegrationTest extends LiveFlowTestBase {
             }
         }
         throw new AssertionError("Group not found: " + id);
+    }
+
+    private JsonNode summaryGroup(JsonNode response, UUID id) {
+        for (JsonNode group : response.get("groupBreakdowns")) {
+            if (id.toString().equals(group.at("/group/id").asText())) {
+                return group;
+            }
+        }
+        throw new AssertionError("Summary group not found: " + id);
     }
 }

@@ -3478,6 +3478,7 @@ components:
         - questionsCount
         - unansweredQuestionCount
         - unansweredQuestions
+        - groupBreakdowns
       properties:
         sessionId:
           type: string
@@ -3541,6 +3542,43 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/StudentQuestion"
+        groupBreakdowns:
+          type: array
+          description: Per-group aggregates calculated from the participant group snapshot captured at join time.
+          items:
+            $ref: "#/components/schemas/LectureGroupSummary"
+    LectureGroupSummary:
+      type: object
+      required:
+        - group
+        - participantCount
+        - signalTotals
+        - problemSlides
+        - pollResults
+        - questionsCount
+        - unansweredQuestionCount
+      properties:
+        group:
+          $ref: "#/components/schemas/SessionGroup"
+        participantCount:
+          type: integer
+          minimum: 0
+        signalTotals:
+          $ref: "#/components/schemas/SignalAggregate"
+        problemSlides:
+          type: array
+          items:
+            $ref: "#/components/schemas/SummaryProblemSlide"
+        pollResults:
+          type: array
+          items:
+            $ref: "#/components/schemas/SummaryPollResult"
+        questionsCount:
+          type: integer
+          minimum: 0
+        unansweredQuestionCount:
+          type: integer
+          minimum: 0
     SummaryProblemSlide:
       type: object
       required: [slideIdx, green, yellow, red, total]

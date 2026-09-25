@@ -24,4 +24,5 @@ public record LectureSummary(
         List<SummaryPollResult> pollResults,
         int questionsCount,
         int unansweredQuestionCount,
-        List<StudentQuestion> unansweredQuestions) {}
+        List<StudentQuestion> unansweredQuestions,
+        List<LectureGroupSummary> groupBreakdowns) {}

@@ -75,6 +75,14 @@ class LectureSummaryIntegrationTest extends LiveFlowTestBase {
         assertEquals(1, summary.get("questionsCount").asInt());
         assertEquals(1, summary.get("unansweredQuestionCount").asInt());
         assertEquals("Можно ещё раз?", summary.get("unansweredQuestions").get(0).get("text").asText());
+        assertEquals(1, summary.get("groupBreakdowns").size());
+        JsonNode groupSummary = summary.get("groupBreakdowns").get(0);
+        assertEquals(groupId.toString(), groupSummary.at("/group/id").asText());
+        assertEquals(1, groupSummary.get("participantCount").asInt());
+        assertEquals(1, groupSummary.at("/signalTotals/red").asInt());
+        assertEquals("[0,1]", groupSummary.at("/pollResults/0/votes").toString());
+        assertEquals(1, groupSummary.get("questionsCount").asInt());
+        assertEquals(1, groupSummary.get("unansweredQuestionCount").asInt());
 
         assertTrue(eventExists("miniapp.opened"));
         assertTrue(eventExists("interaction.poll_started"));

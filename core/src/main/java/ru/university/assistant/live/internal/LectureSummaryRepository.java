@@ -31,7 +31,12 @@ class LectureSummaryRepository {
     }
 
     SignalAggregate signalTotals(UUID sessionId) {
-        return jdbc.sql("""
+        return signalTotals(sessionId, null);
+    }
+
+    SignalAggregate signalTotals(UUID sessionId, UUID groupId) {
+        String groupFilter = groupFilter("comprehension_signals", groupId);
+        JdbcClient.StatementSpec query = jdbc.sql("""
                         select
                             count(*) filter (where value = 'GREEN')::int as green,
                             count(*) filter (where value = 'YELLOW')::int as yellow,
@@ -39,15 +44,21 @@ class LectureSummaryRepository {
                             count(*)::int as total
                         from feedback.comprehension_signals
                         where session_id = :sessionId
-                        """)
-                .param("sessionId", sessionId)
+                        """ + groupFilter)
+                .param("sessionId", sessionId);
+        return bindGroup(query, sessionId, groupId)
                 .query((rs, row) -> new SignalAggregate(
                         rs.getInt("green"), rs.getInt("yellow"), rs.getInt("red"), rs.getInt("total")))
                 .single();
     }
 
     List<SummaryProblemSlide> problemSlides(UUID sessionId) {
-        return jdbc.sql("""
+        return problemSlides(sessionId, null);
+    }
+
+    List<SummaryProblemSlide> problemSlides(UUID sessionId, UUID groupId) {
+        String groupFilter = groupFilter("comprehension_signals", groupId);
+        JdbcClient.StatementSpec query = jdbc.sql("""
                         select
                             slide_idx,
                             count(*) filter (where value = 'GREEN')::int as green,
@@ -56,11 +67,13 @@ class LectureSummaryRepository {
                             count(*)::int as total
                         from feedback.comprehension_signals
                         where session_id = :sessionId
+                        """ + groupFilter + """
                         group by slide_idx
                         having count(*) filter (where value = 'RED') > 0
                         order by red desc, slide_idx asc
                         """)
-                .param("sessionId", sessionId)
+                .param("sessionId", sessionId);
+        return bindGroup(query, sessionId, groupId)
                 .query((rs, row) -> new SummaryProblemSlide(
                         rs.getInt("slide_idx"),
                         rs.getInt("green"),
@@ -71,6 +84,10 @@ class LectureSummaryRepository {
     }
 
     List<SummaryPollResult> pollResults(UUID sessionId) {
+        return pollResults(sessionId, null);
+    }
+
+    List<SummaryPollResult> pollResults(UUID sessionId, UUID groupId) {
         return jdbc.sql("""
                         select id, source_question_id, question_text, options, status,
                                correct_option_idx, created_at, closed_at
@@ -79,14 +96,30 @@ class LectureSummaryRepository {
                         order by created_at asc
                         """)
                 .param("sessionId", sessionId)
-                .query(this::mapPoll)
+                .query((rs, row) -> mapPoll(rs, sessionId, groupId))
                 .list();
     }
 
     int questionCount(UUID sessionId) {
-        return jdbc.sql("select count(*)::int from qa.questions where session_id = :sessionId")
-                .param("sessionId", sessionId)
-                .query(Integer.class)
+        return questionCount(sessionId, null);
+    }
+
+    int questionCount(UUID sessionId, UUID groupId) {
+        JdbcClient.StatementSpec query = jdbc.sql("select count(*)::int from qa.questions where session_id = :sessionId"
+                        + groupFilter("questions", groupId))
+                .param("sessionId", sessionId);
+        return bindGroup(query, sessionId, groupId).query(Integer.class)
+                .single();
+    }
+
+    int unansweredQuestionCount(UUID sessionId, UUID groupId) {
+        JdbcClient.StatementSpec query = jdbc.sql("""
+                        select count(*)::int
+                        from qa.questions
+                        where session_id = :sessionId and status = 'OPEN'
+                        """ + groupFilter("questions", groupId))
+                .param("sessionId", sessionId);
+        return bindGroup(query, sessionId, groupId).query(Integer.class)
                 .single();
     }
 
@@ -130,10 +163,10 @@ class LectureSummaryRepository {
         return pausedSeconds;
     }
 
-    private SummaryPollResult mapPoll(ResultSet rs, int row) throws SQLException {
+    private SummaryPollResult mapPoll(ResultSet rs, UUID sessionId, UUID groupId) throws SQLException {
         UUID pollId = rs.getObject("id", UUID.class);
         List<String> options = options(rs.getString("options"));
-        List<Integer> votes = voteCounts(pollId, options.size());
+        List<Integer> votes = voteCounts(pollId, sessionId, groupId, options.size());
         return new SummaryPollResult(
                 pollId,
                 rs.getObject("source_question_id", UUID.class),
@@ -147,19 +180,20 @@ class LectureSummaryRepository {
                 rs.getTimestamp("closed_at") == null ? null : rs.getTimestamp("closed_at").toInstant());
     }
 
-    private List<Integer> voteCounts(UUID pollId, int optionCount) {
+    private List<Integer> voteCounts(UUID pollId, UUID sessionId, UUID groupId, int optionCount) {
         List<Integer> result = new ArrayList<>();
         for (int i = 0; i < optionCount; i++) {
             result.add(0);
         }
-        jdbc.sql("""
+        JdbcClient.StatementSpec query = jdbc.sql("""
                         select option_idx, count(*)::int as count
-                        from interaction.poll_responses
+                        from interaction.poll_responses poll_responses
                         where poll_id = :pollId
+                        """ + groupFilter("poll_responses", groupId) + """
                         group by option_idx
                         """)
-                .param("pollId", pollId)
-                .query((rs, row) -> {
+                .param("pollId", pollId);
+        bindGroup(query, sessionId, groupId).query((rs, row) -> {
                     int option = rs.getInt("option_idx");
                     if (option >= 0 && option < result.size()) {
                         result.set(option, rs.getInt("count"));
@@ -168,6 +202,22 @@ class LectureSummaryRepository {
                 })
                 .list();
         return result;
+    }
+
+    private String groupFilter(String personTable, UUID groupId) {
+        return groupId == null
+                ? ""
+                : " and exists (select 1 from live.session_participants sp"
+                        + " where sp.session_id = :sessionId"
+                        + " and sp.person_id = " + personTable + ".person_id"
+                        + " and sp.group_id = :groupId)";
+    }
+
+    private JdbcClient.StatementSpec bindGroup(
+            JdbcClient.StatementSpec query, UUID sessionId, UUID groupId) {
+        return groupId == null
+                ? query
+                : query.param("sessionId", sessionId).param("groupId", groupId);
     }
 
     private StudentQuestion mapQuestion(ResultSet rs, int row) throws SQLException {
