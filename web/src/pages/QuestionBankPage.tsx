@@ -11,6 +11,7 @@ import { QUESTION_TYPES } from "../shared/lib/questionTypes";
 import { QuestionDialog } from "../widgets/QuestionDialog";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
+import { getCourse } from "../app/api/courses-api";
 
 interface Props {
   courseId: string;
@@ -21,6 +22,10 @@ export function QuestionBankPage({ courseId }: Props) {
   const [tagFilter, setTagFilter] = useState<string | undefined>(undefined);
   const [editing, setEditing] = useState<QuestionBankEntry | null>(null);
   const [creating, setCreating] = useState(false);
+  const courseQuery = useQuery({
+    queryKey: ["courses", courseId],
+    queryFn: () => getCourse(courseId)
+  });
 
   const questionsQuery = useQuery({
     queryKey: ["questions", courseId, tagFilter],
@@ -48,7 +53,7 @@ export function QuestionBankPage({ courseId }: Props) {
           <p className="muted">Подготовьте короткие проверки до начала лекции.</p>
         </div>
       </div>
-      <CourseSectionNav courseId={courseId} />
+      <CourseSectionNav courseId={courseId} canManage={courseQuery.data?.canManage} />
       <div className="qbank-toolbar">
         {questions.length > 0 && <div className="qbank-filters">
           <Select

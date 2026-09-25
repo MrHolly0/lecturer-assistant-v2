@@ -6,6 +6,8 @@ import { refreshAuthSession } from "./refresh";
 export type LiveSession = components["schemas"]["LiveSession"];
 export type SessionParticipant = components["schemas"]["SessionParticipant"];
 export type LectureSummary = components["schemas"]["LectureSummary"];
+export type SessionHistoryItem = components["schemas"]["SessionHistoryItem"];
+export type SessionHistoryPage = components["schemas"]["SessionHistoryPage"];
 export type LiveSessionMessage = { type: string; session: LiveSession };
 
 export interface ActiveSession {
@@ -48,6 +50,16 @@ export async function getLectureSummary(
 ): Promise<LectureSummary> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/summary`);
   return res.json() as Promise<LectureSummary>;
+}
+
+export async function listSessionHistory(
+  courseId: string,
+  limit = 20,
+  offset = 0
+): Promise<SessionHistoryPage> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const res = await apiFetch(`/courses/${courseId}/sessions?${params.toString()}`);
+  return res.json() as Promise<SessionHistoryPage>;
 }
 
 export async function joinLiveSession(courseId: string, joinCode: string): Promise<LiveSession> {

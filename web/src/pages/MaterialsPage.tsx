@@ -203,7 +203,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
         <span className="muted">{courseQuery.data?.title}</span>
       </div>
 
-      <CourseSectionNav courseId={courseId} />
+      <CourseSectionNav courseId={courseId} canManage={canManage} />
 
       <LectureList
         lectures={lectures}

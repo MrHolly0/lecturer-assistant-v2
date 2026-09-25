@@ -23,6 +23,8 @@ import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { StudentHomePage } from "../pages/StudentHomePage";
 import { StudentSessionPage } from "../pages/StudentSessionPage";
 import { MaxLinkPage } from "../pages/MaxLinkPage";
+import { CourseAnalyticsPage } from "../pages/CourseAnalyticsPage";
+import { SessionSummaryPage } from "../pages/SessionSummaryPage";
 import { Layout } from "../widgets/Layout";
 import { Toaster } from "../shared/ui/sonner";
 import { landingPath, type UserRole } from "./routes";
@@ -180,6 +182,16 @@ function QuestionBankRoute() {
   return <QuestionBankPage courseId={courseId ?? ""} />;
 }
 
+function CourseAnalyticsRoute() {
+  const { courseId } = useParams();
+  return <CourseAnalyticsPage courseId={courseId ?? ""} />;
+}
+
+function SessionSummaryRoute() {
+  const { courseId, sessionId } = useParams();
+  return <SessionSummaryPage courseId={courseId ?? ""} sessionId={sessionId ?? ""} />;
+}
+
 function PresenterRoute() {
   const { courseId, sessionId } = useParams();
   return <PresenterPage courseId={courseId ?? ""} sessionId={sessionId ?? ""} />;
@@ -245,6 +257,14 @@ const router = createHashRouter([
         )
       },
       {
+        path: "/courses/:courseId/sessions/:sessionId/summary",
+        element: (
+          <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
+            <SessionSummaryRoute />
+          </RequireRolePage>
+        )
+      },
+      {
         path: "/s/:joinCode",
         element: <StudentSessionRoute />
       },
@@ -260,6 +280,7 @@ const router = createHashRouter([
               { path: "/courses/:courseId", element: <CourseRoute /> },
               { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
               { path: "/courses/:courseId/questions", element: <QuestionBankRoute /> },
+              { path: "/courses/:courseId/analytics", element: <CourseAnalyticsRoute /> },
               { path: "/settings/max", element: <MaxLinkPage /> }
             ]
           },

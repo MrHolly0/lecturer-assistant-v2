@@ -34,14 +34,6 @@ interface PresenterTopbarProps {
   onEnd: () => void;
 }
 
-const STATUS_LABELS: Record<LiveSession["status"], string> = {
-  SCHEDULED: "Запланирована",
-  LIVE: "В эфире",
-  PAUSED: "Пауза",
-  ENDED: "Завершена",
-  ARCHIVED: "В архиве"
-};
-
 export function PresenterTopbar({
   courseId,
   sessionId,
@@ -84,11 +76,9 @@ export function PresenterTopbar({
         <div className="presenter-title-block">
           <strong>{session.lectureTitle}</strong>
           <div className="presenter-meta">
-            <span
-              className={`badge presenter-status presenter-status--${session.status.toLowerCase()}`}
-            >
-              {STATUS_LABELS[session.status]}
-            </span>
+            {session.status === "PAUSED" && (
+              <span className="badge presenter-status presenter-status--paused">Пауза</span>
+            )}
             <span className="live-code">Код: {session.joinCode}</span>
           </div>
         </div>

@@ -8,9 +8,16 @@ import { Button, LinkButton } from "../shared/ui/button";
 interface PresenterSessionSummaryProps {
   courseId: string;
   session: LiveSession;
+  backTo?: string;
+  backLabel?: string;
 }
 
-export function PresenterSessionSummary({ courseId, session }: PresenterSessionSummaryProps) {
+export function PresenterSessionSummary({
+  courseId,
+  session,
+  backTo = `/courses/${courseId}/materials`,
+  backLabel = "К материалам"
+}: PresenterSessionSummaryProps) {
   const summaryQuery = useQuery({
     queryKey: ["live", courseId, session.id, "summary"],
     queryFn: () => getLectureSummary(courseId, session.id)
@@ -25,9 +32,9 @@ export function PresenterSessionSummary({ courseId, session }: PresenterSessionS
           <h1>{summary?.lectureTitle ?? session.lectureTitle}</h1>
           <p className="muted">Итог занятия сформирован по данным живой сессии.</p>
         </div>
-        <LinkButton to={`/courses/${courseId}/materials`} variant="ghost" className="session-summary-back">
+        <LinkButton to={backTo} variant="ghost" className="session-summary-back">
           <ArrowLeft size={17} />
-          К материалам
+          {backLabel}
         </LinkButton>
       </header>
 

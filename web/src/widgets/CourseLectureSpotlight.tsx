@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpenText, Play, Radio } from "lucide-react";
+import { BookOpenText, Play, Radio, Square } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { userErrorMessage } from "../app/api/errors";
 import { listLectures } from "../app/api/content-api";
-import { getMyActiveSession, startLiveSession } from "../app/api/live-api";
+import { endLiveSession, getMyActiveSession, startLiveSession } from "../app/api/live-api";
 import { Button, LinkButton } from "../shared/ui/button";
+import { ConfirmActionButton } from "./ConfirmActionButton";
 
 export function CourseLectureSpotlight({
   courseId,
@@ -37,6 +38,15 @@ export function CourseLectureSpotlight({
     onError: (error) =>
       toast.error(userErrorMessage(error, "Не удалось запустить лекцию."))
   });
+  const endMutation = useMutation({
+    mutationFn: (sessionId: string) => endLiveSession(courseId, sessionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["active-session"] });
+      void queryClient.invalidateQueries({ queryKey: ["live"] });
+      toast.success("Лекция завершена");
+    },
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось завершить лекцию."))
+  });
 
   if (lecturesQuery.isLoading || activeSessionQuery.isLoading) {
     return <section className="course-live-card course-live-card--loading" aria-label="Загрузка лекции" />;
@@ -65,12 +75,27 @@ export function CourseLectureSpotlight({
           <h2>{activeSession.lectureTitle}</h2>
           <p>Вернитесь к слайдам и реакции аудитории.</p>
         </div>
-        <LinkButton
-          className="course-live-card__action"
-          to={`/courses/${courseId}/sessions/${activeSession.sessionId}/presenter`}
-        >
-          Продолжить лекцию
-        </LinkButton>
+        <div className="course-live-card__actions">
+          <LinkButton
+            className="course-live-card__action"
+            to={`/courses/${courseId}/sessions/${activeSession.sessionId}/presenter`}
+          >
+            Продолжить лекцию
+          </LinkButton>
+          {canManage && (
+            <ConfirmActionButton
+              title="Завершить текущую лекцию?"
+              description="Сигналы и ответы перестанут приниматься. После завершения будет доступен итог занятия."
+              confirmLabel="Завершить"
+              variant="outline"
+              disabled={endMutation.isPending}
+              onConfirm={() => endMutation.mutate(activeSession.sessionId)}
+            >
+              <Square size={15} aria-hidden="true" />
+              Завершить
+            </ConfirmActionButton>
+          )}
+        </div>
       </section>
     );
   }

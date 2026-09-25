@@ -13,8 +13,7 @@ import {
   restoreCourse
 } from "../app/api/courses-api";
 import { useAuth } from "../app/AuthContext";
-import { getMyActiveSession } from "../app/api/live-api";
-import { useMaxBridge } from "../app/max/context";
+import { endLiveSession, getMyActiveSession, type ActiveSession } from "../app/api/live-api";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { Button } from "../shared/ui/button";
@@ -27,7 +26,6 @@ type CourseTab = "active" | "archive";
 export function CoursesPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const { isMax } = useMaxBridge();
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
   const [tab, setTab] = useState<CourseTab>("active");
@@ -36,8 +34,18 @@ export function CoursesPage() {
   const activeSession = useQuery({
     queryKey: ["active-session"],
     queryFn: getMyActiveSession,
-    enabled: Boolean(isMax && user?.role !== "STUDENT"),
+    enabled: Boolean(user && user.role !== "STUDENT"),
     retry: 1
+  });
+
+  const endSessionMut = useMutation({
+    mutationFn: (session: ActiveSession) => endLiveSession(session.courseId, session.sessionId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["active-session"] });
+      void qc.invalidateQueries({ queryKey: ["live"] });
+      toast.success("Лекция завершена");
+    },
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось завершить лекцию."))
   });
 
   const {
@@ -99,6 +107,8 @@ export function CoursesPage() {
     createMut.mutate();
   }
 
+  const currentSession = activeSession.data;
+
   return (
     <div className="page">
       <div className="page-header">
@@ -110,7 +120,13 @@ export function CoursesPage() {
         )}
       </div>
 
-      {activeSession.data && <MaxActiveSessionBanner session={activeSession.data} />}
+      {currentSession && (
+        <MaxActiveSessionBanner
+          session={currentSession}
+          ending={endSessionMut.isPending}
+          onEnd={() => endSessionMut.mutate(currentSession)}
+        />
+      )}
 
       {canCreateCourse && showCreate && (
         <form onSubmit={submit} className="inline-form">
@@ -161,7 +177,7 @@ export function CoursesPage() {
                   <span className="card-title">{course.title}</span>
                   <small>Открыть курс и готовые лекции</small>
                 </span>
-                {course.archived && <span className="badge badge--muted">архив</span>}
+                {course.archived && <span className="badge badge--muted">В архиве</span>}
               </Link>
               {canCreateCourse && !course.archived && (
                 <div className="course-card__actions">
@@ -169,10 +185,11 @@ export function CoursesPage() {
                     title="Архивировать курс?"
                     description="Курс пропадёт из активной работы, но история и материалы сохранятся."
                     confirmLabel="Архивировать"
+                    variant="outline"
                     disabled={archiveMut.isPending}
                     onConfirm={() => archiveMut.mutate(course.id)}
                   >
-                    Архив
+                    Архивировать
                   </ConfirmActionButton>
                 </div>
               )}

@@ -128,12 +128,11 @@ export function CoursePage({ courseId }: { courseId: string }) {
             ← Курсы
           </Link>
           <h1>{course.title}</h1>
-          <span className="badge badge--muted">{ROLE_LABELS[course.myRole as CourseRole]}</span>
         </div>
         {course.archived && <span className="badge badge--muted">архив</span>}
       </header>
 
-      <CourseSectionNav courseId={courseId} />
+      <CourseSectionNav courseId={courseId} canManage={canManage} />
       <CourseLectureSpotlight courseId={courseId} canManage={canManage} />
 
       <section className="course-settings" aria-labelledby="course-settings-title">
@@ -160,13 +159,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
             return (
               <li key={m.personId} className="member-row">
                 <div className="member-info">
-                  <span className="member-name">
-                    {m.displayName}
-                    {isOwner && <span className="badge badge--owner">владелец</span>}
-                  </span>
-                  {canManage && !isOwner && (
-                    <span className="member-role-label">{ROLE_LABELS[m.role as CourseRole]}</span>
-                  )}
+                  <span className="member-name">{m.displayName}</span>
                 </div>
                 {canManage && !isOwner ? (
                   <CourseMemberActions
@@ -184,9 +177,12 @@ export function CoursePage({ courseId }: { courseId: string }) {
                     onRemove={() => removeMemberMut.mutate(m.personId)}
                   />
                 ) : (
-                  <span className={`badge badge--${m.role.toLowerCase()}`}>
-                    {ROLE_LABELS[m.role as CourseRole]}
-                  </span>
+                  <div className="member-static-meta">
+                    <span className="badge member-role-badge">
+                      {ROLE_LABELS[m.role as CourseRole]}
+                      {isOwner && " · владелец"}
+                    </span>
+                  </div>
                 )}
               </li>
             );

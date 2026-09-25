@@ -69,16 +69,20 @@ type IconButtonProps = Omit<React.ComponentPropsWithoutRef<"button">, "aria-labe
     tooltip?: boolean;
   };
 
-function IconButton({
-  children,
-  className,
-  label,
-  tooltip = true,
-  variant = "ghost",
-  ...props
-}: IconButtonProps) {
+const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
+  {
+    children,
+    className,
+    label,
+    tooltip = true,
+    variant = "ghost",
+    ...props
+  },
+  ref
+) {
   const control = (
     <Button
+      ref={ref}
       aria-label={label}
       className={className}
       size="icon"
@@ -97,6 +101,6 @@ function IconButton({
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
-}
+});
 
 export { Button, IconButton, LinkButton, buttonVariants };

@@ -1,16 +1,28 @@
-import { BookOpenText, LayoutDashboard, ListChecks } from "lucide-react";
+import { BarChart3, BookOpenText, LayoutDashboard, ListChecks } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 const sections = [
   { suffix: "", label: "Обзор", icon: LayoutDashboard, end: true },
   { suffix: "/materials", label: "Лекции и материалы", icon: BookOpenText },
-  { suffix: "/questions", label: "Банк вопросов", icon: ListChecks }
+  { suffix: "/questions", label: "Банк вопросов", icon: ListChecks },
+  { suffix: "/analytics", label: "Аналитика", icon: BarChart3, manageOnly: true }
 ];
 
-export function CourseSectionNav({ courseId }: { courseId: string }) {
+export function CourseSectionNav({
+  courseId,
+  canManage = false
+}: {
+  courseId: string;
+  canManage?: boolean;
+}) {
+  const visibleSections = sections.filter((section) => !section.manageOnly || canManage);
+
   return (
-    <nav className="course-section-nav" aria-label="Разделы курса">
-      {sections.map(({ suffix, label, icon: Icon, end }) => (
+    <nav
+      className={`course-section-nav${canManage ? " course-section-nav--manage" : ""}`}
+      aria-label="Разделы курса"
+    >
+      {visibleSections.map(({ suffix, label, icon: Icon, end }) => (
         <NavLink
           key={suffix || "overview"}
           to={`/courses/${courseId}${suffix}`}

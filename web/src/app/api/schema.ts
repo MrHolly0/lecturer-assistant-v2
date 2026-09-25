@@ -754,6 +754,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List completed lecture sessions for a course.
+     * @description Returns only ENDED and ARCHIVED sessions, newest completion first.
+     */
+    get: operations["listCompletedSessions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/sessions/{sessionId}": {
     parameters: {
       query?: never;
@@ -1022,7 +1042,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    /**
+     * List closed quick polls for a session.
+     * @description Returns closed polls newest first, including answer distribution and correct option.
+     */
+    get: operations["listClosedPolls"];
     put?: never;
     /** Start a quick poll for the current session. */
     post: operations["startPoll"];
@@ -1254,6 +1278,26 @@ export interface paths {
     put?: never;
     /** Submit or update a student response to an activity question. */
     post: operations["respondToActivity"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/channels": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read configured channel connection targets.
+     * @description Null values mean that the corresponding channel is not configured.
+     */
+    get: operations["getChannelJoinConfig"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1615,6 +1659,25 @@ export interface components {
     };
     /** @enum {string} */
     SessionStatus: "SCHEDULED" | "LIVE" | "PAUSED" | "ENDED" | "ARCHIVED";
+    SessionHistoryItem: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      lectureId: string;
+      lectureTitle: string;
+      status: components["schemas"]["SessionStatus"];
+      /** Format: date-time */
+      startedAt: string;
+      /** Format: date-time */
+      endedAt: string;
+    };
+    SessionHistoryPage: {
+      items: components["schemas"]["SessionHistoryItem"][];
+      limit: number;
+      offset: number;
+      /** Format: int64 */
+      total: number;
+    };
     LiveSession: {
       /** Format: uuid */
       id: string;
@@ -1687,6 +1750,13 @@ export interface components {
       poll: components["schemas"]["QuickPoll"];
       votes: number[];
       totalResponses: number;
+    };
+    ClosedPollPage: {
+      items: components["schemas"]["PollResult"][];
+      limit: number;
+      offset: number;
+      /** Format: int64 */
+      total: number;
     };
     ActivePollView: {
       /** Format: uuid */
@@ -1922,6 +1992,10 @@ export interface components {
       startedAt: string;
       /** Format: date-time */
       closedAt?: string | null;
+    };
+    ChannelJoinConfig: {
+      telegramBot: string | null;
+      vkBot: string | null;
     };
     ChannelCapabilities: {
       inlineButtons: boolean;
@@ -3325,6 +3399,45 @@ export interface operations {
       };
     };
   };
+  listCompletedSessions: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of completed sessions. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionHistoryPage"];
+        };
+      };
+      /** @description Invalid limit or offset. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The caller cannot manage this course. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   getLiveSession: {
     parameters: {
       query?: never;
@@ -3717,6 +3830,53 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["StudentQuestion"];
         };
+      };
+    };
+  };
+  listClosedPolls: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of closed polls with results. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ClosedPollPage"];
+        };
+      };
+      /** @description Invalid limit or offset. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The caller cannot manage this course. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session does not belong to this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -4290,6 +4450,26 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  getChannelJoinConfig: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Telegram and VK connection targets used by the web client. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChannelJoinConfig"];
+        };
       };
     };
   };

@@ -7,6 +7,7 @@ import { studentFetch } from "./student-api";
 export type PollStatus = components["schemas"]["PollStatus"];
 export type QuickPoll = components["schemas"]["QuickPoll"];
 export type PollResult = components["schemas"]["PollResult"];
+export type ClosedPollPage = components["schemas"]["ClosedPollPage"];
 export type ActivePollView = components["schemas"]["ActivePollView"];
 export type StartPollRequest = components["schemas"]["StartPollRequest"];
 export type StartBankPollRequest = components["schemas"]["StartBankPollRequest"];
@@ -53,6 +54,19 @@ export async function getActivePoll(
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
   }
+}
+
+export async function listClosedPolls(
+  courseId: string,
+  sessionId: string,
+  limit = 20,
+  offset = 0
+): Promise<ClosedPollPage> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const res = await apiFetch(
+    `/courses/${courseId}/sessions/${sessionId}/polls?${params.toString()}`
+  );
+  return res.json() as Promise<ClosedPollPage>;
 }
 
 export async function closePoll(

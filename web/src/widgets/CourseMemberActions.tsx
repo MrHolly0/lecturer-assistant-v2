@@ -14,13 +14,22 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "../shared/ui/dropdown-menu";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import { IconButton } from "../shared/ui/button";
 
 type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
 type MemberAction = "owner" | "remove" | null;
+
+const ROLE_LABELS: Record<CourseRole, string> = {
+  LECTURER: "Лектор",
+  ASSISTANT: "Ассистент",
+  STUDENT: "Студент"
+};
 
 interface CourseMemberActionsProps {
   displayName: string;
@@ -41,33 +50,42 @@ export function CourseMemberActions({
 }: CourseMemberActionsProps) {
   const [action, setAction] = useState<MemberAction>(null);
   const remove = action === "remove";
+  const scheduleAction = (next: Exclude<MemberAction, null>) => {
+    window.setTimeout(() => setAction(next), 0);
+  };
 
   return (
     <div className="member-actions">
-      <Select value={role} onValueChange={(value) => onRoleChange(value as CourseRole)}>
-        <SelectTrigger className="member-role-select" aria-label={`Роль: ${displayName}`}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="STUDENT">Студент</SelectItem>
-          <SelectItem value="ASSISTANT">Ассистент</SelectItem>
-          <SelectItem value="LECTURER">Лектор</SelectItem>
-        </SelectContent>
-      </Select>
-      <DropdownMenu>
+      <span className="badge member-role-badge">{ROLE_LABELS[role]}</span>
+      <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <IconButton
             className="member-more-button"
             label={`Действия: ${displayName}`}
+            tooltip={false}
+            disabled={disabled}
+            title={`Действия: ${displayName}`}
           >
             <MoreHorizontal size={18} aria-hidden="true" />
           </IconButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={() => setAction("owner")}>
+        <DropdownMenuContent align="end" className="member-action-menu">
+          <DropdownMenuLabel>Роль в курсе</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={role}
+            onValueChange={(value) => {
+              if (value !== role) onRoleChange(value as CourseRole);
+            }}
+          >
+            <DropdownMenuRadioItem value="LECTURER">Лектор</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="ASSISTANT">Ассистент</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="STUDENT">Студент</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => scheduleAction("owner")}>
             <Crown aria-hidden="true" /> Сделать владельцем
           </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" onSelect={() => setAction("remove")}>
+          <DropdownMenuItem variant="destructive" onSelect={() => scheduleAction("remove")}>
             <UserMinus aria-hidden="true" /> Удалить из курса
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -88,7 +106,11 @@ export function CourseMemberActions({
             <AlertDialogCancel>Отмена</AlertDialogCancel>
             <AlertDialogAction
               disabled={disabled}
-              onClick={() => (remove ? onRemove() : onChangeOwner())}
+              onClick={() => {
+                setAction(null);
+                if (remove) onRemove();
+                else onChangeOwner();
+              }}
             >
               {remove ? "Удалить" : "Сделать владельцем"}
             </AlertDialogAction>
