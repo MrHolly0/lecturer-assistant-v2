@@ -3,14 +3,14 @@
 schema_version: draft-0.1-unconfirmed
 document_status: requires_organizer_confirmation
 prepared_at: "2026-09-25"
-source_revision: "81ffb70"
+source_revision: "2e49aff"
 
 confirmation_required:
   - "Подтвердить официальную схему, версию и регистр имён полей DATA-API.yaml."
   - "Уточнить, нужен ли DATA-API как паспорт данных, машиночитаемый контракт выгрузки или дополнение к OpenAPI."
   - "Уточнить обязательные значения для владельца данных, правового основания, срока хранения и контакта команды."
   - "Подставить URL репозитория и публичный URL OpenAPI после их утверждения владельцем."
-  - "Подтвердить перед отправкой финальный адрес стенда, публичное имя бота и перечень тестовых логинов; пароли в файл не включать."
+  - "Подтвердить перед отправкой финальный адрес стенда и перечень тестовых логинов; пароли в файл не включать."
 
 project:
   name: lecturer-assistant-v2
@@ -320,7 +320,8 @@ storage:
     retention_days_default: 14
     location: deploy/stand/backups
     database_restore_tested_at: "2026-09-25"
-    blob_volume_backup_status: not_confirmed
+    blob_volume_backup_status: local_archive_verified
+    off_host_copy: false_by_owner_decision
   encryption_at_rest:
     configured_in_repository: false
   retention_policy:
@@ -336,6 +337,8 @@ external_transfers:
     status: implemented
   - provider: MAX_Bot_API
     direction: bidirectional
+    public_name: t428_hakaton_max_bot
+    public_url: https://max.ru/t428_hakaton_max_bot
     data: "События бота, идентификатор пользователя, текст команды и исходящие сообщения с кнопками."
     status: implemented_in_compose_partially_verified_live
     note: >-
@@ -407,6 +410,6 @@ limitations:
   - "Официальная схема DATA-API.yaml не получена; этот файл нельзя считать финальным контрактом."
   - "Вход преподавателя через код в живом MAX проверен владельцем; web-MAX дошёл только до экрана входа, а проверки через web API и mock API не заменяют отдельный протокол полного студенческого сценария."
   - "Текущий Tuna-стенд развёрнут на ревизии 3f5c0d8c7d43faea1270658efc079cfaab801673: web bundle не содержит новых экранов банка вопросов и итога лекции и собран без VITE_MAX_BOT_NAME; нужен полный rebuild из frozen hash."
-  - "Восстановление резервной копии PostgreSQL проверено 25.09.2026; отдельная копия тома blob-data пока не подтверждена."
+  - "Восстановление PostgreSQL и читаемость согласованного архива blob-data проверены 25.09.2026; по решению владельца резервная пара хранится только на текущем хосте."
   - "Финальные публичные URL и наличие seed-учёток на сдаваемом стенде подтверждает владелец перед отправкой."
   - "Правовое основание, сроки хранения и ответственный за обработку данных должны быть определены владельцем."
