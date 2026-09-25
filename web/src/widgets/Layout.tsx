@@ -30,7 +30,7 @@ export function Layout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen bg-neutral-100">
+    <div className="flex h-screen bg-background text-foreground">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/40 lg:hidden"
@@ -39,11 +39,11 @@ export function Layout({ children }: { children: ReactNode }) {
       )}
 
       <aside
-        className={`fixed z-50 flex h-full w-[220px] flex-col border-r border-neutral-200 bg-white transition-transform duration-200 lg:static ${
+        className={`fixed z-50 flex h-full w-[220px] flex-col border-r border-border bg-card text-card-foreground transition-transform duration-200 lg:static ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
-        <div className="flex items-center justify-between border-b border-neutral-200 p-5">
+        <div className="flex items-center justify-between border-b border-border p-5">
           <Link
             to={user ? landingPath(user.role) : "/login"}
             className="flex items-center gap-2 text-base font-semibold"
@@ -74,8 +74,8 @@ export function Layout({ children }: { children: ReactNode }) {
                       className={({ isActive }) =>
                         `mb-0.5 flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition-colors ${
                           isActive
-                            ? "border border-orange-200 bg-orange-50 text-orange-600"
-                            : "text-neutral-600 hover:bg-neutral-100"
+                            ? "border border-border bg-accent text-accent-foreground"
+                            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                         }`
                       }
                     >
@@ -91,9 +91,9 @@ export function Layout({ children }: { children: ReactNode }) {
             })}
         </nav>
 
-        <div className="border-t border-neutral-200 p-3">
-          <div className="mb-2 flex items-center gap-3 rounded-lg px-4 py-2 text-sm text-neutral-600">
-            <UserRound className="h-4 w-4 text-neutral-500" />
+        <div className="border-t border-border p-3">
+          <div className="mb-2 flex items-center gap-3 rounded-lg px-4 py-2 text-sm text-muted-foreground">
+            <UserRound className="h-4 w-4" />
             <span className="truncate" title={user?.email}>
               {user?.displayName}
             </span>
@@ -102,9 +102,9 @@ export function Layout({ children }: { children: ReactNode }) {
             <TooltipTrigger asChild>
               <button
                 onClick={() => void handleSignOut()}
-                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-normal text-neutral-600 transition-colors hover:bg-neutral-100"
+                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-normal text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
               >
-                <LogOut className="h-4 w-4 text-neutral-500" />
+                <LogOut className="h-4 w-4" />
                 <span>Выйти</span>
               </button>
             </TooltipTrigger>
@@ -116,7 +116,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b border-neutral-200 bg-white px-4 py-3 lg:hidden">
+        <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 text-card-foreground lg:hidden">
           <button
             className="icon-touch-target"
             onClick={() => setSidebarOpen(true)}

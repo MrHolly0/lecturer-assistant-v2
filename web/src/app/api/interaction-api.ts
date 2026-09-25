@@ -1,5 +1,6 @@
 import type { components } from "./schema";
 import { getStoredAuth } from "../auth";
+import { ApiError } from "./errors";
 import { apiFetch } from "./http";
 import { studentFetch } from "./student-api";
 
@@ -35,8 +36,9 @@ export async function getActivePoll(
   try {
     const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/polls/active`);
     return res.json() as Promise<PollResult>;
-  } catch {
-    return null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
   }
 }
 
