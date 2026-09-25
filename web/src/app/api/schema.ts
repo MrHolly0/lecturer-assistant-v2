@@ -1518,6 +1518,7 @@ export interface components {
       courseId: string;
       joinCode: string;
       lectureTitle: string;
+      groups: components["schemas"]["SessionGroup"][];
       currentSlideIdx: number;
     };
     SystemInfo: {
@@ -1883,12 +1884,29 @@ export interface components {
     };
     /** @enum {string} */
     SessionStatus: "SCHEDULED" | "LIVE" | "PAUSED" | "ENDED" | "ARCHIVED";
+    SessionGroup: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+    };
+    StartSessionGroupSelection:
+      | {
+          /** Format: uuid */
+          groupId: string;
+        }
+      | {
+          groupName: string;
+        };
+    StartSessionRequest: {
+      groups: components["schemas"]["StartSessionGroupSelection"][];
+    };
     SessionHistoryItem: {
       /** Format: uuid */
       id: string;
       /** Format: uuid */
       lectureId: string;
       lectureTitle: string;
+      groups: components["schemas"]["SessionGroup"][];
       status: components["schemas"]["SessionStatus"];
       /** Format: date-time */
       startedAt: string;
@@ -1912,6 +1930,7 @@ export interface components {
       /** Format: uuid */
       deckId: string;
       lectureTitle: string;
+      groups: components["schemas"]["SessionGroup"][];
       status: components["schemas"]["SessionStatus"];
       joinCode: string;
       currentSlideIdx: number;
@@ -1931,6 +1950,9 @@ export interface components {
       /** @enum {string} */
       channelType: "web" | "telegram" | "vk";
       displayName: string;
+      /** Format: uuid */
+      groupId?: string | null;
+      groupName?: string | null;
       /** Format: date-time */
       joinedAt: string;
       /** Format: date-time */
@@ -2109,7 +2131,9 @@ export interface components {
       sessionId: string;
       /** Format: uuid */
       courseId: string;
+      courseTitle: string;
       lectureTitle: string;
+      groups: components["schemas"]["SessionGroup"][];
       status: components["schemas"]["SessionStatus"];
       joinCode: string;
       currentSlideIdx: number;
@@ -2128,6 +2152,17 @@ export interface components {
     StudentJoinRequest: {
       displayName?: string;
       participantToken?: string;
+      /**
+       * Format: uuid
+       * @description Required when the session has multiple groups and the participant has no current course group.
+       */
+      groupId?: string;
+    };
+    SessionGroupJoinConflict: {
+      /** @enum {string} */
+      error: "GROUP_SELECTION_REQUIRED" | "GROUP_MISMATCH";
+      currentGroup?: components["schemas"]["SessionGroup"] | null;
+      allowedGroups: components["schemas"]["SessionGroup"][];
     };
     StudentJoinResponse: {
       participantToken: string;
@@ -2177,6 +2212,7 @@ export interface components {
       /** Format: uuid */
       lectureId: string;
       lectureTitle: string;
+      groups: components["schemas"]["SessionGroup"][];
       status: components["schemas"]["SessionStatus"];
       /** Format: date-time */
       startedAt: string;
@@ -2203,6 +2239,17 @@ export interface components {
       questionsCount: number;
       unansweredQuestionCount: number;
       unansweredQuestions: components["schemas"]["StudentQuestion"][];
+      /** @description Per-group aggregates calculated from the participant group snapshot captured at join time. */
+      groupBreakdowns: components["schemas"]["LectureGroupSummary"][];
+    };
+    LectureGroupSummary: {
+      group: components["schemas"]["SessionGroup"];
+      participantCount: number;
+      signalTotals: components["schemas"]["SignalAggregate"];
+      problemSlides: components["schemas"]["SummaryProblemSlide"][];
+      pollResults: components["schemas"]["SummaryPollResult"][];
+      questionsCount: number;
+      unansweredQuestionCount: number;
     };
     SummaryProblemSlide: {
       slideIdx: number;
@@ -3107,6 +3154,13 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Group is referenced by lecture history and cannot be deleted. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   listStudyGroupMembers: {
@@ -3929,7 +3983,11 @@ export interface operations {
       };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["StartSessionRequest"];
+      };
+    };
     responses: {
       /** @description Started session. */
       201: {
@@ -4324,6 +4382,15 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["StudentJoinResponse"];
+        };
+      };
+      /** @description A group must be selected, or the student's current group is not allowed for this session. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionGroupJoinConflict"];
         };
       };
     };

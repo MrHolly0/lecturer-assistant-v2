@@ -1,6 +1,4 @@
-import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import {
   archiveDeck,
   deleteLecture,
@@ -9,12 +7,9 @@ import {
   restoreDeck,
   restoreLecture
 } from "../app/api/content-api";
-import { startLiveSession } from "../app/api/live-api";
 
 export function useMaterialsActions(courseId: string, onDeckArchived: () => void) {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [startingLectureId, setStartingLectureId] = useState("");
   const invalidateDecks = () =>
     queryClient.invalidateQueries({ queryKey: ["content", courseId, "decks"] });
   const invalidateLectures = () =>
@@ -47,24 +42,12 @@ export function useMaterialsActions(courseId: string, onDeckArchived: () => void
     mutationFn: (lectureId: string) => hardDeleteLecture(courseId, lectureId),
     onSuccess: () => void invalidateLectures()
   });
-  const startSessionMut = useMutation({
-    mutationFn: (lectureId: string) => startLiveSession(courseId, lectureId),
-    onMutate: (lectureId) => setStartingLectureId(lectureId),
-    onSuccess: (session) => {
-      void queryClient.invalidateQueries({ queryKey: ["active-session"] });
-      navigate(`/courses/${courseId}/sessions/${session.id}/join`);
-    },
-    onSettled: () => setStartingLectureId("")
-  });
-
   return {
     archiveDeckMut,
     restoreDeckMut,
     hardDeleteDeckMut,
     deleteLectureMut,
     restoreLectureMut,
-    hardDeleteLectureMut,
-    startSessionMut,
-    startingLectureId
+    hardDeleteLectureMut
   };
 }

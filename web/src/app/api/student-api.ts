@@ -5,6 +5,8 @@ import { apiFetch } from "./http";
 
 type GeneratedStudentSessionSnapshot = components["schemas"]["StudentSessionSnapshot"];
 
+export type StudentSessionGroup = components["schemas"]["SessionGroup"];
+
 export type StudentActivePoll = components["schemas"]["ActivePollView"];
 export type StudentSessionSnapshot = Omit<GeneratedStudentSessionSnapshot, "activePoll"> & {
   activePoll?: StudentActivePoll | null;
@@ -54,12 +56,13 @@ export async function getStudentSession(
 
 export async function joinStudentSession(
   joinCode: string,
-  displayName?: string
+  displayName?: string,
+  groupId?: string
 ): Promise<StudentJoinResponse> {
   const authenticated = Boolean(getStoredAuth());
   const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/join`, {
     method: "POST",
-    body: authenticated ? undefined : JSON.stringify({ displayName })
+    body: JSON.stringify(authenticated ? { groupId } : { displayName, groupId })
   });
   return res.json() as Promise<StudentJoinResponse>;
 }

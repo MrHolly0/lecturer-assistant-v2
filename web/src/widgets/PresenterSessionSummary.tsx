@@ -12,6 +12,7 @@ import { userErrorMessage } from "../app/api/errors";
 import { getLectureSummary, type LectureSummary, type LiveSession } from "../app/api/live-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { Button, LinkButton } from "../shared/ui/button";
+import { SessionGroups } from "./SessionGroups";
 
 interface PresenterSessionSummaryProps {
   courseId: string;
@@ -38,6 +39,7 @@ export function PresenterSessionSummary({
         <div>
           <span className="session-summary-kicker">Лекция завершена</span>
           <h1>{summary?.lectureTitle ?? session.lectureTitle}</h1>
+          <SessionGroups groups={summary?.groups ?? session.groups} />
           <p className="muted">Итог занятия сформирован по данным живой сессии.</p>
         </div>
         <LinkButton to={backTo} variant="ghost" className="session-summary-back">
@@ -91,6 +93,8 @@ export function PresenterSessionSummary({
             />
           </section>
 
+          <SessionGroupBreakdown summary={summary} />
+
           <div className="session-summary-grid">
             <ProblemSlides summary={summary} />
             <PollResults summary={summary} />
@@ -98,6 +102,66 @@ export function PresenterSessionSummary({
         </>
       )}
     </main>
+  );
+}
+
+function SessionGroupBreakdown({ summary }: { summary: LectureSummary }) {
+  if (summary.groupBreakdowns.length === 0) return null;
+
+  return (
+    <section className="session-group-breakdown">
+      <div className="section-heading">
+        <h2>Результаты по группам</h2>
+        <span className="muted">сравнение внутри общего занятия</span>
+      </div>
+      <div className="session-group-breakdown__list">
+        {summary.groupBreakdowns.map((breakdown) => {
+          const pollResponses = breakdown.pollResults.reduce(
+            (total, poll) => total + poll.totalResponses,
+            0
+          );
+          const problemSlide = breakdown.problemSlides[0];
+          return (
+            <div key={breakdown.group.id} className="session-group-breakdown__item">
+              <strong>{breakdown.group.name}</strong>
+              <GroupMetric
+                value={breakdown.participantCount}
+                label={pluralizeRu(
+                  breakdown.participantCount,
+                  "участник",
+                  "участника",
+                  "участников"
+                )}
+              />
+              <GroupMetric value={breakdown.signalTotals.red} label="не понимают" alert />
+              <GroupMetric value={pollResponses} label="ответов на проверки" />
+              <GroupMetric value={breakdown.questionsCount} label="вопросов" />
+              <span className="session-group-breakdown__problem">
+                {problemSlide
+                  ? `Сложнее всего: слайд ${problemSlide.slideIdx}`
+                  : "Проблемных слайдов нет"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function GroupMetric({
+  value,
+  label,
+  alert = false
+}: {
+  value: number;
+  label: string;
+  alert?: boolean;
+}) {
+  return (
+    <span className={alert && value > 0 ? "session-group-breakdown__metric--alert" : undefined}>
+      <strong>{value}</strong> {label}
+    </span>
   );
 }
 
@@ -152,7 +216,9 @@ function PollResults({ summary }: { summary: LectureSummary }) {
                     className={`summary-poll-row${poll.correctOptionIdx === index ? " summary-poll-row--correct" : ""}`}
                   >
                     <span>{option}</span>
-                    <div><i style={{ width: `${percent}%` }} /></div>
+                    <div>
+                      <i style={{ width: `${percent}%` }} />
+                    </div>
                     <strong>{percent}%</strong>
                   </div>
                 );

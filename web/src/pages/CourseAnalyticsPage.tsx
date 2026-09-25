@@ -8,6 +8,7 @@ import { LinkButton } from "../shared/ui/button";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import { PaginationBar } from "../widgets/ListControls";
 import { CourseLearningAnalytics } from "../widgets/CourseLearningAnalytics";
+import { SessionGroups } from "../widgets/SessionGroups";
 
 const PAGE_SIZE = 20;
 
@@ -91,6 +92,7 @@ export function CourseAnalyticsPage({ courseId }: { courseId: string }) {
               <li key={session.id} className="session-history-row">
                 <div className="session-history-row__copy">
                   <h3>{session.lectureTitle}</h3>
+                  <SessionGroups groups={session.groups} compact />
                   <span className="session-history-row__time">
                     <CalendarClock size={15} aria-hidden="true" />
                     {formatDateTime(session.endedAt ?? session.startedAt)}

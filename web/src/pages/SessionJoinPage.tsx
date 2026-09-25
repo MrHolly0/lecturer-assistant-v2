@@ -2,9 +2,11 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { getLiveSession } from "../app/api/live-api";
+import { getCourse } from "../app/api/courses-api";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { LocalQrCode } from "../widgets/LocalQrCode";
 import { LinkButton } from "../shared/ui/button";
+import { SessionGroups } from "../widgets/SessionGroups";
 
 interface SessionJoinPageProps {
   courseId: string;
@@ -16,7 +18,12 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
     queryKey: ["live", courseId, sessionId],
     queryFn: () => getLiveSession(courseId, sessionId)
   });
-  const code = sessionQuery.data?.joinCode ?? "";
+  const courseQuery = useQuery({
+    queryKey: ["courses", courseId],
+    queryFn: () => getCourse(courseId)
+  });
+  const session = sessionQuery.data;
+  const code = session?.joinCode ?? "";
   const maxUrl = useMemo(() => buildMaxJoinUrl(code), [code]);
 
   if (sessionQuery.isLoading) {
@@ -28,7 +35,7 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
     );
   }
 
-  if (sessionQuery.isError || !code) {
+  if (sessionQuery.isError || !session || !code) {
     return (
       <main className="session-join-shell session-join-shell--center">
         <h1>Сессия не найдена</h1>
@@ -40,8 +47,13 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
   return (
     <main className="session-join-shell">
       <header className="session-join-head">
-        <span className="muted">Лекция запущена</span>
+        <span className="muted">Занятие запущено</span>
         <h1>Покажите студентам</h1>
+        <div className="session-join-context">
+          <strong>{courseQuery.data?.title}</strong>
+          <span>{session.lectureTitle}</span>
+          <SessionGroups groups={session.groups} />
+        </div>
         <strong className="session-join-code">{code}</strong>
         <small className="muted">Наведите камеру телефона и откройте лекцию в MAX.</small>
       </header>
@@ -58,7 +70,7 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
       </section>
       <div className="session-join-actions">
         <LinkButton to={`/courses/${courseId}/sessions/${sessionId}/presenter`}>
-          Перейти к лекции
+          Перейти к занятию
         </LinkButton>
       </div>
     </main>

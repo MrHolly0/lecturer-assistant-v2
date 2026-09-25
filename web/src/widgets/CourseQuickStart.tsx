@@ -1,21 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Play } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import { listLectures } from "../app/api/content-api";
 import { getCourse } from "../app/api/courses-api";
-import { userErrorMessage } from "../app/api/errors";
-import { startLiveSession } from "../app/api/live-api";
 import { Button } from "../shared/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
+import { StartSessionDialog } from "./StartSessionDialog";
 
 export function CourseQuickStart({ courseId, blocked }: { courseId: string; blocked: boolean }) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const rootRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [lectureId, setLectureId] = useState("");
+  const [startOpen, setStartOpen] = useState(false);
   const accessQuery = useQuery({
     queryKey: ["courses", courseId],
     queryFn: () => getCourse(courseId),
@@ -30,6 +26,7 @@ export function CourseQuickStart({ courseId, blocked }: { courseId: string; bloc
     () => (lecturesQuery.data ?? []).filter((lecture) => !lecture.archived),
     [lecturesQuery.data]
   );
+  const selectedLecture = lectures.find((lecture) => lecture.id === lectureId) ?? null;
 
   useEffect(() => {
     const node = rootRef.current;
@@ -55,15 +52,6 @@ export function CourseQuickStart({ courseId, blocked }: { courseId: string; bloc
       setLectureId(lectures[0]?.id ?? "");
     }
   }, [lectureId, lectures]);
-
-  const startMutation = useMutation({
-    mutationFn: () => startLiveSession(courseId, lectureId),
-    onSuccess: (session) => {
-      void queryClient.invalidateQueries({ queryKey: ["active-session"] });
-      navigate(`/courses/${courseId}/sessions/${session.id}/presenter`);
-    },
-    onError: (error) => toast.error(userErrorMessage(error, "Не удалось запустить лекцию."))
-  });
 
   if (visible && (accessQuery.isError || accessQuery.data?.canManage === false)) return null;
 
@@ -100,14 +88,20 @@ export function CourseQuickStart({ courseId, blocked }: { courseId: string; bloc
       {lectures.length > 0 && (
         <Button
           type="button"
-          disabled={blocked || !lectureId || startMutation.isPending}
-          title={blocked ? "Сначала завершите текущую лекцию" : "Запустить лекцию"}
-          onClick={() => startMutation.mutate()}
+          disabled={blocked || !lectureId}
+          title={blocked ? "Сначала завершите текущее занятие" : "Запустить занятие"}
+          onClick={() => setStartOpen(true)}
         >
           <Play size={15} aria-hidden="true" />
           Запустить
         </Button>
       )}
+      <StartSessionDialog
+        courseId={courseId}
+        lecture={selectedLecture}
+        open={startOpen}
+        onOpenChange={setStartOpen}
+      />
     </div>
   );
 }

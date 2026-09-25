@@ -8,6 +8,7 @@ import { LocalQrCode } from "../widgets/LocalQrCode";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
+import { SessionGroups } from "../widgets/SessionGroups";
 
 export function ProjectionPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const [localSession, setLocalSession] = useState<LiveSession | null>(null);
@@ -87,6 +88,7 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
         <div className="projection-code">
           <span>Код подключения</span>
           <strong>{session.joinCode}</strong>
+          <SessionGroups groups={session.groups} compact />
           {joinUrl ? (
             <div className="projection-qr-lockup">
               <div className="projection-brand">

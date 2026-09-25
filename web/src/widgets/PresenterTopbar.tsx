@@ -19,6 +19,7 @@ import {
 } from "../shared/ui/dropdown-menu";
 import { ConfirmActionButton } from "./ConfirmActionButton";
 import { Button, LinkButton } from "../shared/ui/button";
+import { SessionGroups } from "./SessionGroups";
 
 interface PresenterTopbarProps {
   courseId: string;
@@ -80,6 +81,7 @@ export function PresenterTopbar({
               <span className="badge presenter-status presenter-status--paused">Пауза</span>
             )}
             <span className="live-code">Код: {session.joinCode}</span>
+            <SessionGroups groups={session.groups} compact />
           </div>
         </div>
       </div>

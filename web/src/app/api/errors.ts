@@ -2,7 +2,8 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
-    public readonly code?: string
+    public readonly code?: string,
+    public readonly details?: Record<string, unknown>
   ) {
     super(message);
     this.name = "ApiError";
@@ -45,8 +46,19 @@ export async function apiErrorFromResponse(response: Response): Promise<ApiError
   let code: string | undefined;
   try {
     const data = (await response.clone().json()) as Record<string, unknown>;
-    serverMessage = firstString(data.message, data.detail, data.error);
-    code = firstString(data.code);
+    const errorValue = firstString(data.error);
+    serverMessage = firstString(
+      data.message,
+      data.detail,
+      errorValue && !isMachineCode(errorValue) ? errorValue : undefined
+    );
+    code = firstString(data.code, errorValue && isMachineCode(errorValue) ? errorValue : undefined);
+    return new ApiError(
+      response.status,
+      localizeApiMessage(response.status, serverMessage),
+      code,
+      data
+    );
   } catch {
     // Non-JSON responses are converted using the HTTP status.
   }
@@ -87,4 +99,8 @@ function isSafeRussianMessage(message: string) {
 
 function firstString(...values: unknown[]) {
   return values.find((value): value is string => typeof value === "string" && value.trim() !== "");
+}
+
+function isMachineCode(value: string) {
+  return /^[A-Z][A-Z0-9_]+$/.test(value);
 }

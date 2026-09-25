@@ -2064,6 +2064,69 @@ textarea {
   min-height: 44px;
 }
 
+.student-group-picker,
+.student-group-issue,
+.student-group-choice {
+  gap: 14px;
+}
+
+.student-group-picker h2,
+.student-group-issue h2,
+.student-group-choice h2,
+.student-group-issue p,
+.student-group-choice p {
+  margin: 0;
+}
+
+.student-group-option {
+  align-items: center;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 12px;
+}
+
+.student-group-option:has([data-state="checked"]) {
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+  border-color: var(--primary);
+}
+
+.student-group-issue {
+  border-color: color-mix(in srgb, var(--destructive) 45%, var(--border));
+}
+
+.student-group-issue > .ui-button,
+.student-group-choice > .ui-button {
+  min-height: 44px;
+  justify-self: start;
+}
+
+.session-groups {
+  align-items: center;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--secondary-foreground);
+  display: inline-flex;
+  gap: 7px;
+  max-width: 100%;
+  padding: 7px 10px;
+  width: fit-content;
+}
+
+.session-groups span {
+  overflow-wrap: anywhere;
+}
+
+.session-groups--compact {
+  font-size: 0.78rem;
+  padding: 4px 8px;
+}
+
 .student-signal-grid {
   display: grid;
   gap: 8px;
@@ -2384,6 +2447,117 @@ textarea {
   white-space: nowrap;
 }
 
+.start-session-dialog {
+  max-height: calc(100dvh - 32px);
+  max-width: 560px;
+  overflow-y: auto;
+}
+
+.start-session-context {
+  align-items: center;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+}
+
+.start-session-context > div {
+  display: grid;
+  gap: 2px;
+}
+
+.start-session-context span {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.start-session-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+}
+
+.start-session-tabs [role="tab"] {
+  min-height: 44px;
+}
+
+.start-session-field {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.start-session-group-list {
+  display: grid;
+  gap: 6px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.start-session-group-option {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  min-height: 44px;
+  padding: 9px 11px;
+}
+
+.start-session-group-option:has([data-state="checked"]) {
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+  border-color: var(--primary);
+}
+
+.start-session-new-group {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.start-session-control,
+.start-session-new-group .ui-button {
+  min-height: 44px;
+}
+
+.start-session-selection {
+  display: grid;
+  gap: 8px;
+}
+
+.start-session-selection__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.start-session-chip {
+  align-items: center;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--secondary-foreground);
+  display: inline-flex;
+  min-height: 44px;
+  padding-left: 10px;
+}
+
+.start-session-chip--new {
+  border-style: dashed;
+}
+
+.start-session-chip button {
+  align-items: center;
+  color: inherit;
+  display: inline-flex;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
+}
+
 .slide-thumb:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -2582,6 +2756,12 @@ html[data-max-mini-app="true"] .student-session-shell {
 .session-join-head {
   display: grid;
   gap: 4px;
+}
+
+.session-join-context {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0;
 }
 
 .session-join-code {
@@ -2797,6 +2977,46 @@ html[data-max-mini-app="true"] .student-session-shell {
   gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: 24px;
+}
+
+.session-group-breakdown {
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  margin-bottom: 24px;
+  padding: 20px 0;
+}
+
+.session-group-breakdown__list {
+  display: grid;
+  margin-top: 12px;
+}
+
+.session-group-breakdown__item {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(140px, 1.3fr) repeat(4, minmax(100px, 1fr)) minmax(160px, 1.2fr);
+  min-height: 58px;
+  padding: 10px 0;
+}
+
+.session-group-breakdown__item > span {
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.session-group-breakdown__item > span strong {
+  color: var(--foreground);
+  font-size: 0.95rem;
+}
+
+.session-group-breakdown__metric--alert strong {
+  color: var(--destructive) !important;
+}
+
+.session-group-breakdown__problem {
+  text-align: right;
 }
 
 .session-summary-metric {
@@ -4343,6 +4563,17 @@ html[data-max-mini-app="true"] .student-session-shell {
     color: var(--muted-foreground);
     font-size: 0.72rem;
     content: attr(data-label);
+  }
+
+  .session-group-breakdown__item {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 14px 0;
+  }
+
+  .session-group-breakdown__item > strong,
+  .session-group-breakdown__problem {
+    grid-column: 1 / -1;
+    text-align: left;
   }
 
   .student-analytics__toolbar,

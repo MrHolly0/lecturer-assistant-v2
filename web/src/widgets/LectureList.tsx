@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { Button } from "../shared/ui/button";
 import { ConfirmActionButton } from "./ConfirmActionButton";
 import { PaginationBar, SearchField } from "./ListControls";
+import { StartSessionDialog } from "./StartSessionDialog";
 
 type LectureTab = "active" | "archive";
 
@@ -18,11 +19,10 @@ interface LectureListProps {
   title: string;
   deckId: string;
   creating: boolean;
-  startingId?: string;
+  courseId: string;
   onTitleChange: (value: string) => void;
   onDeckChange: (value: string) => void;
   onCreate: () => void;
-  onStart: (lectureId: string) => void;
   onArchive: (lectureId: string) => void;
   onRestore: (lectureId: string) => void;
   onHardDelete: (lectureId: string) => void;
@@ -36,11 +36,10 @@ export function LectureList({
   title,
   deckId,
   creating,
-  startingId,
+  courseId,
   onTitleChange,
   onDeckChange,
   onCreate,
-  onStart,
   onArchive,
   onRestore,
   onHardDelete,
@@ -51,6 +50,7 @@ export function LectureList({
   const [tab, setTab] = useState<LectureTab>("active");
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [launchLecture, setLaunchLecture] = useState<Lecture | null>(null);
   const visibleLectures = useMemo(
     () =>
       (tab === "archive" ? archivedLectures : activeLectures).filter((lecture) =>
@@ -155,8 +155,7 @@ export function LectureList({
             lectures={paged.pageItems}
             empty={tab === "archive" ? "В архиве лекций нет." : "По запросу лекций нет."}
             canManage={canManage}
-            startingId={startingId}
-            onStart={onStart}
+            onStart={setLaunchLecture}
             onArchive={onArchive}
             onRestore={onRestore}
             onHardDelete={onHardDelete}
@@ -164,6 +163,14 @@ export function LectureList({
           <PaginationBar {...paged} onPageChange={paged.setPage} />
         </>
       )}
+      <StartSessionDialog
+        courseId={courseId}
+        lecture={launchLecture}
+        open={Boolean(launchLecture)}
+        onOpenChange={(open) => {
+          if (!open) setLaunchLecture(null);
+        }}
+      />
     </section>
   );
 }
@@ -172,8 +179,7 @@ interface LectureRowsProps {
   lectures: Lecture[];
   empty: string;
   canManage: boolean;
-  startingId?: string;
-  onStart?: (lectureId: string) => void;
+  onStart?: (lecture: Lecture) => void;
   onArchive?: (lectureId: string) => void;
   onRestore?: (lectureId: string) => void;
   onHardDelete?: (lectureId: string) => void;
@@ -183,7 +189,6 @@ function LectureRows({
   lectures,
   empty,
   canManage,
-  startingId,
   onStart,
   onArchive,
   onRestore,
@@ -202,20 +207,15 @@ function LectureRows({
           </div>
           {canManage && !lecture.archived && (
             <div className="lecture-row__actions">
-              <Button
-                type="button"
-                disabled={startingId === lecture.id}
-                onClick={() => onStart?.(lecture.id)}
-              >
+              <Button type="button" onClick={() => onStart?.(lecture)}>
                 <Play size={16} aria-hidden="true" />
-                {startingId === lecture.id ? "Запускаем…" : "Начать"}
+                Запустить занятие
               </Button>
               <ConfirmActionButton
                 title="Архивировать лекцию?"
                 description="Лекция уйдёт в архив, её можно будет восстановить."
                 confirmLabel="Архивировать"
                 variant="outline"
-                disabled={startingId === lecture.id}
                 onConfirm={() => onArchive?.(lecture.id)}
               >
                 <Archive size={16} aria-hidden="true" /> Архивировать

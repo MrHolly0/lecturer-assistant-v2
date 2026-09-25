@@ -6,6 +6,7 @@ interface StudentJoinPanelProps {
   userName?: string;
   isPending: boolean;
   isError: boolean;
+  disabled?: boolean;
   onDisplayNameChange: (value: string) => void;
   onJoin: () => void;
 }
@@ -15,6 +16,7 @@ export function StudentJoinPanel({
   userName,
   isPending,
   isError,
+  disabled = false,
   onDisplayNameChange,
   onJoin
 }: StudentJoinPanelProps) {
@@ -53,10 +55,7 @@ export function StudentJoinPanel({
               minLength={2}
               required
             />
-            <Button
-              type="submit"
-              disabled={isPending || displayName.trim().length < 2}
-            >
+            <Button type="submit" disabled={disabled || isPending || displayName.trim().length < 2}>
               Подключиться
             </Button>
           </form>

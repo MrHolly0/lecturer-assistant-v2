@@ -148,9 +148,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     hardDeleteDeckMut,
     deleteLectureMut,
     restoreLectureMut,
-    hardDeleteLectureMut,
-    startSessionMut,
-    startingLectureId
+    hardDeleteLectureMut
   } = useMaterialsActions(courseId, () => {
     setSelectedDeckId("");
     setLectureDeckId("");
@@ -190,17 +188,16 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
       <CourseSectionNav courseId={courseId} canManage={canManage} />
 
       <LectureList
+        courseId={courseId}
         lectures={lectures}
         decks={activeDecks}
         canManage={canManage}
         title={lectureTitle}
         deckId={lectureDeckId}
         creating={createLectureMut.isPending}
-        startingId={startingLectureId}
         onTitleChange={setLectureTitle}
         onDeckChange={setLectureDeckId}
         onCreate={() => createLectureMut.mutate()}
-        onStart={(lectureId) => startSessionMut.mutate(lectureId)}
         onArchive={(lectureId) => deleteLectureMut.mutate(lectureId)}
         onRestore={(lectureId) => restoreLectureMut.mutate(lectureId)}
         onHardDelete={(lectureId) => hardDeleteLectureMut.mutate(lectureId)}

@@ -3,20 +3,15 @@ import { expireStoredAuth, getStoredAuth } from "../auth";
 import { apiFetch } from "./http";
 import { refreshAuthSession } from "./refresh";
 
+export type SessionGroupRef = components["schemas"]["SessionGroup"];
 export type LiveSession = components["schemas"]["LiveSession"];
 export type SessionParticipant = components["schemas"]["SessionParticipant"];
 export type LectureSummary = components["schemas"]["LectureSummary"];
 export type SessionHistoryItem = components["schemas"]["SessionHistoryItem"];
 export type SessionHistoryPage = components["schemas"]["SessionHistoryPage"];
 export type LiveSessionMessage = { type: string; session: LiveSession };
-
-export interface ActiveSession {
-  sessionId: string;
-  courseId: string;
-  joinCode: string;
-  lectureTitle: string;
-  currentSlideIdx: number;
-}
+export type StartSessionRequest = components["schemas"]["StartSessionRequest"];
+export type ActiveSession = components["schemas"]["ActiveSessionSummary"];
 
 export async function getMyActiveSession(): Promise<ActiveSession | null> {
   const response = await apiFetch("/me/active-session");
@@ -24,9 +19,14 @@ export async function getMyActiveSession(): Promise<ActiveSession | null> {
   return response.json() as Promise<ActiveSession>;
 }
 
-export async function startLiveSession(courseId: string, lectureId: string): Promise<LiveSession> {
+export async function startLiveSession(
+  courseId: string,
+  lectureId: string,
+  request: StartSessionRequest
+): Promise<LiveSession> {
   const res = await apiFetch(`/courses/${courseId}/lectures/${lectureId}/sessions`, {
-    method: "POST"
+    method: "POST",
+    body: JSON.stringify(request)
   });
   return res.json() as Promise<LiveSession>;
 }

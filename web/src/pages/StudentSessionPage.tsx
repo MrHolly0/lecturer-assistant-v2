@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { HelpCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   askStudentQuestion,
@@ -22,6 +21,10 @@ import { StudentConnectionBanner } from "../widgets/StudentConnectionBanner";
 import { StudentFeedbackControls } from "../widgets/StudentFeedbackControls";
 import { StudentJoinPanel } from "../widgets/StudentJoinPanel";
 import { StudentPollCard } from "../widgets/StudentPollCard";
+import { SessionGroups } from "../widgets/SessionGroups";
+import { StudentGroupJoinIssue, StudentGroupPicker } from "../widgets/StudentGroupJoin";
+import { StudentSessionError, StudentSessionLoading } from "../widgets/StudentSessionState";
+import { joinIssueFromError, type JoinIssue } from "../app/api/studentGroupJoinIssue";
 
 interface StudentSessionPageProps {
   joinCode: string;
@@ -52,6 +55,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const [myVote, setMyVote] = useState<number | null>(null);
   const [connectionState, setConnectionState] = useState<StudentConnectionState>("CONNECTING");
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState("");
+  const [joinIssue, setJoinIssue] = useState<JoinIssue | null>(null);
   const sessionQuery = useQuery({
     queryKey: ["student-session", normalizedCode, participantToken],
     queryFn: () => getStudentSession(normalizedCode, participantToken),
@@ -62,14 +67,28 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const isJoined = Boolean(participantToken);
 
   const joinMut = useMutation({
-    mutationFn: () => joinStudentSession(normalizedCode, user ? undefined : displayName.trim()),
+    mutationFn: () =>
+      joinStudentSession(
+        normalizedCode,
+        user ? undefined : displayName.trim(),
+        selectedGroupId || undefined
+      ),
     onSuccess: (response) => {
       sessionStorage.setItem(storageKey, response.participantToken);
       setParticipantToken(response.participantToken);
       setSnapshot(response.snapshot);
-      toast.success("Вы подключены к лекции.");
+      setJoinIssue(null);
+      toast.success("Вы подключены к занятию.");
     },
-    onError: (error) => toast.error(userErrorMessage(error, "Не удалось подключиться к лекции."))
+    onError: (error) => {
+      const issue = joinIssueFromError(error);
+      if (issue) {
+        setJoinIssue(issue);
+        if (issue.kind === "selection") setSelectedGroupId("");
+        return;
+      }
+      toast.error(userErrorMessage(error, "Не удалось подключиться к занятию."));
+    }
   });
   const signalMut = useMutation({
     mutationFn: (value: SignalValue) =>
@@ -116,6 +135,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   }, [sessionQuery.data]);
 
   useEffect(() => {
+    if (current?.groups?.length === 1 && !selectedGroupId) {
+      setSelectedGroupId(current.groups[0].id);
+    }
+  }, [current?.groups, selectedGroupId]);
+
+  useEffect(() => {
     if (!user || participantToken || autoJoinRequested.current) return;
     autoJoinRequested.current = true;
     sessionStorage.removeItem(storageKey);
@@ -153,36 +178,24 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     };
   }, [normalizedCode, participantToken]);
 
-  const slideLabel = useMemo(() => {
-    if (!current) return "";
-    return `${current.currentSlideIdx} / ${current.slideCount}`;
-  }, [current]);
+  const slideLabel = current ? `${current.currentSlideIdx} / ${current.slideCount}` : "";
 
   if (sessionQuery.isLoading && !current) {
-    return (
-      <main className="student-session-shell student-session-shell--center">
-        <Loader2 className="student-spinner" size={24} />
-        Загрузка лекции...
-      </main>
-    );
+    return <StudentSessionLoading />;
   }
 
   if (sessionQuery.isError || !current) {
-    return (
-      <main className="student-session-shell student-session-shell--center">
-        <HelpCircle size={28} />
-        <h1>Лекция не найдена</h1>
-        <p className="muted">Проверьте код подключения у преподавателя.</p>
-      </main>
-    );
+    return <StudentSessionError />;
   }
 
   return (
     <main className="student-session-shell">
       <header className="student-session-topbar">
         <div>
-          <span className="muted">Код {current.joinCode}</span>
+          {current.courseTitle && <span className="muted">{current.courseTitle}</span>}
+          {!current.courseTitle && <span className="muted">Код {current.joinCode}</span>}
           <h1>{current.lectureTitle}</h1>
+          <SessionGroups groups={current.groups} compact />
         </div>
         <span className={`badge student-status student-status--${current.status.toLowerCase()}`}>
           {STATUS_LABELS[current.status]}
@@ -224,14 +237,34 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       </section>
 
       {!isJoined ? (
-        <StudentJoinPanel
-          displayName={displayName}
-          userName={user?.displayName}
-          isPending={joinMut.isPending}
-          isError={joinMut.isError}
-          onDisplayNameChange={setDisplayName}
-          onJoin={() => joinMut.mutate()}
-        />
+        joinIssue ? (
+          <StudentGroupJoinIssue
+            issue={joinIssue}
+            selectedGroupId={selectedGroupId}
+            pending={joinMut.isPending}
+            onGroupChange={setSelectedGroupId}
+            onRetry={() => joinMut.mutate()}
+          />
+        ) : (
+          <>
+            {!user && (current.groups?.length ?? 0) > 1 && (
+              <StudentGroupPicker
+                groups={current.groups ?? []}
+                value={selectedGroupId}
+                onChange={setSelectedGroupId}
+              />
+            )}
+            <StudentJoinPanel
+              displayName={displayName}
+              userName={user?.displayName}
+              isPending={joinMut.isPending}
+              isError={joinMut.isError}
+              disabled={!user && (current.groups?.length ?? 0) > 1 && !selectedGroupId}
+              onDisplayNameChange={setDisplayName}
+              onJoin={() => joinMut.mutate()}
+            />
+          </>
+        )
       ) : (
         <section className="student-action-panel student-action-panel--feedback">
           {current.activePoll && (
