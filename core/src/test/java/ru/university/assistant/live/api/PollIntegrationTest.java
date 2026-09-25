@@ -143,6 +143,44 @@ class PollIntegrationTest extends LiveFlowTestBase {
         assertEquals(1L, count("live.session_participants"));
     }
 
+    @Test
+    void pollCanStartWhileSessionIsPaused() throws Exception {
+        json(post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+
+        startPoll(sessionId);
+
+        assertEquals(1L, count("interaction.quick_polls"));
+    }
+
+    @Test
+    void manualAndBankPollCannotStartAfterSessionEnds() throws Exception {
+        UUID questionId = UUID.fromString(json(post("/api/v1/courses/{c}/questions", courseId)
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"2+2?\",\"questionType\":\"CHOICE\",\"options\":"
+                                + "[{\"text\":\"4\",\"correct\":true},{\"text\":\"5\",\"correct\":false}]}"),
+                        201)
+                .get("id")
+                .asText());
+        json(post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+
+        json(post("/api/v1/courses/{c}/sessions/{s}/polls", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"questionText\":\"Что верно?\",\"options\":[\"A\",\"B\"]}"), 409);
+        jdbc.sql("update live.sessions set status = 'ARCHIVED' where id = :sessionId")
+                .param("sessionId", sessionId)
+                .update();
+        json(post("/api/v1/courses/{c}/sessions/{s}/polls/from-bank", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"questionId\":\"" + questionId + "\"}"), 409);
+
+        assertEquals(0L, count("interaction.quick_polls"));
+    }
+
     private UUID startPoll(UUID session) throws Exception {
         JsonNode result = json(post("/api/v1/courses/{c}/sessions/{s}/polls", courseId, session)
                 .header("Authorization", "Bearer " + lecturerToken)

@@ -1,7 +1,7 @@
 package ru.university.assistant.interaction.internal;
 
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,6 +24,7 @@ import ru.university.assistant.interaction.api.QuickPollApi;
 import ru.university.assistant.interaction.api.StartPollRequest;
 import ru.university.assistant.live.api.LiveSessionAccessApi;
 import ru.university.assistant.live.api.LiveSession;
+import ru.university.assistant.live.api.SessionStatus;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
@@ -171,6 +172,9 @@ public class PollService implements QuickPollApi {
 
     private LiveSession prepareStart(UUID courseId, UUID sessionId) {
         LiveSession session = liveSessions.requireSessionInCourse(courseId, sessionId);
+        if (session.status() != SessionStatus.LIVE && session.status() != SessionStatus.PAUSED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not active");
+        }
         polls.findOpenForSession(sessionId).ifPresent(existing -> {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A poll is already open for this session");
         });
