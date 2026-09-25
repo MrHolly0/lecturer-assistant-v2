@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CirclePause, CircleStop } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
 import { connectLiveSession, getLiveSession, type LiveSession } from "../app/api/live-api";
@@ -6,6 +7,7 @@ import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay"
 import { LocalQrCode } from "../widgets/LocalQrCode";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { BrandMark } from "../shared/brand/BrandMark";
+import { Button } from "../shared/ui/button";
 
 export function ProjectionPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const [localSession, setLocalSession] = useState<LiveSession | null>(null);
@@ -43,6 +45,25 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
     };
   }, [liveSessionId]);
 
+  useEffect(() => {
+    if (session?.status !== "ENDED" && session?.status !== "ARCHIVED") return;
+    const timer = window.setTimeout(() => window.close(), 250);
+    return () => window.clearTimeout(timer);
+  }, [session?.status]);
+
+  if (session?.status === "ENDED" || session?.status === "ARCHIVED") {
+    return (
+      <main className="projection-shell projection-fallback">
+        <CircleStop size={48} aria-hidden="true" />
+        <h1>Лекция завершена</h1>
+        <p>Окно проектора можно закрыть.</p>
+        <Button type="button" variant="outline" onClick={() => window.close()}>
+          Закрыть окно
+        </Button>
+      </main>
+    );
+  }
+
   if (!session || !deck || !slide) {
     return <div className="projection-shell">Загрузка...</div>;
   }
@@ -56,6 +77,12 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
         active={false}
         onChange={() => undefined}
       />
+      {session.status === "PAUSED" && (
+        <div className="projection-pause-banner" role="status">
+          <CirclePause size={24} aria-hidden="true" />
+          Показ приостановлен
+        </div>
+      )}
       {showJoinCode && (
         <div className="projection-code">
           <span>Код подключения</span>

@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { userErrorMessage } from "../app/api/errors";
 import {
-  createLecture,
-  deleteSlideNote,
   getDeck,
   getImportJob,
   listDecks,
   listLectures,
-  saveSlideNote,
   uploadDeck,
   type ImportJob
 } from "../app/api/content-api";
@@ -24,6 +21,9 @@ import { titleFromFileName } from "../shared/lib/fileName";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import { useMaterialsActions } from "./useMaterialsActions";
 import { Button } from "../shared/ui/button";
+import { useDeckSlideActions } from "./useDeckSlideActions";
+import { useSlideNoteActions } from "./useSlideNoteActions";
+import { useLectureCreation } from "./useLectureCreation";
 
 export function MaterialsPage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
@@ -97,6 +97,8 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     ) {
       setSelectedDeckId(jobQuery.data.deckId);
       setLectureDeckId(jobQuery.data.deckId);
+      setActiveSlide(0);
+      setNotesOpen(false);
       setJob(null);
       setUploadProgress(jobQuery.data.progressPercent);
       if (jobQuery.data.status === "PARTIAL") {
@@ -117,11 +119,6 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
       setLectureDeckId(activeDecks[0].id);
     }
   }, [activeDecks, selectedDeckId]);
-
-  useEffect(() => {
-    setActiveSlide(0);
-    setNotesOpen(false);
-  }, [selectedDeckId]);
   const importing = Boolean(
     latestJob &&
       latestJob.status !== "COMPLETED" &&
@@ -131,32 +128,20 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const displayedProgress = importing
     ? latestJob?.progressPercent ?? uploadProgress
     : uploadProgress;
-  const createLectureMut = useMutation({
-    mutationFn: () => createLecture(courseId, lectureTitle.trim(), lectureDeckId),
-    onSuccess: () => {
-      setLectureTitle("");
-      void qc.invalidateQueries({ queryKey: ["content", courseId, "lectures"] });
-    }
+  const createLectureMut = useLectureCreation(courseId, lectureTitle, lectureDeckId, () =>
+    setLectureTitle("")
+  );
+  const noteActions = useSlideNoteActions(courseId, selectedDeck, activeSlide);
+  const slideActions = useDeckSlideActions({
+    courseId,
+    deck: selectedDeck,
+    activeIndex: activeSlide,
+    onDeckSelected: (deckId) => {
+      setSelectedDeckId(deckId);
+      setLectureDeckId(deckId);
+    },
+    onActiveIndexChange: setActiveSlide
   });
-
-  const saveNoteMut = useMutation({
-    mutationFn: (content: string) =>
-      saveSlideNote(courseId, selectedDeckId, selectedDeck?.slides[activeSlide]?.idx ?? 1, content),
-    onSuccess: () => {
-      toast.success("Заметка сохранена");
-      void qc.invalidateQueries({ queryKey: ["content", courseId, "decks", selectedDeckId] });
-    }
-  });
-
-  const clearNoteMut = useMutation({
-    mutationFn: () =>
-      deleteSlideNote(courseId, selectedDeckId, selectedDeck?.slides[activeSlide]?.idx ?? 1),
-    onSuccess: () => {
-      toast.success("Заметка очищена");
-      void qc.invalidateQueries({ queryKey: ["content", courseId, "decks", selectedDeckId] });
-    }
-  });
-
   const {
     archiveDeckMut,
     restoreDeckMut,
@@ -171,7 +156,6 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     setLectureDeckId("");
     setViewerOpen(false);
   });
-
   async function handleFile(file: File) {
     setError(null);
     const cleanTitle = title.trim();
@@ -236,64 +220,79 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
               disabled={importing}
               onClick={() => setUploadOpen((value) => !value)}
             >
-              {uploadOpen ? <X size={16} aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}
+              {uploadOpen ? (
+                <X size={16} aria-hidden="true" />
+              ) : (
+                <Plus size={16} aria-hidden="true" />
+              )}
               {uploadOpen ? "Скрыть загрузку" : "Добавить презентацию"}
             </Button>
           )}
         </div>
 
-      {canManage && (uploadOpen || importing || Boolean(error)) && (
-        <DeckUploadPanel
-          title={title}
-          fileName={fileName}
-          dragOver={dragOver}
-          progress={displayedProgress}
-          importing={importing}
-          error={error}
-          phase={latestJob?.phase}
-          processedSlides={latestJob?.processedSlides}
-          totalSlides={latestJob?.totalSlides}
-          warning={latestJob?.warningMessage}
-          onTitleChange={setTitle}
-          onFile={(file) => void handleFile(file)}
-          onDragOverChange={setDragOver}
-        />
-      )}
-
-      <DeckListPanel
-        decks={decks}
-        selectedDeckId={selectedDeckId}
-        canManage={canManage}
-        archivePending={archiveDeckMut.isPending}
-        restorePending={restoreDeckMut.isPending}
-        hardDeletePending={hardDeleteDeckMut.isPending}
-        onSelect={(deckId) => {
-          setSelectedDeckId(deckId);
-          setLectureDeckId(deckId);
-          setViewerOpen(true);
-        }}
-        onArchive={(deckId) => archiveDeckMut.mutate(deckId)}
-        onRestore={(deckId) => restoreDeckMut.mutate(deckId)}
-        onHardDelete={(deckId) => hardDeleteDeckMut.mutate(deckId)}
-      />
-
-      {selectedDeck && viewerOpen && (
-        <div className="material-viewer-shell">
-          <Button type="button" variant="ghost" className="material-viewer-close" onClick={() => setViewerOpen(false)}>
-            <X size={16} aria-hidden="true" /> Закрыть просмотр
-          </Button>
-          <DeckViewer
-            deck={selectedDeck}
-            activeIndex={activeSlide}
-            notesOpen={notesOpen}
-            savingNote={saveNoteMut.isPending}
-            onSlideChange={setActiveSlide}
-            onNotesOpenChange={setNotesOpen}
-            onSaveNote={(content) => saveNoteMut.mutateAsync(content).then(() => undefined)}
-            onClearNote={() => clearNoteMut.mutate()}
+        {canManage && (uploadOpen || importing || Boolean(error)) && (
+          <DeckUploadPanel
+            title={title}
+            fileName={fileName}
+            dragOver={dragOver}
+            progress={displayedProgress}
+            importing={importing}
+            error={error}
+            phase={latestJob?.phase}
+            processedSlides={latestJob?.processedSlides}
+            totalSlides={latestJob?.totalSlides}
+            warning={latestJob?.warningMessage}
+            onTitleChange={setTitle}
+            onFile={(file) => void handleFile(file)}
+            onDragOverChange={setDragOver}
           />
-        </div>
-      )}
+        )}
+
+        <DeckListPanel
+          decks={decks}
+          selectedDeckId={selectedDeckId}
+          canManage={canManage}
+          archivePending={archiveDeckMut.isPending}
+          restorePending={restoreDeckMut.isPending}
+          hardDeletePending={hardDeleteDeckMut.isPending}
+          onSelect={(deckId) => {
+            setSelectedDeckId(deckId);
+            setLectureDeckId(deckId);
+            setActiveSlide(0);
+            setNotesOpen(false);
+            setViewerOpen(true);
+          }}
+          onArchive={(deckId) => archiveDeckMut.mutate(deckId)}
+          onRestore={(deckId) => restoreDeckMut.mutate(deckId)}
+          onHardDelete={(deckId) => hardDeleteDeckMut.mutate(deckId)}
+        />
+
+        {selectedDeck && viewerOpen && (
+          <div className="material-viewer-shell">
+            <Button
+              type="button"
+              variant="ghost"
+              className="material-viewer-close"
+              onClick={() => setViewerOpen(false)}
+            >
+              <X size={16} aria-hidden="true" /> Закрыть просмотр
+            </Button>
+            <DeckViewer
+              deck={selectedDeck}
+              activeIndex={activeSlide}
+              notesOpen={notesOpen}
+              savingNote={noteActions.saving}
+              canManage={canManage}
+              editing={slideActions.editing}
+              onSlideChange={setActiveSlide}
+              onNotesOpenChange={setNotesOpen}
+              onSaveNote={(content) => noteActions.save(content).then(() => undefined)}
+              onClearNote={() => noteActions.clear()}
+              onMoveSlide={slideActions.moveActiveSlide}
+              onDeleteSlide={slideActions.deleteActiveSlide}
+            />
+          </div>
+        )}
       </section>
     </div>
   );

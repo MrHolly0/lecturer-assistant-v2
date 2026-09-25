@@ -20,6 +20,7 @@ import { Button } from "../shared/ui/button";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
 import { PaginationBar, SearchField } from "../widgets/ListControls";
 import { MaxActiveSessionBanner } from "../widgets/MaxActiveSessionBanner";
+import { CourseQuickStart } from "../widgets/CourseQuickStart";
 
 type CourseTab = "active" | "archive";
 
@@ -179,18 +180,24 @@ export function CoursesPage() {
                 </span>
                 {course.archived && <span className="badge badge--muted">В архиве</span>}
               </Link>
-              {canCreateCourse && !course.archived && (
+              {!course.archived && (
                 <div className="course-card__actions">
-                  <ConfirmActionButton
-                    title="Архивировать курс?"
-                    description="Курс пропадёт из активной работы, но история и материалы сохранятся."
-                    confirmLabel="Архивировать"
-                    variant="outline"
-                    disabled={archiveMut.isPending}
-                    onConfirm={() => archiveMut.mutate(course.id)}
-                  >
-                    Архивировать
-                  </ConfirmActionButton>
+                  <CourseQuickStart
+                    courseId={course.id}
+                    blocked={activeSession.isLoading || Boolean(currentSession)}
+                  />
+                  {canCreateCourse && (
+                    <ConfirmActionButton
+                      title="Архивировать курс?"
+                      description="Курс пропадёт из активной работы, но история и материалы сохранятся."
+                      confirmLabel="Архивировать"
+                      variant="outline"
+                      disabled={archiveMut.isPending}
+                      onConfirm={() => archiveMut.mutate(course.id)}
+                    >
+                      Архивировать
+                    </ConfirmActionButton>
+                  )}
                 </div>
               )}
               {canCreateCourse && course.archived && (

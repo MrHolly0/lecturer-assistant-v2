@@ -34,6 +34,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     queryFn: () => getLiveSession(courseId, sessionId)
   });
   const session = localSession ?? sessionQuery.data;
+  const paused = session?.status === "PAUSED";
   const elapsed = useMemo(() => {
     const startedAt = session?.startedAt ? Date.parse(session.startedAt) : now;
     return Math.max(0, Math.floor((now - startedAt) / 1000));
@@ -115,9 +116,13 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
 
   useEffect(() => {
     setSlideElapsed(0);
+  }, [session?.currentSlideIdx]);
+
+  useEffect(() => {
+    if (paused) return;
     const timer = window.setInterval(() => setSlideElapsed((value) => value + 1), 1000);
     return () => window.clearInterval(timer);
-  }, [session?.currentSlideIdx]);
+  }, [paused]);
 
   const slideMut = useMutation({
     mutationFn: (idx: number) => changeLiveSessionSlide(courseId, sessionId, idx)
@@ -136,7 +141,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   }
 
   function go(idx: number) {
-    if (!session || !deck || idx < 1 || idx > deck.slides.length) return;
+    if (!session || !deck || paused || idx < 1 || idx > deck.slides.length) return;
     const next = { ...session, currentSlideIdx: idx };
     setSession(next);
     slideMut.mutate(idx, {
@@ -153,12 +158,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   }
 
   if (session.status === "ENDED") {
-    return (
-      <PresenterSessionSummary
-        courseId={courseId}
-        session={session}
-      />
-    );
+    return <PresenterSessionSummary courseId={courseId} session={session} />;
   }
 
   if (!deck || !slide) return <div className="presenter-shell">Загрузка...</div>;
@@ -200,19 +200,22 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
             <img src={slideImageUrl(slide)} alt={`Слайд ${slide.idx}`} />
             <DrawingOverlay
               slideIdx={slide.idx}
-              active={drawing}
+              active={drawing && !paused}
               annotations={session.annotations as LiveAnnotations}
               onChange={(annotations) => {
+                if (paused) return;
                 const next = { ...session, annotations };
                 setSession(next);
                 annotationMut.mutate(annotations, { onSuccess: (saved) => setSession(saved) });
               }}
             />
+            {paused && <div className="presenter-pause-banner">Показ приостановлен</div>}
           </div>
           <div className="deck-controls">
             <Button
               variant="outline"
               type="button"
+              disabled={paused || session.currentSlideIdx <= 1}
               onClick={() => go(session.currentSlideIdx - 1)}
             >
               Назад
@@ -222,6 +225,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
             </span>
             <Button
               type="button"
+              disabled={paused || session.currentSlideIdx >= deck.slides.length}
               onClick={() => go(session.currentSlideIdx + 1)}
             >
               Далее
@@ -232,6 +236,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
               <button
                 key={item.id}
                 type="button"
+                disabled={paused}
                 className={`slide-thumb ${item.idx === session.currentSlideIdx ? "slide-thumb--active" : ""}`}
                 onClick={() => go(item.idx)}
                 title={`Перейти к слайду ${item.idx}`}
@@ -250,6 +255,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
           slideElapsed={slideElapsed}
           courseId={courseId}
           sessionId={sessionId}
+          paused={paused}
         />
       </main>
     </div>

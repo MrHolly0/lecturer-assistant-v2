@@ -3,33 +3,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { userErrorMessage } from "../app/api/errors";
-import type { components } from "../app/api/schema";
 import {
   changeCourseMemberRole,
   changeCourseOwner,
-  createCourseInvitation,
   createStudyGroup,
   deleteStudyGroup,
   getCourse,
   removeCourseMember
 } from "../app/api/courses-api";
-import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
 import { CourseLectureSpotlight } from "../widgets/CourseLectureSpotlight";
 import { CourseMemberActions } from "../widgets/CourseMemberActions";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "../shared/ui/select";
+import { CourseInvitePanel } from "../widgets/CourseInvitePanel";
+import { CourseGroupManager } from "../widgets/CourseGroupManager";
 import { Button, LinkButton } from "../shared/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 
 type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
-type Invitation = components["schemas"]["Invitation"];
-
 const ROLE_LABELS: Record<CourseRole, string> = {
   LECTURER: "Лектор",
   ASSISTANT: "Ассистент",
@@ -40,8 +30,6 @@ export function CoursePage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<"members" | "groups" | "invite">("members");
   const [groupName, setGroupName] = useState("");
-  const [inviteRole, setInviteRole] = useState<CourseRole>("STUDENT");
-  const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
 
   const {
     data: course,
@@ -64,17 +52,14 @@ export function CoursePage({ courseId }: { courseId: string }) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["courses", courseId] });
       setGroupName("");
-    }
+    },
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось создать группу."))
   });
 
   const deleteGroupMut = useMutation({
     mutationFn: (groupId: string) => deleteStudyGroup(courseId, groupId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses", courseId] })
-  });
-
-  const inviteMut = useMutation({
-    mutationFn: () => createCourseInvitation(courseId, { role: inviteRole, ttlHours: 168 }),
-    onSuccess: (inv) => setLastInvite(inv)
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["courses", courseId] }),
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось удалить группу."))
   });
 
   const invalidateCourse = () => qc.invalidateQueries({ queryKey: ["courses", courseId] });
@@ -151,126 +136,89 @@ export function CoursePage({ courseId }: { courseId: string }) {
           </TabsList>
         </Tabs>
 
-      {activeTab === "members" && (
-        <ul className="member-list">
-          {course.members.length === 0 && <li className="muted">Нет участников.</li>}
-          {course.members.map((m) => {
-            const isOwner = m.personId === course.ownerPersonId;
-            return (
-              <li key={m.personId} className="member-row">
-                <div className="member-info">
-                  <span className="member-name">{m.displayName}</span>
-                </div>
-                {canManage && !isOwner ? (
-                  <CourseMemberActions
-                    displayName={m.displayName}
-                    role={m.role as CourseRole}
-                    disabled={
-                      changeRoleMut.isPending ||
-                      changeOwnerMut.isPending ||
-                      removeMemberMut.isPending
-                    }
-                    onRoleChange={(role) =>
-                      changeRoleMut.mutate({ personId: m.personId, role })
-                    }
-                    onChangeOwner={() => changeOwnerMut.mutate(m.personId)}
-                    onRemove={() => removeMemberMut.mutate(m.personId)}
-                  />
-                ) : (
-                  <div className="member-static-meta">
-                    <span className="badge member-role-badge">
-                      {ROLE_LABELS[m.role as CourseRole]}
-                      {isOwner && " · владелец"}
-                    </span>
+        {activeTab === "members" && (
+          <ul className="member-list">
+            {course.members.length === 0 && <li className="muted">Нет участников.</li>}
+            {course.members.map((m) => {
+              const isOwner = m.personId === course.ownerPersonId;
+              return (
+                <li key={m.personId} className="member-row">
+                  <div className="member-info">
+                    <span className="member-name">{m.displayName}</span>
                   </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {canManage && activeTab === "groups" && (
-        <>
-          <ul className="card-list">
-            {course.groups.length === 0 && <li className="muted">Нет групп.</li>}
-            {course.groups.map((g) => (
-              <li key={g.id} className="card-link">
-                <span className="card-title">{g.name}</span>
-                <ConfirmActionButton
-                  title="Удалить группу?"
-                  description="Группа будет удалена из курса. Участники курса сохранятся."
-                  disabled={deleteGroupMut.isPending}
-                  onConfirm={() => deleteGroupMut.mutate(g.id)}
-                >
-                  Удалить
-                </ConfirmActionButton>
-              </li>
-            ))}
+                  {canManage && !isOwner ? (
+                    <div className="member-actions">
+                      {m.role === "STUDENT" && (
+                        <LinkButton
+                          variant="ghost"
+                          to={`/courses/${courseId}/analytics?student=${encodeURIComponent(m.personId)}`}
+                        >
+                          Аналитика
+                        </LinkButton>
+                      )}
+                      <CourseMemberActions
+                        displayName={m.displayName}
+                        role={m.role as CourseRole}
+                        disabled={
+                          changeRoleMut.isPending ||
+                          changeOwnerMut.isPending ||
+                          removeMemberMut.isPending
+                        }
+                        onRoleChange={(role) =>
+                          changeRoleMut.mutate({ personId: m.personId, role })
+                        }
+                        onChangeOwner={() => changeOwnerMut.mutate(m.personId)}
+                        onRemove={() => removeMemberMut.mutate(m.personId)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="member-static-meta">
+                      <span className="badge member-role-badge">
+                        {ROLE_LABELS[m.role as CourseRole]}
+                        {isOwner && " · владелец"}
+                      </span>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              createGroupMut.mutate();
-            }}
-            className="inline-form"
-            style={{ marginTop: 16 }}
-          >
-            <input
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              placeholder="Название группы"
-              required
-              minLength={2}
-            />
-            <Button type="submit" disabled={createGroupMut.isPending}>
-              Создать группу
-            </Button>
-          </form>
-        </>
-      )}
+        )}
 
-      {canManage && activeTab === "invite" && (
-        <div className="invite-panel">
-          <label className="field">
-            <span>Роль участника</span>
-            <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as CourseRole)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="STUDENT">Студент</SelectItem>
-                <SelectItem value="ASSISTANT">Ассистент</SelectItem>
-                <SelectItem value="LECTURER">Лектор</SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
-          <Button
-            type="button"
-            onClick={() => {
-              setLastInvite(null);
-              inviteMut.mutate();
-            }}
-            disabled={inviteMut.isPending}
-          >
-            Сгенерировать код
-          </Button>
-          {lastInvite && (
-            <div className="invite-result">
-              <code className="invite-code">{lastInvite.code}</code>
-              <span className="muted">
-                до {new Date(lastInvite.expiresAt).toLocaleDateString("ru-RU")}
-              </span>
-              <LinkButton
-                to={`/register?code=${encodeURIComponent(lastInvite.code)}`}
-                variant="outline"
-              >
-                Ссылка для регистрации
-              </LinkButton>
-            </div>
-          )}
-        </div>
-      )}
+        {canManage && activeTab === "groups" && (
+          <>
+            <CourseGroupManager
+              courseId={courseId}
+              groups={course.groups}
+              courseMembers={course.members}
+              deleting={deleteGroupMut.isPending}
+              onDelete={(groupId) => deleteGroupMut.mutate(groupId)}
+            />
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                createGroupMut.mutate();
+              }}
+              className="inline-form"
+              style={{ marginTop: 16 }}
+            >
+              <input
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                placeholder="Название группы"
+                required
+                minLength={2}
+              />
+              <Button type="submit" disabled={createGroupMut.isPending}>
+                Создать группу
+              </Button>
+            </form>
+          </>
+        )}
+
+        {canManage && activeTab === "invite" && (
+          <CourseInvitePanel courseId={courseId} groups={course.groups} />
+        )}
       </section>
     </div>
   );

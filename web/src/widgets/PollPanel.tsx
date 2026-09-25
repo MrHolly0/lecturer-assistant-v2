@@ -18,11 +18,12 @@ import { Button } from "../shared/ui/button";
 interface Props {
   courseId: string;
   sessionId: string;
+  disabled?: boolean;
 }
 
 type View = "idle" | "create";
 
-export function PollPanel({ courseId, sessionId }: Props) {
+export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
   const qc = useQueryClient();
   const [view, setView] = useState<View>("idle");
   const [markedCorrect, setMarkedCorrect] = useState<number | undefined>(undefined);
@@ -64,6 +65,10 @@ export function PollPanel({ courseId, sessionId }: Props) {
   useEffect(() => {
     if (activePoll?.poll.status === "CLOSED") setMarkedCorrect(undefined);
   }, [activePoll?.poll.id, activePoll?.poll.status]);
+
+  useEffect(() => {
+    if (disabled) setView("idle");
+  }, [disabled]);
 
   if (activeQuery.isError) {
     return (
@@ -118,6 +123,7 @@ export function PollPanel({ courseId, sessionId }: Props) {
                   key={idx}
                   type="button"
                   className={`poll-bar-row${isCorrect ? " poll-bar-row--correct" : ""}`}
+                  disabled={isClosed}
                   onClick={() =>
                     !isClosed && setMarkedCorrect(markedCorrect === idx ? undefined : idx)
                   }
@@ -144,7 +150,12 @@ export function PollPanel({ courseId, sessionId }: Props) {
             </Button>
           )}
           {activePoll.poll.status === "CLOSED" && (
-            <Button type="button" variant="outline" onClick={() => setView("create")}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={disabled}
+              onClick={() => setView("create")}
+            >
               <Plus size={14} />
               Новая проверка
             </Button>
@@ -165,10 +176,11 @@ export function PollPanel({ courseId, sessionId }: Props) {
         type="button"
         variant="outline"
         className="poll-launch-btn"
+        disabled={disabled}
         onClick={() => setView("create")}
       >
         <BarChart2 size={14} />
-        Запустить проверку
+        {disabled ? "Продолжите лекцию для проверки" : "Запустить проверку"}
       </Button>
       <ClosedPollHistory courseId={courseId} sessionId={sessionId} />
     </>

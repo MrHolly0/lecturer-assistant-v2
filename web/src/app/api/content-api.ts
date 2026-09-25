@@ -11,6 +11,7 @@ export type SlideNote = components["schemas"]["SlideNote"];
 export type Lecture = components["schemas"]["Lecture"];
 export type LectureDetails = components["schemas"]["LectureDetails"];
 export type Attachment = components["schemas"]["Attachment"];
+export type DeckEditResult = components["schemas"]["DeckEditResult"];
 
 export async function listDecks(courseId: string): Promise<SlideDeck[]> {
   const res = await apiFetch(`/courses/${courseId}/decks`);
@@ -48,6 +49,29 @@ export async function deleteSlideNote(
   await apiFetch(`/courses/${courseId}/decks/${deckId}/slides/${slideIndex}/notes`, {
     method: "DELETE"
   });
+}
+
+export async function deleteDeckSlide(
+  courseId: string,
+  deckId: string,
+  slideId: string
+): Promise<DeckEditResult> {
+  const res = await apiFetch(`/courses/${courseId}/decks/${deckId}/slides/${slideId}`, {
+    method: "DELETE"
+  });
+  return res.json() as Promise<DeckEditResult>;
+}
+
+export async function reorderDeckSlides(
+  courseId: string,
+  deckId: string,
+  slideIds: string[]
+): Promise<DeckEditResult> {
+  const res = await apiFetch(`/courses/${courseId}/decks/${deckId}/slides/order`, {
+    method: "PUT",
+    body: JSON.stringify({ slideIds })
+  });
+  return res.json() as Promise<DeckEditResult>;
 }
 
 export async function archiveDeck(courseId: string, deckId: string): Promise<void> {

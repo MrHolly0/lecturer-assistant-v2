@@ -492,6 +492,47 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/groups/{groupId}/members": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the current members of a study group.
+     * @description Requires course management permission.
+     */
+    get: operations["listStudyGroupMembers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/groups/{groupId}/members/{personId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Assign a course student to this group.
+     * @description Atomically removes the student from other groups in this course before assignment.
+     */
+    put: operations["assignStudyGroupMember"];
+    post?: never;
+    /** Remove a student from this group. */
+    delete: operations["removeStudyGroupMember"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/bans": {
     parameters: {
       query?: never;
@@ -504,6 +545,60 @@ export interface paths {
     put?: never;
     /** Ban a person from a course. */
     post: operations["banCourseMember"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/analytics/groups": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Aggregate learning activity by the current course groups.
+     * @description Requires course management permission. Group membership is evaluated at request time and is not a historical membership snapshot. Overall metrics deduplicate students by personId. Only CLOSED quick polls and activity runs contribute check results. Temporary participants and questions without a stable profile are reported separately as unidentified.
+     */
+    get: operations["getCourseGroupAnalytics"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/analytics/students": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List analytics for stable student profiles in the course. */
+    get: operations["listStudentAnalytics"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/analytics/students/{personId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read analytics for one stable student profile in the course. */
+    get: operations["getStudentAnalytics"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -627,6 +722,46 @@ export interface paths {
     post?: never;
     /** Clear lecturer notes for one slide. */
     delete: operations["deleteSlideNote"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/decks/{deckId}/slides/order": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Replace the complete slide order of a deck.
+     * @description The request must contain every current slide id exactly once. Indexes are rewritten from 1. If the deck has completed session history or is archived, the server creates a new active deck version, relinks future lecture launches to it, and preserves the original session deck snapshot. Active decks cannot be edited.
+     */
+    put: operations["reorderDeckSlides"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/decks/{deckId}/slides/{slideId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Delete one slide from a deck.
+     * @description Remaining slides are reindexed from 1. Notes stay attached to their slide ids. Historical decks use copy-on-write; an unreferenced image blob from an in-place edit is removed only after transaction commit.
+     */
+    delete: operations["deleteDeckSlide"];
     options?: never;
     head?: never;
     patch?: never;
@@ -1546,6 +1681,85 @@ export interface components {
       courseId: string;
       name: string;
     };
+    /** @description Counts and explicit denominators derived from observed course activity. */
+    LearningMetrics: {
+      memberCount: number;
+      /** @description Distinct people from this scope who joined at least one course session. */
+      participantCount: number;
+      /**
+       * Format: int64
+       * @description Distinct person and session pairs.
+       */
+      sessionAttendances: number;
+      /** Format: int64 */
+      greenSignals: number;
+      /** Format: int64 */
+      yellowSignals: number;
+      /** Format: int64 */
+      redSignals: number;
+      /**
+       * Format: int64
+       * @description Denominator for all signal shares.
+       */
+      signalCount: number;
+      /** Format: double */
+      greenShare?: number | null;
+      /** Format: double */
+      yellowShare?: number | null;
+      /** Format: double */
+      redShare?: number | null;
+      /**
+       * Format: int64
+       * @description Answers in CLOSED quick polls and activity runs, including ungraded answers.
+       */
+      checkAnswers: number;
+      /**
+       * Format: int64
+       * @description Denominator for correctRate; excludes checks without a known correct option.
+       */
+      gradedAnswers: number;
+      /** Format: int64 */
+      correctAnswers: number;
+      /** Format: double */
+      correctRate?: number | null;
+      /** Format: int64 */
+      questionsAsked: number;
+      /** Format: int64 */
+      questionsAnswered: number;
+    };
+    AnalyticsGroupRef: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+    };
+    GroupLearningAnalytics: {
+      /** Format: uuid */
+      groupId: string;
+      groupName: string;
+      metrics: components["schemas"]["LearningMetrics"];
+    };
+    CourseGroupAnalytics: {
+      /** Format: uuid */
+      courseId: string;
+      overall: components["schemas"]["LearningMetrics"];
+      groups: components["schemas"]["GroupLearningAnalytics"][];
+      ungrouped: components["schemas"]["LearningMetrics"];
+      unidentified: components["schemas"]["LearningMetrics"];
+    };
+    StudentLearningAnalytics: {
+      /** Format: uuid */
+      personId: string;
+      displayName: string;
+      groups: components["schemas"]["AnalyticsGroupRef"][];
+      metrics: components["schemas"]["LearningMetrics"];
+    };
+    StudentAnalyticsPage: {
+      items: components["schemas"]["StudentLearningAnalytics"][];
+      limit: number;
+      offset: number;
+      /** Format: int64 */
+      total: number;
+    };
     BanCourseMemberRequest: {
       /** Format: uuid */
       personId: string;
@@ -1598,6 +1812,16 @@ export interface components {
       /** @description Short-lived HMAC token used in slide image URLs. */
       mediaToken: string;
       slides: components["schemas"]["Slide"][];
+    };
+    DeckEditResult: {
+      deck: components["schemas"]["SlideDeckDetails"];
+      /** @description True when history required a new deck version. */
+      copyOnWrite: boolean;
+      /** Format: uuid */
+      sourceDeckId: string;
+    };
+    ReorderSlidesRequest: {
+      slideIds: string[];
     };
     Slide: {
       /** Format: uuid */
@@ -1958,8 +2182,18 @@ export interface components {
       startedAt: string;
       /** Format: date-time */
       endedAt: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Wall-clock time from startedAt to endedAt, including pauses.
+       */
       durationSeconds: number;
+      /**
+       * Format: int64
+       * @description Presentation time excluding intervals between pause and resume or end.
+       */
+      activeDurationSeconds: number;
+      /** Format: int64 */
+      pausedDurationSeconds: number;
       participantCount: number;
       participants: components["schemas"]["SessionParticipant"][];
       signalTotals: components["schemas"]["SignalAggregate"];
@@ -2875,6 +3109,108 @@ export interface operations {
       };
     };
   };
+  listStudyGroupMembers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        groupId: components["parameters"]["GroupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current group members. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CourseMember"][];
+        };
+      };
+      /** @description Course management is not allowed. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Group does not belong to this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  assignStudyGroupMember: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        groupId: components["parameters"]["GroupId"];
+        personId: components["parameters"]["PersonId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Student assigned. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Group or course member not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The course member is not a student. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  removeStudyGroupMember: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        groupId: components["parameters"]["GroupId"];
+        personId: components["parameters"]["PersonId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Student removed from the group. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Group membership not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   listCourseBans: {
     parameters: {
       query?: never;
@@ -2920,6 +3256,120 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["CourseBan"];
         };
+      };
+    };
+  };
+  getCourseGroupAnalytics: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Course and group aggregates. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CourseGroupAnalytics"];
+        };
+      };
+      /** @description Course management is not allowed. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listStudentAnalytics: {
+    parameters: {
+      query?: {
+        /** @description Filter by current study group membership. */
+        groupId?: string;
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of student analytics. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentAnalyticsPage"];
+        };
+      };
+      /** @description Invalid pagination. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course management is not allowed. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Group does not belong to the course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getStudentAnalytics: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        personId: components["parameters"]["PersonId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Student analytics. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentLearningAnalytics"];
+        };
+      };
+      /** @description Course management is not allowed. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Stable student profile not found in this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -3156,6 +3606,99 @@ export interface operations {
     responses: {
       /** @description Note cleared. */
       204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  reorderDeckSlides: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        deckId: components["parameters"]["DeckId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReorderSlidesRequest"];
+      };
+    };
+    responses: {
+      /** @description Edited deck, possibly a new copy-on-write version. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeckEditResult"];
+        };
+      };
+      /** @description slideIds is not an exact permutation of the current slides. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course management is not allowed. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The deck is used by an active session. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  deleteDeckSlide: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        deckId: components["parameters"]["DeckId"];
+        slideId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Edited deck, possibly a new copy-on-write version. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeckEditResult"];
+        };
+      };
+      /** @description Course management is not allowed. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Deck or slide not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The deck is active or this is its only slide. */
+      409: {
         headers: {
           [name: string]: unknown;
         };
@@ -3535,6 +4078,13 @@ export interface operations {
           "application/json": components["schemas"]["LiveSession"];
         };
       };
+      /** @description Session is paused or already ended. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   saveLiveSessionAnnotations: {
@@ -3562,6 +4112,13 @@ export interface operations {
           "application/json": components["schemas"]["LiveSession"];
         };
       };
+      /** @description Session is paused or already ended. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   pauseLiveSession: {
@@ -3584,6 +4141,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["LiveSession"];
         };
+      };
+      /** @description Only a LIVE session can be paused. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -3608,6 +4172,13 @@ export interface operations {
           "application/json": components["schemas"]["LiveSession"];
         };
       };
+      /** @description Only a PAUSED session can be resumed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   endLiveSession: {
@@ -3630,6 +4201,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["LiveSession"];
         };
+      };
+      /** @description Only a LIVE or PAUSED session can be ended. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -3798,6 +4376,13 @@ export interface operations {
           "application/json": components["schemas"]["SignalAggregate"];
         };
       };
+      /** @description Session is paused or ended. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       /** @description Too many requests from this client (B-13 rate limit). */
       429: {
         headers: {
@@ -3830,6 +4415,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["StudentQuestion"];
         };
+      };
+      /** @description Session is paused or ended. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -3912,7 +4504,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description A poll is already open for this session. */
+      /** @description A poll is already open, or the session is paused or ended. */
       409: {
         headers: {
           [name: string]: unknown;
@@ -3983,7 +4575,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description A poll is already open for this session. */
+      /** @description A poll is already open, or the session is paused or ended. */
       409: {
         headers: {
           [name: string]: unknown;
@@ -4099,6 +4691,13 @@ export interface operations {
       };
       /** @description Poll does not belong to this session. */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session is paused or ended. */
+      409: {
         headers: {
           [name: string]: unknown;
         };
@@ -4355,6 +4954,13 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Session is paused or ended. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
     };
   };
   closeActivityRun: {
@@ -4444,7 +5050,7 @@ export interface operations {
           "application/json": components["schemas"]["ActivityResponse"];
         };
       };
-      /** @description Activity run already closed. */
+      /** @description Session is paused or ended, or the activity run is already closed. */
       409: {
         headers: {
           [name: string]: unknown;

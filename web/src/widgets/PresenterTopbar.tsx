@@ -87,11 +87,7 @@ export function PresenterTopbar({
       <div className="presenter-actions">
         {sessionActive && (
           <>
-            <Button
-              className="presenter-connect"
-              type="button"
-              onClick={openConnection}
-            >
+            <Button className="presenter-connect" type="button" onClick={openConnection}>
               <QrCode size={16} />
               Подключить студентов
             </Button>
@@ -111,6 +107,7 @@ export function PresenterTopbar({
                 </DropdownMenuItem>
                 <DropdownMenuCheckboxItem
                   checked={drawing}
+                  disabled={session.status === "PAUSED"}
                   onCheckedChange={(checked) => onDrawingChange(Boolean(checked))}
                 >
                   <PenLine />

@@ -8,6 +8,7 @@ type StudyGroup = components["schemas"]["StudyGroup"];
 type CreateStudyGroupRequest = components["schemas"]["CreateStudyGroupRequest"];
 type CreateCourseInvitationRequest = components["schemas"]["CreateCourseInvitationRequest"];
 type Invitation = components["schemas"]["Invitation"];
+export type CourseMember = components["schemas"]["CourseMember"];
 
 export async function listCourses(): Promise<Course[]> {
   const res = await apiFetch("/courses");
@@ -49,6 +50,32 @@ export async function createStudyGroup(
 
 export async function deleteStudyGroup(courseId: string, groupId: string): Promise<void> {
   await apiFetch(`/courses/${courseId}/groups/${groupId}`, { method: "DELETE" });
+}
+
+export async function listStudyGroupMembers(
+  courseId: string,
+  groupId: string
+): Promise<CourseMember[]> {
+  const res = await apiFetch(`/courses/${courseId}/groups/${groupId}/members`);
+  return res.json() as Promise<CourseMember[]>;
+}
+
+export async function assignStudyGroupMember(
+  courseId: string,
+  groupId: string,
+  personId: string
+): Promise<void> {
+  await apiFetch(`/courses/${courseId}/groups/${groupId}/members/${personId}`, { method: "PUT" });
+}
+
+export async function removeStudyGroupMember(
+  courseId: string,
+  groupId: string,
+  personId: string
+): Promise<void> {
+  await apiFetch(`/courses/${courseId}/groups/${groupId}/members/${personId}`, {
+    method: "DELETE"
+  });
 }
 
 type CourseRole = components["schemas"]["CourseRole"];

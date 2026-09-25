@@ -14,6 +14,7 @@ interface PresenterSidePanelProps {
   slideElapsed: number;
   courseId: string;
   sessionId: string;
+  paused: boolean;
 }
 
 export function PresenterSidePanel({
@@ -23,7 +24,8 @@ export function PresenterSidePanel({
   elapsed,
   slideElapsed,
   courseId,
-  sessionId
+  sessionId,
+  paused
 }: PresenterSidePanelProps) {
   const activeParticipants = participants.filter((participant) => !participant.leftAt);
   const signals = engagement?.signalAggregate;
@@ -33,8 +35,7 @@ export function PresenterSidePanel({
   return (
     <aside className="presenter-side">
       <div className="live-metric">
-        <Clock size={16} />
-        Лекция {formatTime(elapsed)} · слайд {formatTime(slideElapsed)}
+        <Clock size={16} />С начала {formatTime(elapsed)} · слайд {formatTime(slideElapsed)}
       </div>
       {redCount > 0 && (
         <div className="signal-alert">
@@ -64,7 +65,7 @@ export function PresenterSidePanel({
         <div className="section-heading">
           <h2>Вопрос-проверка</h2>
         </div>
-        <PollPanel courseId={courseId} sessionId={sessionId} />
+        <PollPanel courseId={courseId} sessionId={sessionId} disabled={paused} />
       </section>
       <Tabs defaultValue="students" className="live-tabs">
         <TabsList className="live-tabs__list">

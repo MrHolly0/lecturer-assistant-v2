@@ -47,16 +47,12 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
     <div className="poll-panel poll-composer">
       <div className="poll-panel-header">
         <span className="poll-panel-title">Запустить проверку</span>
-        <IconButton
-          className="poll-icon-button"
-          onClick={onCancel}
-          label="Закрыть редактор опроса"
-        >
+        <IconButton className="poll-icon-button" onClick={onCancel} label="Закрыть редактор опроса">
           <X size={16} />
         </IconButton>
       </div>
       <Tabs defaultValue="bank">
-        <TabsList className="poll-source-tabs">
+        <TabsList className="poll-source-tabs h-auto min-h-[52px]">
           <TabsTrigger value="bank">Из банка</TabsTrigger>
           <TabsTrigger value="quick">Быстрый вопрос</TabsTrigger>
         </TabsList>
@@ -108,9 +104,7 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
               })}
               {eligibleQuestions.length === 0 && !search && (
                 <div className="poll-message poll-bank-empty">
-                  <p className="muted">
-                    В банке нет вопросов с одним правильным ответом.
-                  </p>
+                  <p className="muted">В банке нет вопросов с одним правильным ответом.</p>
                   <LinkButton
                     variant="outline"
                     to={`/courses/${courseId}/questions`}
@@ -153,7 +147,9 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
                 {options.length > 2 && (
                   <IconButton
                     className="poll-icon-button"
-                    onClick={() => setOptions(options.filter((_, itemIndex) => itemIndex !== index))}
+                    onClick={() =>
+                      setOptions(options.filter((_, itemIndex) => itemIndex !== index))
+                    }
                     label={`Удалить вариант ${index + 1}`}
                   >
                     <X size={14} />
@@ -163,11 +159,7 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
             ))}
           </div>
           {options.length < 6 && (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setOptions([...options, ""])}
-            >
+            <Button type="button" variant="ghost" onClick={() => setOptions([...options, ""])}>
               <Plus size={14} />
               Добавить вариант
             </Button>

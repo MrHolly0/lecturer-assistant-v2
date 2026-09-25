@@ -197,6 +197,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         />
       )}
 
+      {current.status === "PAUSED" && (
+        <div className="student-pause-message" role="status">
+          Преподаватель приостановил показ. Ответы станут доступны после продолжения.
+        </div>
+      )}
+
       <section className="student-slide-card">
         <div className="student-slide-meta">
           <span>Слайд {slideLabel}</span>

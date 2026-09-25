@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { BarChart3, CalendarClock } from "lucide-react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { getCourse } from "../app/api/courses-api";
 import { listSessionHistory } from "../app/api/live-api";
 import { LinkButton } from "../shared/ui/button";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import { PaginationBar } from "../widgets/ListControls";
+import { CourseLearningAnalytics } from "../widgets/CourseLearningAnalytics";
 
 const PAGE_SIZE = 20;
 
 export function CourseAnalyticsPage({ courseId }: { courseId: string }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const courseQuery = useQuery({
     queryKey: ["courses", courseId],
@@ -48,6 +50,16 @@ export function CourseAnalyticsPage({ courseId }: { courseId: string }) {
         </div>
       </header>
       <CourseSectionNav courseId={courseId} canManage />
+      <CourseLearningAnalytics
+        courseId={courseId}
+        initialStudentId={searchParams.get("student") ?? ""}
+        onStudentChange={(studentId) => {
+          const next = new URLSearchParams(searchParams);
+          if (studentId) next.set("student", studentId);
+          else next.delete("student");
+          setSearchParams(next, { replace: true });
+        }}
+      />
 
       <section className="session-history" aria-labelledby="session-history-title">
         <div className="section-heading session-history__heading">
