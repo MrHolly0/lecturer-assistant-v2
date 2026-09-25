@@ -3,6 +3,7 @@ import type { SlideDeck } from "../app/api/content-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
+import { Button } from "../shared/ui/button";
 import { ConfirmActionButton } from "./ConfirmActionButton";
 import { PaginationBar, SearchField } from "./ListControls";
 
@@ -53,13 +54,7 @@ export function DeckListPanel({
   }, [showTabs, tab]);
 
   return (
-    <section className="material-section">
-      <div className="section-heading">
-        <h2>Презентации</h2>
-        <span className="muted">
-          {activeDecks.length} {pluralizeRu(activeDecks.length, "активная", "активные", "активных")}
-        </span>
-      </div>
+    <section className="material-section" aria-label="Список презентаций">
       {(showTabs || showSearch) && (
         <div className="list-toolbar">
           {showTabs && (
@@ -108,14 +103,14 @@ export function DeckListPanel({
             )}
             {canManage && deck.archived && (
               <>
-                <button
+                <Button
                   type="button"
-                  className="btn-ghost"
+                  variant="ghost"
                   disabled={restorePending}
                   onClick={() => onRestore(deck.id)}
                 >
                   Восстановить
-                </button>
+                </Button>
                 <ConfirmActionButton
                   title="Удалить презентацию навсегда?"
                   description="Удаление возможно только если дек не привязан к лекциям."

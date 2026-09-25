@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, BookOpenText, Play, Radio } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { userErrorMessage } from "../app/api/errors";
 import { listLectures } from "../app/api/content-api";
 import { getMyActiveSession, startLiveSession } from "../app/api/live-api";
+import { Button, LinkButton } from "../shared/ui/button";
 
 export function CourseLectureSpotlight({
   courseId,
@@ -45,13 +46,13 @@ export function CourseLectureSpotlight({
     return (
       <section className="course-live-card course-live-card--empty" role="alert">
         <div className="course-live-card__copy">
-          <span className="course-live-card__eyebrow"><BookOpenText size={15} /> Лекции</span>
+          <span className="course-live-card__status"><BookOpenText size={15} /> Лекции</span>
           <h2>Не удалось загрузить готовую лекцию</h2>
           <p>Откройте материалы курса или обновите страницу.</p>
         </div>
-        <Link className="btn-ghost course-live-card__action" to={`/courses/${courseId}/materials`}>
+        <LinkButton variant="outline" className="course-live-card__action" to={`/courses/${courseId}/materials`}>
           Открыть материалы
-        </Link>
+        </LinkButton>
       </section>
     );
   }
@@ -60,16 +61,16 @@ export function CourseLectureSpotlight({
     return (
       <section className="course-live-card course-live-card--active">
         <div className="course-live-card__copy">
-          <span className="course-live-card__eyebrow"><Radio size={15} /> Лекция идёт</span>
+          <span className="course-live-card__status course-live-card__status--live"><Radio size={15} /> Лекция идёт</span>
           <h2>{activeSession.lectureTitle}</h2>
           <p>Вернитесь к слайдам и реакции аудитории.</p>
         </div>
-        <Link
-          className="btn-primary course-live-card__action"
+        <LinkButton
+          className="course-live-card__action"
           to={`/courses/${courseId}/sessions/${activeSession.sessionId}/presenter`}
         >
           Продолжить лекцию <ArrowRight size={17} aria-hidden="true" />
-        </Link>
+        </LinkButton>
       </section>
     );
   }
@@ -78,13 +79,13 @@ export function CourseLectureSpotlight({
     return (
       <section className="course-live-card course-live-card--empty">
         <div className="course-live-card__copy">
-          <span className="course-live-card__eyebrow"><BookOpenText size={15} /> Следующий шаг</span>
+          <span className="course-live-card__status"><BookOpenText size={15} /> Нет готовых лекций</span>
           <h2>Подготовьте первую лекцию</h2>
           <p>Добавьте презентацию и свяжите её с лекцией, чтобы запускать занятие отсюда.</p>
         </div>
-        <Link className="btn-primary course-live-card__action" to={`/courses/${courseId}/materials`}>
+        <LinkButton className="course-live-card__action" to={`/courses/${courseId}/materials`}>
           Подготовить лекцию <ArrowRight size={17} aria-hidden="true" />
-        </Link>
+        </LinkButton>
       </section>
     );
   }
@@ -92,7 +93,7 @@ export function CourseLectureSpotlight({
   return (
     <section className="course-live-card">
       <div className="course-live-card__copy">
-        <span className="course-live-card__eyebrow"><BookOpenText size={15} /> Готова к запуску</span>
+        <span className="course-live-card__status"><BookOpenText size={15} /> Готова к запуску</span>
         <h2>{firstLecture.title}</h2>
         <p>{firstLecture.deckTitle} · версия {firstLecture.deckVersion}</p>
         <div className="course-live-signals" aria-label="На лекции доступны сигналы понимания">
@@ -103,19 +104,19 @@ export function CourseLectureSpotlight({
       </div>
       <div className="course-live-card__actions">
         {canManage && (
-          <button
+          <Button
             type="button"
-            className="btn-primary course-live-card__action"
+            className="course-live-card__action"
             disabled={startMutation.isPending}
             onClick={() => startMutation.mutate(firstLecture.id)}
           >
             <Play size={17} aria-hidden="true" />
             {startMutation.isPending ? "Запускаем…" : "Начать лекцию"}
-          </button>
+          </Button>
         )}
-        <Link className="course-live-card__secondary" to={`/courses/${courseId}/materials`}>
+        <LinkButton variant="ghost" className="course-live-card__secondary" to={`/courses/${courseId}/materials`}>
           Все лекции
-        </Link>
+        </LinkButton>
       </div>
     </section>
   );

@@ -646,22 +646,19 @@ textarea {
 }
 
 .deck-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  display: grid;
+  gap: 0;
 }
 
 .deck-pill {
-  align-items: flex-start;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  align-items: center;
+  border-top: 1px solid var(--border);
   color: var(--foreground);
-  display: inline-flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 180px;
-  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-height: 64px;
+  padding: 8px 0;
   text-align: left;
 }
 
@@ -672,14 +669,14 @@ textarea {
   cursor: pointer;
   display: grid;
   gap: 4px;
-  padding: 0;
+  min-height: 44px;
+  padding: 6px 8px;
   text-align: left;
   width: 100%;
 }
 
 .deck-pill--active {
-  border-color: var(--primary);
-  box-shadow: inset 0 0 0 1px var(--primary);
+  background: var(--accent);
 }
 
 .deck-pill small {
@@ -1906,7 +1903,6 @@ textarea {
   margin-right: auto;
 }
 
-/* Кликабельная карточка курса целиком + hover */
 .course-card {
   align-items: center;
   background: var(--card);
@@ -1914,8 +1910,8 @@ textarea {
   border-radius: var(--radius);
   display: flex;
   gap: 8px;
-  min-height: 48px;
-  padding: 4px 10px 4px 4px;
+  min-height: 72px;
+  padding: 6px 10px 6px 6px;
   transition:
     background 0.12s ease,
     border-color 0.12s ease;
@@ -2943,16 +2939,16 @@ html[data-max-mini-app="true"] .student-session-shell {
   padding-top: 8px;
 }
 
-/* Teacher workspace: the ready lecture leads, preparation and settings support it. */
 .course-page-header__copy,
 .qbank-page-header > div {
   display: grid;
   gap: 4px;
+  justify-items: start;
 }
 
 .course-page-header__copy h1,
 .qbank-page-header h1 {
-  font-size: 2rem;
+  font-size: 1.75rem;
   font-weight: 700;
   line-height: 1.2;
   margin: 0;
@@ -2962,7 +2958,7 @@ html[data-max-mini-app="true"] .student-session-shell {
   border-bottom: 1px solid var(--border);
   display: flex;
   gap: 4px;
-  margin: -8px 0 32px;
+  margin: -8px 0 24px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -2992,40 +2988,37 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .section-kicker,
-.course-live-card__eyebrow {
+.course-live-card__status {
   align-items: center;
   color: var(--muted-foreground);
   display: inline-flex;
-  font-size: 0.75rem;
-  font-weight: 650;
+  font-size: 0.8rem;
+  font-weight: 600;
   gap: 6px;
   line-height: 1.2;
-  text-transform: uppercase;
+}
+
+.course-live-card__status--live {
+  color: var(--foreground);
+}
+
+.course-live-card__status--live svg {
+  color: var(--chart-2);
 }
 
 .course-live-card {
-  align-items: end;
-  background: color-mix(in srgb, var(--accent) 42%, var(--background));
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--foreground);
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   display: grid;
-  gap: 32px;
+  gap: 24px;
   grid-template-columns: minmax(0, 1fr) auto;
-  min-height: 220px;
-  padding: 32px;
-}
-
-.course-live-card--active {
-  border-left-color: var(--chart-2);
-}
-
-.course-live-card--empty {
-  border-left-color: var(--muted-foreground);
+  padding: 24px 0;
 }
 
 .course-live-card--loading {
   animation: workspace-pulse 1.4s ease-in-out infinite;
-  min-height: 220px;
+  min-height: 132px;
 }
 
 @keyframes workspace-pulse {
@@ -3034,12 +3027,12 @@ html[data-max-mini-app="true"] .student-session-shell {
 
 .course-live-card__copy {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   max-width: 660px;
 }
 
 .course-live-card__copy h2 {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: 700;
   line-height: 1.2;
   margin: 0;
@@ -3056,7 +3049,7 @@ html[data-max-mini-app="true"] .student-session-shell {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .course-live-signals span {
@@ -3071,11 +3064,11 @@ html[data-max-mini-app="true"] .student-session-shell {
 .course-live-signals__red { border-color: var(--destructive); }
 
 .course-live-card__actions {
-  align-items: stretch;
-  display: grid;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  justify-items: stretch;
-  min-width: 190px;
+  justify-content: flex-end;
 }
 
 .course-live-card__action {
@@ -3084,28 +3077,25 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .course-live-card__secondary {
-  color: var(--muted-foreground);
-  min-height: 44px;
-  padding: 12px;
-  text-align: center;
+  white-space: nowrap;
 }
 
 .course-settings {
   border-top: 1px solid var(--border);
-  margin-top: 48px;
-  padding-top: 32px;
+  margin-top: 32px;
+  padding-top: 24px;
 }
 
 .course-settings__heading {
-  align-items: end;
-  margin-bottom: 8px;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
 .course-settings__heading > div,
 .lecture-hub__header > div,
 .materials-workspace__heading > div {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .course-settings__heading h2,
@@ -3173,24 +3163,20 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .lecture-hub {
-  background: color-mix(in srgb, var(--accent) 35%, var(--background));
-  border-left: 4px solid var(--foreground);
-  margin-bottom: 48px;
-  padding: 28px 28px 24px;
+  margin-bottom: 36px;
 }
 
 .lecture-hub__header {
-  align-items: end;
-  margin-bottom: 20px;
+  align-items: center;
+  margin-bottom: 16px;
 }
 
 .lecture-hub__header .btn-ghost { white-space: nowrap; }
 
 .lecture-create-form {
-  background: var(--background);
   border-top: 1px solid var(--border);
-  margin: 0 -28px 20px;
-  padding: 20px 28px 0;
+  margin: 0 0 12px;
+  padding: 16px 0 0;
 }
 
 .lecture-hub__toolbar {
@@ -3203,14 +3189,8 @@ html[data-max-mini-app="true"] .student-session-shell {
   display: grid;
   gap: 20px;
   grid-template-columns: minmax(0, 1fr) auto;
-  min-height: 72px;
-  padding: 14px 0;
-}
-
-.lecture-row--primary {
-  background: var(--card);
-  border: 1px solid var(--border);
-  padding: 20px;
+  min-height: 68px;
+  padding: 12px 0;
 }
 
 .lecture-row__copy {
@@ -3222,10 +3202,6 @@ html[data-max-mini-app="true"] .student-session-shell {
 .lecture-row__copy strong {
   font-size: 1.08rem;
   line-height: 1.3;
-}
-
-.lecture-row--primary .lecture-row__copy strong {
-  font-size: 1.35rem;
 }
 
 .lecture-row__actions {
@@ -3241,7 +3217,7 @@ html[data-max-mini-app="true"] .student-session-shell {
   display: grid;
   gap: 16px;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  padding-top: 22px;
+  padding: 20px 0;
 }
 
 .lecture-empty-state > svg {
@@ -3255,12 +3231,12 @@ html[data-max-mini-app="true"] .student-session-shell {
 
 .materials-workspace {
   border-top: 1px solid var(--border);
-  padding-top: 32px;
+  padding-top: 24px;
 }
 
 .materials-workspace__heading {
-  align-items: end;
-  margin-bottom: 20px;
+  align-items: center;
+  margin-bottom: 16px;
 }
 
 .materials-workspace > .material-section {
@@ -3287,11 +3263,6 @@ html[data-max-mini-app="true"] .student-session-shell {
 .material-viewer-close {
   gap: 6px;
   justify-self: end;
-}
-
-.course-card {
-  min-height: 76px;
-  padding: 6px 10px 6px 6px;
 }
 
 .course-card__copy {
@@ -3406,10 +3377,10 @@ html[data-max-mini-app="true"] .student-session-shell {
 
   .course-live-card {
     align-items: stretch;
-    gap: 24px;
+    gap: 16px;
     grid-template-columns: 1fr;
     min-height: 0;
-    padding: 24px 20px;
+    padding: 20px 0;
   }
 
   .course-live-card__copy h2 {
@@ -3417,6 +3388,7 @@ html[data-max-mini-app="true"] .student-session-shell {
   }
 
   .course-live-card__actions {
+    display: grid;
     min-width: 0;
   }
 
@@ -3444,14 +3416,11 @@ html[data-max-mini-app="true"] .student-session-shell {
   }
 
   .lecture-hub {
-    margin-inline: -16px;
-    padding: 24px 16px 20px;
+    margin-bottom: 28px;
   }
 
   .lecture-create-form {
     align-items: stretch;
-    margin-inline: -16px;
-    padding-inline: 16px;
   }
 
   .lecture-create-form > * {

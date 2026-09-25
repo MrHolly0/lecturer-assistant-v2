@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { VariantProps } from "class-variance-authority";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,6 +11,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger
 } from "../shared/ui/alert-dialog";
+import { Button, buttonVariants } from "../shared/ui/button";
 
 interface ConfirmActionButtonProps {
   children: ReactNode;
@@ -17,6 +19,7 @@ interface ConfirmActionButtonProps {
   description: string;
   confirmLabel?: string;
   className?: string;
+  variant?: VariantProps<typeof buttonVariants>["variant"];
   disabled?: boolean;
   onConfirm: () => void;
 }
@@ -26,16 +29,17 @@ export function ConfirmActionButton({
   title,
   description,
   confirmLabel = "Удалить",
-  className = "btn-ghost",
+  className,
+  variant = "ghost",
   disabled,
   onConfirm
 }: ConfirmActionButtonProps) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <button type="button" className={className} disabled={disabled}>
+        <Button type="button" className={className} variant={variant} disabled={disabled}>
           {children}
-        </button>
+        </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>

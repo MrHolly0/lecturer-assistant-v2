@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ import { getMyActiveSession } from "../app/api/live-api";
 import { useMaxBridge } from "../app/max/context";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
+import { Button } from "../shared/ui/button";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
 import { PaginationBar, SearchField } from "../widgets/ListControls";
 import { MaxActiveSessionBanner } from "../widgets/MaxActiveSessionBanner";
@@ -103,9 +104,9 @@ export function CoursesPage() {
       <div className="page-header">
         <h1>Курсы</h1>
         {canCreateCourse && !showCreate && (
-          <button className="btn-primary" onClick={() => setShowCreate(true)}>
-            + Создать курс
-          </button>
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus aria-hidden="true" /> Создать курс
+          </Button>
         )}
       </div>
 
@@ -121,12 +122,12 @@ export function CoursesPage() {
             minLength={2}
             autoFocus
           />
-          <button type="submit" className="btn-primary" disabled={createMut.isPending}>
+          <Button type="submit" disabled={createMut.isPending}>
             Создать
-          </button>
-          <button type="button" className="btn-ghost" onClick={() => setShowCreate(false)}>
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
             Отмена
-          </button>
+          </Button>
         </form>
       )}
 
@@ -181,14 +182,14 @@ export function CoursesPage() {
               )}
               {canCreateCourse && course.archived && (
                 <div className="course-card__actions">
-                  <button
+                  <Button
                     type="button"
-                    className="btn-ghost"
+                    variant="ghost"
                     disabled={restoreMut.isPending}
                     onClick={() => restoreMut.mutate(course.id)}
                   >
                     Восстановить
-                  </button>
+                  </Button>
                   <ConfirmActionButton
                     title="Удалить курс навсегда?"
                     description="Курс, материалы, лекции и история будут удалены."

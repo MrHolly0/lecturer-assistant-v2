@@ -24,6 +24,8 @@ import {
   SelectTrigger,
   SelectValue
 } from "../shared/ui/select";
+import { Button, LinkButton } from "../shared/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 
 type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
 type Invitation = components["schemas"]["Invitation"];
@@ -126,7 +128,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
             ← Курсы
           </Link>
           <h1>{course.title}</h1>
-          <span className="muted">Ваша роль: {ROLE_LABELS[course.myRole as CourseRole]}</span>
+          <span className="badge badge--muted">{ROLE_LABELS[course.myRole as CourseRole]}</span>
         </div>
         {course.archived && <span className="badge badge--muted">архив</span>}
       </header>
@@ -136,39 +138,19 @@ export function CoursePage({ courseId }: { courseId: string }) {
 
       <section className="course-settings" aria-labelledby="course-settings-title">
         <div className="section-heading course-settings__heading">
-          <div>
-            <span className="section-kicker">Настройки курса</span>
-            <h2 id="course-settings-title">Люди и доступ</h2>
-          </div>
-          <span className="muted">Служебный раздел</span>
+          <h2 id="course-settings-title">Люди и доступ</h2>
         </div>
-        <div className="tab-row course-settings__tabs">
-        <button
-          type="button"
-          className={`tab ${activeTab === "members" ? "tab--active" : ""}`}
-          onClick={() => setActiveTab("members")}
+        <Tabs
+          className="course-settings__tabs"
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as typeof activeTab)}
         >
-          Участники ({course.members.length})
-        </button>
-        {canManage && (
-          <button
-            type="button"
-            className={`tab ${activeTab === "groups" ? "tab--active" : ""}`}
-            onClick={() => setActiveTab("groups")}
-          >
-            Группы ({course.groups.length})
-          </button>
-        )}
-        {canManage && (
-          <button
-            type="button"
-            className={`tab ${activeTab === "invite" ? "tab--active" : ""}`}
-            onClick={() => setActiveTab("invite")}
-          >
-            Пригласить
-          </button>
-        )}
-        </div>
+          <TabsList>
+            <TabsTrigger value="members">Участники ({course.members.length})</TabsTrigger>
+            {canManage && <TabsTrigger value="groups">Группы ({course.groups.length})</TabsTrigger>}
+            {canManage && <TabsTrigger value="invite">Пригласить</TabsTrigger>}
+          </TabsList>
+        </Tabs>
 
       {activeTab === "members" && (
         <ul className="member-list">
@@ -182,7 +164,9 @@ export function CoursePage({ courseId }: { courseId: string }) {
                     {m.displayName}
                     {isOwner && <span className="badge badge--owner">владелец</span>}
                   </span>
-                  <span className="member-role-label">{ROLE_LABELS[m.role as CourseRole]}</span>
+                  {canManage && !isOwner && (
+                    <span className="member-role-label">{ROLE_LABELS[m.role as CourseRole]}</span>
+                  )}
                 </div>
                 {canManage && !isOwner ? (
                   <CourseMemberActions
@@ -243,9 +227,9 @@ export function CoursePage({ courseId }: { courseId: string }) {
               required
               minLength={2}
             />
-            <button type="submit" className="btn-primary" disabled={createGroupMut.isPending}>
+            <Button type="submit" disabled={createGroupMut.isPending}>
               Создать группу
-            </button>
+            </Button>
           </form>
         </>
       )}
@@ -265,9 +249,8 @@ export function CoursePage({ courseId }: { courseId: string }) {
               </SelectContent>
             </Select>
           </label>
-          <button
+          <Button
             type="button"
-            className="btn-primary"
             onClick={() => {
               setLastInvite(null);
               inviteMut.mutate();
@@ -275,19 +258,19 @@ export function CoursePage({ courseId }: { courseId: string }) {
             disabled={inviteMut.isPending}
           >
             Сгенерировать код
-          </button>
+          </Button>
           {lastInvite && (
             <div className="invite-result">
               <code className="invite-code">{lastInvite.code}</code>
               <span className="muted">
                 до {new Date(lastInvite.expiresAt).toLocaleDateString("ru-RU")}
               </span>
-              <Link
+              <LinkButton
                 to={`/register?code=${encodeURIComponent(lastInvite.code)}`}
-                className="btn-ghost"
+                variant="outline"
               >
                 Ссылка для регистрации
-              </Link>
+              </LinkButton>
             </div>
           )}
         </div>

@@ -5,7 +5,7 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthContext";
 import { landingPath } from "../app/routes";
 import { BrandMark } from "../shared/brand/BrandMark";
-import { IconButton } from "../shared/ui/button";
+import { Button, IconButton } from "../shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../shared/ui/tooltip";
 
 const navItems = [
@@ -40,17 +40,17 @@ export function Layout({ children }: { children: ReactNode }) {
       )}
 
       <aside
-        className={`fixed z-50 flex h-full w-[220px] flex-col border-r border-border bg-card text-card-foreground transition-transform duration-200 lg:static ${
+        className={`fixed z-50 flex h-full w-64 flex-col border-r border-border bg-card text-card-foreground transition-transform duration-200 lg:static ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         <div className="flex items-center justify-between border-b border-border p-5">
           <Link
             to={user ? landingPath(user.role) : "/login"}
-            className="flex items-center gap-2 text-base font-semibold"
+            className="flex min-w-0 items-center gap-2.5 text-sm font-semibold"
           >
             <BrandMark className="h-8 w-8 shrink-0 text-orange-500" />
-            <span>Lecturer Assistant</span>
+            <span className="truncate">Lecturer Assistant</span>
           </Link>
           <IconButton
             className="icon-touch-target shrink-0 lg:hidden"
@@ -73,9 +73,9 @@ export function Layout({ children }: { children: ReactNode }) {
                       to={item.path}
                       onClick={() => setSidebarOpen(false)}
                       className={({ isActive }) =>
-                        `mb-0.5 flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition-colors ${
+                        `mb-1 flex min-h-10 items-center gap-3 rounded-md px-3 text-sm transition-colors ${
                           isActive
-                            ? "border border-border border-l-[3px] border-l-foreground bg-accent font-semibold text-accent-foreground"
+                            ? "bg-accent font-semibold text-accent-foreground"
                             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                         }`
                       }
@@ -93,21 +93,23 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="border-t border-border p-3">
-          <div className="mb-2 flex items-center gap-3 rounded-lg px-4 py-2 text-sm text-muted-foreground">
-            <UserRound className="h-4 w-4" />
-            <span className="truncate" title={user?.email}>
-              {user?.displayName}
+          <div className="mb-2 flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground">
+            <UserRound className="h-4 w-4 shrink-0" />
+            <span className="min-w-0">
+              <span className="block truncate text-foreground">{user?.displayName}</span>
+              <span className="block truncate text-xs" title={user?.email}>{user?.email}</span>
             </span>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 onClick={() => void handleSignOut()}
-                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-normal text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                variant="ghost"
+                className="w-full justify-start text-muted-foreground"
               >
                 <LogOut className="h-4 w-4" />
                 <span>Выйти</span>
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent>
               <p>Завершить сессию</p>

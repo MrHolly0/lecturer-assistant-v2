@@ -23,6 +23,7 @@ import { DeckListPanel } from "../widgets/DeckListPanel";
 import { titleFromFileName } from "../shared/lib/fileName";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import { useMaterialsActions } from "./useMaterialsActions";
+import { Button } from "../shared/ui/button";
 
 export function MaterialsPage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
@@ -225,20 +226,19 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
       <section className="materials-workspace" aria-labelledby="materials-workspace-title">
         <div className="section-heading materials-workspace__heading">
           <div>
-            <span className="section-kicker">Подготовка</span>
             <h2 id="materials-workspace-title">Презентации</h2>
-            <p className="muted">Выберите презентацию для просмотра или добавьте новую.</p>
+            <p className="muted">Файлы слайдов, версии и заметки преподавателя.</p>
           </div>
           {canManage && (
-            <button
+            <Button
               type="button"
-              className="btn-ghost"
+              variant="outline"
               disabled={importing}
               onClick={() => setUploadOpen((value) => !value)}
             >
               {uploadOpen ? <X size={16} aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}
               {uploadOpen ? "Скрыть загрузку" : "Добавить презентацию"}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -279,9 +279,9 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
 
       {selectedDeck && viewerOpen && (
         <div className="material-viewer-shell">
-          <button type="button" className="btn-ghost material-viewer-close" onClick={() => setViewerOpen(false)}>
+          <Button type="button" variant="ghost" className="material-viewer-close" onClick={() => setViewerOpen(false)}>
             <X size={16} aria-hidden="true" /> Закрыть просмотр
-          </button>
+          </Button>
           <DeckViewer
             deck={selectedDeck}
             activeIndex={activeSlide}

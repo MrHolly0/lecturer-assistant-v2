@@ -5,6 +5,7 @@ import { pluralizeRu } from "../shared/lib/plural";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
+import { Button } from "../shared/ui/button";
 import { ConfirmActionButton } from "./ConfirmActionButton";
 import { PaginationBar, SearchField } from "./ListControls";
 
@@ -69,8 +70,7 @@ export function LectureList({
     <section className="material-section lecture-hub" aria-labelledby="lecture-hub-title">
       <div className="section-heading lecture-hub__header">
         <div>
-          <span className="section-kicker">Первый шаг перед занятием</span>
-          <h2 id="lecture-hub-title">Готовые лекции</h2>
+          <h2 id="lecture-hub-title">Лекции</h2>
           <p className="muted">
             {activeLectures.length > 0
               ? `${activeLectures.length} ${pluralizeRu(activeLectures.length, "лекция готова", "лекции готовы", "лекций готовы")}`
@@ -78,10 +78,10 @@ export function LectureList({
           </p>
         </div>
         {canManage && activeLectures.length > 0 && (
-          <button type="button" className="btn-ghost" onClick={() => setShowCreate((value) => !value)}>
+          <Button type="button" variant="outline" onClick={() => setShowCreate((value) => !value)}>
             <Plus size={16} aria-hidden="true" />
             Новая лекция
-          </button>
+          </Button>
         )}
       </div>
       {canManage && showCreate && (
@@ -103,17 +103,16 @@ export function LectureList({
               ))}
             </SelectContent>
           </Select>
-          <button
-            className="btn-primary"
+          <Button
             type="button"
             disabled={!title || !deckId || creating}
             onClick={onCreate}
           >
             Создать
-          </button>
-          <button type="button" className="btn-ghost" onClick={() => setShowCreate(false)}>
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
             Отмена
-          </button>
+          </Button>
         </div>
       )}
       {tab === "active" && activeLectures.length === 0 ? (
@@ -128,13 +127,13 @@ export function LectureList({
             </p>
           </div>
           {decks.length === 0 ? (
-            <button type="button" className="btn-primary" onClick={onAddPresentation}>
+            <Button type="button" onClick={onAddPresentation}>
               Добавить презентацию
-            </button>
+            </Button>
           ) : (
-            <button type="button" className="btn-primary" onClick={() => setShowCreate(true)}>
+            <Button type="button" onClick={() => setShowCreate(true)}>
               Создать лекцию
-            </button>
+            </Button>
           )}
         </div>
       ) : (
@@ -157,7 +156,6 @@ export function LectureList({
           <LectureRows
             lectures={paged.pageItems}
             empty={tab === "archive" ? "В архиве лекций нет." : "По запросу лекций нет."}
-            primary={tab === "active"}
             canManage={canManage}
             startingId={startingId}
             onStart={onStart}
@@ -175,7 +173,6 @@ export function LectureList({
 interface LectureRowsProps {
   lectures: Lecture[];
   empty: string;
-  primary: boolean;
   canManage: boolean;
   startingId?: string;
   onStart?: (lectureId: string) => void;
@@ -187,7 +184,6 @@ interface LectureRowsProps {
 function LectureRows({
   lectures,
   empty,
-  primary,
   canManage,
   startingId,
   onStart,
@@ -198,13 +194,9 @@ function LectureRows({
   return (
     <ul className="card-list">
       {lectures.length === 0 && empty && <li className="muted">{empty}</li>}
-      {lectures.map((lecture, index) => (
-        <li
-          key={lecture.id}
-          className={`lecture-row${primary && index === 0 ? " lecture-row--primary" : ""}`}
-        >
+      {lectures.map((lecture) => (
+        <li key={lecture.id} className="lecture-row">
           <div className="lecture-row__copy">
-            {primary && index === 0 && <span className="section-kicker">Следующая лекция</span>}
             <strong>{lecture.title}</strong>
             <span className="muted">
               {lecture.deckTitle} · версия {lecture.deckVersion}
@@ -212,15 +204,14 @@ function LectureRows({
           </div>
           {canManage && !lecture.archived && (
             <div className="lecture-row__actions">
-              <button
+              <Button
                 type="button"
-                className={primary && index === 0 ? "btn-primary" : "btn-ghost"}
                 disabled={startingId === lecture.id}
                 onClick={() => onStart?.(lecture.id)}
               >
                 <Play size={16} aria-hidden="true" />
                 {startingId === lecture.id ? "Запускаем…" : "Начать"}
-              </button>
+              </Button>
               <ConfirmActionButton
                 title="Архивировать лекцию?"
                 description="Лекция уйдёт в архив, её можно будет восстановить."
@@ -233,9 +224,9 @@ function LectureRows({
           )}
           {canManage && lecture.archived && (
             <div className="lecture-row__actions">
-              <button type="button" className="btn-ghost" onClick={() => onRestore?.(lecture.id)}>
+              <Button type="button" variant="outline" onClick={() => onRestore?.(lecture.id)}>
                 Восстановить
-              </button>
+              </Button>
               <ConfirmActionButton
                 title="Удалить лекцию навсегда?"
                 description="История сессий и вложения этой лекции будут удалены."
