@@ -14,6 +14,8 @@ public record LectureSummary(
         Instant startedAt,
         Instant endedAt,
         long durationSeconds,
+        long activeDurationSeconds,
+        long pausedDurationSeconds,
         int participantCount,
         List<SessionParticipant> participants,
         SignalAggregate signalTotals,

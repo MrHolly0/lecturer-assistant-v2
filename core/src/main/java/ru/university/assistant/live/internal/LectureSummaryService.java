@@ -51,6 +51,8 @@ public class LectureSummaryService {
 
         List<SessionParticipant> participants = sessions.listParticipants(sessionId);
         List<StudentQuestion> unanswered = summaries.unansweredQuestions(sessionId);
+        long durationSeconds = Duration.between(session.startedAt(), session.endedAt()).getSeconds();
+        long pausedDurationSeconds = summaries.pausedDurationSeconds(sessionId, session.endedAt());
         LectureSummary summary = new LectureSummary(
                 session.id(),
                 session.lectureId(),
@@ -58,7 +60,9 @@ public class LectureSummaryService {
                 session.status(),
                 session.startedAt(),
                 session.endedAt(),
-                Duration.between(session.startedAt(), session.endedAt()).getSeconds(),
+                durationSeconds,
+                Math.max(0, durationSeconds - pausedDurationSeconds),
+                pausedDurationSeconds,
                 participants.size(),
                 participants,
                 summaries.signalTotals(sessionId),

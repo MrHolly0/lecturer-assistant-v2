@@ -7,6 +7,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -88,6 +91,51 @@ class LectureSummaryIntegrationTest extends LiveFlowTestBase {
     }
 
     @Test
+    void summarySeparatesWallClockActiveAndPausedDuration() throws Exception {
+        json(post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        json(post("/api/v1/courses/{c}/sessions/{s}/resume", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        json(post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        json(post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+
+        Instant startedAt = Instant.parse("2026-09-25T10:00:00Z");
+        Instant endedAt = Instant.parse("2026-09-25T10:01:40Z");
+        jdbc.sql("update live.sessions set started_at = :startedAt, ended_at = :endedAt where id = :sessionId")
+                .param("startedAt", Timestamp.from(startedAt))
+                .param("endedAt", Timestamp.from(endedAt))
+                .param("sessionId", sessionId)
+                .update();
+        List<UUID> pauses = jdbc.sql("""
+                        select id from analytics.events
+                        where aggregate_id = :sessionId and verb = 'session.paused'
+                        order by occurred_at, id
+                        """)
+                .param("sessionId", sessionId)
+                .query(UUID.class)
+                .list();
+        UUID resumed = jdbc.sql("""
+                        select id from analytics.events
+                        where aggregate_id = :sessionId and verb = 'session.resumed'
+                        """)
+                .param("sessionId", sessionId)
+                .query(UUID.class)
+                .single();
+        setEventTime(pauses.get(0), startedAt.plusSeconds(20));
+        setEventTime(resumed, startedAt.plusSeconds(50));
+        setEventTime(pauses.get(1), startedAt.plusSeconds(80));
+
+        JsonNode summary = json(get("/api/v1/courses/{c}/sessions/{s}/summary", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+
+        assertEquals(100, summary.get("durationSeconds").asLong());
+        assertEquals(50, summary.get("activeDurationSeconds").asLong());
+        assertEquals(50, summary.get("pausedDurationSeconds").asLong());
+    }
+
+    @Test
     void bankPollRejectsQuestionWithoutExactlyOneCorrectOption() throws Exception {
         UUID questionId = createQuestion("Выберите ответы", "MULTIPLE_CHOICE",
                 "[{\"text\":\"A\",\"correct\":true},{\"text\":\"B\",\"correct\":true}]");
@@ -115,5 +163,12 @@ class LectureSummaryIntegrationTest extends LiveFlowTestBase {
                         .query(Long.class)
                         .single()
                 > 0;
+    }
+
+    private void setEventTime(UUID eventId, Instant occurredAt) {
+        jdbc.sql("update analytics.events set occurred_at = :occurredAt where id = :eventId")
+                .param("occurredAt", Timestamp.from(occurredAt))
+                .param("eventId", eventId)
+                .update();
     }
 }

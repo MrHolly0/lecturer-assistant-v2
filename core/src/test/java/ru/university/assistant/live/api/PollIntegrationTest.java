@@ -144,13 +144,16 @@ class PollIntegrationTest extends LiveFlowTestBase {
     }
 
     @Test
-    void pollCanStartWhileSessionIsPaused() throws Exception {
+    void pollCannotStartWhileSessionIsPaused() throws Exception {
         json(post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
                 .header("Authorization", "Bearer " + lecturerToken), 200);
 
-        startPoll(sessionId);
+        json(post("/api/v1/courses/{c}/sessions/{s}/polls", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"questionText\":\"Что верно?\",\"options\":[\"A\",\"B\"]}"), 409);
 
-        assertEquals(1L, count("interaction.quick_polls"));
+        assertEquals(0L, count("interaction.quick_polls"));
     }
 
     @Test

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -98,6 +100,34 @@ class LectureSummaryRepository {
                 .param("sessionId", sessionId)
                 .query(this::mapQuestion)
                 .list();
+    }
+
+    long pausedDurationSeconds(UUID sessionId, Instant endedAt) {
+        List<SessionStatusEvent> statusEvents = jdbc.sql("""
+                        select verb, occurred_at
+                        from analytics.events
+                        where aggregate_type = 'live.session' and aggregate_id = :sessionId
+                            and verb in ('session.paused', 'session.resumed')
+                        order by occurred_at, id
+                        """)
+                .param("sessionId", sessionId)
+                .query((rs, row) -> new SessionStatusEvent(
+                        rs.getString("verb"), rs.getTimestamp("occurred_at").toInstant()))
+                .list();
+        Instant pausedAt = null;
+        long pausedSeconds = 0;
+        for (SessionStatusEvent event : statusEvents) {
+            if ("session.paused".equals(event.verb()) && pausedAt == null) {
+                pausedAt = event.occurredAt();
+            } else if ("session.resumed".equals(event.verb()) && pausedAt != null) {
+                pausedSeconds += Math.max(0, Duration.between(pausedAt, event.occurredAt()).getSeconds());
+                pausedAt = null;
+            }
+        }
+        if (pausedAt != null) {
+            pausedSeconds += Math.max(0, Duration.between(pausedAt, endedAt).getSeconds());
+        }
+        return pausedSeconds;
     }
 
     private SummaryPollResult mapPoll(ResultSet rs, int row) throws SQLException {

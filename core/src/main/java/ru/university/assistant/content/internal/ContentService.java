@@ -164,9 +164,16 @@ public class ContentService implements StudentDeckApi {
                     "Презентация используется в лекциях: " + String.join(", ", linkedLectures)
                             + ". Удалите эти лекции, прежде чем удалять презентацию.");
         }
+        if (repository.deckHasSessionHistory(deckId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Презентация используется в истории проведённых лекций.");
+        }
         List<String> blobRefs = repository.blobRefsForDeck(courseId, deckId);
         repository.deleteDeck(courseId, deckId);
-        deleteBlobsAfterCommit(blobRefs);
+        List<String> unreferencedBlobRefs = blobRefs.stream()
+                .filter(ref -> !repository.blobRefIsUsed(ref))
+                .toList();
+        deleteBlobsAfterCommit(unreferencedBlobRefs);
     }
 
     public List<Lecture> listLectures(AuthenticatedUser user, UUID courseId) {
@@ -177,7 +184,7 @@ public class ContentService implements StudentDeckApi {
     @Transactional
     public Lecture createLecture(AuthenticatedUser user, UUID courseId, CreateLectureRequest request) {
         courseAccess.requireManage(user, courseId);
-        ensureDeckExists(courseId, request.deckId());
+        lockDeckForReference(courseId, request.deckId());
         return repository.createLecture(
                 UuidV7.generate(), courseId, request.title().trim(), request.deckId(), user.id());
     }
@@ -191,7 +198,7 @@ public class ContentService implements StudentDeckApi {
     @Transactional
     public Lecture updateLecture(AuthenticatedUser user, UUID courseId, UUID lectureId, CreateLectureRequest request) {
         courseAccess.requireManage(user, courseId);
-        ensureDeckExists(courseId, request.deckId());
+        lockDeckForReference(courseId, request.deckId());
         return repository.updateLecture(courseId, lectureId, request.title().trim(), request.deckId());
     }
 
@@ -248,7 +255,7 @@ public class ContentService implements StudentDeckApi {
                         slide.id(),
                         slide.deckId(),
                         slide.idx(),
-                        signedUrls.slideImageUrl(deck.courseId(), deck.id(), slide.idx(), token),
+                        signedUrls.slideImageUrl(deck.courseId(), deck.id(), slide.id(), slide.idx(), token),
                         slide.textExtract(),
                         slide.note()))
                 .toList();
@@ -257,8 +264,8 @@ public class ContentService implements StudentDeckApi {
                 deck.slideCount(), deck.archived(), deck.sourceFilename(), deck.createdAt(), token, slides);
     }
 
-    private void ensureDeckExists(UUID courseId, UUID deckId) {
-        if (repository.findDeck(courseId, deckId).isEmpty()) {
+    private void lockDeckForReference(UUID courseId, UUID deckId) {
+        if (!repository.lockDeckForReference(courseId, deckId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Deck does not belong to course");
         }
     }

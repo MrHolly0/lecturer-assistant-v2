@@ -218,6 +218,47 @@ class CourseRepository {
                 .update();
     }
 
+    List<CourseMember> listGroupMembers(UUID courseId, UUID groupId) {
+        return jdbc.sql("""
+                        select cm.course_id, cm.person_id, p.display_name, cm.role
+                        from org.group_members gm
+                        join org.study_groups g on g.id = gm.group_id
+                        join org.course_members cm on cm.course_id = g.course_id and cm.person_id = gm.person_id
+                        join iam.persons p on p.id = gm.person_id
+                        where g.course_id = :courseId and g.id = :groupId
+                        order by p.display_name, cm.person_id
+                        """)
+                .param("courseId", courseId)
+                .param("groupId", groupId)
+                .query(this::mapMember)
+                .list();
+    }
+
+    void moveGroupMember(UUID courseId, UUID groupId, UUID personId) {
+        jdbc.sql("""
+                        delete from org.group_members gm
+                        using org.study_groups g
+                        where g.id = gm.group_id and g.course_id = :courseId and gm.person_id = :personId
+                        """)
+                .param("courseId", courseId)
+                .param("personId", personId)
+                .update();
+        addGroupMember(groupId, personId);
+    }
+
+    boolean removeGroupMember(UUID courseId, UUID groupId, UUID personId) {
+        return jdbc.sql("""
+                        delete from org.group_members gm
+                        using org.study_groups g
+                        where gm.group_id = g.id and g.course_id = :courseId
+                            and g.id = :groupId and gm.person_id = :personId
+                        """)
+                .param("courseId", courseId)
+                .param("groupId", groupId)
+                .param("personId", personId)
+                .update() > 0;
+    }
+
     CourseBan ban(UUID courseId, UUID personId, String reason, UUID bannedBy) {
         return jdbc.sql(
                         """

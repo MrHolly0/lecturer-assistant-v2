@@ -129,11 +129,13 @@ class SessionHistoryIntegrationTest extends LiveFlowTestBase {
                 .update();
         jdbc.sql("""
                         insert into live.sessions
-                            (id, lecture_id, status, join_code, started_at, ended_at, created_by)
-                        values (:id, :lectureId, 'ENDED', 'OTHER1', now() - interval '1 hour', now(), :createdBy)
+                            (id, lecture_id, deck_id, status, join_code, started_at, ended_at, created_by)
+                        values (:id, :lectureId, :deckId, 'ENDED', 'OTHER1',
+                                now() - interval '1 hour', now(), :createdBy)
                         """)
                 .param("id", otherSessionId)
                 .param("lectureId", otherLectureId)
+                .param("deckId", otherDeckId)
                 .param("createdBy", createdBy)
                 .update();
         return otherSessionId;

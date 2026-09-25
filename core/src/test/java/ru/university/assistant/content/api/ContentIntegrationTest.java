@@ -300,6 +300,169 @@ class ContentIntegrationTest {
     }
 
     @Test
+    void unusedDeckCanBeReorderedAndTrimmedInPlaceWithoutLosingNotes() throws Exception {
+        String adminToken = bootstrapAdmin();
+        String lecturerToken = register(
+                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        UUID courseId = createCourse(lecturerToken, "Algorithms");
+        byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
+        String deckId = waitForCompletedJob(lecturerToken, courseId,
+                        startImport(lecturerToken, courseId, "Editable", pdf).get("id").asText())
+                .get("deckId")
+                .asText();
+        JsonNode before = getDeck(lecturerToken, courseId, deckId);
+        String firstId = before.at("/slides/0/id").asText();
+        String secondId = before.at("/slides/1/id").asText();
+        String firstImageBefore = before.at("/slides/0/imageUrl").asText();
+        String secondRef = jdbc.sql("select image_ref from content.slides where id = :id")
+                .param("id", UUID.fromString(secondId))
+                .query(String.class)
+                .single();
+
+        mockMvc.perform(put("/api/v1/courses/{courseId}/decks/{deckId}/slides/1/notes", courseId, deckId)
+                        .header("Authorization", bearer(lecturerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"Keep with slide\"}"))
+                .andExpect(status().isOk());
+
+        String reorderedResponse = mockMvc.perform(put(
+                                "/api/v1/courses/{courseId}/decks/{deckId}/slides/order", courseId, deckId)
+                        .header("Authorization", bearer(lecturerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slideIds\":[\"" + secondId + "\",\"" + firstId + "\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.copyOnWrite").value(false))
+                .andExpect(jsonPath("$.deck.id").value(deckId))
+                .andExpect(jsonPath("$.deck.slides[0].id").value(secondId))
+                .andExpect(jsonPath("$.deck.slides[0].idx").value(1))
+                .andExpect(jsonPath("$.deck.slides[1].id").value(firstId))
+                .andExpect(jsonPath("$.deck.slides[1].note.content").value("Keep with slide"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String secondImageAfter = objectMapper.readTree(reorderedResponse).at("/deck/slides/0/imageUrl").asText();
+        assertTrue(secondImageAfter.contains("&v=" + secondId));
+        assertFalse(firstImageBefore.equals(secondImageAfter));
+
+        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
+                                courseId, deckId, secondId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.copyOnWrite").value(false))
+                .andExpect(jsonPath("$.deck.slideCount").value(1))
+                .andExpect(jsonPath("$.deck.slides[0].id").value(firstId))
+                .andExpect(jsonPath("$.deck.slides[0].idx").value(1));
+        assertFalse(Files.exists(BLOB_ROOT.resolve(secondRef)));
+
+        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
+                                courseId, deckId, firstId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void activeDeckIsImmutableAndCompletedSessionUsesOriginalAfterCopyOnWrite() throws Exception {
+        String adminToken = bootstrapAdmin();
+        String lecturerToken = register(
+                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        UUID courseId = createCourse(lecturerToken, "Algorithms");
+        byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
+        String deckId = waitForCompletedJob(lecturerToken, courseId,
+                        startImport(lecturerToken, courseId, "Historical", pdf).get("id").asText())
+                .get("deckId")
+                .asText();
+        JsonNode before = getDeck(lecturerToken, courseId, deckId);
+        String firstId = before.at("/slides/0/id").asText();
+        String secondId = before.at("/slides/1/id").asText();
+        String lectureId = createLecture(lecturerToken, courseId, deckId);
+        JsonNode session = startSession(lecturerToken, courseId, lectureId);
+
+        mockMvc.perform(put("/api/v1/courses/{courseId}/decks/{deckId}/slides/order", courseId, deckId)
+                        .header("Authorization", bearer(lecturerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slideIds\":[\"" + secondId + "\",\"" + firstId + "\"]}"))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(post("/api/v1/courses/{courseId}/sessions/{sessionId}/end",
+                                courseId, session.get("id").asText())
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk());
+
+        String editResponse = mockMvc.perform(delete(
+                                "/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
+                                courseId, deckId, firstId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.copyOnWrite").value(true))
+                .andExpect(jsonPath("$.sourceDeckId").value(deckId))
+                .andExpect(jsonPath("$.deck.version").value(2))
+                .andExpect(jsonPath("$.deck.slideCount").value(1))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String copiedDeckId = objectMapper.readTree(editResponse).at("/deck/id").asText();
+
+        assertEquals(2, getDeck(lecturerToken, courseId, deckId).get("slideCount").asInt());
+        String lectureResponse = mockMvc.perform(
+                        get("/api/v1/courses/{courseId}/lectures/{lectureId}", courseId, lectureId)
+                                .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertEquals(copiedDeckId, objectMapper.readTree(lectureResponse).get("deckId").asText());
+        String historicalSession = mockMvc.perform(
+                        get("/api/v1/courses/{courseId}/sessions/{sessionId}", courseId, session.get("id").asText())
+                                .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertEquals(deckId, objectMapper.readTree(historicalSession).get("deckId").asText());
+        assertEquals(1, getDeck(lecturerToken, courseId, copiedDeckId).get("slideCount").asInt());
+    }
+
+    @Test
+    void deletingCopyOnWriteDeckKeepsBlobsReferencedBySourceDeck() throws Exception {
+        String adminToken = bootstrapAdmin();
+        String lecturerToken = register(
+                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        UUID courseId = createCourse(lecturerToken, "Algorithms");
+        byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
+        String sourceDeckId = waitForCompletedJob(lecturerToken, courseId,
+                        startImport(lecturerToken, courseId, "Shared blobs", pdf).get("id").asText())
+                .get("deckId")
+                .asText();
+        JsonNode source = getDeck(lecturerToken, courseId, sourceDeckId);
+        List<String> sourceRefs = blobRefs(sourceDeckId);
+
+        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}", courseId, sourceDeckId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isNoContent());
+        String editResponse = mockMvc.perform(delete(
+                                "/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
+                                courseId, sourceDeckId, source.at("/slides/0/id").asText())
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.copyOnWrite").value(true))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String copiedDeckId = objectMapper.readTree(editResponse).at("/deck/id").asText();
+
+        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}", courseId, copiedDeckId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}/hard", courseId, copiedDeckId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isNoContent());
+
+        for (String ref : sourceRefs) {
+            assertTrue(Files.exists(BLOB_ROOT.resolve(ref)), "Source blob must remain: " + ref);
+        }
+    }
+
+    @Test
     void webStudentChannelJoinsSignalsQuestionsAndAppearsInPresenterEngagement() throws Exception {
         String adminToken = bootstrapAdmin();
         String lecturerToken = register(
@@ -410,6 +573,16 @@ class ContentIntegrationTest {
 
     private JsonNode startImport(String token, UUID courseId, String title, byte[] bytes) throws Exception {
         return startImport(token, courseId, title, "v1-report.pdf", bytes);
+    }
+
+    private JsonNode getDeck(String token, UUID courseId, String deckId) throws Exception {
+        String response = mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, deckId)
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(response);
     }
 
     private JsonNode startImport(

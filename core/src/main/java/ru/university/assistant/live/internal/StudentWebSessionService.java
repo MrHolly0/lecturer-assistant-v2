@@ -187,7 +187,7 @@ public class StudentWebSessionService {
     @Transactional
     public SignalAggregate signal(String joinCode, StudentSignalRequest request, AuthenticatedUser user) {
         ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
-        ensureJoinable(current.session());
+        ensureInteractive(current.session());
         SignalAggregate aggregate = feedback.saveSignal(
                 current.session().id(), current.participant().personId(), "web",
                 current.session().currentSlideIdx(), request.value());
@@ -199,7 +199,7 @@ public class StudentWebSessionService {
     @Transactional
     public StudentQuestion ask(String joinCode, StudentQuestionRequest request, AuthenticatedUser user) {
         ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
-        ensureJoinable(current.session());
+        ensureInteractive(current.session());
         StudentQuestion question = questions.ask(
                 current.session().id(),
                 current.participant().personId(),
@@ -255,7 +255,7 @@ public class StudentWebSessionService {
     public ActivityResponse activityRespond(
             String joinCode, UUID runId, SubmitActivityResponseRequest request, AuthenticatedUser user) {
         ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
-        ensureJoinable(current.session());
+        ensureInteractive(current.session());
         ActivityResponse response = activityRespond.submitResponse(
                 current.session().id(),
                 runId,
@@ -270,7 +270,7 @@ public class StudentWebSessionService {
     public PollVote pollRespond(
             String joinCode, UUID pollId, String participantToken, int optionIdx, AuthenticatedUser user) {
         ParticipantSession current = participantSession(joinCode, participantToken, user);
-        ensureJoinable(current.session());
+        ensureInteractive(current.session());
         PollVote vote = quickPolls.respond(current.session().id(), pollId, current.participant().personId(), optionIdx);
         touch(current.participant());
         if (vote.accepted()) {
@@ -312,6 +312,12 @@ public class StudentWebSessionService {
     private void ensureJoinable(LiveSession session) {
         if (List.of(SessionStatus.ENDED, SessionStatus.ARCHIVED).contains(session.status())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is already ended");
+        }
+    }
+
+    private void ensureInteractive(LiveSession session) {
+        if (session.status() != SessionStatus.LIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session interactions are paused");
         }
     }
 

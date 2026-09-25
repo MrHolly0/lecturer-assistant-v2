@@ -32,8 +32,11 @@ class LiveSessionRepository {
     LiveSession create(UUID sessionId, UUID lectureId, UUID createdBy, String joinCode) {
         jdbc.sql(
                         """
-                        insert into live.sessions (id, lecture_id, status, join_code, started_at, created_by)
-                        values (:id, :lectureId, 'LIVE', :joinCode, now(), :createdBy)
+                        insert into live.sessions
+                            (id, lecture_id, deck_id, status, join_code, started_at, created_by)
+                        select :id, l.id, l.deck_id, 'LIVE', :joinCode, now(), :createdBy
+                        from live.lectures l
+                        where l.id = :lectureId
                         """)
                 .param("id", sessionId)
                 .param("lectureId", lectureId)
@@ -46,7 +49,7 @@ class LiveSessionRepository {
     Optional<LiveSession> findById(UUID sessionId) {
         return jdbc.sql(
                         """
-                        select s.id, l.course_id, s.lecture_id, l.deck_id, l.title as lecture_title, s.status,
+                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title, s.status,
                             s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
@@ -60,7 +63,7 @@ class LiveSessionRepository {
     Optional<LiveSession> findByCourse(UUID courseId, UUID sessionId) {
         return jdbc.sql(
                         """
-                        select s.id, l.course_id, s.lecture_id, l.deck_id, l.title as lecture_title, s.status,
+                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title, s.status,
                             s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
@@ -75,7 +78,7 @@ class LiveSessionRepository {
     Optional<LiveSession> findByJoinCode(UUID courseId, String joinCode) {
         return jdbc.sql(
                         """
-                        select s.id, l.course_id, s.lecture_id, l.deck_id, l.title as lecture_title, s.status,
+                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title, s.status,
                             s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
@@ -90,7 +93,7 @@ class LiveSessionRepository {
     Optional<LiveSession> findByJoinCode(String joinCode) {
         return jdbc.sql(
                         """
-                        select s.id, l.course_id, s.lecture_id, l.deck_id, l.title as lecture_title, s.status,
+                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title, s.status,
                             s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
@@ -105,7 +108,7 @@ class LiveSessionRepository {
     Optional<LiveSession> findActiveForCreator(UUID personId) {
         return jdbc.sql(
                         """
-                        select s.id, l.course_id, s.lecture_id, l.deck_id, l.title as lecture_title, s.status,
+                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title, s.status,
                             s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
@@ -118,13 +121,31 @@ class LiveSessionRepository {
                 .optional();
     }
 
-    boolean lectureBelongsToCourse(UUID courseId, UUID lectureId) {
-        return jdbc.sql("select count(*) from live.lectures where course_id = :courseId and id = :lectureId")
+    Optional<UUID> lectureDeckId(UUID courseId, UUID lectureId) {
+        return jdbc.sql("select deck_id from live.lectures where course_id = :courseId and id = :lectureId")
                 .param("courseId", courseId)
                 .param("lectureId", lectureId)
-                .query(Long.class)
-                .single()
-                > 0;
+                .query(UUID.class)
+                .optional();
+    }
+
+    void lockDeckForSession(UUID deckId) {
+        jdbc.sql("select id from content.slide_decks where id = :deckId for share")
+                .param("deckId", deckId)
+                .query(UUID.class)
+                .single();
+    }
+
+    Optional<UUID> lockLectureAndGetDeck(UUID courseId, UUID lectureId) {
+        return jdbc.sql("""
+                        select deck_id from live.lectures
+                        where course_id = :courseId and id = :lectureId
+                        for share
+                        """)
+                .param("courseId", courseId)
+                .param("lectureId", lectureId)
+                .query(UUID.class)
+                .optional();
     }
 
     LiveSession updateSlide(UUID courseId, UUID sessionId, int slideIdx) {

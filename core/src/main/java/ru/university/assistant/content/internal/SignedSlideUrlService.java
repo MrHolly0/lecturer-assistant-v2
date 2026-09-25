@@ -59,8 +59,9 @@ class SignedSlideUrlService {
         }
     }
 
-    String slideImageUrl(UUID courseId, UUID deckId, int slideIndex, String token) {
-        return "/api/v1/courses/" + courseId + "/decks/" + deckId + "/slides/" + slideIndex + "/image?t=" + token;
+    String slideImageUrl(UUID courseId, UUID deckId, UUID slideId, int slideIndex, String token) {
+        return "/api/v1/courses/" + courseId + "/decks/" + deckId + "/slides/" + slideIndex
+                + "/image?t=" + token + "&v=" + slideId;
     }
 
     private String signature(UUID courseId, UUID deckId, long expiresAt) {

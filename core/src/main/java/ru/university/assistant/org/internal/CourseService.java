@@ -96,6 +96,35 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
         return courses.listGroups(courseId);
     }
 
+    public List<CourseMember> listGroupMembers(AuthenticatedUser user, UUID courseId, UUID groupId) {
+        requireManage(user, courseId);
+        requireGroup(courseId, groupId);
+        return courses.listGroupMembers(courseId, groupId);
+    }
+
+    @Transactional
+    public void assignGroupMember(
+            AuthenticatedUser user, UUID courseId, UUID groupId, UUID personId) {
+        requireManage(user, courseId);
+        requireGroup(courseId, groupId);
+        CourseRole role = courses.findMemberRole(courseId, personId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course member not found"));
+        if (role != CourseRole.STUDENT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only students can be assigned to a study group");
+        }
+        courses.moveGroupMember(courseId, groupId, personId);
+    }
+
+    @Transactional
+    public void removeGroupMember(
+            AuthenticatedUser user, UUID courseId, UUID groupId, UUID personId) {
+        requireManage(user, courseId);
+        requireGroup(courseId, groupId);
+        if (!courses.removeGroupMember(courseId, groupId, personId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Group member not found");
+        }
+    }
+
     @Transactional
     public StudyGroup createGroup(AuthenticatedUser user, UUID courseId, CreateStudyGroupRequest request) {
         requireManage(user, courseId);
@@ -105,9 +134,7 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     @Transactional
     public void deleteGroup(AuthenticatedUser user, UUID courseId, UUID groupId) {
         requireManage(user, courseId);
-        if (!courses.groupBelongsToCourse(groupId, courseId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found");
-        }
+        requireGroup(courseId, groupId);
         courses.deleteGroup(groupId);
     }
 
@@ -233,5 +260,11 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
             case ASSISTANT -> PersonRole.ASSISTANT;
             case STUDENT -> PersonRole.STUDENT;
         };
+    }
+
+    private void requireGroup(UUID courseId, UUID groupId) {
+        if (!courses.groupBelongsToCourse(groupId, courseId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found");
+        }
     }
 }

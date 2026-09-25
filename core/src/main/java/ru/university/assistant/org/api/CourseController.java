@@ -109,6 +109,34 @@ public class CourseController {
         return courseService.listGroups(user, courseId);
     }
 
+    @GetMapping("/{courseId}/groups/{groupId}/members")
+    public List<CourseMember> groupMembers(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID groupId) {
+        return courseService.listGroupMembers(user, courseId, groupId);
+    }
+
+    @PutMapping("/{courseId}/groups/{groupId}/members/{personId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void assignGroupMember(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID groupId,
+            @PathVariable UUID personId) {
+        courseService.assignGroupMember(user, courseId, groupId, personId);
+    }
+
+    @DeleteMapping("/{courseId}/groups/{groupId}/members/{personId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeGroupMember(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID groupId,
+            @PathVariable UUID personId) {
+        courseService.removeGroupMember(user, courseId, groupId, personId);
+    }
+
     @PostMapping("/{courseId}/groups")
     @ResponseStatus(HttpStatus.CREATED)
     public StudyGroup createGroup(

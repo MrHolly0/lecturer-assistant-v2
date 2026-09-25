@@ -24,15 +24,18 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import ru.university.assistant.content.internal.BlobResource;
 import ru.university.assistant.content.internal.ContentService;
+import ru.university.assistant.content.internal.DeckEditingService;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 
 @RestController
 @RequestMapping("/api/v1/courses/{courseId}")
 public class ContentController {
     private final ContentService contentService;
+    private final DeckEditingService deckEditingService;
 
-    ContentController(ContentService contentService) {
+    ContentController(ContentService contentService, DeckEditingService deckEditingService) {
         this.contentService = contentService;
+        this.deckEditingService = deckEditingService;
     }
 
     @GetMapping("/decks")
@@ -98,6 +101,24 @@ public class ContentController {
             @PathVariable UUID deckId,
             @PathVariable int slideIndex) {
         contentService.deleteSlideNote(user, courseId, deckId, slideIndex);
+    }
+
+    @DeleteMapping("/decks/{deckId}/slides/{slideId}")
+    public DeckEditResult deleteSlide(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID deckId,
+            @PathVariable UUID slideId) {
+        return deckEditingService.deleteSlide(user, courseId, deckId, slideId);
+    }
+
+    @PutMapping("/decks/{deckId}/slides/order")
+    public DeckEditResult reorderSlides(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID deckId,
+            @Valid @RequestBody ReorderSlidesRequest request) {
+        return deckEditingService.reorderSlides(user, courseId, deckId, request);
     }
 
     @DeleteMapping("/decks/{deckId}")

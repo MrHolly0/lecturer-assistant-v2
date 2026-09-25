@@ -215,6 +215,148 @@ class ContentRepository {
                 .list();
     }
 
+    List<EditableSlideRecord> listEditableSlides(UUID deckId) {
+        return jdbc.sql("""
+                        select s.id, s.idx, s.image_ref, s.text_extract, n.text as note_text
+                        from content.slides s
+                        left join content.slide_notes n on n.slide_id = s.id
+                        where s.deck_id = :deckId
+                        order by s.idx
+                        """)
+                .param("deckId", deckId)
+                .query((rs, row) -> new EditableSlideRecord(
+                        rs.getObject("id", UUID.class),
+                        rs.getInt("idx"),
+                        rs.getString("image_ref"),
+                        rs.getString("text_extract"),
+                        rs.getString("note_text")))
+                .list();
+    }
+
+    boolean lockDeck(UUID courseId, UUID deckId) {
+        return jdbc.sql("select id from content.slide_decks where course_id = :courseId and id = :deckId for update")
+                .param("courseId", courseId)
+                .param("deckId", deckId)
+                .query(UUID.class)
+                .optional()
+                .isPresent();
+    }
+
+    boolean lockDeckForReference(UUID courseId, UUID deckId) {
+        return jdbc.sql("select id from content.slide_decks where course_id = :courseId and id = :deckId for share")
+                .param("courseId", courseId)
+                .param("deckId", deckId)
+                .query(UUID.class)
+                .optional()
+                .isPresent();
+    }
+
+    DeckRecord copyDeck(UUID sourceDeckId, UUID newDeckId, int version) {
+        return jdbc.sql("""
+                        insert into content.slide_decks
+                            (id, course_id, title, version, source_file_ref, source_filename,
+                             source_content_type, source_size_bytes)
+                        select :newDeckId, course_id, title, :version, source_file_ref, source_filename,
+                               source_content_type, source_size_bytes
+                        from content.slide_decks
+                        where id = :sourceDeckId
+                        returning id, course_id, title, version
+                        """)
+                .param("newDeckId", newDeckId)
+                .param("sourceDeckId", sourceDeckId)
+                .param("version", version)
+                .query(this::mapDeckRecord)
+                .single();
+    }
+
+    void copySlide(UUID newSlideId, UUID newDeckId, EditableSlideRecord source) {
+        jdbc.sql("""
+                        insert into content.slides (id, deck_id, idx, image_ref, text_extract)
+                        values (:id, :deckId, :idx, :imageRef, :textExtract)
+                        """)
+                .param("id", newSlideId)
+                .param("deckId", newDeckId)
+                .param("idx", source.index())
+                .param("imageRef", source.imageRef())
+                .param("textExtract", source.textExtract())
+                .update();
+        if (source.noteText() != null) {
+            saveNote(newSlideId, source.noteText());
+        }
+    }
+
+    boolean deckHasActiveSessions(UUID deckId) {
+        return jdbc.sql("""
+                        select count(*)
+                        from live.sessions s
+                        where s.deck_id = :deckId and s.status in ('SCHEDULED', 'LIVE', 'PAUSED')
+                        """)
+                .param("deckId", deckId)
+                .query(Long.class)
+                .single() > 0;
+    }
+
+    boolean deckHasSessionHistory(UUID deckId) {
+        return jdbc.sql("""
+                        select count(*)
+                        from live.sessions s
+                        where s.deck_id = :deckId
+                        """)
+                .param("deckId", deckId)
+                .query(Long.class)
+                .single() > 0;
+    }
+
+    void relinkLectures(UUID sourceDeckId, UUID targetDeckId) {
+        jdbc.sql("""
+                        update live.lectures
+                        set deck_id = :targetDeckId, updated_at = now()
+                        where deck_id = :sourceDeckId
+                        """)
+                .param("sourceDeckId", sourceDeckId)
+                .param("targetDeckId", targetDeckId)
+                .update();
+    }
+
+    String deleteSlide(UUID deckId, UUID slideId) {
+        return jdbc.sql("""
+                        delete from content.slides
+                        where deck_id = :deckId and id = :slideId
+                        returning image_ref
+                        """)
+                .param("deckId", deckId)
+                .param("slideId", slideId)
+                .query(String.class)
+                .optional()
+                .orElseThrow();
+    }
+
+    void reorderSlides(UUID deckId, List<UUID> slideIds) {
+        jdbc.sql("update content.slides set idx = idx + 1000000 where deck_id = :deckId")
+                .param("deckId", deckId)
+                .update();
+        for (int index = 0; index < slideIds.size(); index++) {
+            jdbc.sql("update content.slides set idx = :idx where deck_id = :deckId and id = :slideId")
+                    .param("idx", index + 1)
+                    .param("deckId", deckId)
+                    .param("slideId", slideIds.get(index))
+                    .update();
+        }
+    }
+
+    boolean blobRefIsUsed(String blobRef) {
+        return jdbc.sql("""
+                        select exists (
+                            select 1 from content.slide_decks where source_file_ref = :blobRef
+                            union all
+                            select 1 from content.slides where image_ref = :blobRef
+                        )
+                        """)
+                .param("blobRef", blobRef)
+                .query(Boolean.class)
+                .single();
+    }
+
     Optional<SlideRecord> findSlideRecord(UUID courseId, UUID deckId, int index) {
         return jdbc.sql(
                         """

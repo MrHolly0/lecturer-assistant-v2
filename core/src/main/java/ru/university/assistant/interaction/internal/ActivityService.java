@@ -18,6 +18,7 @@ import ru.university.assistant.interaction.api.ActivityRunStatus;
 import ru.university.assistant.interaction.api.ActivityStrategy;
 import ru.university.assistant.interaction.api.CreateActivityRequest;
 import ru.university.assistant.live.api.LiveSessionAccessApi;
+import ru.university.assistant.live.api.SessionStatus;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
@@ -51,7 +52,7 @@ public class ActivityService implements ActivityRespondApi {
 
     @Transactional
     public ActivityRun startRun(UUID courseId, UUID sessionId, UUID definitionId) {
-        liveSessions.requireSessionInCourse(courseId, sessionId);
+        requireLive(liveSessions.requireSessionInCourse(courseId, sessionId).status());
         ActivityDefinition def = getDefinition(courseId, definitionId);
         List<UUID> questionIds = selectQuestions(def);
         return activities.createRun(UuidV7.generate(), definitionId, sessionId, questionIds);
@@ -70,6 +71,7 @@ public class ActivityService implements ActivityRespondApi {
     @Override
     public ActivityResponse submitResponse(UUID sessionId, UUID runId, UUID personId, UUID questionId,
             JsonNode answer) {
+        requireLive(liveSessions.requireSession(sessionId).status());
         ActivityRun run = runInSession(sessionId, runId);
         if (run.status() == ActivityRunStatus.CLOSED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Activity run is already closed");
@@ -94,6 +96,12 @@ public class ActivityService implements ActivityRespondApi {
                 .filter(found -> found.sessionId().equals(sessionId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Activity run not found"));
+    }
+
+    private void requireLive(SessionStatus status) {
+        if (status != SessionStatus.LIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session interactions are paused");
+        }
     }
 
     private List<UUID> selectQuestions(ActivityDefinition def) {

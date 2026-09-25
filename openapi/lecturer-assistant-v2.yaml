@@ -549,6 +549,58 @@ paths:
       responses:
         "204":
           description: Group deleted.
+  /courses/{courseId}/groups/{groupId}/members:
+    get:
+      operationId: listStudyGroupMembers
+      summary: List the current members of a study group.
+      description: Requires course management permission.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: Current group members.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CourseMember"
+        "403":
+          description: Course management is not allowed.
+        "404":
+          description: Group does not belong to this course.
+  /courses/{courseId}/groups/{groupId}/members/{personId}:
+    put:
+      operationId: assignStudyGroupMember
+      summary: Assign a course student to this group.
+      description: Atomically removes the student from other groups in this course before assignment.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/PersonId"
+      responses:
+        "204":
+          description: Student assigned.
+        "404":
+          description: Group or course member not found.
+        "409":
+          description: The course member is not a student.
+    delete:
+      operationId: removeStudyGroupMember
+      summary: Remove a student from this group.
+      tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/PersonId"
+      responses:
+        "204":
+          description: Student removed from the group.
+        "404":
+          description: Group membership not found.
   /courses/{courseId}/bans:
     get:
       operationId: listCourseBans
@@ -584,6 +636,88 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CourseBan"
+  /courses/{courseId}/analytics/groups:
+    get:
+      operationId: getCourseGroupAnalytics
+      summary: Aggregate learning activity by the current course groups.
+      description: >
+        Requires course management permission. Group membership is evaluated at request time and is not a
+        historical membership snapshot. Overall metrics deduplicate students by personId. Only CLOSED quick polls
+        and activity runs contribute check results. Temporary participants and questions without a stable profile
+        are reported separately as unidentified.
+      tags: [analytics]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+      responses:
+        "200":
+          description: Course and group aggregates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseGroupAnalytics"
+        "403":
+          description: Course management is not allowed.
+  /courses/{courseId}/analytics/students:
+    get:
+      operationId: listStudentAnalytics
+      summary: List analytics for stable student profiles in the course.
+      tags: [analytics]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - name: groupId
+          in: query
+          required: false
+          description: Filter by current study group membership.
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Page of student analytics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentAnalyticsPage"
+        "400":
+          description: Invalid pagination.
+        "403":
+          description: Course management is not allowed.
+        "404":
+          description: Group does not belong to the course.
+  /courses/{courseId}/analytics/students/{personId}:
+    get:
+      operationId: getStudentAnalytics
+      summary: Read analytics for one stable student profile in the course.
+      tags: [analytics]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/PersonId"
+      responses:
+        "200":
+          description: Student analytics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentLearningAnalytics"
+        "403":
+          description: Course management is not allowed.
+        "404":
+          description: Stable student profile not found in this course.
   /courses/{courseId}/decks:
     get:
       operationId: listSlideDecks
@@ -750,6 +884,67 @@ paths:
       responses:
         "204":
           description: Note cleared.
+  /courses/{courseId}/decks/{deckId}/slides/order:
+    put:
+      operationId: reorderDeckSlides
+      summary: Replace the complete slide order of a deck.
+      description: >
+        The request must contain every current slide id exactly once. Indexes are rewritten from 1. If the deck
+        has completed session history or is archived, the server creates a new active deck version, relinks future
+        lecture launches to it, and preserves the original session deck snapshot. Active decks cannot be edited.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/DeckId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderSlidesRequest"
+      responses:
+        "200":
+          description: Edited deck, possibly a new copy-on-write version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeckEditResult"
+        "400":
+          description: slideIds is not an exact permutation of the current slides.
+        "403":
+          description: Course management is not allowed.
+        "409":
+          description: The deck is used by an active session.
+  /courses/{courseId}/decks/{deckId}/slides/{slideId}:
+    delete:
+      operationId: deleteDeckSlide
+      summary: Delete one slide from a deck.
+      description: >
+        Remaining slides are reindexed from 1. Notes stay attached to their slide ids. Historical decks use
+        copy-on-write; an unreferenced image blob from an in-place edit is removed only after transaction commit.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/DeckId"
+        - name: slideId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Edited deck, possibly a new copy-on-write version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeckEditResult"
+        "403":
+          description: Course management is not allowed.
+        "404":
+          description: Deck or slide not found.
+        "409":
+          description: The deck is active or this is its only slide.
   /courses/{courseId}/lectures:
     get:
       operationId: listLectures
@@ -1012,6 +1207,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveSession"
+        "409":
+          description: Session is paused or already ended.
   /courses/{courseId}/sessions/{sessionId}/annotations:
     put:
       operationId: saveLiveSessionAnnotations
@@ -1033,6 +1230,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveSession"
+        "409":
+          description: Session is paused or already ended.
   /courses/{courseId}/sessions/{sessionId}/pause:
     post:
       operationId: pauseLiveSession
@@ -1048,6 +1247,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveSession"
+        "409":
+          description: Only a LIVE session can be paused.
   /courses/{courseId}/sessions/{sessionId}/resume:
     post:
       operationId: resumeLiveSession
@@ -1063,6 +1264,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveSession"
+        "409":
+          description: Only a PAUSED session can be resumed.
   /courses/{courseId}/sessions/{sessionId}/end:
     post:
       operationId: endLiveSession
@@ -1078,6 +1281,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveSession"
+        "409":
+          description: Only a LIVE or PAUSED session can be ended.
   /courses/{courseId}/sessions/{sessionId}/engagement:
     get:
       operationId: getLiveSessionEngagement
@@ -1196,6 +1401,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignalAggregate"
+        "409":
+          description: Session is paused or ended.
         "429":
           description: Too many requests from this client (B-13 rate limit).
   /student/sessions/{joinCode}/questions:
@@ -1219,6 +1426,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudentQuestion"
+        "409":
+          description: Session is paused or ended.
   /courses/{courseId}/sessions/{sessionId}/polls:
     get:
       operationId: listClosedPolls
@@ -1277,7 +1486,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PollResult"
         "409":
-          description: A poll is already open for this session.
+          description: A poll is already open, or the session is paused or ended.
         "404":
           description: Session does not belong to this course.
   /courses/{courseId}/sessions/{sessionId}/polls/active:
@@ -1325,7 +1534,7 @@ paths:
         "404":
           description: Session or question not found in this course.
         "409":
-          description: A poll is already open for this session.
+          description: A poll is already open, or the session is paused or ended.
         "422":
           description: The question type or option set cannot be used as a quick poll.
   /courses/{courseId}/sessions/{sessionId}/polls/{pollId}:
@@ -1397,6 +1606,8 @@ paths:
                 $ref: "#/components/schemas/PollVote"
         "404":
           description: Poll does not belong to this session.
+        "409":
+          description: Session is paused or ended.
   /courses/{courseId}/questions:
     post:
       operationId: createQuestion
@@ -1558,6 +1769,8 @@ paths:
                 $ref: "#/components/schemas/ActivityRun"
         "404":
           description: Session or activity definition does not belong to this course.
+        "409":
+          description: Session is paused or ended.
   /courses/{courseId}/sessions/{sessionId}/activity-runs/{runId}/close:
     post:
       operationId: closeActivityRun
@@ -1619,7 +1832,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ActivityResponse"
         "409":
-          description: Activity run already closed.
+          description: Session is paused or ended, or the activity run is already closed.
   /config/channels:
     get:
       operationId: getChannelJoinConfig
@@ -2160,6 +2373,161 @@ components:
           format: uuid
         name:
           type: string
+    LearningMetrics:
+      type: object
+      description: Counts and explicit denominators derived from observed course activity.
+      required:
+        - memberCount
+        - participantCount
+        - sessionAttendances
+        - greenSignals
+        - yellowSignals
+        - redSignals
+        - signalCount
+        - checkAnswers
+        - gradedAnswers
+        - correctAnswers
+        - questionsAsked
+        - questionsAnswered
+      properties:
+        memberCount:
+          type: integer
+          minimum: 0
+        participantCount:
+          type: integer
+          minimum: 0
+          description: Distinct people from this scope who joined at least one course session.
+        sessionAttendances:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Distinct person and session pairs.
+        greenSignals:
+          type: integer
+          format: int64
+          minimum: 0
+        yellowSignals:
+          type: integer
+          format: int64
+          minimum: 0
+        redSignals:
+          type: integer
+          format: int64
+          minimum: 0
+        signalCount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Denominator for all signal shares.
+        greenShare:
+          type: number
+          format: double
+          nullable: true
+        yellowShare:
+          type: number
+          format: double
+          nullable: true
+        redShare:
+          type: number
+          format: double
+          nullable: true
+        checkAnswers:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Answers in CLOSED quick polls and activity runs, including ungraded answers.
+        gradedAnswers:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Denominator for correctRate; excludes checks without a known correct option.
+        correctAnswers:
+          type: integer
+          format: int64
+          minimum: 0
+        correctRate:
+          type: number
+          format: double
+          nullable: true
+        questionsAsked:
+          type: integer
+          format: int64
+          minimum: 0
+        questionsAnswered:
+          type: integer
+          format: int64
+          minimum: 0
+    AnalyticsGroupRef:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    GroupLearningAnalytics:
+      type: object
+      required: [groupId, groupName, metrics]
+      properties:
+        groupId:
+          type: string
+          format: uuid
+        groupName:
+          type: string
+        metrics:
+          $ref: "#/components/schemas/LearningMetrics"
+    CourseGroupAnalytics:
+      type: object
+      required: [courseId, overall, groups, ungrouped, unidentified]
+      properties:
+        courseId:
+          type: string
+          format: uuid
+        overall:
+          $ref: "#/components/schemas/LearningMetrics"
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupLearningAnalytics"
+        ungrouped:
+          $ref: "#/components/schemas/LearningMetrics"
+        unidentified:
+          $ref: "#/components/schemas/LearningMetrics"
+    StudentLearningAnalytics:
+      type: object
+      required: [personId, displayName, groups, metrics]
+      properties:
+        personId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalyticsGroupRef"
+        metrics:
+          $ref: "#/components/schemas/LearningMetrics"
+    StudentAnalyticsPage:
+      type: object
+      required: [items, limit, offset, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentLearningAnalytics"
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        offset:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          format: int64
+          minimum: 0
     BanCourseMemberRequest:
       type: object
       required: [personId]
@@ -2262,6 +2630,29 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/Slide"
+    DeckEditResult:
+      type: object
+      required: [deck, copyOnWrite, sourceDeckId]
+      properties:
+        deck:
+          $ref: "#/components/schemas/SlideDeckDetails"
+        copyOnWrite:
+          type: boolean
+          description: True when history required a new deck version.
+        sourceDeckId:
+          type: string
+          format: uuid
+    ReorderSlidesRequest:
+      type: object
+      required: [slideIds]
+      properties:
+        slideIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
     Slide:
       type: object
       required: [id, deckId, idx, imageUrl]
@@ -2977,6 +3368,8 @@ components:
         - startedAt
         - endedAt
         - durationSeconds
+        - activeDurationSeconds
+        - pausedDurationSeconds
         - participantCount
         - participants
         - signalTotals
@@ -3003,6 +3396,16 @@ components:
           type: string
           format: date-time
         durationSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Wall-clock time from startedAt to endedAt, including pauses.
+        activeDurationSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Presentation time excluding intervals between pause and resume or end.
+        pausedDurationSeconds:
           type: integer
           format: int64
           minimum: 0

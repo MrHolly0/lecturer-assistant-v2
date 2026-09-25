@@ -136,6 +136,7 @@ public class PollService implements QuickPollApi {
     @Transactional
     @Override
     public PollVote respond(UUID sessionId, UUID pollId, UUID personId, int optionIdx) {
+        requireLive(liveSessions.requireSession(sessionId));
         QuickPoll poll = polls.findById(pollId)
                 .filter(found -> found.sessionId().equals(sessionId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Poll not found"));
@@ -188,13 +189,17 @@ public class PollService implements QuickPollApi {
 
     private LiveSession prepareStart(UUID courseId, UUID sessionId) {
         LiveSession session = liveSessions.requireSessionInCourse(courseId, sessionId);
-        if (session.status() != SessionStatus.LIVE && session.status() != SessionStatus.PAUSED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not active");
-        }
+        requireLive(session);
         polls.findOpenForSession(sessionId).ifPresent(existing -> {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A poll is already open for this session");
         });
         return session;
+    }
+
+    private void requireLive(LiveSession session) {
+        if (session.status() != SessionStatus.LIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session interactions are paused");
+        }
     }
 
     private void validateBankQuestion(QuestionBankEntry question) {
