@@ -635,10 +635,10 @@ textarea {
 }
 
 .slide-thumb span {
-  background: rgba(0, 0, 0, 0.72);
+  background: color-mix(in srgb, var(--primary) 82%, transparent);
   border-radius: 999px;
   bottom: 6px;
-  color: #fff;
+  color: var(--primary-foreground);
   font-size: 12px;
   left: 6px;
   min-width: 22px;
@@ -649,12 +649,12 @@ textarea {
 .slide-notes-panel {
   animation: snp-slide-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
   backdrop-filter: blur(16px);
-  background: rgba(23, 23, 23, 0.97);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--card) 97%, transparent);
+  border: 1px solid var(--border);
   border-radius: 14px;
   bottom: 80px;
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 8px 32px color-mix(in srgb, var(--foreground) 24%, transparent),
     0 0 0 1px rgba(249, 115, 22, 0.12);
   display: flex;
   flex-direction: column;
@@ -679,7 +679,7 @@ textarea {
 
 .snp-header {
   align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid var(--border);
   display: flex;
   flex-shrink: 0;
   justify-content: space-between;
@@ -697,7 +697,7 @@ textarea {
 
 .snp-title {
   align-items: center;
-  color: #f97316;
+  color: var(--primary);
   display: flex;
   font-size: 12px;
   font-weight: 600;
@@ -711,7 +711,7 @@ textarea {
   background: transparent;
   border: none;
   border-radius: 6px;
-  color: #737373;
+  color: var(--muted-foreground);
   cursor: pointer;
   display: flex;
   height: 44px;
@@ -723,8 +723,8 @@ textarea {
 }
 
 .snp-close-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 
 .snp-body {
@@ -734,7 +734,7 @@ textarea {
 
 .snp-spinner {
   animation: spin 0.8s linear infinite;
-  color: #f97316;
+  color: var(--primary);
 }
 
 @keyframes spin {
@@ -748,11 +748,11 @@ textarea {
 }
 
 .snp-textarea {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--input-background);
+  border: 1px solid var(--border);
   border-radius: 8px;
   box-sizing: border-box;
-  color: #e5e5e5;
+  color: var(--foreground);
   font-family: inherit;
   font-size: 13px;
   line-height: 1.6;
@@ -767,19 +767,19 @@ textarea {
 }
 
 .snp-textarea:focus {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(249, 115, 22, 0.5);
-  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.15);
-  outline: 2px solid #f97316;
+  background: var(--input-background);
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 24%, transparent);
+  outline: 2px solid var(--ring);
   outline-offset: 1px;
 }
 
 .snp-textarea::placeholder {
-  color: #525252;
+  color: var(--muted-foreground);
 }
 
 .snp-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid var(--border);
   display: flex;
   gap: 8px;
   justify-content: flex-end;
@@ -802,12 +802,12 @@ textarea {
 }
 
 .snp-btn-primary {
-  background: #f97316;
-  color: #fff;
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .snp-btn-primary:hover:not(:disabled) {
-  background: #ea6a0a;
+  background: color-mix(in srgb, var(--primary) 88%, var(--background));
 }
 
 .snp-btn-disabled,
@@ -817,7 +817,7 @@ textarea {
 }
 
 .snp-hint {
-  color: #525252;
+  color: var(--muted-foreground);
   font-size: 10px;
   padding: 0 14px 8px;
   text-align: right;
@@ -838,17 +838,17 @@ textarea {
 }
 
 .snp-trigger-btn--off {
-  background: rgb(38, 38, 38);
-  color: rgb(163, 163, 163);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
 }
 
 .snp-trigger-btn--off:hover {
-  background: rgb(64, 64, 64);
+  background: var(--accent);
 }
 
 .snp-trigger-btn--on {
-  background: #f97316;
-  color: #fff;
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .icon-button {
@@ -865,8 +865,8 @@ textarea {
 }
 
 .presenter-shell {
-  background: #111;
-  color: #fff;
+  background: var(--background);
+  color: var(--foreground);
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -875,8 +875,8 @@ textarea {
 
 .presenter-topbar {
   align-items: center;
-  background: #171717;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
   display: flex;
   gap: 12px;
   justify-content: space-between;
@@ -886,7 +886,7 @@ textarea {
 
 .presenter-topbar .presenter-back,
 .presenter-topbar .muted {
-  color: #d4d4d4;
+  color: var(--muted-foreground);
 }
 
 .presenter-heading,
@@ -914,8 +914,8 @@ textarea {
 }
 
 .presenter-back:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 
 .presenter-title-block {
@@ -955,9 +955,9 @@ textarea {
 .btn-danger-outline {
   align-items: center;
   background: transparent;
-  border: 1px solid rgba(248, 113, 113, 0.55);
+  border: 1px solid color-mix(in srgb, var(--destructive) 55%, var(--border));
   border-radius: calc(var(--radius) - 2px);
-  color: #fecaca;
+  color: var(--foreground);
   cursor: pointer;
   display: inline-flex;
   gap: 7px;
@@ -966,27 +966,27 @@ textarea {
 }
 
 .btn-danger-outline:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.14);
-  border-color: #f87171;
-  color: #fff;
+  background: color-mix(in srgb, var(--destructive) 14%, var(--card));
+  border-color: var(--destructive);
+  color: var(--foreground);
 }
 
 .presenter-status--live {
-  background: #166534;
-  border-color: #22c55e;
-  color: #fff;
+  background: color-mix(in srgb, var(--chart-2) 18%, var(--card));
+  border-color: var(--chart-2);
+  color: var(--foreground);
 }
 
 .presenter-status--paused {
-  background: #854d0e;
-  border-color: #eab308;
-  color: #fff;
+  background: color-mix(in srgb, var(--chart-4) 18%, var(--card));
+  border-color: var(--chart-4);
+  color: var(--foreground);
 }
 
 .live-code {
-  background: rgba(249, 115, 22, 0.16);
+  background: var(--secondary);
   border-radius: 999px;
-  color: #fed7aa;
+  color: var(--secondary-foreground);
   padding: 4px 10px;
 }
 
@@ -1042,8 +1042,8 @@ textarea {
 
 .live-metric,
 .live-poll-panel {
-  background: #171717;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px;
 }
@@ -1060,10 +1060,12 @@ textarea {
 }
 
 .projection-code {
-  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(12px);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   bottom: 24px;
-  color: #fff;
+  color: var(--foreground);
   display: grid;
   gap: 4px;
   padding: 14px 18px;
@@ -1073,7 +1075,7 @@ textarea {
 }
 
 .projection-code strong {
-  color: #f97316;
+  color: var(--primary);
   font-size: 44px;
   letter-spacing: 0;
 }
@@ -1086,7 +1088,7 @@ textarea {
 
 .projection-brand {
   align-items: center;
-  color: #f97316;
+  color: var(--primary);
   display: grid;
   font-size: 13px;
   font-weight: 600;
@@ -1120,8 +1122,8 @@ textarea {
 
 .drawing-toolbar {
   align-items: center;
-  background: rgba(23, 23, 23, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   display: flex;
   flex-wrap: wrap;
@@ -1148,9 +1150,9 @@ textarea {
 .color-swatch,
 .size-dot {
   align-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  color: #fff;
+  color: var(--foreground);
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
@@ -1162,7 +1164,7 @@ textarea {
 
 .color-swatch--active {
   box-shadow:
-    0 0 0 2px #fff,
+    0 0 0 2px var(--card),
     0 0 0 4px var(--primary);
 }
 
@@ -1179,8 +1181,8 @@ textarea {
 }
 
 .live-panel {
-  background: #171717;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px;
 }
@@ -1220,11 +1222,11 @@ textarea {
 
 .participant-list small,
 .presenter-note {
-  color: #a3a3a3;
+  color: var(--muted-foreground);
 }
 
 .signal-summary {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border);
   display: grid;
   gap: 10px;
   margin-top: 14px;
@@ -1269,13 +1271,13 @@ textarea {
 }
 
 .live-poll-panel .poll-bar-row {
-  color: #fff;
+  color: var(--foreground);
   min-height: 40px;
 }
 
 .live-poll-panel .poll-response-count,
 .live-poll-panel .poll-bar-pct {
-  color: #d4d4d4;
+  color: var(--muted-foreground);
 }
 
 .signal-row {
@@ -1286,7 +1288,7 @@ textarea {
 }
 
 .signal-row__track {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--muted);
   border-radius: 999px;
   height: 8px;
   overflow: hidden;
@@ -1313,10 +1315,10 @@ textarea {
 .signal-alert {
   align-items: center;
   animation: pulse-alert 1.8s ease-in-out infinite;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: color-mix(in srgb, var(--destructive) 15%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--destructive) 40%, var(--border));
   border-radius: 8px;
-  color: #f87171;
+  color: var(--destructive);
   display: flex;
   font-size: 0.8125rem;
   font-weight: 600;
@@ -1336,7 +1338,8 @@ textarea {
 }
 
 .tab-badge {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
   border-radius: 999px;
   font-size: 0.7rem;
   font-weight: 700;
@@ -1346,8 +1349,8 @@ textarea {
 }
 
 .tab-badge--alert {
-  background: #ef4444;
-  color: #fff;
+  background: color-mix(in srgb, var(--destructive) 18%, var(--card));
+  color: var(--foreground);
 }
 
 .presenter-note {
@@ -1366,8 +1369,8 @@ textarea {
 
 .live-question-list li,
 .student-question-list li {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--secondary);
+  border: 1px solid var(--border);
   border-radius: calc(var(--radius) - 2px);
   display: grid;
   gap: 4px;
@@ -1380,7 +1383,7 @@ textarea {
 
 .live-question-list small,
 .student-question-list small {
-  color: #a3a3a3;
+  color: var(--muted-foreground);
 }
 
 .qr-card {
@@ -1479,13 +1482,13 @@ textarea {
 }
 
 .student-status--live {
-  background: #166534;
-  color: #fff;
+  background: color-mix(in srgb, var(--chart-2) 18%, var(--card));
+  color: var(--foreground);
 }
 
 .student-status--paused {
-  background: #854d0e;
-  color: #fff;
+  background: color-mix(in srgb, var(--chart-4) 18%, var(--card));
+  color: var(--foreground);
 }
 
 .student-status--ended,
@@ -1530,7 +1533,8 @@ textarea {
 
 .student-slide-empty {
   align-items: center;
-  color: #fff;
+  background: var(--primary);
+  color: var(--primary-foreground);
   display: flex;
   justify-content: center;
 }
@@ -1961,9 +1965,9 @@ textarea {
 
 /* Окно подключения к мини-приложению MAX. */
 .session-join-shell {
-  background: #111;
+  background: var(--background);
   box-sizing: border-box;
-  color: #fff;
+  color: var(--foreground);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -2004,7 +2008,7 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .session-join-code {
-  color: #f97316;
+  color: var(--primary);
   font-size: 44px;
   letter-spacing: 0;
   line-height: 1;
@@ -2057,14 +2061,14 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .session-join-link {
-  color: #93c5fd;
+  color: var(--primary);
   font-size: 13px;
   word-break: break-all;
 }
 
 .session-join-soon {
-  background: #171717;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   display: grid;
   gap: 8px;
@@ -2285,7 +2289,7 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .student-poll-waiting > svg {
-  color: #15803d;
+  color: var(--chart-2);
   margin-top: 2px;
 }
 
