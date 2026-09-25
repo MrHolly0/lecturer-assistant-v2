@@ -1,4 +1,5 @@
 import type { FormEvent } from "react";
+import { Button } from "../shared/ui/button";
 
 interface StudentJoinPanelProps {
   displayName: string;
@@ -32,9 +33,9 @@ export function StudentJoinPanel({
               <p className="form-error" role="alert">
                 Не удалось подключиться от имени {userName}.
               </p>
-              <button className="btn-primary" type="button" disabled={isPending} onClick={onJoin}>
+              <Button type="button" disabled={isPending} onClick={onJoin}>
                 Попробовать снова
-              </button>
+              </Button>
             </>
           ) : (
             <p className="muted">Имя участника: {userName}</p>
@@ -52,13 +53,12 @@ export function StudentJoinPanel({
               minLength={2}
               required
             />
-            <button
-              className="btn-primary"
+            <Button
               type="submit"
               disabled={isPending || displayName.trim().length < 2}
             >
               Подключиться
-            </button>
+            </Button>
           </form>
         </>
       )}

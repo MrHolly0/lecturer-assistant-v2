@@ -4,6 +4,7 @@ import { Link2, RefreshCw } from "lucide-react";
 import { createMaxLinkCode, type MaxLinkCode } from "../app/api/max-identity-api";
 import { buildMaxLinkUrl } from "../app/max/deepLink";
 import { LocalQrCode } from "../widgets/LocalQrCode";
+import { Button } from "../shared/ui/button";
 
 export function MaxLinkPage() {
   const [linkCode, setLinkCode] = useState<MaxLinkCode | null>(null);
@@ -37,23 +38,22 @@ export function MaxLinkPage() {
 
       <section className="max-link-panel">
         <div className="max-link-copy">
-          <div className="max-link-panel__icon" aria-hidden="true">
-            <Link2 size={22} />
-          </div>
-          <h2>Откройте кабинет преподавателя в MAX</h2>
+          <h2 className="max-link-copy__heading">
+            <Link2 size={22} aria-hidden="true" />
+            Откройте кабинет преподавателя в MAX
+          </h2>
           <p className="muted">
             Получите одноразовый код, затем откройте ссылку или отсканируйте QR. Код действует 5
             минут.
           </p>
           {!linkCode && (
-            <button
-              className="btn-primary"
+            <Button
               type="button"
               disabled={createCode.isPending}
               onClick={() => createCode.mutate()}
             >
               Получить код
-            </button>
+            </Button>
           )}
         </div>
 
@@ -77,15 +77,15 @@ export function MaxLinkPage() {
                 Имя MAX-бота не настроено. Код можно ввести в мини-приложении вручную.
               </p>
             )}
-            <button
-              className="btn-ghost"
+            <Button
+              variant="outline"
               type="button"
               disabled={createCode.isPending}
               onClick={() => createCode.mutate()}
             >
               <RefreshCw size={16} />
               Обновить код
-            </button>
+            </Button>
           </div>
         )}
       </section>

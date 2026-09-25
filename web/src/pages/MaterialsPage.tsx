@@ -229,7 +229,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
             <h2 id="materials-workspace-title">Презентации</h2>
             <p className="muted">Файлы слайдов, версии и заметки преподавателя.</p>
           </div>
-          {canManage && (
+          {canManage && activeDecks.length > 0 && (
             <Button
               type="button"
               variant="outline"

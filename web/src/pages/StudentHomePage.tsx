@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { listCourses } from "../app/api/courses-api";
+import { Button } from "../shared/ui/button";
 
 export function StudentHomePage() {
   const navigate = useNavigate();
@@ -41,13 +42,12 @@ export function StudentHomePage() {
             required
             minLength={4}
           />
-          <button
-            className="btn-primary"
+          <Button
             type="submit"
             disabled={!joinCode.trim()}
           >
             Подключиться
-          </button>
+          </Button>
         </form>
       </section>
 

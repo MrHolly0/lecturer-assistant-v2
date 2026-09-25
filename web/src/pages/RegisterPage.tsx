@@ -6,6 +6,8 @@ import { registerByInvitation } from "../app/api/auth-api";
 import { useAuth } from "../app/AuthContext";
 import { ApiError } from "../app/api/http";
 import { landingPath } from "../app/routes";
+import { BrandMark } from "../shared/brand/BrandMark";
+import { Button } from "../shared/ui/button";
 
 export function RegisterPage({ code: initialCode }: { code: string }) {
   const { setUser } = useAuth();
@@ -41,6 +43,7 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
     <div className="auth-shell">
       <div className="auth-card">
         <div className="auth-header">
+          <BrandMark className="mx-auto h-14 w-14 text-orange-500" />
           <h1 className="auth-title">Регистрация</h1>
           <p className="auth-sub">по приглашению</p>
         </div>
@@ -80,9 +83,9 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
             />
           </label>
           {error && <p className="form-error">{error}</p>}
-          <button type="submit" className="btn-primary" disabled={mutation.isPending}>
+          <Button type="submit" disabled={mutation.isPending}>
             {mutation.isPending ? "..." : "Зарегистрироваться"}
-          </button>
+          </Button>
         </form>
         <p className="auth-hint">
           <Link to="/login">← Войти в существующий аккаунт</Link>

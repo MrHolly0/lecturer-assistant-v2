@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import type { components } from "../app/api/schema";
 import { createAdminInvitation, listUsers, updateUserRole, updateUserStatus } from "../app/api/admin-api";
 import { useAuth } from "../app/AuthContext";
@@ -14,6 +13,7 @@ import {
 } from "../shared/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { PaginationBar, SearchField } from "../widgets/ListControls";
+import { Button, LinkButton } from "../shared/ui/button";
 
 type UserProfile = components["schemas"]["UserProfile"];
 type UserRole = "ADMIN" | "LECTURER" | "ASSISTANT" | "STUDENT";
@@ -102,9 +102,8 @@ export function AdminUsersPage() {
               </SelectContent>
             </Select>
           </label>
-          <button
+          <Button
             type="button"
-            className="btn-primary"
             onClick={() => {
               setLastInvite(null);
               inviteMut.mutate();
@@ -112,7 +111,7 @@ export function AdminUsersPage() {
             disabled={inviteMut.isPending}
           >
             Создать приглашение
-          </button>
+          </Button>
           {lastInvite && (
             <div className="invite-result">
               <code className="invite-code">{lastInvite.code}</code>
@@ -120,9 +119,9 @@ export function AdminUsersPage() {
                 для роли {lastInvite.role}, до{" "}
                 {new Date(lastInvite.expiresAt).toLocaleDateString("ru-RU")}
               </span>
-              <Link to={`/register?code=${encodeURIComponent(lastInvite.code)}`} className="btn-ghost">
+              <LinkButton to={`/register?code=${encodeURIComponent(lastInvite.code)}`} variant="outline">
                 Ссылка для регистрации
-              </Link>
+              </LinkButton>
             </div>
           )}
         </div>
@@ -244,16 +243,16 @@ function UsersTable({
                 </span>
               </td>
               <td>
-                <button
+                <Button
                   type="button"
-                  className="btn-ghost"
+                  variant="outline"
                   disabled={ownProfile || !canToggle || statusPending}
                   onClick={() =>
                     onStatus(item.id, item.status === "DISABLED" ? "ACTIVE" : "DISABLED")
                   }
                 >
                   {item.status === "DISABLED" ? "Активировать" : "Деактивировать"}
-                </button>
+                </Button>
               </td>
             </tr>
           );

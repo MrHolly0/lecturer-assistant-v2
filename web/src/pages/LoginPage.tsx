@@ -7,6 +7,8 @@ import { useAuth } from "../app/AuthContext";
 import { ApiError } from "../app/api/http";
 import { landingPath } from "../app/routes";
 import { BrandMark } from "../shared/brand/BrandMark";
+import { Button } from "../shared/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 
 type Mode = "login" | "bootstrap";
 
@@ -62,31 +64,25 @@ export function LoginPage() {
         <div className="auth-header">
           <BrandMark className="mx-auto h-16 w-16 text-orange-500" />
           <h1 className="auth-title">Lecturer Assistant</h1>
-          <p className="auth-sub">v2</p>
+          <p className="auth-sub">Рабочее место преподавателя</p>
         </div>
 
-        <div className="tab-row">
-          <button
-            type="button"
-            className={`tab ${mode === "login" ? "tab--active" : ""}`}
-            onClick={() => {
-              setMode("login");
-              setError("");
-            }}
-          >
-            Войти
-          </button>
-          <button
-            type="button"
-            className={`tab ${mode === "bootstrap" ? "tab--active" : ""}`}
-            onClick={() => {
-              setMode("bootstrap");
-              setError("");
-            }}
-          >
-            Первый запуск
-          </button>
-        </div>
+        <Tabs
+          value={mode}
+          onValueChange={(value) => {
+            setMode(value as Mode);
+            setError("");
+          }}
+        >
+          <TabsList className="auth-tabs">
+            <TabsTrigger value="login">
+              Войти
+            </TabsTrigger>
+            <TabsTrigger value="bootstrap">
+              Первый запуск
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         <form onSubmit={submit} className="auth-form">
           {mode === "bootstrap" && (
@@ -122,9 +118,9 @@ export function LoginPage() {
             />
           </label>
           {error && <p className="form-error">{error}</p>}
-          <button type="submit" className="btn-primary" disabled={pending}>
+          <Button type="submit" disabled={pending}>
             {pending ? "..." : mode === "login" ? "Войти" : "Создать аккаунт администратора"}
-          </button>
+          </Button>
         </form>
 
         <p className="auth-hint">

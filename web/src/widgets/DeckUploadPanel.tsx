@@ -1,4 +1,5 @@
 import { FileText, Upload } from "lucide-react";
+import { buttonVariants } from "../shared/ui/button";
 
 interface DeckUploadPanelProps {
   title: string;
@@ -75,7 +76,7 @@ export function DeckUploadPanel({
           </span>
           <strong>Перетащите файл сюда</strong>
           <span className="muted">PowerPoint, ODP или PDF до 100MB</span>
-          <span className="btn-primary">Выбрать файл</span>
+          <span className={buttonVariants()}>Выбрать файл</span>
         </label>
       )}
 

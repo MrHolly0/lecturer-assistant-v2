@@ -3,6 +3,7 @@ import type { SlideDeckDetails } from "../app/api/content-api";
 import { slideImageUrl } from "../app/api/content-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { SlideNotesPanel } from "./SlideNotesPanel";
+import { IconButton } from "../shared/ui/button";
 
 interface DeckViewerProps {
   deck: SlideDeckDetails;
@@ -71,29 +72,27 @@ export function DeckViewer({
       </div>
 
       <div className="deck-controls">
-        <button
-          className="btn-ghost"
+        <IconButton
+          variant="outline"
           type="button"
           disabled={activeIndex === 0}
           onClick={() => onSlideChange(activeIndex - 1)}
-          title="Предыдущий слайд"
-          aria-label="Предыдущий слайд"
+          label="Предыдущий слайд"
         >
           <ChevronLeft size={16} />
-        </button>
+        </IconButton>
         <span>
           {slideNumber} / {deck.slides.length}
         </span>
-        <button
-          className="btn-ghost"
+        <IconButton
+          variant="outline"
           type="button"
           disabled={activeIndex >= deck.slides.length - 1}
           onClick={() => onSlideChange(activeIndex + 1)}
-          title="Следующий слайд"
-          aria-label="Следующий слайд"
+          label="Следующий слайд"
         >
           <ChevronRight size={16} />
-        </button>
+        </IconButton>
       </div>
 
       <div className="slide-strip">

@@ -1,9 +1,10 @@
 import type { FormEvent } from "react";
 import { Check, MessageSquareText } from "lucide-react";
 import type { SignalValue, StudentQuestion } from "../app/api/student-api";
+import { Button } from "../shared/ui/button";
 
 const SIGNALS: Array<{ value: SignalValue; label: string; helper: string }> = [
-  { value: "GREEN", label: "Понятно", helper: "идем дальше" },
+  { value: "GREEN", label: "Понятно", helper: "идём дальше" },
   { value: "YELLOW", label: "Есть вопрос", helper: "нужно медленнее" },
   { value: "RED", label: "Не понимаю", helper: "нужна остановка" }
 ];
@@ -66,14 +67,13 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
           maxLength={1000}
           rows={3}
         />
-        <button
-          className="btn-primary"
+        <Button
           type="submit"
           disabled={!props.isLive || props.isQuestionPending || !props.question.trim()}
         >
           <MessageSquareText size={16} />
           Отправить
-        </button>
+        </Button>
       </form>
 
       {props.questions.length > 0 && (

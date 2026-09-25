@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 import { Input } from "../shared/ui/input";
+import { Button } from "../shared/ui/button";
 
 interface SearchFieldProps {
   value: string;
@@ -45,23 +46,23 @@ export function PaginationBar({
         {start}-{end} из {total}
       </span>
       <div className="pager">
-        <button
+        <Button
           type="button"
-          className="btn-ghost"
+          variant="outline"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
           Назад
-        </button>
+        </Button>
         <span className="muted">{page} / {pageCount}</span>
-        <button
+        <Button
           type="button"
-          className="btn-ghost"
+          variant="outline"
           disabled={page >= pageCount}
           onClick={() => onPageChange(page + 1)}
         >
           Далее
-        </button>
+        </Button>
       </div>
     </div>
   );

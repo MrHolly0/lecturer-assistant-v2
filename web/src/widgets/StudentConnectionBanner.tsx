@@ -1,5 +1,6 @@
 import { RefreshCw, WifiOff } from "lucide-react";
 import type { StudentConnectionState } from "../app/api/student-api";
+import { Button } from "../shared/ui/button";
 
 interface StudentConnectionBannerProps {
   state: StudentConnectionState;
@@ -36,10 +37,10 @@ export function StudentConnectionBanner({
         )}
       </div>
       {canRetry && (
-        <button className="btn-ghost" type="button" onClick={onRetry}>
+        <Button variant="outline" type="button" onClick={onRetry}>
           <RefreshCw size={16} />
           Повторить
-        </button>
+        </Button>
       )}
     </div>
   );

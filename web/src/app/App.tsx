@@ -31,6 +31,7 @@ import { useMaxBridge } from "./max/context";
 import { readMaxLinkCode } from "./max/deepLink";
 import { MaxLinkCodeScreen } from "../widgets/MaxLinkCodeScreen";
 import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
+import { Button } from "../shared/ui/button";
 
 const maxRootPaths = new Set(["/", "/home", "/courses", "/login", "/register"]);
 const maxStartParamPattern = /^[A-Za-z0-9_-]{1,512}$/;
@@ -117,9 +118,9 @@ function MaxAuthScreen({ error, onRetry }: { error: string | null; onRetry: () =
         <p className="form-error" role="alert">
           {error ?? "Повторите вход через MAX."}
         </p>
-        <button className="btn-primary max-auth-retry" type="button" onClick={onRetry}>
+        <Button className="max-auth-retry" type="button" onClick={onRetry}>
           Попробовать снова
-        </button>
+        </Button>
       </section>
     </main>
   );
@@ -274,10 +275,12 @@ const router = createHashRouter([
 ]);
 
 export function App() {
+  const { theme } = useMaxBridge();
+
   return (
     <AuthProvider>
       <RouterProvider router={router} />
-      <Toaster position="top-center" richColors closeButton />
+      <Toaster theme={theme} position="top-center" richColors closeButton />
     </AuthProvider>
   );
 }

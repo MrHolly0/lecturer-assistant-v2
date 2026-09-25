@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { Link } from "react-router-dom";
 import { getLiveSession } from "../app/api/live-api";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { LocalQrCode } from "../widgets/LocalQrCode";
+import { LinkButton } from "../shared/ui/button";
 
 interface SessionJoinPageProps {
   courseId: string;
@@ -57,9 +57,9 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
         )}
       </section>
       <div className="session-join-actions">
-        <Link className="btn-primary" to={`/courses/${courseId}/sessions/${sessionId}/presenter`}>
+        <LinkButton to={`/courses/${courseId}/sessions/${sessionId}/presenter`}>
           Перейти к лекции
-        </Link>
+        </LinkButton>
       </div>
     </main>
   );

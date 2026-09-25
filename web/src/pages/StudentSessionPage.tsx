@@ -227,7 +227,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           onJoin={() => joinMut.mutate()}
         />
       ) : (
-        <section className="student-action-panel">
+        <section className="student-action-panel student-action-panel--feedback">
           {current.activePoll && (
             <StudentPollCard
               poll={current.activePoll}

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link2 } from "lucide-react";
 import { normalizeLinkCode } from "../app/max/deepLink";
+import { Button } from "../shared/ui/button";
 
 interface MaxLinkCodeScreenProps {
   initialCode: string;
@@ -27,14 +28,12 @@ export function MaxLinkCodeScreen({
   return (
     <main className="auth-shell">
       <section className="auth-card max-link-auth" aria-labelledby="max-link-auth-title">
-        <div className="max-link-auth__icon" aria-hidden="true">
-          <Link2 size={24} />
-        </div>
         <div className="auth-header">
           <span className="max-auth-eyebrow">Мини-приложение MAX</span>
-          <h1 className="auth-title" id="max-link-auth-title">
-            Подключить аккаунт
-          </h1>
+          <div className="max-link-auth__heading">
+            <Link2 size={22} aria-hidden="true" />
+            <h1 className="auth-title" id="max-link-auth-title">Подключить аккаунт</h1>
+          </div>
           <p className="auth-hint">
             Введите код со страницы «Подключить MAX» в кабинете преподавателя.
           </p>
@@ -58,13 +57,13 @@ export function MaxLinkCodeScreen({
               {error}
             </p>
           )}
-          <button className="btn-primary" type="submit" disabled={code.length !== 6}>
+          <Button type="submit" disabled={code.length !== 6}>
             {error ? "Попробовать снова" : "Подключить и войти"}
-          </button>
+          </Button>
         </form>
-        <button className="btn-ghost" type="button" onClick={onContinue}>
+        <Button variant="ghost" type="button" onClick={onContinue}>
           Уже подключали MAX? Войти
-        </button>
+        </Button>
       </section>
     </main>
   );

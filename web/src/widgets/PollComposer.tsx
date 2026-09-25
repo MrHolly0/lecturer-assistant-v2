@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Plus, Search, X } from "lucide-react";
-import { Link } from "react-router-dom";
 import { listQuestions, type QuestionBankEntry } from "../app/api/interaction-api";
 import { userErrorMessage } from "../app/api/errors";
 import { pluralizeRu } from "../shared/lib/plural";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
+import { Button, IconButton, LinkButton } from "../shared/ui/button";
 
 export interface PollDraft {
   questionText: string;
@@ -47,15 +47,13 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
     <div className="poll-panel poll-composer">
       <div className="poll-panel-header">
         <span className="poll-panel-title">Запустить проверку</span>
-        <button
-          type="button"
-          className="btn-ghost poll-icon-button"
+        <IconButton
+          className="poll-icon-button"
           onClick={onCancel}
-          aria-label="Закрыть редактор опроса"
-          title="Закрыть редактор"
+          label="Закрыть редактор опроса"
         >
           <X size={16} />
-        </button>
+        </IconButton>
       </div>
       <Tabs defaultValue="bank">
         <TabsList className="poll-source-tabs">
@@ -76,9 +74,9 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
           {questionsQuery.isError && (
             <div className="poll-message form-error" role="alert">
               <span>{userErrorMessage(questionsQuery.error, "Не удалось загрузить банк.")}</span>
-              <button type="button" className="btn-ghost" onClick={() => questionsQuery.refetch()}>
+              <Button type="button" variant="outline" onClick={() => questionsQuery.refetch()}>
                 Повторить
-              </button>
+              </Button>
             </div>
           )}
           {!questionsQuery.isLoading && !questionsQuery.isError && (
@@ -113,14 +111,14 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
                   <p className="muted">
                     В банке нет вопросов с одним правильным ответом.
                   </p>
-                  <Link
-                    className="btn-ghost"
+                  <LinkButton
+                    variant="outline"
                     to={`/courses/${courseId}/questions`}
                     target="_blank"
                     rel="noreferrer"
                   >
                     <Plus size={14} aria-hidden="true" /> Создать в банке
-                  </Link>
+                  </LinkButton>
                 </div>
               )}
               {eligibleQuestions.length === 0 && search && (
@@ -153,32 +151,29 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
                   maxLength={200}
                 />
                 {options.length > 2 && (
-                  <button
-                    type="button"
-                    className="btn-ghost poll-icon-button"
+                  <IconButton
+                    className="poll-icon-button"
                     onClick={() => setOptions(options.filter((_, itemIndex) => itemIndex !== index))}
-                    aria-label={`Удалить вариант ${index + 1}`}
-                    title={`Удалить вариант ${index + 1}`}
+                    label={`Удалить вариант ${index + 1}`}
                   >
                     <X size={14} />
-                  </button>
+                  </IconButton>
                 )}
               </div>
             ))}
           </div>
           {options.length < 6 && (
-            <button
+            <Button
               type="button"
-              className="btn-ghost"
+              variant="ghost"
               onClick={() => setOptions([...options, ""])}
             >
               <Plus size={14} />
               Добавить вариант
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             type="button"
-            className="btn-primary"
             disabled={!canStart}
             onClick={() =>
               onStart({
@@ -189,7 +184,7 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
           >
             <Check size={16} />
             Запустить
-          </button>
+          </Button>
         </TabsContent>
       </Tabs>
     </div>

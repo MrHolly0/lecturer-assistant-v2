@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger
 } from "../shared/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
+import { IconButton } from "../shared/ui/button";
 
 type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
 type MemberAction = "owner" | "remove" | null;
@@ -55,14 +56,12 @@ export function CourseMemberActions({
       </Select>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
-            type="button"
+          <IconButton
             className="member-more-button"
-            aria-label={`Действия: ${displayName}`}
-            title="Действия участника"
+            label={`Действия: ${displayName}`}
           >
             <MoreHorizontal size={18} aria-hidden="true" />
-          </button>
+          </IconButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => setAction("owner")}>

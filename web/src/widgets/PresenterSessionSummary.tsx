@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, BarChart3, Clock3, MessageSquareText, UsersRound } from "lucide-react";
-import { Link } from "react-router-dom";
 import { userErrorMessage } from "../app/api/errors";
 import { getLectureSummary, type LectureSummary, type LiveSession } from "../app/api/live-api";
 import { pluralizeRu } from "../shared/lib/plural";
+import { Button, LinkButton } from "../shared/ui/button";
 
 interface PresenterSessionSummaryProps {
   courseId: string;
@@ -25,19 +25,19 @@ export function PresenterSessionSummary({ courseId, session }: PresenterSessionS
           <h1>{summary?.lectureTitle ?? session.lectureTitle}</h1>
           <p className="muted">Итог занятия сформирован по данным живой сессии.</p>
         </div>
-        <Link to={`/courses/${courseId}/materials`} className="btn-ghost session-summary-back">
+        <LinkButton to={`/courses/${courseId}/materials`} variant="ghost" className="session-summary-back">
           <ArrowLeft size={17} />
           К материалам
-        </Link>
+        </LinkButton>
       </header>
 
       {summaryQuery.isLoading && <p className="muted">Собираем итог лекции…</p>}
       {summaryQuery.isError && (
         <section className="session-summary-error" role="alert">
           <p>{userErrorMessage(summaryQuery.error, "Не удалось загрузить итог лекции.")}</p>
-          <button type="button" className="btn-ghost" onClick={() => summaryQuery.refetch()}>
+          <Button type="button" variant="outline" onClick={() => summaryQuery.refetch()}>
             Повторить
-          </button>
+          </Button>
         </section>
       )}
 
