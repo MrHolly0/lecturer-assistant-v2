@@ -1135,20 +1135,20 @@ textarea {
 }
 
 .presenter-side {
+  border-left: 1px solid var(--border);
   display: grid;
-  gap: 14px;
+  gap: 0;
   grid-auto-rows: max-content;
   max-height: 100%;
   min-width: 0;
   overflow-y: auto;
+  padding-left: 16px;
 }
 
 .live-metric,
 .live-poll-panel {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
 }
 
 .live-metric {
@@ -1284,10 +1284,7 @@ textarea {
 }
 
 .live-panel {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
+  padding: 14px 0;
 }
 
 .live-tabs {
@@ -1337,7 +1334,11 @@ textarea {
 }
 
 .signal-summary--primary {
+  border-bottom: 1px solid var(--border);
+  border-top: 0;
   margin-top: 0;
+  padding-bottom: 14px;
+  padding-top: 14px;
 }
 
 .live-poll-panel {
@@ -1794,8 +1795,12 @@ textarea {
   }
 
   .presenter-side {
+    border-left: 0;
+    border-top: 1px solid var(--border);
     max-height: none;
     overflow: visible;
+    padding-left: 0;
+    padding-top: 12px;
   }
 }
 
@@ -2756,22 +2761,19 @@ html[data-max-mini-app="true"] .student-session-shell {
 /* ── Question bank page ─────────────────────────────────────────── */
 .qbank-shell {
   padding: 24px;
-  max-width: 860px;
+  max-width: 1040px;
   margin: 0 auto;
 }
 
 .qbank-toolbar {
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 20px;
+  justify-content: flex-end;
+  margin-bottom: 0;
+  padding-bottom: 16px;
   flex-wrap: wrap;
-}
-
-.qbank-toolbar h1 {
-  font-size: 1.4rem;
-  font-weight: 700;
-  flex: 1;
 }
 
 .qbank-filters {
@@ -2789,16 +2791,15 @@ html[data-max-mini-app="true"] .student-session-shell {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }
 
 .qbank-item {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px 16px;
-  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 18px 0;
   display: grid;
-  gap: 6px;
+  gap: 8px 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .qbank-item-meta {
@@ -2809,7 +2810,7 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .qbank-type-badge {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 99px;
@@ -2818,8 +2819,9 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .qbank-item-text {
-  font-size: 0.95rem;
+  font-size: 1rem;
   line-height: 1.4;
+  margin: 0;
 }
 
 .qbank-item-options {
@@ -2829,26 +2831,33 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .qbank-option {
-  font-size: 0.8rem;
-  padding: 2px 8px;
+  font-size: 0.85rem;
+  padding: 4px 8px;
   border-radius: 4px;
   background: var(--muted);
 }
 
 .qbank-option--correct {
-  background: color-mix(in srgb, #22c55e 20%, transparent);
+  background: color-mix(in srgb, var(--chart-2) 18%, var(--background));
   font-weight: 600;
 }
 
 .qbank-item-actions {
+  align-self: center;
   display: flex;
-  gap: 4px;
+  gap: 8px;
+  grid-column: 2;
+  grid-row: 1 / span 3;
   justify-content: flex-end;
 }
 
 .qbank-empty {
-  text-align: center;
-  padding: 40px;
+  align-items: center;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 36px 0;
+  text-align: left;
 }
 
 .qbank-dialog {
@@ -2914,22 +2923,17 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .qbank-tag-chip {
-  display: flex;
   align-items: center;
-  gap: 4px;
-}
-
-.qbank-tag-chip button {
-  border: none;
-  background: none;
+  background: var(--secondary);
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--secondary-foreground);
   cursor: pointer;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  color: inherit;
-  height: 44px;
-  justify-content: center;
-  width: 44px;
+  display: inline-flex;
+  font-size: 0.8rem;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
 }
 
 .qbank-dialog-footer {
@@ -3280,44 +3284,8 @@ html[data-max-mini-app="true"] .student-session-shell {
   color: var(--muted-foreground);
 }
 
-.course-card__arrow {
-  color: var(--muted-foreground);
-  margin-left: auto;
-}
-
-.qbank-shell {
-  max-width: 1040px;
-}
-
 .qbank-page-header {
   align-items: end;
-}
-
-.qbank-toolbar {
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 0;
-  padding-bottom: 16px;
-}
-
-.qbank-item {
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  border-radius: 0;
-  padding: 18px 0;
-}
-
-.qbank-option--correct {
-  background: color-mix(in srgb, var(--chart-2) 18%, var(--background));
-}
-
-.qbank-empty {
-  align-items: center;
-  display: grid;
-  gap: 16px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  padding: 36px 0;
-  text-align: left;
 }
 
 .qbank-empty > div {

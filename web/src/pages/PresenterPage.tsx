@@ -19,6 +19,7 @@ import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay"
 import { PresenterSidePanel } from "../widgets/PresenterSidePanel";
 import { PresenterSessionSummary } from "../widgets/PresenterSessionSummary";
 import { PresenterTopbar } from "../widgets/PresenterTopbar";
+import { Button } from "../shared/ui/button";
 
 export function PresenterPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const qc = useQueryClient();
@@ -209,23 +210,22 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
             />
           </div>
           <div className="deck-controls">
-            <button
-              className="btn-ghost"
+            <Button
+              variant="outline"
               type="button"
               onClick={() => go(session.currentSlideIdx - 1)}
             >
               Назад
-            </button>
+            </Button>
             <span>
               {session.currentSlideIdx} / {deck.slides.length}
             </span>
-            <button
-              className="btn-primary"
+            <Button
               type="button"
               onClick={() => go(session.currentSlideIdx + 1)}
             >
               Далее
-            </button>
+            </Button>
           </div>
           <div className="presenter-slide-strip">
             {deck.slides.map((item, index) => (

@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import {
   ArrowLeft,
   ChevronDown,
@@ -6,7 +5,6 @@ import {
   Pause,
   PenLine,
   Play,
-  Presentation,
   QrCode,
   Square,
   Wrench
@@ -20,6 +18,7 @@ import {
   DropdownMenuTrigger
 } from "../shared/ui/dropdown-menu";
 import { ConfirmActionButton } from "./ConfirmActionButton";
+import { Button, LinkButton } from "../shared/ui/button";
 
 interface PresenterTopbarProps {
   courseId: string;
@@ -73,14 +72,15 @@ export function PresenterTopbar({
   return (
     <header className="presenter-topbar">
       <div className="presenter-heading">
-        <Link
+        <LinkButton
           to={`/courses/${courseId}/materials`}
+          variant="ghost"
           className="presenter-back"
           title="Вернуться к материалам"
         >
           <ArrowLeft size={18} />
           <span>Материалы</span>
-        </Link>
+        </LinkButton>
         <div className="presenter-title-block">
           <strong>{session.lectureTitle}</strong>
           <div className="presenter-meta">
@@ -95,42 +95,30 @@ export function PresenterTopbar({
       </div>
 
       <div className="presenter-actions">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="btn-ghost presenter-menu-trigger" type="button">
-              <Presentation size={16} />
-              Показ
-              <ChevronDown size={14} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="presenter-action-menu">
-            <DropdownMenuItem onSelect={openProjection}>
-              <Monitor />
-              Открыть проектор
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
         {sessionActive && (
           <>
-            <button
-              className="btn-primary presenter-connect"
+            <Button
+              className="presenter-connect"
               type="button"
               onClick={openConnection}
             >
               <QrCode size={16} />
               Подключить студентов
-            </button>
+            </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="btn-ghost presenter-menu-trigger" type="button">
+                <Button variant="outline" className="presenter-menu-trigger" type="button">
                   <Wrench size={16} />
                   Инструменты
                   <ChevronDown size={14} />
-                </button>
+                </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="presenter-action-menu">
+                <DropdownMenuItem onSelect={openProjection}>
+                  <Monitor />
+                  Открыть проектор
+                </DropdownMenuItem>
                 <DropdownMenuCheckboxItem
                   checked={drawing}
                   onCheckedChange={(checked) => onDrawingChange(Boolean(checked))}
@@ -142,8 +130,7 @@ export function PresenterTopbar({
             </DropdownMenu>
 
             {session.status === "PAUSED" ? (
-              <button
-                className="btn-primary"
+              <Button
                 type="button"
                 title="Продолжить показ слайдов"
                 disabled={resumePending}
@@ -151,10 +138,10 @@ export function PresenterTopbar({
               >
                 <Play size={16} />
                 Продолжить
-              </button>
+              </Button>
             ) : (
-              <button
-                className="btn-ghost"
+              <Button
+                variant="outline"
                 type="button"
                 title="Поставить лекцию на паузу"
                 disabled={pausePending}
@@ -162,13 +149,13 @@ export function PresenterTopbar({
               >
                 <Pause size={16} />
                 Пауза
-              </button>
+              </Button>
             )}
             <ConfirmActionButton
               title="Завершить лекцию?"
               description="Завершение необратимо: рассылка и управление этой сессией остановятся."
               confirmLabel="Завершить"
-              className="btn-danger-outline"
+              variant="destructive"
               disabled={endPending}
               onConfirm={onEnd}
             >

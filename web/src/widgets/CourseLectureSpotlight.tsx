@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, BookOpenText, Play, Radio } from "lucide-react";
+import { BookOpenText, Play, Radio } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { userErrorMessage } from "../app/api/errors";
@@ -69,7 +69,7 @@ export function CourseLectureSpotlight({
           className="course-live-card__action"
           to={`/courses/${courseId}/sessions/${activeSession.sessionId}/presenter`}
         >
-          Продолжить лекцию <ArrowRight size={17} aria-hidden="true" />
+          Продолжить лекцию
         </LinkButton>
       </section>
     );
@@ -84,7 +84,7 @@ export function CourseLectureSpotlight({
           <p>Добавьте презентацию и свяжите её с лекцией, чтобы запускать занятие отсюда.</p>
         </div>
         <LinkButton className="course-live-card__action" to={`/courses/${courseId}/materials`}>
-          Подготовить лекцию <ArrowRight size={17} aria-hidden="true" />
+          Подготовить лекцию
         </LinkButton>
       </section>
     );

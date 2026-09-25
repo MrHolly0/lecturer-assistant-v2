@@ -10,8 +10,7 @@ import {
   type QuestionOption,
   type QuestionType
 } from "../app/api/interaction-api";
-import { Badge } from "../shared/ui/badge";
-import { Button } from "../shared/ui/button";
+import { Button, IconButton } from "../shared/ui/button";
 import { Checkbox } from "../shared/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../shared/ui/dialog";
 import { Input } from "../shared/ui/input";
@@ -155,17 +154,14 @@ export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: Qu
                     maxLength={500}
                   />
                   {options.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    <IconButton
+                      label={`Удалить вариант ${index + 1}`}
                       onClick={() =>
                         setOptions(options.filter((_, itemIndex) => itemIndex !== index))
                       }
-                      aria-label={`Удалить вариант ${index + 1}`}
-                      title={`Удалить вариант ${index + 1}`}
                     >
-                      <X size={12} />
-                    </Button>
+                      <X size={16} />
+                    </IconButton>
                   )}
                 </div>
               ))}
@@ -197,17 +193,17 @@ export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: Qu
               </div>
               <div className="qbank-tag-list">
                 {tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="qbank-tag-chip">
+                  <button
+                    key={tag}
+                    type="button"
+                    className="qbank-tag-chip"
+                    onClick={() => setTags(tags.filter((item) => item !== tag))}
+                    aria-label={`Удалить тег ${tag}`}
+                    title={`Удалить тег ${tag}`}
+                  >
                     {tag}
-                    <button
-                      type="button"
-                      onClick={() => setTags(tags.filter((item) => item !== tag))}
-                      aria-label={`Удалить тег ${tag}`}
-                      title={`Удалить тег ${tag}`}
-                    >
-                      <X size={10} />
-                    </button>
-                  </Badge>
+                    <X size={14} aria-hidden="true" />
+                  </button>
                 ))}
               </div>
             </div>

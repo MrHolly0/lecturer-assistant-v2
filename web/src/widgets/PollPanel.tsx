@@ -11,6 +11,7 @@ import {
 import { userErrorMessage } from "../app/api/errors";
 import { pluralizeRu } from "../shared/lib/plural";
 import { PollComposer, type PollDraft } from "./PollComposer";
+import { Button } from "../shared/ui/button";
 
 interface Props {
   courseId: string;
@@ -65,9 +66,9 @@ export function PollPanel({ courseId, sessionId }: Props) {
     return (
       <div className="poll-panel poll-panel-error" role="alert">
         <p>{userErrorMessage(activeQuery.error, "Не удалось проверить состояние опроса.")}</p>
-        <button type="button" className="btn-ghost" onClick={() => activeQuery.refetch()}>
+        <Button type="button" variant="outline" onClick={() => activeQuery.refetch()}>
           Повторить
-        </button>
+        </Button>
       </div>
     );
   }
@@ -124,29 +125,28 @@ export function PollPanel({ courseId, sessionId }: Props) {
           })}
         </div>
         {activePoll.poll.status === "OPEN" && (
-          <button
+          <Button
             type="button"
-            className="btn-primary"
             disabled={closeMut.isPending}
             onClick={() => closeMut.mutate(activePoll.poll.id)}
           >
             Закрыть и показать результат
-          </button>
+          </Button>
         )}
         {activePoll.poll.status === "CLOSED" && (
-          <button type="button" className="btn-ghost" onClick={() => setView("create")}>
+          <Button type="button" variant="outline" onClick={() => setView("create")}>
             <Plus size={14} />
             Новая проверка
-          </button>
+          </Button>
         )}
       </div>
     );
   }
 
   return (
-    <button type="button" className="btn-ghost poll-launch-btn" onClick={() => setView("create")}>
+    <Button type="button" variant="outline" className="poll-launch-btn" onClick={() => setView("create")}>
       <BarChart2 size={14} />
-      Опрос
-    </button>
+      Запустить проверку
+    </Button>
   );
 }

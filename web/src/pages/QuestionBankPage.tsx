@@ -4,12 +4,13 @@ import { ListChecks, Plus, Pencil, Trash2, Tag } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { archiveQuestion, listQuestions, type QuestionBankEntry } from "../app/api/interaction-api";
-import { Button } from "../shared/ui/button";
+import { Button, IconButton } from "../shared/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import { Badge } from "../shared/ui/badge";
 import { QUESTION_TYPES } from "../shared/lib/questionTypes";
 import { QuestionDialog } from "../widgets/QuestionDialog";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
+import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
 
 interface Props {
   courseId: string;
@@ -49,7 +50,6 @@ export function QuestionBankPage({ courseId }: Props) {
       </div>
       <CourseSectionNav courseId={courseId} />
       <div className="qbank-toolbar">
-        <h2>Вопросы курса</h2>
         {questions.length > 0 && <div className="qbank-filters">
           <Select
             value={tagFilter ?? "__all__"}
@@ -102,25 +102,24 @@ export function QuestionBankPage({ courseId }: Props) {
               ))}
             </div>
             <div className="qbank-item-actions">
-              <Button
-                variant="ghost"
-                size="sm"
+              <IconButton
                 onClick={() => setEditing(q)}
-                aria-label="Редактировать вопрос"
-                title="Редактировать вопрос"
+                label="Редактировать вопрос"
               >
-                <Pencil size={14} />
-              </Button>
-              <Button
+                <Pencil size={16} />
+              </IconButton>
+              <ConfirmActionButton
+                title="Архивировать вопрос?"
+                description="Вопрос исчезнет из активного банка."
+                confirmLabel="Архивировать"
                 variant="ghost"
-                size="sm"
+                size="icon"
+                label="Архивировать вопрос"
                 disabled={archiveMut.isPending}
-                onClick={() => archiveMut.mutate(q.id)}
-                aria-label="Удалить вопрос"
-                title="Удалить вопрос"
+                onConfirm={() => archiveMut.mutate(q.id)}
               >
-                <Trash2 size={14} />
-              </Button>
+                <Trash2 size={16} />
+              </ConfirmActionButton>
             </div>
           </li>
         ))}

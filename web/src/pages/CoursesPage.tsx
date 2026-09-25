@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowRight, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -161,11 +161,7 @@ export function CoursesPage() {
                   <span className="card-title">{course.title}</span>
                   <small>Открыть курс и готовые лекции</small>
                 </span>
-                {course.archived ? (
-                  <span className="badge badge--muted">архив</span>
-                ) : (
-                  <ArrowRight className="course-card__arrow" size={18} aria-hidden="true" />
-                )}
+                {course.archived && <span className="badge badge--muted">архив</span>}
               </Link>
               {canCreateCourse && !course.archived && (
                 <div className="course-card__actions">

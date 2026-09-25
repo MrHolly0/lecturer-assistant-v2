@@ -20,6 +20,8 @@ interface ConfirmActionButtonProps {
   confirmLabel?: string;
   className?: string;
   variant?: VariantProps<typeof buttonVariants>["variant"];
+  size?: VariantProps<typeof buttonVariants>["size"];
+  label?: string;
   disabled?: boolean;
   onConfirm: () => void;
 }
@@ -31,13 +33,22 @@ export function ConfirmActionButton({
   confirmLabel = "Удалить",
   className,
   variant = "ghost",
+  size,
+  label,
   disabled,
   onConfirm
 }: ConfirmActionButtonProps) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button type="button" className={className} variant={variant} disabled={disabled}>
+        <Button
+          type="button"
+          aria-label={label}
+          className={className}
+          variant={variant}
+          size={size}
+          disabled={disabled}
+        >
           {children}
         </Button>
       </AlertDialogTrigger>
