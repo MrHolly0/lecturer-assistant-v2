@@ -181,12 +181,79 @@ class PollIntegrationTest extends LiveFlowTestBase {
         assertEquals(0L, count("interaction.quick_polls"));
     }
 
+    @Test
+    void closedPollHistoryIsPaginatedNewestFirstAndScopedToSession() throws Exception {
+        String token = join(null, "{\"displayName\":\"Аня\"}").get("participantToken").asText();
+        UUID firstPoll = startPoll(sessionId);
+        respond(joinCode, firstPoll, token, null, 1);
+        closePoll(sessionId, firstPoll, 1);
+        UUID secondPoll = startPoll(sessionId);
+        closePoll(sessionId, secondPoll, 2);
+        UUID openPoll = startPoll(sessionId);
+
+        JsonNode otherSession = startAnotherSession();
+        UUID otherSessionId = UUID.fromString(otherSession.get("id").asText());
+        UUID otherPoll = startPoll(otherSessionId);
+        closePoll(otherSessionId, otherPoll, 0);
+
+        jdbc.sql("update interaction.quick_polls set closed_at = now() - interval '2 hours' where id = :id")
+                .param("id", firstPoll)
+                .update();
+        jdbc.sql("update interaction.quick_polls set closed_at = now() - interval '1 hour' where id = :id")
+                .param("id", secondPoll)
+                .update();
+
+        JsonNode firstPage = closedPolls(courseId, sessionId, lecturerToken, 1, 0, 200);
+        assertEquals(2, firstPage.get("total").asInt());
+        assertEquals(secondPoll.toString(), firstPage.at("/items/0/poll/id").asText());
+        assertEquals("CLOSED", firstPage.at("/items/0/poll/status").asText());
+        assertEquals(2, firstPage.at("/items/0/poll/correctOptionIdx").asInt());
+        assertEquals("[0,0,0]", firstPage.at("/items/0/votes").toString());
+        assertEquals(0, firstPage.at("/items/0/totalResponses").asInt());
+
+        JsonNode secondPage = closedPolls(courseId, sessionId, lecturerToken, 1, 1, 200);
+        assertEquals(firstPoll.toString(), secondPage.at("/items/0/poll/id").asText());
+        assertEquals("[0,1,0]", secondPage.at("/items/0/votes").toString());
+        assertEquals(1, secondPage.at("/items/0/totalResponses").asInt());
+        assertFalse(secondPage.toString().contains(openPoll.toString()));
+        assertFalse(secondPage.toString().contains(otherPoll.toString()));
+
+        JsonNode otherHistory = closedPolls(courseId, otherSessionId, lecturerToken, 20, 0, 200);
+        assertEquals(1, otherHistory.get("total").asInt());
+        assertEquals(otherPoll.toString(), otherHistory.at("/items/0/poll/id").asText());
+    }
+
+    @Test
+    void closedPollHistoryRequiresManageMatchingCourseAndValidPagination() throws Exception {
+        String studentJwt = maxLogin(909);
+        UUID otherCourseId = UUID.fromString(json(post("/api/v1/courses")
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Other course\"}"), 201)
+                .get("id")
+                .asText());
+
+        closedPolls(courseId, sessionId, studentJwt, 20, 0, 403);
+        closedPolls(otherCourseId, sessionId, lecturerToken, 20, 0, 404);
+        closedPolls(courseId, sessionId, lecturerToken, 0, 0, 400);
+        closedPolls(courseId, sessionId, lecturerToken, 101, 0, 400);
+        closedPolls(courseId, sessionId, lecturerToken, 20, -1, 400);
+    }
+
     private UUID startPoll(UUID session) throws Exception {
         JsonNode result = json(post("/api/v1/courses/{c}/sessions/{s}/polls", courseId, session)
                 .header("Authorization", "Bearer " + lecturerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"questionText\":\"Что верно?\",\"options\":[\"A\",\"B\",\"C\"]}"), 201);
         return UUID.fromString(result.get("poll").get("id").asText());
+    }
+
+    private JsonNode closedPolls(UUID course, UUID session, String token, int limit, int offset, int expected)
+            throws Exception {
+        return json(get("/api/v1/courses/{c}/sessions/{s}/polls", course, session)
+                .queryParam("limit", String.valueOf(limit))
+                .queryParam("offset", String.valueOf(offset))
+                .header("Authorization", "Bearer " + token), expected);
     }
 
     private void closePoll(UUID session, UUID pollId, int correct) throws Exception {

@@ -13,6 +13,7 @@ import ru.university.assistant.analytics.api.DomainEvent;
 import ru.university.assistant.analytics.api.EventBus;
 import ru.university.assistant.interaction.api.ActivePollView;
 import ru.university.assistant.interaction.api.ClosePollRequest;
+import ru.university.assistant.interaction.api.ClosedPollPage;
 import ru.university.assistant.interaction.api.PollResult;
 import ru.university.assistant.interaction.api.PollStatus;
 import ru.university.assistant.interaction.api.PollVote;
@@ -29,6 +30,8 @@ import ru.university.assistant.shared.api.UuidV7;
 
 @Service
 public class PollService implements QuickPollApi {
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final PollRepository polls;
     private final LiveSessionAccessApi liveSessions;
     private final QuestionBankService questionBank;
@@ -80,6 +83,19 @@ public class PollService implements QuickPollApi {
     public PollResult getResult(UUID courseId, UUID sessionId, UUID pollId) {
         liveSessions.requireSessionInCourse(courseId, sessionId);
         return result(pollInSession(sessionId, pollId));
+    }
+
+    @Transactional(readOnly = true)
+    public ClosedPollPage listClosed(UUID courseId, UUID sessionId, int limit, int offset) {
+        liveSessions.requireSessionInCourse(courseId, sessionId);
+        if (limit < 1 || limit > MAX_PAGE_SIZE || offset < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "limit must be between 1 and 100 and offset must be non-negative");
+        }
+        List<PollResult> items = polls.findClosedForSession(sessionId, limit, offset).stream()
+                .map(this::result)
+                .toList();
+        return new ClosedPollPage(items, limit, offset, polls.countClosedForSession(sessionId));
     }
 
     @Transactional

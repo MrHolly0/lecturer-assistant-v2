@@ -83,6 +83,33 @@ class PollRepository {
                 .optional();
     }
 
+    List<QuickPoll> findClosedForSession(UUID sessionId, int limit, int offset) {
+        return jdbc.sql("""
+                        select id, session_id, source_question_id, question_text, options, status,
+                               correct_option_idx, created_at, closed_at
+                        from interaction.quick_polls
+                        where session_id = :sessionId and status = 'CLOSED'
+                        order by closed_at desc, id desc
+                        limit :limit offset :offset
+                        """)
+                .param("sessionId", sessionId)
+                .param("limit", limit)
+                .param("offset", offset)
+                .query(this::map)
+                .list();
+    }
+
+    long countClosedForSession(UUID sessionId) {
+        return jdbc.sql("""
+                        select count(*)
+                        from interaction.quick_polls
+                        where session_id = :sessionId and status = 'CLOSED'
+                        """)
+                .param("sessionId", sessionId)
+                .query(Long.class)
+                .single();
+    }
+
     Optional<Integer> findVote(UUID pollId, UUID personId) {
         return jdbc.sql("select option_idx from interaction.poll_responses "
                         + "where poll_id = :pollId and person_id = :personId")
