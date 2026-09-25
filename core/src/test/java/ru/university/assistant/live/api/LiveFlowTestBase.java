@@ -155,6 +155,7 @@ abstract class LiveFlowTestBase {
         sessionId = UUID.fromString(session.get("id").asText());
         groupId = UUID.fromString(session.get("groups").get(0).get("id").asText());
         joinCode = session.get("joinCode").asText();
+        begin(sessionId);
     }
 
     /** Запускает ещё одну сессию (по новой лекции той же колоды) и возвращает её JSON. */
@@ -165,10 +166,17 @@ abstract class LiveFlowTestBase {
                         .content("{\"title\":\"Lecture 2\",\"deckId\":\"" + deckId + "\"}"), 201)
                 .get("id")
                 .asText();
-        return json(post("/api/v1/courses/{courseId}/lectures/{lectureId}/sessions", courseId, other)
+        JsonNode scheduled = json(post(
+                        "/api/v1/courses/{courseId}/lectures/{lectureId}/sessions", courseId, other)
                 .header("Authorization", "Bearer " + lecturerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"groups\":[{\"groupId\":\"" + groupId + "\"}]}"), 201);
+        return begin(UUID.fromString(scheduled.get("id").asText()));
+    }
+
+    JsonNode begin(UUID targetSessionId) throws Exception {
+        return json(post("/api/v1/courses/{courseId}/sessions/{sessionId}/begin", courseId, targetSessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
     }
 
     JsonNode join(String jwt, String body) throws Exception {

@@ -323,10 +323,10 @@ paths:
   /me/active-session:
     get:
       operationId: getMyActiveSession
-      summary: Read the caller's own currently running (LIVE or PAUSED) lecture, if any.
+      summary: Read the caller's own prepared or running lecture, if any.
       description: >
-        Used by the MAX mini app to drop a lecturer straight into their running lecture instead of
-        a course picker (B-03). Scoped strictly to sessions this person started themselves.
+        Includes SCHEDULED QR waiting rooms as well as LIVE and PAUSED lectures. Scoped strictly
+        to sessions this person created themselves and can still manage.
       tags: [live]
       responses:
         "200":
@@ -1090,7 +1090,8 @@ paths:
   /courses/{courseId}/lectures/{lectureId}/sessions:
     post:
       operationId: startLiveSession
-      summary: Start a live session for a lecture.
+      summary: Prepare a live session and its join code.
+      description: Creates a SCHEDULED session. The presentation clock starts only at the begin endpoint.
       tags: [live]
       parameters:
         - $ref: "#/components/parameters/CourseId"
@@ -1103,7 +1104,7 @@ paths:
               $ref: "#/components/schemas/StartSessionRequest"
       responses:
         "201":
-          description: Started session.
+          description: Scheduled session ready for students to join and wait.
           content:
             application/json:
               schema:
@@ -1174,6 +1175,30 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/SessionParticipant"
+  /courses/{courseId}/sessions/{sessionId}/begin:
+    post:
+      operationId: beginLiveSession
+      summary: Begin the prepared lecture presentation.
+      description: >
+        Atomically changes SCHEDULED to LIVE, records startedAt and the first slide visit. Repeating
+        the request for an already LIVE or PAUSED session is idempotent.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Started or already started session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSession"
+        "403":
+          description: The caller cannot manage this course.
+        "404":
+          description: Session not found in this course.
+        "409":
+          description: Session was already ended or archived.
   /courses/{courseId}/sessions/join:
     post:
       operationId: joinLiveSession
@@ -1290,7 +1315,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/LiveSession"
         "409":
-          description: Only a LIVE or PAUSED session can be ended.
+          description: Only a SCHEDULED, LIVE or PAUSED session can be ended.
   /courses/{courseId}/sessions/{sessionId}/engagement:
     get:
       operationId: getLiveSessionEngagement
@@ -2112,7 +2137,7 @@ components:
   schemas:
     ActiveSessionSummary:
       type: object
-      required: [sessionId, courseId, joinCode, lectureTitle, groups, currentSlideIdx]
+      required: [sessionId, courseId, joinCode, lectureTitle, groups, currentSlideIdx, status]
       properties:
         sessionId:
           type: string
@@ -2130,6 +2155,12 @@ components:
             $ref: "#/components/schemas/SessionGroup"
         currentSlideIdx:
           type: integer
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
     SystemInfo:
       type: object
       required: [name, version, status]
@@ -2911,6 +2942,9 @@ components:
         - joinCode
         - currentSlideIdx
         - annotations
+        - timingCalculatedAt
+        - activeDurationSeconds
+        - currentSlideDurationSeconds
       properties:
         id:
           type: string
@@ -2943,9 +2977,25 @@ components:
         startedAt:
           type: string
           format: date-time
+          nullable: true
         endedAt:
           type: string
           format: date-time
+          nullable: true
+        timingCalculatedAt:
+          type: string
+          format: date-time
+          description: Server instant at which the duration fields were calculated.
+        activeDurationSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Presentation time since begin, excluding pauses.
+        currentSlideDurationSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Time on the current slide visit, excluding pauses.
     SessionParticipant:
       type: object
       required: [sessionId, personId, channelType, displayName, joinedAt, kicked]

@@ -53,7 +53,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
     }
 
     @Transactional
-    public LiveSession start(
+    public LiveSession schedule(
             AuthenticatedUser user, UUID courseId, UUID lectureId, StartSessionRequest request) {
         courseAccess.requireManage(user, courseId);
         List<StudyGroup> groups = resolveGroups(courseId, request);
@@ -64,12 +64,40 @@ public class LiveSessionService implements LiveSessionAccessApi {
         lockCurrentLectureDeck(courseId, lectureId, deckId);
         LiveSession session = sessions.create(
                 UuidV7.generate(), lectureId, user.id(), CodeGenerator.readableCode(6), groups);
-        sessions.addSlideLog(session.id(), session.currentSlideIdx());
-        event(user, session, "session.started", Map.of(
+        event(user, session, "session.scheduled", Map.of(
                 "joinCode", session.joinCode(),
                 "groupIds", groups.stream().map(StudyGroup::id).toList()));
-        publisher.publish("session.started", session);
+        publisher.publish("session.scheduled", session);
         return session;
+    }
+
+    @Transactional
+    public LiveSession begin(AuthenticatedUser user, UUID courseId, UUID sessionId) {
+        courseAccess.requireManage(user, courseId);
+        LiveSession current = session(courseId, sessionId);
+        if (current.status() == SessionStatus.LIVE || current.status() == SessionStatus.PAUSED) {
+            if (current.startedAt() == null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Started session has no start time");
+            }
+            return current;
+        }
+        if (current.status() != SessionStatus.SCHEDULED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session can no longer be started");
+        }
+        if (!sessions.begin(courseId, sessionId)) {
+            LiveSession concurrent = session(courseId, sessionId);
+            if (concurrent.startedAt() != null
+                    && (concurrent.status() == SessionStatus.LIVE
+                            || concurrent.status() == SessionStatus.PAUSED)) {
+                return concurrent;
+            }
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session can no longer be started");
+        }
+        sessions.addSlideLog(sessionId, current.currentSlideIdx());
+        LiveSession started = session(courseId, sessionId);
+        event(user, started, "session.started", Map.of("status", started.status().name()));
+        publisher.publish("session.started", started);
+        return started;
     }
 
     private List<StudyGroup> resolveGroups(UUID courseId, StartSessionRequest request) {
@@ -106,7 +134,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
         }
     }
 
-    /** B-03: чтобы из мини-приложения преподаватель попадал сразу в свою идущую лекцию. */
+    /** B-03: возвращает QR-ожидание или уже начатую лекцию, созданную этим человеком. */
     public Optional<LiveSession> activeSessionFor(AuthenticatedUser user) {
         Optional<LiveSession> active = sessions.findActiveForCreator(user.id());
         active.ifPresent(session -> courseAccess.requireManage(user, session.courseId()));
@@ -170,7 +198,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
         String verb = switch (target) {
             case PAUSED -> "session.paused";
             case LIVE -> "session.resumed";
-            case ENDED -> "session.ended";
+            case ENDED -> current.status() == SessionStatus.SCHEDULED ? "session.cancelled" : "session.ended";
             case ARCHIVED -> "session.archived";
             case SCHEDULED -> "session.scheduled";
         };
@@ -208,7 +236,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
 
     private void ensureTransition(SessionStatus current, SessionStatus target) {
         boolean allowed = switch (current) {
-            case SCHEDULED -> target == SessionStatus.LIVE;
+            case SCHEDULED -> target == SessionStatus.ENDED;
             case LIVE -> target == SessionStatus.PAUSED || target == SessionStatus.ENDED;
             case PAUSED -> target == SessionStatus.LIVE || target == SessionStatus.ENDED;
             case ENDED -> target == SessionStatus.ARCHIVED;

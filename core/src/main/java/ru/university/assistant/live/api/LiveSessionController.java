@@ -31,12 +31,20 @@ public class LiveSessionController {
 
     @PostMapping("/lectures/{lectureId}/sessions")
     @ResponseStatus(HttpStatus.CREATED)
-    public LiveSession start(
+    public LiveSession create(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
             @PathVariable UUID lectureId,
             @Valid @RequestBody StartSessionRequest request) {
-        return liveSessions.start(user, courseId, lectureId, request);
+        return liveSessions.schedule(user, courseId, lectureId, request);
+    }
+
+    @PostMapping("/sessions/{sessionId}/begin")
+    public LiveSession begin(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID sessionId) {
+        return liveSessions.begin(user, courseId, sessionId);
     }
 
     @GetMapping("/sessions/{sessionId}")

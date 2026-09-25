@@ -245,10 +245,11 @@ class SessionGroupEnrollmentIntegrationTest extends LiveFlowTestBase {
     }
 
     private JsonNode start(String lecture, String body) throws Exception {
-        return json(post("/api/v1/courses/{c}/lectures/{l}/sessions", courseId, lecture)
+        JsonNode scheduled = json(post("/api/v1/courses/{c}/lectures/{l}/sessions", courseId, lecture)
                 .header("Authorization", "Bearer " + lecturerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body), 201);
+        return begin(UUID.fromString(scheduled.get("id").asText()));
     }
 
     private UUID createGroup(String name) throws Exception {

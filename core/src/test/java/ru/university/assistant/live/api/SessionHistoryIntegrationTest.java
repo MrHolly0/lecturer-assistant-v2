@@ -32,6 +32,7 @@ class SessionHistoryIntegrationTest extends LiveFlowTestBase {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"groups\":[{\"groupId\":\"" + groupId + "\"}]}"), 201);
         UUID secondSessionId = UUID.fromString(repeated.get("id").asText());
+        begin(secondSessionId);
         end(secondSessionId);
 
         JsonNode active = json(post("/api/v1/courses/{c}/lectures/{l}/sessions", courseId, lectureId)

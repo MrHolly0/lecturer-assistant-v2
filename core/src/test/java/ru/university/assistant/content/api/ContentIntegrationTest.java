@@ -265,14 +265,21 @@ class ContentIntegrationTest {
                                 "/api/v1/courses/{courseId}/lectures/{lectureId}/sessions", courseId, lectureId)
                         .header("Authorization", bearer(lecturerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"groups\":[{\"groupName\":\"Группа А\"}]}"))
+                .content("{\"groups\":[{\"groupName\":\"Группа А\"}]}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("LIVE"))
+                .andExpect(jsonPath("$.status").value("SCHEDULED"))
+                .andExpect(jsonPath("$.startedAt").doesNotExist())
                 .andExpect(jsonPath("$.currentSlideIdx").value(1))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
         String sessionId = objectMapper.readTree(sessionResponse).get("id").asText();
+
+        mockMvc.perform(post("/api/v1/courses/{courseId}/sessions/{sessionId}/begin", courseId, sessionId)
+                        .header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("LIVE"))
+                .andExpect(jsonPath("$.startedAt").isNotEmpty());
 
         mockMvc.perform(put("/api/v1/courses/{courseId}/sessions/{sessionId}/slide", courseId, sessionId)
                         .header("Authorization", bearer(lecturerToken))
@@ -708,7 +715,16 @@ class ContentIntegrationTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        return objectMapper.readTree(response);
+        JsonNode scheduled = objectMapper.readTree(response);
+        String sessionId = scheduled.get("id").asText();
+        String started = mockMvc.perform(
+                        post("/api/v1/courses/{courseId}/sessions/{sessionId}/begin", courseId, sessionId)
+                                .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(started);
     }
 
     private String tokenFrom(String response) throws Exception {

@@ -17,4 +17,7 @@ public record LiveSession(
         int currentSlideIdx,
         Map<String, Object> annotations,
         Instant startedAt,
-        Instant endedAt) {}
+        Instant endedAt,
+        Instant timingCalculatedAt,
+        long activeDurationSeconds,
+        long currentSlideDurationSeconds) {}

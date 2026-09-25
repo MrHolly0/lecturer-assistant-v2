@@ -5,10 +5,12 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import ru.university.assistant.iam.api.AuthenticatedUser;
@@ -37,8 +39,8 @@ class LiveSessionRepository {
         jdbc.sql(
                         """
                         insert into live.sessions
-                            (id, lecture_id, deck_id, status, join_code, started_at, created_by)
-                        select :id, l.id, l.deck_id, 'LIVE', :joinCode, now(), :createdBy
+                            (id, lecture_id, deck_id, status, join_code, created_by)
+                        select :id, l.id, l.deck_id, 'SCHEDULED', :joinCode, :createdBy
                         from live.lectures l
                         where l.id = :lectureId
                         """)
@@ -78,7 +80,8 @@ class LiveSessionRepository {
                         """)
                 .param("sessionId", sessionId)
                 .query(this::mapSession)
-                .optional();
+                .optional()
+                .map(this::withTiming);
     }
 
     Optional<LiveSession> findByCourse(UUID courseId, UUID sessionId) {
@@ -99,7 +102,8 @@ class LiveSessionRepository {
                 .param("courseId", courseId)
                 .param("sessionId", sessionId)
                 .query(this::mapSession)
-                .optional();
+                .optional()
+                .map(this::withTiming);
     }
 
     Optional<LiveSession> findByJoinCode(UUID courseId, String joinCode) {
@@ -120,7 +124,8 @@ class LiveSessionRepository {
                 .param("courseId", courseId)
                 .param("joinCode", joinCode)
                 .query(this::mapSession)
-                .optional();
+                .optional()
+                .map(this::withTiming);
     }
 
     Optional<LiveSession> findByJoinCode(String joinCode) {
@@ -140,10 +145,11 @@ class LiveSessionRepository {
                         """)
                 .param("joinCode", joinCode)
                 .query(this::mapSession)
-                .optional();
+                .optional()
+                .map(this::withTiming);
     }
 
-    /** B-03: самая свежая ещё идущая (LIVE/PAUSED) лекция, запущенная этим человеком. */
+    /** B-03: самая свежая подготовленная или идущая лекция, созданная этим человеком. */
     Optional<LiveSession> findActiveForCreator(UUID personId) {
         return jdbc.sql(
                         """
@@ -157,13 +163,14 @@ class LiveSessionRepository {
                             s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
-                        where s.created_by = :personId and s.status in ('LIVE', 'PAUSED')
-                        order by s.started_at desc
+                        where s.created_by = :personId and s.status in ('SCHEDULED', 'LIVE', 'PAUSED')
+                        order by s.created_at desc
                         limit 1
                         """)
                 .param("personId", personId)
                 .query(this::mapSession)
-                .optional();
+                .optional()
+                .map(this::withTiming);
     }
 
     Optional<UUID> lectureDeckId(UUID courseId, UUID lectureId) {
@@ -198,6 +205,19 @@ class LiveSessionRepository {
                 .param("lectureId", lectureId)
                 .query(UUID.class)
                 .optional();
+    }
+
+    boolean begin(UUID courseId, UUID sessionId) {
+        return jdbc.sql(
+                        """
+                        update live.sessions
+                        set status = 'LIVE', started_at = now(), updated_at = now()
+                        where id = :sessionId and status = 'SCHEDULED'
+                            and lecture_id in (select id from live.lectures where course_id = :courseId)
+                        """)
+                .param("courseId", courseId)
+                .param("sessionId", sessionId)
+                .update() == 1;
     }
 
     LiveSession updateSlide(UUID courseId, UUID sessionId, int slideIdx) {
@@ -387,8 +407,101 @@ class LiveSessionRepository {
                 rs.getInt("current_slide_idx"),
                 readMap(rs.getString("annotations")),
                 rs.getTimestamp("started_at") == null ? null : rs.getTimestamp("started_at").toInstant(),
-                rs.getTimestamp("ended_at") == null ? null : rs.getTimestamp("ended_at").toInstant());
+                rs.getTimestamp("ended_at") == null ? null : rs.getTimestamp("ended_at").toInstant(),
+                Instant.EPOCH,
+                0,
+                0);
     }
+
+    private LiveSession withTiming(LiveSession session) {
+        Instant calculatedAt = Instant.now();
+        if (session.startedAt() == null) {
+            return withTiming(session, calculatedAt, 0, 0);
+        }
+        Instant effectiveEnd = session.endedAt() == null ? calculatedAt : session.endedAt();
+        List<TimingEvent> timingEvents = timingEvents(session.id());
+        long activeSeconds = activeSeconds(session.startedAt(), effectiveEnd, timingEvents);
+        Instant slideStartedAt = latestSlideEnteredAt(session.id()).orElse(session.startedAt());
+        long slideSeconds = activeSeconds(slideStartedAt, effectiveEnd, timingEvents);
+        return withTiming(session, calculatedAt, activeSeconds, slideSeconds);
+    }
+
+    private LiveSession withTiming(
+            LiveSession session, Instant calculatedAt, long activeSeconds, long slideSeconds) {
+        return new LiveSession(
+                session.id(),
+                session.courseId(),
+                session.lectureId(),
+                session.deckId(),
+                session.lectureTitle(),
+                session.groups(),
+                session.status(),
+                session.joinCode(),
+                session.currentSlideIdx(),
+                session.annotations(),
+                session.startedAt(),
+                session.endedAt(),
+                calculatedAt,
+                activeSeconds,
+                slideSeconds);
+    }
+
+    private List<TimingEvent> timingEvents(UUID sessionId) {
+        return jdbc.sql(
+                        """
+                        select verb, occurred_at
+                        from analytics.events
+                        where aggregate_type = 'live.session' and aggregate_id = :sessionId
+                            and verb in ('session.paused', 'session.resumed')
+                        order by occurred_at, id
+                        """)
+                .param("sessionId", sessionId)
+                .query((rs, row) -> new TimingEvent(rs.getString("verb"), rs.getTimestamp("occurred_at").toInstant()))
+                .list();
+    }
+
+    private Optional<Instant> latestSlideEnteredAt(UUID sessionId) {
+        return jdbc.sql(
+                        """
+                        select entered_at
+                        from live.slide_log
+                        where session_id = :sessionId
+                        order by entered_at desc, id desc
+                        limit 1
+                        """)
+                .param("sessionId", sessionId)
+                .query((rs, row) -> rs.getTimestamp("entered_at").toInstant())
+                .optional();
+    }
+
+    private long activeSeconds(Instant from, Instant until, List<TimingEvent> events) {
+        if (!until.isAfter(from)) {
+            return 0;
+        }
+        long totalMillis = Duration.between(from, until).toMillis();
+        long pausedMillis = 0;
+        Instant pausedAt = null;
+        for (TimingEvent event : events) {
+            if ("session.paused".equals(event.verb()) && pausedAt == null) {
+                pausedAt = event.occurredAt();
+            } else if ("session.resumed".equals(event.verb()) && pausedAt != null) {
+                pausedMillis += overlapMillis(pausedAt, event.occurredAt(), from, until);
+                pausedAt = null;
+            }
+        }
+        if (pausedAt != null) {
+            pausedMillis += overlapMillis(pausedAt, until, from, until);
+        }
+        return Math.max(0, totalMillis - pausedMillis) / 1000;
+    }
+
+    private long overlapMillis(Instant intervalStart, Instant intervalEnd, Instant from, Instant until) {
+        Instant start = intervalStart.isAfter(from) ? intervalStart : from;
+        Instant end = intervalEnd.isBefore(until) ? intervalEnd : until;
+        return end.isAfter(start) ? Duration.between(start, end).toMillis() : 0;
+    }
+
+    private record TimingEvent(String verb, Instant occurredAt) {}
 
     private SessionParticipant mapParticipant(ResultSet rs, int rowNumber) throws SQLException {
         return new SessionParticipant(
