@@ -5,6 +5,7 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthContext";
 import { landingPath } from "../app/routes";
 import { BrandMark } from "../shared/brand/BrandMark";
+import { IconButton } from "../shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../shared/ui/tooltip";
 
 const navItems = [
@@ -51,13 +52,13 @@ export function Layout({ children }: { children: ReactNode }) {
             <BrandMark className="h-8 w-8 shrink-0 text-orange-500" />
             <span>Lecturer Assistant</span>
           </Link>
-          <button
+          <IconButton
             className="icon-touch-target shrink-0 lg:hidden"
             onClick={() => setSidebarOpen(false)}
-            aria-label="Закрыть меню"
+            label="Закрыть меню"
           >
             <X className="h-5 w-5" />
-          </button>
+          </IconButton>
         </div>
 
         <nav className="flex-1 p-3">
@@ -117,13 +118,13 @@ export function Layout({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 text-card-foreground lg:hidden">
-          <button
+          <IconButton
             className="icon-touch-target shrink-0"
             onClick={() => setSidebarOpen(true)}
-            aria-label="Открыть меню"
+            label="Открыть меню"
           >
             <Menu className="h-5 w-5" />
-          </button>
+          </IconButton>
           <BrandMark className="h-6 w-6 text-orange-500" />
           <span className="text-sm font-medium">Lecturer Assistant</span>
         </div>
