@@ -1,0 +1,592 @@
+
+         /\      Grafana   /‾‾/
+    /\  /  \     |\  __   /  /
+   /  \/    \    | |/ /  /   ‾‾\
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/
+
+     execution: local
+        script: e2e/k6/student-sse.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 150 max VUs, 4m30s max duration (incl. graceful stop):
+              * students: 1 iterations for each of 150 VUs (maxDuration: 4m0s, gracefulStop: 30s)
+
+
+running (0m01.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m01.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m02.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m02.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m03.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m03.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m04.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m04.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m05.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m05.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m06.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m06.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m07.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m07.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m08.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m08.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m09.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m09.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m10.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m10.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m11.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m11.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m12.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m12.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m13.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m13.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m14.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m14.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m15.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m15.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m16.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m16.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m17.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m17.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m18.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m18.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m19.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m19.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m20.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m20.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m21.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m21.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m22.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m22.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m23.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m23.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m24.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m24.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m25.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m25.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m26.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m26.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m27.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m27.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m28.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m28.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m29.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m29.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m30.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m30.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m31.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m31.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m32.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m32.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m33.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m33.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m34.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m34.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m35.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m35.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m36.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m36.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m37.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m37.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m38.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m38.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m39.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m39.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m40.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m40.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m41.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m41.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m42.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m42.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m43.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m43.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m44.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m44.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m45.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m45.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m46.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m46.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m47.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m47.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m48.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m48.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m49.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m49.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m50.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m50.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m51.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m51.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m52.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m52.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m53.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m53.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m54.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m54.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m55.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m55.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m56.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m56.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m57.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m57.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m58.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m58.0s/4m0s  000/150 iters, 1 per VU
+
+running (0m59.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  0m59.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m00.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m00.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m01.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m01.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m02.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m02.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m03.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m03.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m04.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m04.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m05.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m05.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m06.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m06.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m07.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m07.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m08.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m08.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m09.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m09.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m10.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m10.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m11.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m11.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m12.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m12.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m13.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m13.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m14.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m14.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m15.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m15.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m16.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m16.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m17.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m17.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m18.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m18.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m19.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m19.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m20.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m20.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m21.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m21.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m22.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m22.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m23.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m23.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m24.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m24.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m25.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m25.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m26.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m26.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m27.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m27.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m28.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m28.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m29.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m29.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m30.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m30.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m31.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m31.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m32.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m32.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m33.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m33.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m34.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m34.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m35.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m35.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m36.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m36.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m37.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m37.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m38.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m38.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m39.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m39.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m40.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m40.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m41.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m41.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m42.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m42.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m43.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m43.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m44.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m44.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m45.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m45.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m46.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m46.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m47.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m47.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m48.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m48.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m49.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m49.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m50.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m50.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m51.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m51.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m52.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m52.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m53.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m53.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m54.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m54.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m55.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m55.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m56.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m56.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m57.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m57.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m58.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m58.0s/4m0s  000/150 iters, 1 per VU
+
+running (1m59.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  1m59.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m00.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m00.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m01.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m01.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m02.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m02.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m03.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m03.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m04.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m04.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m05.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m05.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m06.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m06.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m07.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m07.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m08.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m08.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m09.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m09.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m10.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m10.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m11.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m11.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m12.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m12.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m13.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m13.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m14.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m14.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m15.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m15.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m16.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m16.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m17.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m17.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m18.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m18.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m19.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m19.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m20.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m20.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m21.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m21.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m22.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m22.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m23.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m23.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m24.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m24.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m25.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m25.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m26.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m26.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m27.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m27.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m28.0s), 150/150 VUs, 0 complete and 0 interrupted iterations
+students   [   0% ] 150 VUs  2m28.0s/4m0s  000/150 iters, 1 per VU
+
+running (2m29.0s), 061/150 VUs, 89 complete and 0 interrupted iterations
+students   [  59% ] 150 VUs  2m29.0s/4m0s  089/150 iters, 1 per VU
+
+running (2m30.0s), 013/150 VUs, 137 complete and 0 interrupted iterations
+students   [  91% ] 150 VUs  2m30.0s/4m0s  137/150 iters, 1 per VU
+
+
+  █ THRESHOLDS
+
+    checks
+    ✓ 'rate>0.99' rate=100.00%
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+    join_ok
+    ✓ 'rate>0.99' rate=100.00%
+
+    scheduled_slides_seen
+    ✓ 'rate>0.99' rate=100.00%
+
+    slide_change_delivery_ms
+    ✓ 'p(95)<2000' p(95)=1.64s
+
+    slide_first_snapshot_ms
+    ✓ 'p(95)<2000' p(95)=1.56s
+
+    slide_image_download_ms
+    ✓ 'p(95)<2000' p(95)=191.11ms
+
+    slide_image_ok
+    ✓ 'rate>0.99' rate=100.00%
+
+    sse_errors
+    ✓ 'count==0' count=0
+
+    sse_open_ok
+    ✓ 'rate>0.99' rate=100.00%
+
+    stream_complete
+    ✓ 'rate>0.99' rate=100.00%
+
+
+  █ TOTAL RESULTS
+
+    checks_total.......................: 150     0.995194/s
+    checks_succeeded...................: 100.00% 150 out of 150
+    checks_failed......................: 0.00%   0 out of 150
+
+    ✓ join 200
+
+    CUSTOM
+    join_ok.................................................................: 100.00% 150 out of 150
+    scheduled_slides_seen...................................................: 100.00% 150 out of 150
+    slide_change_delivery_ms................................................: avg=899.2ms  min=641ms  med=648ms    max=1.65s    p(90)=1.64s    p(95)=1.64s    p(99)=1.65s
+    slide_first_snapshot_ms.................................................: avg=778.61ms min=3ms    med=744.5ms  max=1.68s    p(90)=1.49s    p(95)=1.56s    p(99)=1.67s
+    slide_image_download_ms.................................................: avg=105.31ms min=1.35ms med=88.11ms  max=958.74ms p(90)=180.25ms p(95)=191.11ms p(99)=202.08ms
+    slide_image_downloads...................................................: 750     4.975971/s
+    slide_image_ok..........................................................: 100.00% 750 out of 750
+    slide_image_url_changes.................................................: 600     3.980777/s
+    sse_errors..............................................................: 0       0/s
+    sse_event...............................................................: 22500   149.279126/s
+    sse_open_ok.............................................................: 100.00% 150 out of 150
+    stream_complete.........................................................: 100.00% 150 out of 150
+
+    HTTP
+    http_req_blocked........................................................: avg=5.65ms   min=667ns  med=2.41µs   max=63.24ms  p(90)=18.64ms  p(95)=45.09ms  p(99)=62.3ms
+    http_req_connecting.....................................................: avg=3.77ms   min=0s     med=0s       max=61.03ms  p(90)=11.28ms  p(95)=31.85ms  p(99)=49.2ms
+    http_req_duration.......................................................: avg=21.38s   min=1.35ms med=128.03ms max=2m30s    p(90)=2m27s    p(95)=2m28s    p(99)=2m29s
+      { expected_response:true }............................................: avg=256.08ms min=1.35ms med=100.85ms max=1.94s    p(90)=842.45ms p(95)=1.35s    p(99)=1.78s
+    http_req_failed.........................................................: 0.00%   0 out of 900
+    http_req_receiving......................................................: avg=35.25ms  min=16.5µs med=35.35ms  max=137.07ms p(90)=73.89ms  p(95)=96.15ms  p(99)=120.14ms
+    http_req_sending........................................................: avg=193.04ms min=1.83µs med=14.1µs   max=1.68s    p(90)=935.92ms p(95)=1.28s    p(99)=1.56s
+    http_req_tls_handshaking................................................: avg=0s       min=0s     med=0s       max=0s       p(90)=0s       p(95)=0s       p(99)=0s
+    http_req_waiting........................................................: avg=220.54ms min=1.27ms med=64.76ms  max=1.93s    p(90)=842.06ms p(95)=1.34s    p(99)=1.76s
+    http_reqs...............................................................: 1050    6.966359/s
+
+    EXECUTION
+    iteration_duration......................................................: avg=2m29s    min=2m28s  med=2m28s    max=2m30s    p(90)=2m29s    p(95)=2m30s    p(99)=2m30s
+    iterations..............................................................: 150     0.995194/s
+    vus.....................................................................: 13      min=13         max=150
+    vus_max.................................................................: 150     min=150        max=150
+
+    NETWORK
+    data_received...........................................................: 70 MB   463 kB/s
+    data_sent...............................................................: 250 kB  1.7 kB/s
+
+
+  █ SCENARIO: students
+
+    checks_total.......................: 150     0.995194/s
+    checks_succeeded...................: 100.00% 150 out of 150
+    checks_failed......................: 0.00%   0 out of 150
+
+    ✓ join 200
+
+    CUSTOM
+    join_ok............................................: 100.00% 150 out of 150
+    scheduled_slides_seen..............................: 100.00% 150 out of 150
+    slide_change_delivery_ms...........................: avg=899.2ms  min=641ms  med=648ms    max=1.65s    p(90)=1.64s    p(95)=1.64s    p(99)=1.65s
+    slide_first_snapshot_ms............................: avg=778.61ms min=3ms    med=744.5ms  max=1.68s    p(90)=1.49s    p(95)=1.56s    p(99)=1.67s
+    slide_image_download_ms............................: avg=105.31ms min=1.35ms med=88.11ms  max=958.74ms p(90)=180.25ms p(95)=191.11ms p(99)=202.08ms
+    slide_image_downloads..............................: 750     4.975971/s
+    slide_image_ok.....................................: 100.00% 750 out of 750
+    slide_image_url_changes............................: 600     3.980777/s
+    sse_event..........................................: 22500   149.279126/s
+    sse_open_ok........................................: 100.00% 150 out of 150
+    stream_complete....................................: 100.00% 150 out of 150
+
+    HTTP
+    http_req_blocked...................................: avg=5.65ms   min=667ns  med=2.41µs   max=63.24ms  p(90)=18.64ms  p(95)=45.09ms  p(99)=62.3ms
+    http_req_connecting................................: avg=3.77ms   min=0s     med=0s       max=61.03ms  p(90)=11.28ms  p(95)=31.85ms  p(99)=49.2ms
+    http_req_duration..................................: avg=21.38s   min=1.35ms med=128.03ms max=2m30s    p(90)=2m27s    p(95)=2m28s    p(99)=2m29s
+    http_req_failed....................................: 0.00%   0 out of 900
+    http_req_receiving.................................: avg=35.25ms  min=16.5µs med=35.35ms  max=137.07ms p(90)=73.89ms  p(95)=96.15ms  p(99)=120.14ms
+    http_req_sending...................................: avg=193.04ms min=1.83µs med=14.1µs   max=1.68s    p(90)=935.92ms p(95)=1.28s    p(99)=1.56s
+    http_req_tls_handshaking...........................: avg=0s       min=0s     med=0s       max=0s       p(90)=0s       p(95)=0s       p(99)=0s
+    http_req_waiting...................................: avg=220.54ms min=1.27ms med=64.76ms  max=1.93s    p(90)=842.06ms p(95)=1.34s    p(99)=1.76s
+    http_reqs..........................................: 1050    6.966359/s
+
+    EXECUTION
+    iteration_duration.................................: avg=2m29s    min=2m28s  med=2m28s    max=2m30s    p(90)=2m29s    p(95)=2m30s    p(99)=2m30s
+    iterations.........................................: 150     0.995194/s
+
+    NETWORK
+    data_received......................................: 70 MB   463 kB/s
+    data_sent..........................................: 250 kB  1.7 kB/s
+
+
+
+
+running (2m30.7s), 000/150 VUs, 150 complete and 0 interrupted iterations
+students ✓ [ 100% ] 150 VUs  2m30.7s/4m0s  150/150 iters, 1 per VU

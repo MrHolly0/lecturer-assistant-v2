@@ -90,6 +90,9 @@ services:
     build:
       context: .
       dockerfile: web/Dockerfile
+      args:
+        # Build-time значение: Vite встраивает имя MAX-бота в статический bundle.
+        VITE_MAX_BOT_NAME: ${VITE_MAX_BOT_NAME:-}
     ports:
       - "${WEB_PORT:-3000}:80"
     healthcheck:

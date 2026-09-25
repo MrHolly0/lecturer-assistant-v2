@@ -60,11 +60,40 @@ sh deploy/stand/vps-up.sh
 Для оповещений нужен внешний монитор (например, UptimeRobot) на `https://<домен>/health`
 с интервалом 5 минут и уведомлением на почту дежурного.
 
-## Восстановление базы из копии
+## Проверка копии в отдельной базе
+
+Сначала нужно доказать, что dump читается и схема восстанавливается. Рабочую базу
+для этой проверки не останавливают и не изменяют:
+
+```bash
+# Имя тестовой БД должно быть новым; файл выбирается по точному имени.
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db-backup \
+  createdb lecturer_assistant_restore_verify
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db-backup \
+  pg_restore --exit-on-error --single-transaction --no-owner --no-privileges \
+  -d lecturer_assistant_restore_verify /backups/<файл>.dump
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db-backup \
+  psql -v ON_ERROR_STOP=1 -d lecturer_assistant_restore_verify \
+  -c 'select count(*), max(installed_rank) from shared.flyway_schema_history;'
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db-backup \
+  dropdb lecturer_assistant_restore_verify
+```
+
+Перед `createdb` убедитесь, что БД с таким именем нет. Для приёмки сравнивают только
+агрегатные счётчики, а не сами персональные данные.
+
+## Аварийное восстановление рабочей базы
+
+Эта операция разрушительна для текущего состояния БД: её выполняют только после выбора
+проверенного dump и фиксации окна недоступности.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml stop core
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db-backup \
-  pg_restore --clean --if-exists -d lecturer_assistant /backups/<файл>.dump
+  sh -ceu 'pg_restore --clean --if-exists --exit-on-error --single-transaction \
+    --no-owner --no-privileges -d "$PGDATABASE" "/backups/$1"' sh '<файл>.dump'
 docker compose -f docker-compose.yml -f docker-compose.prod.yml start core
 ```
+
+`pg_dump` сохраняет только PostgreSQL. Файлы презентаций и PNG лежат в `blob-data`; для полного
+восстановления нужна отдельная копия этого тома, согласованная по времени с dump БД.

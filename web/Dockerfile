@@ -1,5 +1,7 @@
 FROM node:22-alpine AS build
 WORKDIR /workspace/web
+ARG VITE_MAX_BOT_NAME=
+ENV VITE_MAX_BOT_NAME=${VITE_MAX_BOT_NAME}
 COPY web/package*.json ./
 RUN npm ci
 COPY openapi /workspace/openapi

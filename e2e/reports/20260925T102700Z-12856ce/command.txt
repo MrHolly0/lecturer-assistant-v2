@@ -1,0 +1,15 @@
+# JOIN_CODE and the generated schedule are intentionally redacted.
+set -o pipefail
+docker run --rm -i --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" -w /work lecturer-k6-sse:1.1.0 run \
+  --summary-mode=full \
+  --summary-export /work/e2e/reports/20260925T102700Z-12856ce/summary.json \
+  --summary-trend-stats='avg,min,med,max,p(90),p(95),p(99)' \
+  -e BASE_URL=http://host.docker.internal:18084 \
+  -e JOIN_CODE='<redacted>' \
+  -e EXPECTED_SLIDE_CHANGES=4 \
+  -e SLIDE_CHANGE_SCHEDULE='<redacted: four slideIdx:epochMillis entries>' \
+  e2e/k6/student-sse.js 2>&1 | tee e2e/reports/20260925T102700Z-12856ce/stdout.log
+
+# The controller changed current_slide_idx from 1 through 5 at 30-second intervals
+# in the isolated test database. No production or Tuna data was changed.
