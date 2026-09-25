@@ -1,4 +1,10 @@
-import { CheckCircle2, ChevronRight, Globe2, LockKeyhole, MessageCircleQuestion } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronRight,
+  Globe2,
+  LockKeyhole,
+  MessageCircleQuestion
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -33,9 +39,7 @@ export function TeacherRemoteQuestions({
       if (!selected) throw new Error("Вопрос не выбран");
       return updateStudentQuestion(courseId, sessionId, selected.id, {
         status,
-        ...(status === "ANSWERED"
-          ? { answerText: answerText.trim(), answerVisibility }
-          : {})
+        ...(status === "ANSWERED" ? { answerText: answerText.trim(), answerVisibility } : {})
       });
     },
     onSuccess: (updated) => {

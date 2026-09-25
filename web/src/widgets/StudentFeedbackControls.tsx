@@ -1,10 +1,6 @@
 import type { FormEvent } from "react";
 import { Check, MessageSquareText } from "lucide-react";
-import type {
-  SignalValue,
-  StudentQuestion,
-  StudentQuestionAnswer
-} from "../app/api/student-api";
+import type { SignalValue, StudentQuestion, StudentQuestionAnswer } from "../app/api/student-api";
 import { Button } from "../shared/ui/button";
 import { StudentQuestionAnswers } from "./StudentQuestionAnswers";
 

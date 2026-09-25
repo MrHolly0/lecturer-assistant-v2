@@ -97,7 +97,9 @@ export function Layout({ children }: { children: ReactNode }) {
             <UserRound className="h-4 w-4 shrink-0" />
             <span className="min-w-0">
               <span className="block truncate text-foreground">{user?.displayName}</span>
-              <span className="block truncate text-xs" title={user?.email}>{user?.email}</span>
+              <span className="block truncate text-xs" title={user?.email}>
+                {user?.email}
+              </span>
             </span>
           </div>
           <Tooltip>

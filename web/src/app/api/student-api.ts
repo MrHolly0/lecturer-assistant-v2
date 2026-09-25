@@ -136,6 +136,7 @@ export function connectStudentSession(
   let stopped = false;
   let ended = false;
   let state: StudentConnectionState = "CONNECTING";
+  let latestSnapshot: StudentSessionSnapshot | null = null;
 
   const updateState = (next: StudentConnectionState) => {
     if (state === next) return;
@@ -149,6 +150,7 @@ export function connectStudentSession(
   };
 
   const acceptSnapshot = (snapshot: StudentSessionSnapshot) => {
+    latestSnapshot = snapshot;
     onSnapshot(snapshot);
     if (snapshot.status !== "ENDED" && snapshot.status !== "ARCHIVED") return;
     ended = true;
@@ -205,6 +207,18 @@ export function connectStudentSession(
         acceptSnapshot(JSON.parse((event as MessageEvent).data) as StudentSessionSnapshot);
       } catch {
         // A malformed event is ignored; the next snapshot or polling pass restores state.
+      }
+    });
+    source.addEventListener("question-answer", (event) => {
+      try {
+        const answer = JSON.parse((event as MessageEvent).data) as StudentQuestionAnswer;
+        if (!latestSnapshot) return;
+        const questionAnswers = latestSnapshot.questionAnswers.filter(
+          (current) => current.questionId !== answer.questionId
+        );
+        acceptSnapshot({ ...latestSnapshot, questionAnswers: [...questionAnswers, answer] });
+      } catch {
+        // Polling restores a missed or malformed personalized answer.
       }
     });
     source.onerror = () => {
