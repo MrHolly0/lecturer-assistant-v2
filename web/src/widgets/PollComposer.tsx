@@ -186,6 +186,13 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
 }
 
 function eligibleForQuickPoll(question: QuestionBankEntry) {
+  const supportedType =
+    question.questionType === "CHOICE" || question.questionType === "TRUE_FALSE";
   const correctOptions = question.options.filter((option) => option.correct).length;
-  return question.options.length >= 2 && question.options.length <= 6 && correctOptions === 1;
+  return (
+    supportedType &&
+    question.options.length >= 2 &&
+    question.options.length <= 6 &&
+    correctOptions === 1
+  );
 }
