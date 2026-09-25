@@ -57,7 +57,7 @@ export function StartSessionDialog({
   useEffect(() => {
     if (!open || courseQuery.isLoading) return;
     setMode(groups.length === 0 ? "new" : "existing");
-    setGroupIds(groups.length === 1 ? [groups[0].id] : []);
+    setGroupIds([]);
     setGroupName("");
     setNewGroupNames([]);
   }, [courseQuery.isLoading, groups, groupsKey, open]);

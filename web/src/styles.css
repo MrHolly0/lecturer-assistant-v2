@@ -2613,13 +2613,37 @@ textarea {
 }
 
 .start-session-tabs {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   display: grid;
+  gap: 3px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  height: auto;
+  padding: 3px;
   width: 100%;
 }
 
 .start-session-tabs [role="tab"] {
+  border: 0;
+  border-radius: calc(var(--radius) - 3px);
+  color: var(--muted-foreground);
   min-height: 44px;
+  min-width: 0;
+  outline: none;
+  white-space: normal;
+}
+
+.start-session-tabs [role="tab"][data-state="active"] {
+  background: var(--card);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 12%, transparent);
+  color: var(--foreground);
+}
+
+.start-session-tabs [role="tab"]:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+  outline: 2px solid transparent;
+  outline-offset: 1px;
 }
 
 .start-session-field {
