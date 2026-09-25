@@ -11,18 +11,22 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.live.internal.LiveSessionService;
+import ru.university.assistant.live.internal.SessionHistoryService;
 
 @RestController
 @RequestMapping("/api/v1/courses/{courseId}")
 public class LiveSessionController {
     private final LiveSessionService liveSessions;
+    private final SessionHistoryService sessionHistory;
 
-    LiveSessionController(LiveSessionService liveSessions) {
+    LiveSessionController(LiveSessionService liveSessions, SessionHistoryService sessionHistory) {
         this.liveSessions = liveSessions;
+        this.sessionHistory = sessionHistory;
     }
 
     @PostMapping("/lectures/{lectureId}/sessions")
@@ -40,6 +44,15 @@ public class LiveSessionController {
             @PathVariable UUID courseId,
             @PathVariable UUID sessionId) {
         return liveSessions.get(user, courseId, sessionId);
+    }
+
+    @GetMapping("/sessions")
+    public SessionHistoryPage history(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(defaultValue = "0") int offset) {
+        return sessionHistory.list(user, courseId, limit, offset);
     }
 
     @GetMapping("/sessions/{sessionId}/participants")
