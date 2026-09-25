@@ -1335,7 +1335,9 @@ paths:
     put:
       operationId: updateLiveStudentQuestion
       summary: Mark a live student question as answered or dismissed.
-      description: Requires course management permission. An exact retry is idempotent.
+      description: >
+        Requires course management permission and a running session. ANSWERED requires non-blank
+        answerText and an explicit answerVisibility. An exact retry is idempotent.
       tags: [live]
       parameters:
         - $ref: "#/components/parameters/CourseId"
@@ -1366,7 +1368,7 @@ paths:
         "404":
           description: Session or question not found in this course and session.
         "409":
-          description: The question was already resolved with a different status or answer.
+          description: Session is not running, or the question was resolved differently.
   /courses/{courseId}/sessions/{sessionId}/summary:
     get:
       operationId: getLectureSummary
@@ -1394,8 +1396,9 @@ paths:
       operationId: getStudentSession
       summary: Read student session snapshot by join code.
       description: >
-        Personal fields (myVote) are filled when the request is identified by a Bearer JWT or by the
-        X-Participant-Token header. Without identification the shared snapshot is returned.
+        Personal fields (myVote and AUTHOR question answers) are filled when the request is identified
+        by a Bearer JWT or by the X-Participant-Token header. Without identification only SESSION
+        question answers are returned.
       tags: [student]
       security: []
       parameters:
@@ -1442,7 +1445,7 @@ paths:
   /student/sessions/{joinCode}/events:
     get:
       operationId: streamStudentSession
-      summary: SSE stream with current student session state.
+      summary: Personalized SSE stream with current student session state and question answers.
       tags: [student]
       security: []
       parameters:
@@ -1450,7 +1453,8 @@ paths:
         - $ref: "#/components/parameters/ParticipantTokenQuery"
       responses:
         "200":
-          description: Server-sent student session events.
+          description: >
+            Emits snapshot events filtered for the participant and immediate question-answer events.
           content:
             text/event-stream:
               schema:
@@ -3389,6 +3393,7 @@ components:
         - slideCount
         - currentSlide
         - signalAggregate
+        - questionAnswers
       properties:
         sessionId:
           type: string
@@ -3424,6 +3429,11 @@ components:
         activePoll:
           $ref: "#/components/schemas/ActivePollView"
           description: Open poll, or the last closed one (with answer and distribution) until the next poll starts.
+        questionAnswers:
+          type: array
+          description: SESSION answers plus AUTHOR answers owned by the identified participant.
+          items:
+            $ref: "#/components/schemas/StudentQuestionAnswer"
         myVote:
           type: integer
           nullable: true
@@ -3526,6 +3536,30 @@ components:
           type: string
           format: date-time
           nullable: true
+        answerVisibility:
+          allOf:
+            - $ref: "#/components/schemas/QuestionAnswerVisibility"
+          nullable: true
+    QuestionAnswerVisibility:
+      type: string
+      enum: [AUTHOR, SESSION]
+    StudentQuestionAnswer:
+      type: object
+      required: [questionId, questionText, answerText, answerVisibility, answeredAt]
+      description: Student-safe answer without the question author's identity.
+      properties:
+        questionId:
+          type: string
+          format: uuid
+        questionText:
+          type: string
+        answerText:
+          type: string
+        answerVisibility:
+          $ref: "#/components/schemas/QuestionAnswerVisibility"
+        answeredAt:
+          type: string
+          format: date-time
     UpdateStudentQuestionRequest:
       type: object
       required: [status]
@@ -3537,6 +3571,10 @@ components:
           type: string
           nullable: true
           maxLength: 4000
+        answerVisibility:
+          allOf:
+            - $ref: "#/components/schemas/QuestionAnswerVisibility"
+          nullable: true
     StudentEngagement:
       type: object
       required: [signalAggregate, problemSlides, questions]

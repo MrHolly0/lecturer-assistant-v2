@@ -4,16 +4,15 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.analytics.api.DomainEvent;
 import ru.university.assistant.analytics.api.EventBus;
-import ru.university.assistant.content.api.Slide;
-import ru.university.assistant.content.api.SlideDeckDetails;
-import ru.university.assistant.content.api.StudentDeckApi;
 import ru.university.assistant.feedback.api.FeedbackApi;
 import ru.university.assistant.feedback.api.SignalAggregate;
 import ru.university.assistant.iam.api.AuthenticatedUser;
@@ -30,19 +29,18 @@ import ru.university.assistant.live.api.StudentJoinResponse;
 import ru.university.assistant.live.api.StudentQuestionRequest;
 import ru.university.assistant.live.api.StudentSessionSnapshot;
 import ru.university.assistant.live.api.StudentSignalRequest;
-import ru.university.assistant.live.api.StudentSlide;
 import ru.university.assistant.live.api.UpdateStudentQuestionRequest;
 import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.org.api.GroupSelectionRequiredException;
 import ru.university.assistant.org.api.StudyGroup;
-import ru.university.assistant.interaction.api.ActivePollView;
 import ru.university.assistant.interaction.api.ActivityRespondApi;
 import ru.university.assistant.interaction.api.ActivityResponse;
 import ru.university.assistant.interaction.api.PollVote;
 import ru.university.assistant.interaction.api.QuickPollApi;
 import ru.university.assistant.interaction.api.SubmitActivityResponseRequest;
 import ru.university.assistant.qa.api.QuestionApi;
+import ru.university.assistant.qa.api.ResolvedQuestion;
 import ru.university.assistant.qa.api.StudentQuestion;
 import ru.university.assistant.shared.api.UuidV7;
 
@@ -51,7 +49,7 @@ public class StudentWebSessionService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final LiveSessionRepository sessions;
-    private final StudentDeckApi decks;
+    private final StudentSessionSnapshotService snapshots;
     private final FeedbackApi feedback;
     private final QuestionApi questions;
     private final EphemeralPersonApi persons;
@@ -62,10 +60,11 @@ public class StudentWebSessionService {
     private final LiveSessionPublisher publisher;
     private final QuickPollApi quickPolls;
     private final ActivityRespondApi activityRespond;
+    private final ApplicationEventPublisher applicationEvents;
 
     StudentWebSessionService(
             LiveSessionRepository sessions,
-            StudentDeckApi decks,
+            StudentSessionSnapshotService snapshots,
             FeedbackApi feedback,
             QuestionApi questions,
             EphemeralPersonApi persons,
@@ -75,9 +74,10 @@ public class StudentWebSessionService {
             EventBus events,
             LiveSessionPublisher publisher,
             QuickPollApi quickPolls,
-            ActivityRespondApi activityRespond) {
+            ActivityRespondApi activityRespond,
+            ApplicationEventPublisher applicationEvents) {
         this.sessions = sessions;
-        this.decks = decks;
+        this.snapshots = snapshots;
         this.feedback = feedback;
         this.questions = questions;
         this.persons = persons;
@@ -88,26 +88,29 @@ public class StudentWebSessionService {
         this.publisher = publisher;
         this.quickPolls = quickPolls;
         this.activityRespond = activityRespond;
+        this.applicationEvents = applicationEvents;
     }
 
     public StudentSessionSnapshot snapshot(String joinCode) {
         LiveSession session = sessionByCode(joinCode);
-        return snapshot(session);
+        return snapshots.create(session, null, false);
     }
 
     /** Снапшот с личными полями студента. Идентификация необязательна: без неё это общий снапшот. */
     public StudentSessionSnapshot snapshot(String joinCode, AuthenticatedUser user, String participantToken) {
         LiveSession session = sessionByCode(joinCode);
-        StudentSessionSnapshot shared = snapshot(session);
         UUID viewer = viewerId(session, user, participantToken);
-        if (viewer == null || shared.activePoll() == null) {
-            return shared;
-        }
-        Integer myVote = quickPolls.myVote(shared.activePoll().pollId(), viewer);
-        return new StudentSessionSnapshot(
-                shared.sessionId(), shared.courseId(), shared.courseTitle(), shared.lectureTitle(), shared.groups(),
-                shared.status(), shared.joinCode(), shared.currentSlideIdx(), shared.slideCount(),
-                shared.currentSlide(), shared.annotations(), shared.signalAggregate(), shared.activePoll(), myVote);
+        return snapshots.create(session, viewer, true);
+    }
+
+    StudentSessionSnapshot snapshotForViewer(String joinCode, UUID viewerPersonId) {
+        LiveSession session = sessionByCode(joinCode);
+        return snapshots.create(session, viewerPersonId, false);
+    }
+
+    Map<UUID, StudentSessionSnapshot> snapshotsForViewers(String joinCode, Set<UUID> viewerPersonIds) {
+        LiveSession session = sessionByCode(joinCode);
+        return snapshots.createForViewers(session, viewerPersonIds);
     }
 
     private UUID viewerId(LiveSession session, AuthenticatedUser user, String participantToken) {
@@ -131,7 +134,11 @@ public class StudentWebSessionService {
                     .orElse(null);
             if (existing != null) {
                 sessions.touchWebParticipant(existing.id());
-                return new StudentJoinResponse(presented, existing.id(), existing.identityLevel(), snapshot(session));
+                return new StudentJoinResponse(
+                        presented,
+                        existing.id(),
+                        existing.identityLevel(),
+                        snapshots.create(session, existing.personId(), true));
             }
         }
         if (user != null) {
@@ -141,7 +148,8 @@ public class StudentWebSessionService {
             WebParticipant participant = sessions.createWebToken(
                     UuidV7.generate(), session.id(), user.id(),
                     StudentTokenHasher.sha256(token), user.displayName(), IdentityLevel.PROFILE);
-            return new StudentJoinResponse(token, participant.id(), IdentityLevel.PROFILE, snapshot(session));
+            return new StudentJoinResponse(
+                    token, participant.id(), IdentityLevel.PROFILE, snapshots.create(session, user.id(), true));
         }
         UserProfile person = persons.createEphemeralStudent(request == null ? null : request.displayName());
         StudyGroup group = selectSessionGroup(session, request == null ? null : request.groupId());
@@ -157,7 +165,11 @@ public class StudentWebSessionService {
         WebParticipant participant = sessions.createWebToken(
                 UuidV7.generate(), session.id(), person.id(),
                 StudentTokenHasher.sha256(token), person.displayName(), IdentityLevel.EPHEMERAL);
-        return new StudentJoinResponse(token, participant.id(), participant.identityLevel(), snapshot(session));
+        return new StudentJoinResponse(
+                token,
+                participant.id(),
+                participant.identityLevel(),
+                snapshots.create(session, person.id(), true));
     }
 
     /** Реальный человек (вход через MAX или по паролю): один участник сессии, студент курса добавляется один раз. */
@@ -249,15 +261,26 @@ public class StudentWebSessionService {
         courseAccess.requireManage(user, courseId);
         LiveSession session = sessions.findByCourse(courseId, sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
-        StudentQuestion updated = questions.resolve(
-                sessionId, questionId, user.id(), request.status(), request.answerText());
+        if (session.status() != SessionStatus.LIVE && session.status() != SessionStatus.PAUSED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not running");
+        }
+        ResolvedQuestion resolution = questions.resolve(
+                sessionId,
+                questionId,
+                user.id(),
+                request.status(),
+                request.answerText(),
+                request.answerVisibility());
         publisher.publish("qa.question_updated", session);
-        return updated;
+        if (resolution.changed() && resolution.studentAnswer() != null) {
+            applicationEvents.publishEvent(new StudentQuestionAnswerPublished(
+                    session.joinCode(), resolution.authorPersonId(), resolution.studentAnswer()));
+        }
+        return resolution.question();
     }
 
-    public boolean tokenBelongsToJoinCode(String joinCode, String participantToken) {
-        participantSession(joinCode, participantToken, null);
-        return true;
+    public UUID participantPersonId(String joinCode, String participantToken) {
+        return participantSession(joinCode, participantToken, null).participant().personId();
     }
 
     private ParticipantSession participantSession(String joinCode, String participantToken, AuthenticatedUser user) {
@@ -311,33 +334,6 @@ public class StudentWebSessionService {
             publisher.publish("interaction.poll_answered", current.session());
         }
         return vote;
-    }
-
-    private StudentSessionSnapshot snapshot(LiveSession session) {
-        SlideDeckDetails deck = decks.getDeckForStudent(session.courseId(), session.deckId());
-        Slide slide = deck.slides().stream()
-                .filter(item -> item.idx() == session.currentSlideIdx())
-                .findFirst()
-                .orElseGet(() -> deck.slides().isEmpty() ? null : deck.slides().get(0));
-        if (slide == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session deck has no slides");
-        }
-        ActivePollView activePoll = quickPolls.activePollForSession(session.id()).orElse(null);
-        return new StudentSessionSnapshot(
-                session.id(),
-                session.courseId(),
-                sessions.courseTitle(session.courseId()),
-                session.lectureTitle(),
-                session.groups(),
-                session.status(),
-                session.joinCode(),
-                session.currentSlideIdx(),
-                deck.slideCount(),
-                new StudentSlide(slide.idx(), slide.imageUrl(), slide.textExtract()),
-                session.annotations(),
-                feedback.aggregate(session.id(), session.currentSlideIdx()),
-                activePoll,
-                null);
     }
 
     private StudyGroup selectSessionGroup(LiveSession session, UUID requestedGroupId) {

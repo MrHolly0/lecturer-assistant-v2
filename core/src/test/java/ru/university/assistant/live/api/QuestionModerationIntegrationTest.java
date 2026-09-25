@@ -21,18 +21,22 @@ class QuestionModerationIntegrationTest extends LiveFlowTestBase {
         UUID questionId = ask(student, "Можно привести пример?");
 
         JsonNode answered = update(questionId, sessionId, lecturerToken,
-                "{\"status\":\"ANSWERED\",\"answerText\":\"  Да, после формулы.  \"}", 200);
+                "{\"status\":\"ANSWERED\",\"answerText\":\"  Да, после формулы.  \","
+                        + "\"answerVisibility\":\"AUTHOR\"}", 200);
         assertEquals("ANSWERED", answered.get("status").asText());
         assertEquals("Да, после формулы.", answered.get("answerText").asText());
+        assertEquals("AUTHOR", answered.get("answerVisibility").asText());
         assertFalse(answered.get("answeredAt").isNull());
         assertEquals(0, engagement().get("questions").size());
         assertEquals(1, count("analytics.events where verb = 'qa.question_answered'"));
 
         update(questionId, sessionId, lecturerToken,
-                "{\"status\":\"ANSWERED\",\"answerText\":\"Да, после формулы.\"}", 200);
+                "{\"status\":\"ANSWERED\",\"answerText\":\"Да, после формулы.\","
+                        + "\"answerVisibility\":\"AUTHOR\"}", 200);
         assertEquals(1, count("analytics.events where verb = 'qa.question_answered'"));
         update(questionId, sessionId, lecturerToken,
-                "{\"status\":\"ANSWERED\",\"answerText\":\"Другой ответ\"}", 409);
+                "{\"status\":\"ANSWERED\",\"answerText\":\"Другой ответ\","
+                        + "\"answerVisibility\":\"AUTHOR\"}", 409);
         update(questionId, sessionId, lecturerToken, "{\"status\":\"OPEN\"}", 400);
     }
 

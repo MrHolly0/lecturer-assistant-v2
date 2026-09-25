@@ -8,10 +8,13 @@ public interface QuestionApi {
 
     List<StudentQuestion> openQuestions(UUID sessionId);
 
-    StudentQuestion resolve(
+    List<QuestionAnswerAudience> answeredQuestions(UUID sessionId);
+
+    ResolvedQuestion resolve(
             UUID sessionId,
             UUID questionId,
             UUID actorPersonId,
             QuestionStatus status,
-            String answerText);
+            String answerText,
+            QuestionAnswerVisibility answerVisibility);
 }

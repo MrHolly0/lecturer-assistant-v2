@@ -15,6 +15,7 @@ import ru.university.assistant.feedback.api.SignalAggregate;
 import ru.university.assistant.interaction.api.PollStatus;
 import ru.university.assistant.live.api.SummaryPollResult;
 import ru.university.assistant.live.api.SummaryProblemSlide;
+import ru.university.assistant.qa.api.QuestionAnswerVisibility;
 import ru.university.assistant.qa.api.QuestionStatus;
 import ru.university.assistant.qa.api.StudentQuestion;
 
@@ -126,7 +127,7 @@ class LectureSummaryRepository {
     List<StudentQuestion> unansweredQuestions(UUID sessionId) {
         return jdbc.sql("""
                         select id, session_id, display_name, channel_type, text, status, created_at,
-                               answer_text, answered_at
+                               answer_text, answered_at, answer_visibility
                         from qa.questions
                         where session_id = :sessionId and status = 'OPEN'
                         order by created_at asc
@@ -231,7 +232,10 @@ class LectureSummaryRepository {
                 QuestionStatus.valueOf(rs.getString("status")),
                 rs.getTimestamp("created_at").toInstant(),
                 rs.getString("answer_text"),
-                rs.getTimestamp("answered_at") == null ? null : rs.getTimestamp("answered_at").toInstant());
+                rs.getTimestamp("answered_at") == null ? null : rs.getTimestamp("answered_at").toInstant(),
+                rs.getString("answer_visibility") == null
+                        ? null
+                        : QuestionAnswerVisibility.valueOf(rs.getString("answer_visibility")));
     }
 
     private List<String> options(String json) {

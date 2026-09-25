@@ -12,4 +12,5 @@ public record StudentQuestion(
         QuestionStatus status,
         Instant createdAt,
         String answerText,
-        Instant answeredAt) {}
+        Instant answeredAt,
+        QuestionAnswerVisibility answerVisibility) {}

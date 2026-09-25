@@ -71,9 +71,9 @@ class StudentSessionController {
 
     @GetMapping(path = "/api/v1/student/sessions/{joinCode}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter events(@PathVariable String joinCode, @RequestParam String participantToken) {
-        studentSessions.tokenBelongsToJoinCode(joinCode, participantToken);
+        UUID viewerPersonId = studentSessions.participantPersonId(joinCode, participantToken);
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L);
-        broadcaster.register(joinCode, emitter);
+        broadcaster.register(joinCode, viewerPersonId, emitter);
         return emitter;
     }
 

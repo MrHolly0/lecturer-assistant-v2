@@ -3,102 +3,129 @@ package ru.university.assistant.live.internal;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.university.assistant.live.api.SessionStatus;
 import ru.university.assistant.live.api.StudentSessionSnapshot;
+import ru.university.assistant.qa.api.QuestionAnswerVisibility;
 
 /**
- * Раздаёт снапшот сессии всем подключённым студентам одним планировщиком, а не
- * потоком-на-студента. Снапшот считается один раз на сессию за тик, поэтому 150
- * SSE-клиентов одной лекции — это один запрос в БД в секунду, а не 150, и горстка
- * потоков планировщика вместо 150 заблокированных.
+ * Раздаёт персонализированные снапшоты одним планировщиком, а не потоком на студента.
+ * Общие данные сессии загружаются один раз за тик, затем ответы фильтруются в памяти
+ * по person id каждого зарегистрированного participant token.
  */
 @Component
 public class StudentSseBroadcaster {
-    private final Map<String, Set<SseEmitter>> emittersByCode = new ConcurrentHashMap<>();
+    private final Map<String, Set<Client>> clientsByCode = new ConcurrentHashMap<>();
     private final StudentWebSessionService sessions;
 
     StudentSseBroadcaster(StudentWebSessionService sessions) {
         this.sessions = sessions;
     }
 
-    public void register(String joinCode, SseEmitter emitter) {
+    public void register(String joinCode, UUID viewerPersonId, SseEmitter emitter) {
         String code = joinCode.trim().toUpperCase();
-        Set<SseEmitter> set = emittersByCode.computeIfAbsent(code, key -> ConcurrentHashMap.newKeySet());
-        set.add(emitter);
-        emitter.onCompletion(() -> remove(code, emitter));
+        Client client = new Client(viewerPersonId, emitter);
+        Set<Client> set = clientsByCode.computeIfAbsent(code, key -> ConcurrentHashMap.newKeySet());
+        set.add(client);
+        emitter.onCompletion(() -> remove(code, client));
         emitter.onTimeout(() -> {
             emitter.complete();
-            remove(code, emitter);
+            remove(code, client);
         });
-        emitter.onError(error -> remove(code, emitter));
+        emitter.onError(error -> remove(code, client));
         // Сразу отдаём текущее состояние, чтобы клиент не ждал до секунды.
-        StudentSessionSnapshot initial = safeSnapshot(code);
+        StudentSessionSnapshot initial = safeSnapshot(code, viewerPersonId);
         if (initial != null) {
-            send(code, emitter, initial);
+            send(code, client, "snapshot", initial);
         }
     }
 
     @Scheduled(fixedRate = 1000)
     void broadcast() {
-        for (Map.Entry<String, Set<SseEmitter>> entry : emittersByCode.entrySet()) {
+        for (Map.Entry<String, Set<Client>> entry : clientsByCode.entrySet()) {
             String code = entry.getKey();
-            Set<SseEmitter> set = entry.getValue();
+            Set<Client> set = entry.getValue();
             if (set.isEmpty()) {
-                emittersByCode.remove(code, set);
+                clientsByCode.remove(code, set);
                 continue;
             }
-            StudentSessionSnapshot snapshot;
+            Map<UUID, StudentSessionSnapshot> snapshots;
             try {
-                snapshot = sessions.snapshot(code);
+                snapshots = sessions.snapshotsForViewers(code, set.stream()
+                        .map(Client::viewerPersonId)
+                        .collect(Collectors.toSet()));
             } catch (RuntimeException exception) {
-                // Сессия исчезла/недоступна — закрываем всех подключённых к этому коду.
-                set.forEach(SseEmitter::complete);
-                emittersByCode.remove(code);
+                set.forEach(client -> client.emitter().complete());
+                clientsByCode.remove(code);
                 continue;
             }
-            boolean ended =
-                    snapshot.status() == SessionStatus.ENDED || snapshot.status() == SessionStatus.ARCHIVED;
-            for (SseEmitter emitter : set) {
-                boolean delivered = send(code, emitter, snapshot);
+            boolean ended = false;
+            for (Client client : set) {
+                StudentSessionSnapshot snapshot = snapshots.get(client.viewerPersonId());
+                if (snapshot == null) {
+                    client.emitter().complete();
+                    remove(code, client);
+                    continue;
+                }
+                ended = snapshot.status() == SessionStatus.ENDED || snapshot.status() == SessionStatus.ARCHIVED;
+                boolean delivered = send(code, client, "snapshot", snapshot);
                 if (ended && delivered) {
-                    emitter.complete();
+                    client.emitter().complete();
                 }
             }
             if (ended) {
-                emittersByCode.remove(code);
+                clientsByCode.remove(code);
             }
         }
     }
 
-    private StudentSessionSnapshot safeSnapshot(String code) {
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    void publishAnswer(StudentQuestionAnswerPublished event) {
+        String code = event.joinCode().trim().toUpperCase();
+        Set<Client> clients = clientsByCode.getOrDefault(code, Set.of());
+        for (Client client : clients) {
+            boolean visible = event.answer().answerVisibility() == QuestionAnswerVisibility.SESSION
+                    || client.viewerPersonId().equals(event.authorPersonId());
+            if (visible) {
+                send(code, client, "question-answer", event.answer());
+            }
+        }
+    }
+
+    private StudentSessionSnapshot safeSnapshot(String code, UUID viewerPersonId) {
         try {
-            return sessions.snapshot(code);
+            return sessions.snapshotForViewer(code, viewerPersonId);
         } catch (RuntimeException exception) {
             return null;
         }
     }
 
-    private boolean send(String code, SseEmitter emitter, StudentSessionSnapshot snapshot) {
+    private boolean send(String code, Client client, String eventName, Object data) {
         try {
-            emitter.send(SseEmitter.event().name("snapshot").data(snapshot));
+            client.emitter().send(SseEmitter.event().name(eventName).data(data));
             return true;
         } catch (IOException | IllegalStateException exception) {
-            remove(code, emitter);
+            remove(code, client);
             return false;
         }
     }
 
-    private void remove(String code, SseEmitter emitter) {
-        Set<SseEmitter> set = emittersByCode.get(code);
+    private void remove(String code, Client client) {
+        Set<Client> set = clientsByCode.get(code);
         if (set != null) {
-            set.remove(emitter);
+            set.remove(client);
             if (set.isEmpty()) {
-                emittersByCode.remove(code, set);
+                clientsByCode.remove(code, set);
             }
         }
     }
+
+    private record Client(UUID viewerPersonId, SseEmitter emitter) {}
 }
