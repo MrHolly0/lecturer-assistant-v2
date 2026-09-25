@@ -43,6 +43,19 @@ class PollController {
         return result;
     }
 
+    @PostMapping("/polls/from-bank")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PollResult startPollFromBank(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody StartBankPollRequest request) {
+        courseAccess.requireManage(user, courseId);
+        PollResult result = pollService.startFromBank(courseId, sessionId, user.id(), request.questionId());
+        publishPollUpdate(sessionId, result);
+        return result;
+    }
+
     @GetMapping("/polls/active")
     public PollResult getActivePoll(
             @AuthenticationPrincipal AuthenticatedUser user,
@@ -70,7 +83,7 @@ class PollController {
             @PathVariable UUID pollId,
             @RequestBody(required = false) ClosePollRequest request) {
         courseAccess.requireManage(user, courseId);
-        PollResult result = pollService.close(courseId, sessionId, pollId,
+        PollResult result = pollService.close(courseId, sessionId, pollId, user.id(),
                 request != null ? request : new ClosePollRequest(null));
         publishPollUpdate(sessionId, result);
         return result;

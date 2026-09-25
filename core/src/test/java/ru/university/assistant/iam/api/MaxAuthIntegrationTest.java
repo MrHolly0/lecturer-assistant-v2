@@ -67,6 +67,7 @@ class MaxAuthIntegrationTest {
         jdbc.sql(
                         """
                         truncate table
+                            analytics.outbox, analytics.events,
                             iam.max_link_codes, iam.channel_identities, iam.refresh_tokens,
                             iam.invitations, iam.persons
                         restart identity cascade

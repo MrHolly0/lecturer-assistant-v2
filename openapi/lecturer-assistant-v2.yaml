@@ -1059,6 +1059,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudentEngagement"
+  /courses/{courseId}/sessions/{sessionId}/summary:
+    get:
+      operationId: getLectureSummary
+      summary: Read the completed lecture summary for a lecturer.
+      description: Available to course managers after the session is ENDED or ARCHIVED.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Participants, problem slides, all poll results, and unanswered questions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LectureSummary"
+        "403":
+          description: The caller cannot manage this course.
+        "404":
+          description: Session not found in this course.
+        "409":
+          description: Session has not ended yet.
   /student/sessions/{joinCode}:
     get:
       operationId: getStudentSession
@@ -1205,6 +1227,37 @@ paths:
                 $ref: "#/components/schemas/PollResult"
         "404":
           description: No active poll.
+  /courses/{courseId}/sessions/{sessionId}/polls/from-bank:
+    post:
+      operationId: startPollFromBank
+      summary: Start a quick poll from an existing course question.
+      description: >
+        Copies the question text and options into the live poll. The source question must be an active
+        CHOICE or TRUE_FALSE question with 2-6 options and exactly one correct option. The saved correct
+        option is revealed to students only after the poll closes.
+      tags: [interaction]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartBankPollRequest"
+      responses:
+        "201":
+          description: Started poll.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollResult"
+        "404":
+          description: Session or question not found in this course.
+        "409":
+          description: A poll is already open for this session.
+        "422":
+          description: The question type or option set cannot be used as a quick poll.
   /courses/{courseId}/sessions/{sessionId}/polls/{pollId}:
     get:
       operationId: getPollResult
@@ -1785,6 +1838,11 @@ components:
           description: >
             Optional one-time code from POST /identity/max/link-codes. Ignored if this MAX account is
             already linked to a person (repeat logins never need it).
+        startParam:
+          type: string
+          maxLength: 64
+          pattern: "^[A-Za-z0-9_-]+$"
+          description: Optional MAX start_param used only to attribute the miniapp.opened pilot event.
     MaxAuthResponse:
       type: object
       required: [accessToken, expiresIn, role, personId, displayName]
@@ -2330,6 +2388,10 @@ components:
         sessionId:
           type: string
           format: uuid
+        sourceQuestionId:
+          type: string
+          format: uuid
+          nullable: true
         questionText:
           type: string
         options:
@@ -2406,6 +2468,13 @@ components:
           items:
             type: string
             minLength: 1
+    StartBankPollRequest:
+      type: object
+      required: [questionId]
+      properties:
+        questionId:
+          type: string
+          format: uuid
     ClosePollRequest:
       type: object
       properties:
@@ -2749,6 +2818,137 @@ components:
           type: integer
         signals:
           $ref: "#/components/schemas/SignalAggregate"
+    LectureSummary:
+      type: object
+      required:
+        - sessionId
+        - lectureId
+        - lectureTitle
+        - status
+        - startedAt
+        - endedAt
+        - durationSeconds
+        - participantCount
+        - participants
+        - signalTotals
+        - problemSlides
+        - pollResults
+        - questionsCount
+        - unansweredQuestionCount
+        - unansweredQuestions
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        lectureId:
+          type: string
+          format: uuid
+        lectureTitle:
+          type: string
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        durationSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+        participantCount:
+          type: integer
+          minimum: 0
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionParticipant"
+        signalTotals:
+          $ref: "#/components/schemas/SignalAggregate"
+        problemSlides:
+          type: array
+          description: Slides with at least one RED signal, ordered by RED count descending.
+          items:
+            $ref: "#/components/schemas/SummaryProblemSlide"
+        pollResults:
+          type: array
+          items:
+            $ref: "#/components/schemas/SummaryPollResult"
+        questionsCount:
+          type: integer
+          minimum: 0
+        unansweredQuestionCount:
+          type: integer
+          minimum: 0
+        unansweredQuestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentQuestion"
+    SummaryProblemSlide:
+      type: object
+      required: [slideIdx, green, yellow, red, total]
+      properties:
+        slideIdx:
+          type: integer
+          minimum: 1
+        green:
+          type: integer
+          minimum: 0
+        yellow:
+          type: integer
+          minimum: 0
+        red:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 1
+    SummaryPollResult:
+      type: object
+      required:
+        - pollId
+        - questionText
+        - options
+        - status
+        - votes
+        - totalResponses
+        - startedAt
+      properties:
+        pollId:
+          type: string
+          format: uuid
+        sourceQuestionId:
+          type: string
+          format: uuid
+          nullable: true
+        questionText:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: "#/components/schemas/PollStatus"
+        votes:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        totalResponses:
+          type: integer
+          minimum: 0
+        correctOptionIdx:
+          type: integer
+          nullable: true
+          minimum: 0
+        startedAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
     ChannelCapabilities:
       type: object
       required: [inlineButtons, editMessage, images, maxTextLength, maxButtonsPerRow]

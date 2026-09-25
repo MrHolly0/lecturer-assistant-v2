@@ -25,19 +25,30 @@ class PollRepository {
         this.mapper = mapper;
     }
 
-    QuickPoll create(UUID id, UUID sessionId, UUID createdBy, String questionText, List<String> options) {
+    QuickPoll create(
+            UUID id,
+            UUID sessionId,
+            UUID createdBy,
+            UUID sourceQuestionId,
+            String questionText,
+            List<String> options,
+            Integer correctOptionIdx) {
         String optionsJson = toJson(options);
         return jdbc.sql("""
                         insert into interaction.quick_polls
-                            (id, session_id, question_text, options, status, created_by)
-                        values (:id, :sessionId, :questionText, :options::jsonb, 'OPEN', :createdBy)
-                        returning id, session_id, question_text, options, status,
+                            (id, session_id, source_question_id, question_text, options, status,
+                             correct_option_idx, created_by)
+                        values (:id, :sessionId, :sourceQuestionId, :questionText, :options::jsonb, 'OPEN',
+                                :correctOptionIdx, :createdBy)
+                        returning id, session_id, source_question_id, question_text, options, status,
                                   correct_option_idx, created_at, closed_at
                         """)
                 .param("id", id)
                 .param("sessionId", sessionId)
+                .param("sourceQuestionId", sourceQuestionId)
                 .param("questionText", questionText)
                 .param("options", optionsJson)
+                .param("correctOptionIdx", correctOptionIdx)
                 .param("createdBy", createdBy)
                 .query(this::map)
                 .single();
@@ -45,7 +56,7 @@ class PollRepository {
 
     Optional<QuickPoll> findOpenForSession(UUID sessionId) {
         return jdbc.sql("""
-                        select id, session_id, question_text, options, status,
+                        select id, session_id, source_question_id, question_text, options, status,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
                         where session_id = :sessionId and status = 'OPEN'
@@ -60,7 +71,7 @@ class PollRepository {
     /** Открытый опрос важнее закрытого; если открытого нет, берётся последний закрытый. */
     Optional<QuickPoll> findLatestForSession(UUID sessionId) {
         return jdbc.sql("""
-                        select id, session_id, question_text, options, status,
+                        select id, session_id, source_question_id, question_text, options, status,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
                         where session_id = :sessionId
@@ -83,7 +94,7 @@ class PollRepository {
 
     Optional<QuickPoll> findById(UUID pollId) {
         return jdbc.sql("""
-                        select id, session_id, question_text, options, status,
+                        select id, session_id, source_question_id, question_text, options, status,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
                         where id = :id
@@ -96,9 +107,11 @@ class PollRepository {
     QuickPoll close(UUID pollId, Integer correctOptionIdx) {
         return jdbc.sql("""
                         update interaction.quick_polls
-                        set status = 'CLOSED', correct_option_idx = :correct, closed_at = now()
+                        set status = 'CLOSED',
+                            correct_option_idx = coalesce(:correct, correct_option_idx),
+                            closed_at = now()
                         where id = :id
-                        returning id, session_id, question_text, options, status,
+                        returning id, session_id, source_question_id, question_text, options, status,
                                   correct_option_idx, created_at, closed_at
                         """)
                 .param("id", pollId)
@@ -150,6 +163,7 @@ class PollRepository {
         return new QuickPoll(
                 rs.getObject("id", UUID.class),
                 rs.getObject("session_id", UUID.class),
+                rs.getObject("source_question_id", UUID.class),
                 rs.getString("question_text"),
                 options,
                 PollStatus.valueOf(rs.getString("status")),

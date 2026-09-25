@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import ru.university.assistant.analytics.api.DomainEvent;
+import ru.university.assistant.analytics.api.EventBus;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.iam.api.ChangePasswordRequest;
 import ru.university.assistant.iam.api.CreateInvitationRequest;
@@ -45,6 +48,7 @@ public class AuthService implements EphemeralPersonApi {
     private final CourseMembershipApi courseMemberships;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final EventBus events;
     private final Clock clock;
     private final Duration refreshTtl;
 
@@ -58,6 +62,7 @@ public class AuthService implements EphemeralPersonApi {
             CourseMembershipApi courseMemberships,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
+            EventBus events,
             Clock clock,
             @Value("${app.security.refresh-token-days}") long refreshTokenDays) {
         this.persons = persons;
@@ -69,6 +74,7 @@ public class AuthService implements EphemeralPersonApi {
         this.courseMemberships = courseMemberships;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.events = events;
         this.clock = clock;
         this.refreshTtl = Duration.ofDays(refreshTokenDays);
     }
@@ -116,7 +122,7 @@ public class AuthService implements EphemeralPersonApi {
      * не создавая никого нового и не меняя её роль.
      */
     @Transactional
-    public AuthTokens loginWithMax(String initData, String linkCode) {
+    public AuthTokens loginWithMax(String initData, String linkCode, String startParam) {
         if (!maxInitData.isConfigured()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "MAX login is not configured");
         }
@@ -134,6 +140,17 @@ public class AuthService implements EphemeralPersonApi {
                 .orElseGet(() -> linkCode != null && !linkCode.isBlank()
                         ? linkMaxAccountByCode(linkCode, data, externalId)
                         : createMaxStudent(data, externalId));
+        String normalizedStartParam = startParam == null ? "" : startParam.trim().toUpperCase();
+        Map<String, Object> context = normalizedStartParam.isEmpty()
+                ? Map.of()
+                : Map.of("startParam", normalizedStartParam);
+        events.publish(new DomainEvent(
+                "miniapp.session",
+                person.id(),
+                "miniapp.opened",
+                person.id(),
+                context,
+                Map.of("platform", "MAX")));
         return issueTokens(person);
     }
 

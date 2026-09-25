@@ -1,31 +1,47 @@
 package ru.university.assistant.interaction.internal;
 
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import ru.university.assistant.analytics.api.DomainEvent;
+import ru.university.assistant.analytics.api.EventBus;
 import ru.university.assistant.interaction.api.ActivePollView;
 import ru.university.assistant.interaction.api.ClosePollRequest;
 import ru.university.assistant.interaction.api.PollResult;
 import ru.university.assistant.interaction.api.PollStatus;
 import ru.university.assistant.interaction.api.PollVote;
+import ru.university.assistant.interaction.api.QuestionBankEntry;
+import ru.university.assistant.interaction.api.QuestionOption;
+import ru.university.assistant.interaction.api.QuestionType;
 import ru.university.assistant.interaction.api.QuickPoll;
 import ru.university.assistant.interaction.api.QuickPollApi;
 import ru.university.assistant.interaction.api.StartPollRequest;
 import ru.university.assistant.live.api.LiveSessionAccessApi;
+import ru.university.assistant.live.api.LiveSession;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
 public class PollService implements QuickPollApi {
     private final PollRepository polls;
     private final LiveSessionAccessApi liveSessions;
+    private final QuestionBankService questionBank;
+    private final EventBus events;
 
-    PollService(PollRepository polls, LiveSessionAccessApi liveSessions) {
+    PollService(
+            PollRepository polls,
+            LiveSessionAccessApi liveSessions,
+            QuestionBankService questionBank,
+            EventBus events) {
         this.polls = polls;
         this.liveSessions = liveSessions;
+        this.questionBank = questionBank;
+        this.events = events;
     }
 
     // Преподавательские методы ниже принимают courseId и в первую очередь проверяют, что
@@ -33,12 +49,23 @@ public class PollService implements QuickPollApi {
 
     @Transactional
     public PollResult start(UUID courseId, UUID sessionId, UUID createdBy, StartPollRequest request) {
-        liveSessions.requireSessionInCourse(courseId, sessionId);
-        polls.findOpenForSession(sessionId).ifPresent(existing -> {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "A poll is already open for this session");
-        });
-        QuickPoll poll = polls.create(UuidV7.generate(), sessionId, createdBy,
-                request.questionText(), request.options());
+        LiveSession session = prepareStart(courseId, sessionId);
+        QuickPoll poll = polls.create(
+                UuidV7.generate(), sessionId, createdBy, null, request.questionText(), request.options(), null);
+        publishStarted(courseId, session, poll, createdBy);
+        return result(poll);
+    }
+
+    @Transactional
+    public PollResult startFromBank(UUID courseId, UUID sessionId, UUID createdBy, UUID questionId) {
+        LiveSession session = prepareStart(courseId, sessionId);
+        QuestionBankEntry question = questionBank.get(courseId, questionId);
+        validateBankQuestion(question);
+        List<String> options = question.options().stream().map(QuestionOption::text).toList();
+        int correctOptionIdx = correctOptionIdx(question.options());
+        QuickPoll poll = polls.create(
+                UuidV7.generate(), sessionId, createdBy, question.id(), question.text(), options, correctOptionIdx);
+        publishStarted(courseId, session, poll, createdBy);
         return result(poll);
     }
 
@@ -55,14 +82,29 @@ public class PollService implements QuickPollApi {
     }
 
     @Transactional
-    public PollResult close(UUID courseId, UUID sessionId, UUID pollId, ClosePollRequest request) {
+    public PollResult close(
+            UUID courseId, UUID sessionId, UUID pollId, UUID closedBy, ClosePollRequest request) {
         liveSessions.requireSessionInCourse(courseId, sessionId);
         QuickPoll poll = pollInSession(sessionId, pollId);
         if (poll.status() == PollStatus.CLOSED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Poll already closed");
         }
+        Integer requestedCorrect = request.correctOptionIdx();
+        if (requestedCorrect != null && (requestedCorrect < 0 || requestedCorrect >= poll.options().size())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid correct option index");
+        }
         QuickPoll closed = polls.close(pollId, request.correctOptionIdx());
-        return result(closed);
+        PollResult result = result(closed);
+        events.publish(new DomainEvent(
+                "interaction.poll",
+                closed.id(),
+                "interaction.poll_closed",
+                closedBy,
+                Map.of("courseId", courseId, "sessionId", sessionId, "pollId", closed.id()),
+                payload(
+                        "correctOptionIdx", closed.correctOptionIdx(),
+                        "totalResponses", result.totalResponses())));
+        return result;
     }
 
     private QuickPoll pollInSession(UUID sessionId, UUID pollId) {
@@ -87,6 +129,19 @@ public class PollService implements QuickPollApi {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid option index");
         }
         boolean accepted = polls.respond(UuidV7.generate(), pollId, personId, optionIdx);
+        if (accepted) {
+            Map<String, Object> answer = payload("optionIdx", optionIdx);
+            if (poll.correctOptionIdx() != null) {
+                answer.put("correct", optionIdx == poll.correctOptionIdx());
+            }
+            events.publish(new DomainEvent(
+                    "interaction.poll",
+                    poll.id(),
+                    "interaction.poll_answered",
+                    personId,
+                    Map.of("sessionId", sessionId, "pollId", poll.id()),
+                    answer));
+        }
         return new PollVote(accepted, polls.findVote(pollId, personId).orElse(null));
     }
 
@@ -112,5 +167,58 @@ public class PollService implements QuickPollApi {
         Integer correct = closed ? poll.correctOptionIdx() : null;
         List<Integer> votes = closed ? polls.voteCounts(poll.id(), poll.options().size()) : null;
         return new ActivePollView(poll.id(), poll.questionText(), poll.options(), poll.status(), correct, votes);
+    }
+
+    private LiveSession prepareStart(UUID courseId, UUID sessionId) {
+        LiveSession session = liveSessions.requireSessionInCourse(courseId, sessionId);
+        polls.findOpenForSession(sessionId).ifPresent(existing -> {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A poll is already open for this session");
+        });
+        return session;
+    }
+
+    private void validateBankQuestion(QuestionBankEntry question) {
+        if (question.questionType() != QuestionType.CHOICE && question.questionType() != QuestionType.TRUE_FALSE) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY, "Question type cannot be used as a poll");
+        }
+        if (question.options().size() < 2 || question.options().size() > 6
+                || question.options().stream().filter(QuestionOption::correct).count() != 1) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY, "Poll question must have 2-6 options and one correct answer");
+        }
+    }
+
+    private int correctOptionIdx(List<QuestionOption> options) {
+        for (int i = 0; i < options.size(); i++) {
+            if (options.get(i).correct()) {
+                return i;
+            }
+        }
+        throw new IllegalStateException("Validated question has no correct option");
+    }
+
+    private void publishStarted(UUID courseId, LiveSession session, QuickPoll poll, UUID createdBy) {
+        events.publish(new DomainEvent(
+                "interaction.poll",
+                poll.id(),
+                "interaction.poll_started",
+                createdBy,
+                Map.of("courseId", courseId, "sessionId", session.id(), "pollId", poll.id()),
+                payload(
+                        "slideIdx", session.currentSlideIdx(),
+                        "optionCount", poll.options().size(),
+                        "sourceQuestionId", poll.sourceQuestionId(),
+                        "correctOptionIdx", poll.correctOptionIdx())));
+    }
+
+    private static Map<String, Object> payload(Object... pairs) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            if (pairs[i + 1] != null) {
+                result.put((String) pairs[i], pairs[i + 1]);
+            }
+        }
+        return result;
     }
 }

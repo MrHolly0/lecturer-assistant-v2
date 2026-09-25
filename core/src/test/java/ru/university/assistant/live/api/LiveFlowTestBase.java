@@ -86,7 +86,11 @@ abstract class LiveFlowTestBase {
         jdbc.sql(
                         """
                         truncate table
-                            analytics.outbox, analytics.events, qa.questions, feedback.comprehension_signals,
+                            analytics.outbox, analytics.events,
+                            interaction.activity_responses, interaction.activity_runs,
+                            interaction.activity_definitions, interaction.poll_responses,
+                            interaction.quick_polls, interaction.question_bank,
+                            qa.questions, feedback.comprehension_signals,
                             live.web_participant_tokens, live.slide_log, live.session_participants, live.sessions,
                             content.attachments, live.lectures, content.slide_notes, content.slides,
                             content.slide_decks, content.import_jobs, iam.channel_identities,
@@ -188,7 +192,8 @@ abstract class LiveFlowTestBase {
         String initData = MaxInitDataSigner.sign(BOT_TOKEN, params);
         return json(post("/api/v1/auth/max")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("initData", initData))), 200)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "initData", initData, "startParam", joinCode))), 200)
                 .get("accessToken")
                 .asText();
     }
