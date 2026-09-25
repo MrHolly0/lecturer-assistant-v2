@@ -3,7 +3,7 @@
 ## Состояние стенда
 
 - Публичный адрес: `https://lecturer-assistant.ru.tuna.am`.
-- Ревизия web-сборки после UX/UI-приёмки: `0ed3b55`; stand-клон быстро переведён на неё без изменения `.env` и данных. API и БД при обновлении web не перезапускались.
+- Текущая ревизия stand checkout: `51afcfa`. Core и web пересобраны и перезапущены; PostgreSQL, converter, blob-data и локальные резервные копии не перезапускались и не переносились. Публичные `/` и `/health` отвечают 200, web раздаёт `index-a10X_BiD.js`.
 - Восемь контейнеров запущены: шесть сервисов продукта, Caddy и `db-backup`.
 - `postgres`, `converter`, `core`, `web` healthy.
 - Внешняя проверка 25.09: `/` 200, `/health` 200, webhook probe 404, TLS-сертификат
