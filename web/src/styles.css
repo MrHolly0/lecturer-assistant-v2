@@ -224,6 +224,39 @@ textarea {
   text-align: center;
 }
 
+.auth-max-entry,
+.auth-browser-entry,
+.auth-browser-entry__form {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-max-entry .ui-button,
+.auth-browser-entry__toggle {
+  width: 100%;
+}
+
+.auth-max-entry__hint {
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 0;
+  text-align: center;
+}
+
+.auth-browser-entry {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.auth-browser-entry__toggle svg {
+  transition: transform 180ms ease-out;
+}
+
+.auth-browser-entry__chevron--open {
+  transform: rotate(180deg);
+}
+
 .auth-tabs {
   border-radius: var(--radius);
   width: 100%;
@@ -2788,11 +2821,25 @@ html[data-max-mini-app="true"] .student-session-shell {
 
 .session-join-actions {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
   justify-content: center;
 }
 
 .session-join-actions .ui-button {
   min-width: 220px;
+}
+
+.session-join-actions__secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.session-join-actions__secondary .ui-button {
+  min-width: 0;
 }
 
 .route-loading {
@@ -4586,7 +4633,378 @@ html[data-max-mini-app="true"] .student-session-shell {
   }
 }
 
+.teacher-remote-shell,
+.teacher-remote-state {
+  background: var(--background);
+  box-sizing: border-box;
+  color: var(--foreground);
+  min-height: var(--app-viewport-height);
+}
+
+.teacher-remote-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0 auto;
+  max-width: 620px;
+  padding: max(16px, var(--app-safe-area-top)) max(14px, var(--app-safe-area-right))
+    max(24px, var(--app-safe-area-bottom)) max(14px, var(--app-safe-area-left));
+}
+
+.teacher-remote-header {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.teacher-remote-header__copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.teacher-remote-header__copy > span {
+  align-items: center;
+  color: var(--muted-foreground);
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: var(--font-weight-medium);
+  gap: 6px;
+  text-transform: uppercase;
+}
+
+.teacher-remote-header h1 {
+  font-size: 1.25rem;
+  line-height: 1.25;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.teacher-remote-connection {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.teacher-remote-connection--connected {
+  background: color-mix(in srgb, var(--chart-2) 12%, var(--card));
+  border-color: color-mix(in srgb, var(--chart-2) 48%, var(--border));
+}
+
+.teacher-remote-connection--offline {
+  background: color-mix(in srgb, var(--destructive) 10%, var(--card));
+  border-color: color-mix(in srgb, var(--destructive) 45%, var(--border));
+}
+
+.teacher-remote-stage {
+  align-items: center;
+  aspect-ratio: 16 / 9;
+  background: #050505;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.teacher-remote-stage img {
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.teacher-remote-stage__empty {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.teacher-remote-paused {
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-size: 0.82rem;
+  font-weight: var(--font-weight-semibold);
+  left: 50%;
+  padding: 8px 12px;
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.teacher-remote-counter {
+  align-items: baseline;
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+}
+
+.teacher-remote-counter strong {
+  font-size: 1.05rem;
+}
+
+.teacher-remote-counter span {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.teacher-remote-timing {
+  align-items: center;
+  color: var(--muted-foreground);
+  display: flex;
+  font-size: 0.78rem;
+  gap: 8px;
+  justify-content: center;
+}
+
+.teacher-remote-timing span + span {
+  border-left: 1px solid var(--border);
+  padding-left: 8px;
+}
+
+.teacher-remote-controls {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.teacher-remote-controls .ui-button {
+  flex-direction: column;
+  font-size: 0.82rem;
+  gap: 4px;
+  min-height: 64px;
+  padding: 7px 4px;
+}
+
+.teacher-remote-controls .ui-button > svg {
+  height: 22px;
+  width: 22px;
+}
+
+.teacher-remote-tabs {
+  min-width: 0;
+}
+
+.teacher-remote-tabs__list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  height: auto;
+  width: 100%;
+}
+
+.teacher-remote-tabs__list [role="tab"] {
+  gap: 5px;
+  min-height: 44px;
+  min-width: 0;
+  padding-inline: 6px;
+}
+
+.teacher-remote-tabs__list .tab-badge {
+  min-width: 20px;
+}
+
+.teacher-remote-section,
+.teacher-remote-poll {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.teacher-remote-section__heading {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.teacher-remote-section__heading h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.teacher-remote-section__heading span {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
+
+.teacher-remote-signals {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.teacher-remote-signal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.teacher-remote-signal strong {
+  font-size: 1.45rem;
+}
+
+.teacher-remote-signal span {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.teacher-remote-signal--green {
+  border-color: color-mix(in srgb, var(--chart-2) 58%, var(--border));
+}
+
+.teacher-remote-signal--yellow {
+  border-color: color-mix(in srgb, var(--chart-4) 58%, var(--border));
+}
+
+.teacher-remote-signal--red {
+  border-color: color-mix(in srgb, var(--destructive) 58%, var(--border));
+}
+
+.teacher-remote-question-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.teacher-remote-question-list button {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 56px;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.teacher-remote-question-list button > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.teacher-remote-question-list strong {
+  display: -webkit-box;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.teacher-remote-question-list small {
+  color: var(--muted-foreground);
+}
+
+.teacher-remote-empty {
+  align-items: center;
+  color: var(--muted-foreground);
+  display: flex;
+  gap: 10px;
+  min-height: 72px;
+  justify-content: center;
+}
+
+.teacher-remote-empty p {
+  margin: 0;
+}
+
+.teacher-question-sheet {
+  background: var(--background);
+  border-radius: var(--radius) var(--radius) 0 0;
+  max-height: min(72vh, 560px);
+  padding-bottom: max(16px, var(--app-safe-area-bottom));
+}
+
+.teacher-question-sheet__body {
+  display: grid;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+
+.teacher-question-sheet__body p {
+  line-height: 1.5;
+  margin: 0;
+}
+
+.teacher-question-sheet__actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.teacher-question-sheet__actions .ui-button {
+  min-height: 48px;
+}
+
+.teacher-remote-poll .poll-panel,
+.teacher-remote-poll .poll-history {
+  max-width: none;
+  min-width: 0;
+  width: 100%;
+}
+
+.teacher-remote-poll .poll-source-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.teacher-remote-state {
+  align-content: center;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.teacher-remote-state h1,
+.teacher-remote-state p {
+  margin: 0;
+}
+
+@media (max-width: 380px) {
+  .teacher-remote-shell {
+    gap: 11px;
+    padding-inline: 10px;
+  }
+
+  .teacher-remote-connection span {
+    display: none;
+  }
+
+  .teacher-remote-controls .ui-button {
+    font-size: 0.75rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .auth-browser-entry__toggle svg {
+    transition: none;
+  }
+
   .course-live-card--loading {
     animation: none;
   }

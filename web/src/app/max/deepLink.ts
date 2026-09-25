@@ -4,6 +4,11 @@ export function buildMaxJoinUrl(joinCode: string): string | null {
   return buildMaxStartUrl(joinCode);
 }
 
+export function buildMaxBotUrl(): string | null {
+  const botName = readConfiguredBotName();
+  return botName ? `https://max.ru/${botName}` : null;
+}
+
 export function buildMaxLinkUrl(code: string): string | null {
   const normalizedCode = normalizeLinkCode(code);
   return normalizedCode ? buildMaxStartUrl(`link-${normalizedCode}`) : null;
@@ -23,11 +28,14 @@ export function normalizeLinkCode(code: string): string {
 }
 
 function buildMaxStartUrl(startParam: string): string | null {
-  if (!configuredBotName || !startParam) return null;
-  const botName = configuredBotName
+  const botName = readConfiguredBotName();
+  if (!botName || !startParam) return null;
+  return `https://max.ru/${botName}?startapp=${encodeURIComponent(startParam)}`;
+}
+
+function readConfiguredBotName(): string {
+  return configuredBotName
     .replace(/^https?:\/\/max\.ru\//i, "")
     .replace(/^@/, "")
     .split(/[/?#]/, 1)[0];
-  if (!botName) return null;
-  return `https://max.ru/${botName}?startapp=${encodeURIComponent(startParam)}`;
 }

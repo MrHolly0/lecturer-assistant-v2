@@ -290,8 +290,8 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Read the caller's own currently running (LIVE or PAUSED) lecture, if any.
-     * @description Used by the MAX mini app to drop a lecturer straight into their running lecture instead of a course picker (B-03). Scoped strictly to sessions this person started themselves.
+     * Read the caller's own prepared or running lecture, if any.
+     * @description Includes SCHEDULED QR waiting rooms as well as LIVE and PAUSED lectures. Scoped strictly to sessions this person created themselves and can still manage.
      */
     get: operations["getMyActiveSession"];
     put?: never;
@@ -881,7 +881,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Start a live session for a lecture. */
+    /**
+     * Prepare a live session and its join code.
+     * @description Creates a SCHEDULED session. The presentation clock starts only at the begin endpoint.
+     */
     post: operations["startLiveSession"];
     delete?: never;
     options?: never;
@@ -937,6 +940,26 @@ export interface paths {
     get: operations["listSessionParticipants"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/begin": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Begin the prepared lecture presentation.
+     * @description Atomically changes SCHEDULED to LIVE, records startedAt and the first slide visit. Repeating the request for an already LIVE or PAUSED session is idempotent.
+     */
+    post: operations["beginLiveSession"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1055,6 +1078,26 @@ export interface paths {
     /** Read live student signals and questions for presenter. */
     get: operations["getLiveSessionEngagement"];
     put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/questions/{questionId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Mark a live student question as answered or dismissed.
+     * @description Requires course management permission. An exact retry is idempotent.
+     */
+    put: operations["updateLiveStudentQuestion"];
     post?: never;
     delete?: never;
     options?: never;
@@ -1520,6 +1563,9 @@ export interface components {
       lectureTitle: string;
       groups: components["schemas"]["SessionGroup"][];
       currentSlideIdx: number;
+      status: components["schemas"]["SessionStatus"];
+      /** Format: date-time */
+      startedAt?: string | null;
     };
     SystemInfo: {
       /** @example lecturer-assistant-v2 */
@@ -1938,9 +1984,24 @@ export interface components {
         [key: string]: unknown;
       };
       /** Format: date-time */
-      startedAt?: string;
+      startedAt?: string | null;
       /** Format: date-time */
-      endedAt?: string;
+      endedAt?: string | null;
+      /**
+       * Format: date-time
+       * @description Server instant at which the duration fields were calculated.
+       */
+      timingCalculatedAt: string;
+      /**
+       * Format: int64
+       * @description Presentation time since begin, excluding pauses.
+       */
+      activeDurationSeconds: number;
+      /**
+       * Format: int64
+       * @description Time on the current slide visit, excluding pauses.
+       */
+      currentSlideDurationSeconds: number;
     };
     SessionParticipant: {
       /** Format: uuid */
@@ -2194,6 +2255,14 @@ export interface components {
       status: "OPEN" | "ANSWERED" | "DISMISSED";
       /** Format: date-time */
       createdAt: string;
+      answerText?: string | null;
+      /** Format: date-time */
+      answeredAt?: string | null;
+    };
+    UpdateStudentQuestionRequest: {
+      /** @enum {string} */
+      status: "ANSWERED" | "DISMISSED";
+      answerText?: string | null;
     };
     StudentEngagement: {
       /** @description Агрегат по текущему слайду сессии, не по всей лекции. */
@@ -3989,7 +4058,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Started session. */
+      /** @description Scheduled session ready for students to join and wait. */
       201: {
         headers: {
           [name: string]: unknown;
@@ -4082,6 +4151,50 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["SessionParticipant"][];
         };
+      };
+    };
+  };
+  beginLiveSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Started or already started session. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LiveSession"];
+        };
+      };
+      /** @description The caller cannot manage this course. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found in this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session was already ended or archived. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -4260,7 +4373,7 @@ export interface operations {
           "application/json": components["schemas"]["LiveSession"];
         };
       };
-      /** @description Only a LIVE or PAUSED session can be ended. */
+      /** @description Only a SCHEDULED, LIVE or PAUSED session can be ended. */
       409: {
         headers: {
           [name: string]: unknown;
@@ -4289,6 +4402,62 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["StudentEngagement"];
         };
+      };
+    };
+  };
+  updateLiveStudentQuestion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        questionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateStudentQuestionRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated question. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentQuestion"];
+        };
+      };
+      /** @description OPEN is not a valid target status. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The caller cannot manage this course. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or question not found in this course and session. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The question was already resolved with a different status or answer. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

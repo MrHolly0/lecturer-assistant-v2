@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   createHashRouter,
   Navigate,
@@ -25,12 +26,15 @@ import { StudentSessionPage } from "../pages/StudentSessionPage";
 import { MaxLinkPage } from "../pages/MaxLinkPage";
 import { CourseAnalyticsPage } from "../pages/CourseAnalyticsPage";
 import { SessionSummaryPage } from "../pages/SessionSummaryPage";
+import { TeacherRemotePage } from "../pages/TeacherRemotePage";
 import { Layout } from "../widgets/Layout";
 import { Toaster } from "../shared/ui/sonner";
 import { landingPath, type UserRole } from "./routes";
 import { hideBackButton, showBackButton, subscribeBackButton } from "./max/bridge";
 import { useMaxBridge } from "./max/context";
 import { readMaxLinkCode } from "./max/deepLink";
+import { canRedirectToTeacherRemote, isMobileMax, teacherRemotePath } from "./max/navigation";
+import { getMyActiveSession } from "./api/live-api";
 import { MaxLinkCodeScreen } from "../widgets/MaxLinkCodeScreen";
 import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
 import { Button } from "../shared/ui/button";
@@ -39,7 +43,8 @@ const maxRootPaths = new Set(["/", "/home", "/courses", "/login", "/register"]);
 const maxStartParamPattern = /^[A-Za-z0-9_-]{1,512}$/;
 
 function MaxNavigationRoot() {
-  const { isMax, startParam } = useMaxBridge();
+  const maxEnvironment = useMaxBridge();
+  const { isMax, startParam } = maxEnvironment;
   const {
     loading,
     maxAuthError,
@@ -52,13 +57,26 @@ function MaxNavigationRoot() {
   const location = useLocation();
   const navigate = useNavigate();
   const [startParamHandled, setStartParamHandled] = useState(false);
+  const mobileMax = isMobileMax(maxEnvironment);
+  const teacherInMax = Boolean(user && user.role !== "STUDENT" && mobileMax);
+  const activeSession = useQuery({
+    queryKey: ["active-session"],
+    queryFn: getMyActiveSession,
+    enabled: teacherInMax,
+    retry: 1,
+    staleTime: 1000
+  });
+  const remotePath = activeSession.data
+    ? teacherRemotePath(activeSession.data.courseId, activeSession.data.sessionId)
+    : null;
   const startTarget =
     user?.role === "STUDENT" && startParam && maxStartParamPattern.test(startParam)
       ? `/s/${encodeURIComponent(startParam.toUpperCase())}`
       : null;
 
   useEffect(() => {
-    const shouldShowBackButton = isMax && !maxRootPaths.has(location.pathname);
+    const shouldShowBackButton =
+      isMax && !maxRootPaths.has(location.pathname) && !location.pathname.endsWith("/remote");
     if (!shouldShowBackButton) {
       hideBackButton();
       return;
@@ -94,6 +112,17 @@ function MaxNavigationRoot() {
   }
   if (isMax && !startParamHandled && startTarget && location.pathname !== startTarget) {
     return <Navigate to={startTarget} replace />;
+  }
+  if (teacherInMax && activeSession.isLoading && canRedirectToTeacherRemote(location.pathname)) {
+    return <LoadingScreen message="Ищем активную лекцию…" />;
+  }
+  if (
+    teacherInMax &&
+    remotePath &&
+    location.pathname !== remotePath &&
+    canRedirectToTeacherRemote(location.pathname)
+  ) {
+    return <Navigate to={remotePath} replace />;
   }
 
   return <Outlet />;
@@ -212,6 +241,11 @@ function StudentSessionRoute() {
   return <StudentSessionPage joinCode={joinCode ?? ""} />;
 }
 
+function TeacherRemoteRoute() {
+  const { courseId, sessionId } = useParams();
+  return <TeacherRemotePage courseId={courseId ?? ""} sessionId={sessionId ?? ""} />;
+}
+
 const router = createHashRouter([
   {
     element: <MaxNavigationRoot />,
@@ -237,6 +271,14 @@ const router = createHashRouter([
         element: (
           <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
             <PresenterRoute />
+          </RequireRolePage>
+        )
+      },
+      {
+        path: "/courses/:courseId/sessions/:sessionId/remote",
+        element: (
+          <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
+            <TeacherRemoteRoute />
           </RequireRolePage>
         )
       },

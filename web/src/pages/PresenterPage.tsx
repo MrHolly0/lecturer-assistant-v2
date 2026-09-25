@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
 import { getStudentEngagement } from "../app/api/student-api";
@@ -20,14 +21,13 @@ import { PresenterSidePanel } from "../widgets/PresenterSidePanel";
 import { PresenterSessionSummary } from "../widgets/PresenterSessionSummary";
 import { PresenterTopbar } from "../widgets/PresenterTopbar";
 import { Button } from "../shared/ui/button";
+import { useSessionTimers } from "../app/live/useSessionTimers";
 
 export function PresenterPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const qc = useQueryClient();
   const channelRef = useRef<BroadcastChannel | null>(null);
   const [localSession, setLocalSession] = useState<LiveSession | null>(null);
   const [drawing, setDrawing] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
-  const [slideElapsed, setSlideElapsed] = useState(0);
 
   const sessionQuery = useQuery({
     queryKey: ["live", courseId, sessionId],
@@ -35,10 +35,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   });
   const session = localSession ?? sessionQuery.data;
   const paused = session?.status === "PAUSED";
-  const elapsed = useMemo(() => {
-    const startedAt = session?.startedAt ? Date.parse(session.startedAt) : now;
-    return Math.max(0, Math.floor((now - startedAt) / 1000));
-  }, [now, session?.startedAt]);
+  const { elapsed, slideElapsed } = useSessionTimers(session);
   const liveSessionId = session?.id;
   const deckQuery = useQuery({
     queryKey: ["content", courseId, "decks", session?.deckId],
@@ -109,21 +106,6 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     return () => window.removeEventListener("beforeunload", handler);
   }, [session?.status]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    setSlideElapsed(0);
-  }, [session?.currentSlideIdx]);
-
-  useEffect(() => {
-    if (paused) return;
-    const timer = window.setInterval(() => setSlideElapsed((value) => value + 1), 1000);
-    return () => window.clearInterval(timer);
-  }, [paused]);
-
   const slideMut = useMutation({
     mutationFn: (idx: number) => changeLiveSessionSlide(courseId, sessionId, idx)
   });
@@ -155,6 +137,10 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
 
   if (!session) {
     return <div className="presenter-shell">Загрузка...</div>;
+  }
+
+  if (session.status === "SCHEDULED") {
+    return <Navigate to={`/courses/${courseId}/sessions/${sessionId}/join`} replace />;
   }
 
   if (session.status === "ENDED") {

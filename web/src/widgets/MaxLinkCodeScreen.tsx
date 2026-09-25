@@ -32,7 +32,9 @@ export function MaxLinkCodeScreen({
           <span className="max-auth-eyebrow">Мини-приложение MAX</span>
           <div className="max-link-auth__heading">
             <Link2 size={22} aria-hidden="true" />
-            <h1 className="auth-title" id="max-link-auth-title">Подключить аккаунт</h1>
+            <h1 className="auth-title" id="max-link-auth-title">
+              Подключить аккаунт
+            </h1>
           </div>
           <p className="auth-hint">
             Введите код со страницы «Подключить MAX» в кабинете преподавателя.
@@ -62,7 +64,7 @@ export function MaxLinkCodeScreen({
           </Button>
         </form>
         <Button variant="ghost" type="button" onClick={onContinue}>
-          Уже подключали MAX? Войти
+          Уже подключали MAX? Войти без кода
         </Button>
       </section>
     </main>

@@ -15,6 +15,7 @@ export type StudentJoinResponse = components["schemas"]["StudentJoinResponse"];
 export type SignalAggregate = components["schemas"]["SignalAggregate"];
 export type SignalValue = components["schemas"]["SignalValue"];
 export type StudentQuestion = components["schemas"]["StudentQuestion"];
+export type UpdateStudentQuestionRequest = components["schemas"]["UpdateStudentQuestionRequest"];
 export type StudentEngagement = components["schemas"]["StudentEngagement"];
 export type StudentConnectionState =
   | "CONNECTING"
@@ -81,6 +82,22 @@ export async function submitStudentSignal(
     )
   });
   return res.json() as Promise<SignalAggregate>;
+}
+
+export async function updateStudentQuestion(
+  courseId: string,
+  sessionId: string,
+  questionId: string,
+  request: UpdateStudentQuestionRequest
+): Promise<StudentQuestion> {
+  const response = await apiFetch(
+    `/courses/${courseId}/sessions/${sessionId}/questions/${questionId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(request)
+    }
+  );
+  return response.json() as Promise<StudentQuestion>;
 }
 
 export async function askStudentQuestion(

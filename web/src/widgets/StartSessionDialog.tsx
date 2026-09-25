@@ -7,6 +7,8 @@ import type { Lecture } from "../app/api/content-api";
 import { getCourse } from "../app/api/courses-api";
 import { userErrorMessage } from "../app/api/errors";
 import { startLiveSession, type StartSessionRequest } from "../app/api/live-api";
+import { useMaxBridge } from "../app/max/context";
+import { isMobileMax, teacherRemotePath } from "../app/max/navigation";
 import { Button } from "../shared/ui/button";
 import { Checkbox } from "../shared/ui/checkbox";
 import {
@@ -38,6 +40,7 @@ export function StartSessionDialog({
   onOpenChange
 }: StartSessionDialogProps) {
   const navigate = useNavigate();
+  const maxEnvironment = useMaxBridge();
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<GroupMode>("existing");
   const [groupIds, setGroupIds] = useState<string[]>([]);
@@ -69,8 +72,12 @@ export function StartSessionDialog({
       void queryClient.invalidateQueries({ queryKey: ["courses", courseId] });
       void queryClient.invalidateQueries({ queryKey: ["live", courseId, "history"] });
       onOpenChange(false);
-      navigate(`/courses/${courseId}/sessions/${session.id}/join`);
-      toast.success("Занятие запущено.");
+      navigate(
+        isMobileMax(maxEnvironment)
+          ? teacherRemotePath(courseId, session.id)
+          : `/courses/${courseId}/sessions/${session.id}/join`
+      );
+      toast.success("Занятие создано. Покажите студентам код и начните показ.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось запустить занятие."))
   });

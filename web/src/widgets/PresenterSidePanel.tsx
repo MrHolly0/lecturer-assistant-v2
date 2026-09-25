@@ -5,6 +5,7 @@ import type { SignalValue, StudentEngagement } from "../app/api/student-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { PollPanel } from "./PollPanel";
+import { formatSessionTime } from "../app/live/useSessionTimers";
 
 interface PresenterSidePanelProps {
   slide: Slide;
@@ -35,7 +36,8 @@ export function PresenterSidePanel({
   return (
     <aside className="presenter-side">
       <div className="live-metric">
-        <Clock size={16} />С начала {formatTime(elapsed)} · слайд {formatTime(slideElapsed)}
+        <Clock size={16} />С начала {formatSessionTime(elapsed)} · слайд{" "}
+        {formatSessionTime(slideElapsed)}
       </div>
       {redCount > 0 && (
         <div className="signal-alert">
@@ -173,12 +175,4 @@ function SignalRow({
       <strong>{count}</strong>
     </div>
   );
-}
-
-function formatTime(total: number) {
-  const minutes = Math.floor(total / 60)
-    .toString()
-    .padStart(2, "0");
-  const seconds = (total % 60).toString().padStart(2, "0");
-  return `${minutes}:${seconds}`;
 }

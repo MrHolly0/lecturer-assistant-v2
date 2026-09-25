@@ -10,6 +10,7 @@ export type LectureSummary = components["schemas"]["LectureSummary"];
 export type SessionHistoryItem = components["schemas"]["SessionHistoryItem"];
 export type SessionHistoryPage = components["schemas"]["SessionHistoryPage"];
 export type LiveSessionMessage = { type: string; session: LiveSession };
+export type LiveConnectionState = "connecting" | "connected" | "reconnecting" | "offline";
 export type StartSessionRequest = components["schemas"]["StartSessionRequest"];
 export type ActiveSession = components["schemas"]["ActiveSessionSummary"];
 
@@ -33,6 +34,13 @@ export async function startLiveSession(
 
 export async function getLiveSession(courseId: string, sessionId: string): Promise<LiveSession> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}`);
+  return res.json() as Promise<LiveSession>;
+}
+
+export async function beginLiveSession(courseId: string, sessionId: string): Promise<LiveSession> {
+  const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/begin`, {
+    method: "POST"
+  });
   return res.json() as Promise<LiveSession>;
 }
 
@@ -115,7 +123,8 @@ export async function endLiveSession(courseId: string, sessionId: string): Promi
 
 export function connectLiveSession(
   sessionId: string,
-  onMessage: (message: LiveSessionMessage) => void
+  onMessage: (message: LiveSessionMessage) => void,
+  onStateChange?: (state: LiveConnectionState) => void
 ) {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const url = `${protocol}://${window.location.host}/ws/session/${sessionId}`;
@@ -129,6 +138,12 @@ export function connectLiveSession(
 
   function connect() {
     if (stopped) return;
+    if (!navigator.onLine) {
+      onStateChange?.("offline");
+      scheduleReconnect();
+      return;
+    }
+    onStateChange?.(attempt === 0 ? "connecting" : "reconnecting");
     let buffer = "";
     let connectionToken = "";
     let connectedTimer: number | undefined;
@@ -158,6 +173,7 @@ export function connectLiveSession(
           attempt = 0;
           rejectedToken = null;
           refreshAttemptedSinceConnected = false;
+          onStateChange?.("connected");
           currentSocket.send(
             `SUBSCRIBE\nid:session\ndestination:/topic/session/${sessionId}\n\n\u0000`
           );
@@ -183,6 +199,7 @@ export function connectLiveSession(
       if (connectedTimer) window.clearTimeout(connectedTimer);
       connectedTimer = undefined;
       if (socket === currentSocket) socket = null;
+      if (!stopped) onStateChange?.(navigator.onLine ? "reconnecting" : "offline");
       scheduleReconnect();
     });
     currentSocket.addEventListener("error", () => currentSocket.close());
@@ -223,7 +240,19 @@ export function connectLiveSession(
     else scheduleReconnect();
   };
 
+  const handleOnline = () => {
+    if (stopped) return;
+    reconnectImmediately = true;
+    attempt = 0;
+    if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+    else scheduleReconnect();
+  };
+
+  const handleOffline = () => onStateChange?.("offline");
+
   window.addEventListener("auth:refreshed", handleAuthRefreshed);
+  window.addEventListener("online", handleOnline);
+  window.addEventListener("offline", handleOffline);
 
   connect();
 
@@ -231,6 +260,8 @@ export function connectLiveSession(
     stopped = true;
     if (reconnectTimer) window.clearTimeout(reconnectTimer);
     window.removeEventListener("auth:refreshed", handleAuthRefreshed);
+    window.removeEventListener("online", handleOnline);
+    window.removeEventListener("offline", handleOffline);
     socket?.close();
   };
 }
