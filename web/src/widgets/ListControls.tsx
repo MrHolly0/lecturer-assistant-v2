@@ -54,7 +54,9 @@ export function PaginationBar({
         >
           Назад
         </Button>
-        <span className="muted">{page} / {pageCount}</span>
+        <span className="muted">
+          {page} / {pageCount}
+        </span>
         <Button
           type="button"
           variant="outline"

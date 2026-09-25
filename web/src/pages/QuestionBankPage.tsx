@@ -48,36 +48,42 @@ export function QuestionBankPage({ courseId }: Props) {
     <div className="page page--wide qbank-shell">
       <div className="page-header qbank-page-header">
         <div>
-          <Link to={`/courses/${courseId}`} className="breadcrumb">← Курс</Link>
+          <Link to={`/courses/${courseId}`} className="breadcrumb">
+            ← Курс
+          </Link>
           <h1>Банк вопросов</h1>
           <p className="muted">Подготовьте короткие проверки до начала лекции.</p>
         </div>
       </div>
       <CourseSectionNav courseId={courseId} canManage={courseQuery.data?.canManage} />
       <div className="qbank-toolbar">
-        {questions.length > 0 && <div className="qbank-filters">
-          <Select
-            value={tagFilter ?? "__all__"}
-            onValueChange={(v) => setTagFilter(v === "__all__" ? undefined : v)}
-          >
-            <SelectTrigger className="qbank-tag-filter">
-              <Tag size={14} />
-              <SelectValue placeholder="Все теги" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Все теги</SelectItem>
-              {allTags.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>}
-        {questions.length > 0 && <Button onClick={() => setCreating(true)}>
-          <Plus size={14} />
-          Новый вопрос
-        </Button>}
+        {questions.length > 0 && (
+          <div className="qbank-filters">
+            <Select
+              value={tagFilter ?? "__all__"}
+              onValueChange={(v) => setTagFilter(v === "__all__" ? undefined : v)}
+            >
+              <SelectTrigger className="qbank-tag-filter">
+                <Tag size={14} />
+                <SelectValue placeholder="Все теги" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Все теги</SelectItem>
+                {allTags.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {questions.length > 0 && (
+          <Button onClick={() => setCreating(true)}>
+            <Plus size={14} />
+            Новый вопрос
+          </Button>
+        )}
       </div>
 
       {questionsQuery.isLoading && <p className="muted">Загрузка…</p>}
@@ -107,10 +113,7 @@ export function QuestionBankPage({ courseId }: Props) {
               ))}
             </div>
             <div className="qbank-item-actions">
-              <IconButton
-                onClick={() => setEditing(q)}
-                label="Редактировать вопрос"
-              >
+              <IconButton onClick={() => setEditing(q)} label="Редактировать вопрос">
                 <Pencil size={16} />
               </IconButton>
               <ConfirmActionButton

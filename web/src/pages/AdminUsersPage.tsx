@@ -1,16 +1,15 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { components } from "../app/api/schema";
-import { createAdminInvitation, listUsers, updateUserRole, updateUserStatus } from "../app/api/admin-api";
+import {
+  createAdminInvitation,
+  listUsers,
+  updateUserRole,
+  updateUserStatus
+} from "../app/api/admin-api";
 import { useAuth } from "../app/AuthContext";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "../shared/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { PaginationBar, SearchField } from "../widgets/ListControls";
 import { Button, LinkButton } from "../shared/ui/button";
@@ -91,7 +90,10 @@ export function AdminUsersPage() {
         <div className="invite-panel">
           <label className="field">
             <span>Роль</span>
-            <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as AdminInviteRole)}>
+            <Select
+              value={inviteRole}
+              onValueChange={(value) => setInviteRole(value as AdminInviteRole)}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -119,7 +121,10 @@ export function AdminUsersPage() {
                 для роли {lastInvite.role}, до{" "}
                 {new Date(lastInvite.expiresAt).toLocaleDateString("ru-RU")}
               </span>
-              <LinkButton to={`/register?code=${encodeURIComponent(lastInvite.code)}`} variant="outline">
+              <LinkButton
+                to={`/register?code=${encodeURIComponent(lastInvite.code)}`}
+                variant="outline"
+              >
                 Ссылка для регистрации
               </LinkButton>
             </div>
@@ -142,7 +147,10 @@ export function AdminUsersPage() {
           </Tabs>
           <div className="list-toolbar__filters">
             {tab === "roles" && (
-              <Select value={roleFilter} onValueChange={(value) => setRoleFilter(value as RoleFilter)}>
+              <Select
+                value={roleFilter}
+                onValueChange={(value) => setRoleFilter(value as RoleFilter)}
+              >
                 <SelectTrigger className="table-select">
                   <SelectValue />
                 </SelectTrigger>

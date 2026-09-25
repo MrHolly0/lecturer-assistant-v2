@@ -42,10 +42,7 @@ export function StudentHomePage() {
             required
             minLength={4}
           />
-          <Button
-            type="submit"
-            disabled={!joinCode.trim()}
-          >
+          <Button type="submit" disabled={!joinCode.trim()}>
             Подключиться
           </Button>
         </form>

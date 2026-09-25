@@ -6,31 +6,28 @@ import { Link, type LinkProps } from "react-router-dom";
 import { cn } from "./utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
-const buttonVariants = cva(
-  "ui-button",
-  {
-    variants: {
-      variant: {
-        default: "ui-button--primary",
-        destructive: "ui-button--destructive",
-        outline: "ui-button--outline",
-        secondary: "ui-button--secondary",
-        ghost: "ui-button--ghost",
-        link: "ui-button--link"
-      },
-      size: {
-        default: "ui-button--md",
-        sm: "ui-button--sm",
-        lg: "ui-button--lg",
-        icon: "ui-button--icon"
-      }
+const buttonVariants = cva("ui-button", {
+  variants: {
+    variant: {
+      default: "ui-button--primary",
+      destructive: "ui-button--destructive",
+      outline: "ui-button--outline",
+      secondary: "ui-button--secondary",
+      ghost: "ui-button--ghost",
+      link: "ui-button--link"
     },
-    defaultVariants: {
-      variant: "default",
-      size: "default"
+    size: {
+      default: "ui-button--md",
+      sm: "ui-button--sm",
+      lg: "ui-button--lg",
+      icon: "ui-button--icon"
     }
+  },
+  defaultVariants: {
+    variant: "default",
+    size: "default"
   }
-);
+});
 
 type ButtonProps = React.ComponentPropsWithoutRef<"button"> &
   VariantProps<typeof buttonVariants> & {
@@ -70,14 +67,7 @@ type IconButtonProps = Omit<React.ComponentPropsWithoutRef<"button">, "aria-labe
   };
 
 const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  {
-    children,
-    className,
-    label,
-    tooltip = true,
-    variant = "ghost",
-    ...props
-  },
+  { children, className, label, tooltip = true, variant = "ghost", ...props },
   ref
 ) {
   const control = (
