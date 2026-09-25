@@ -14,6 +14,9 @@ import {
   removeCourseMember
 } from "../app/api/courses-api";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
+import { CourseLectureSpotlight } from "../widgets/CourseLectureSpotlight";
+import { CourseMemberActions } from "../widgets/CourseMemberActions";
+import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import {
   Select,
   SelectContent,
@@ -24,6 +27,12 @@ import {
 
 type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
 type Invitation = components["schemas"]["Invitation"];
+
+const ROLE_LABELS: Record<CourseRole, string> = {
+  LECTURER: "Лектор",
+  ASSISTANT: "Ассистент",
+  STUDENT: "Студент"
+};
 
 export function CoursePage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
@@ -110,19 +119,30 @@ export function CoursePage({ courseId }: { courseId: string }) {
     );
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <Link to="/courses" className="breadcrumb">
-          ← Курсы
-        </Link>
-        <h1>{course.title}</h1>
+    <div className="page page--wide course-page">
+      <header className="page-header course-page-header">
+        <div className="course-page-header__copy">
+          <Link to="/courses" className="breadcrumb">
+            ← Курсы
+          </Link>
+          <h1>{course.title}</h1>
+          <span className="muted">Ваша роль: {ROLE_LABELS[course.myRole as CourseRole]}</span>
+        </div>
         {course.archived && <span className="badge badge--muted">архив</span>}
-        <Link to={`/courses/${courseId}/materials`} className="btn-primary">
-          Материалы
-        </Link>
-      </div>
+      </header>
 
-      <div className="tab-row">
+      <CourseSectionNav courseId={courseId} />
+      <CourseLectureSpotlight courseId={courseId} canManage={canManage} />
+
+      <section className="course-settings" aria-labelledby="course-settings-title">
+        <div className="section-heading course-settings__heading">
+          <div>
+            <span className="section-kicker">Настройки курса</span>
+            <h2 id="course-settings-title">Люди и доступ</h2>
+          </div>
+          <span className="muted">Служебный раздел</span>
+        </div>
+        <div className="tab-row course-settings__tabs">
         <button
           type="button"
           className={`tab ${activeTab === "members" ? "tab--active" : ""}`}
@@ -148,7 +168,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
             Пригласить
           </button>
         )}
-      </div>
+        </div>
 
       {activeTab === "members" && (
         <ul className="member-list">
@@ -157,47 +177,32 @@ export function CoursePage({ courseId }: { courseId: string }) {
             const isOwner = m.personId === course.ownerPersonId;
             return (
               <li key={m.personId} className="member-row">
-                <span className="member-name">
-                  {m.displayName}
-                  {isOwner && <span className="badge badge--owner">владелец</span>}
-                </span>
+                <div className="member-info">
+                  <span className="member-name">
+                    {m.displayName}
+                    {isOwner && <span className="badge badge--owner">владелец</span>}
+                  </span>
+                  <span className="member-role-label">{ROLE_LABELS[m.role as CourseRole]}</span>
+                </div>
                 {canManage && !isOwner ? (
-                  <div className="member-actions">
-                    <Select
-                      value={m.role}
-                      onValueChange={(value) =>
-                        changeRoleMut.mutate({ personId: m.personId, role: value as CourseRole })
-                      }
-                    >
-                      <SelectTrigger className="member-role-select">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="STUDENT">Студент</SelectItem>
-                        <SelectItem value="ASSISTANT">Ассистент</SelectItem>
-                        <SelectItem value="LECTURER">Лектор</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <ConfirmActionButton
-                      title="Сделать владельцем курса?"
-                      description={`${m.displayName} станет лектором-владельцем курса. Вы останетесь лектором.`}
-                      confirmLabel="Сделать владельцем"
-                      disabled={changeOwnerMut.isPending}
-                      onConfirm={() => changeOwnerMut.mutate(m.personId)}
-                    >
-                      Владелец
-                    </ConfirmActionButton>
-                    <ConfirmActionButton
-                      title="Удалить участника?"
-                      description={`${m.displayName} потеряет доступ к курсу.`}
-                      disabled={removeMemberMut.isPending}
-                      onConfirm={() => removeMemberMut.mutate(m.personId)}
-                    >
-                      Удалить
-                    </ConfirmActionButton>
-                  </div>
+                  <CourseMemberActions
+                    displayName={m.displayName}
+                    role={m.role as CourseRole}
+                    disabled={
+                      changeRoleMut.isPending ||
+                      changeOwnerMut.isPending ||
+                      removeMemberMut.isPending
+                    }
+                    onRoleChange={(role) =>
+                      changeRoleMut.mutate({ personId: m.personId, role })
+                    }
+                    onChangeOwner={() => changeOwnerMut.mutate(m.personId)}
+                    onRemove={() => removeMemberMut.mutate(m.personId)}
+                  />
                 ) : (
-                  <span className={`badge badge--${m.role.toLowerCase()}`}>{m.role}</span>
+                  <span className={`badge badge--${m.role.toLowerCase()}`}>
+                    {ROLE_LABELS[m.role as CourseRole]}
+                  </span>
                 )}
               </li>
             );
@@ -287,6 +292,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
           )}
         </div>
       )}
+      </section>
     </div>
   );
 }

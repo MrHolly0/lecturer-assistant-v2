@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, Presentation, Play } from "lucide-react";
 import type { Lecture, SlideDeck } from "../app/api/content-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
@@ -24,6 +25,7 @@ interface LectureListProps {
   onArchive: (lectureId: string) => void;
   onRestore: (lectureId: string) => void;
   onHardDelete: (lectureId: string) => void;
+  onAddPresentation: () => void;
 }
 
 export function LectureList({
@@ -40,12 +42,14 @@ export function LectureList({
   onStart,
   onArchive,
   onRestore,
-  onHardDelete
+  onHardDelete,
+  onAddPresentation
 }: LectureListProps) {
   const activeLectures = lectures.filter((lecture) => !lecture.archived);
   const archivedLectures = lectures.filter((lecture) => lecture.archived);
   const [tab, setTab] = useState<LectureTab>("active");
   const [query, setQuery] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
   const visibleLectures = useMemo(
     () =>
       (tab === "archive" ? archivedLectures : activeLectures).filter((lecture) =>
@@ -54,18 +58,34 @@ export function LectureList({
     [activeLectures, archivedLectures, query, tab]
   );
   const paged = usePagedList(visibleLectures, 20);
+  const showTabs = archivedLectures.length > 0;
+  const showSearch = activeLectures.length + archivedLectures.length > 5 || Boolean(query);
+
+  useEffect(() => {
+    if (archivedLectures.length === 0 && tab === "archive") setTab("active");
+  }, [archivedLectures.length, tab]);
 
   return (
-    <section className="material-section">
-      <div className="section-heading">
-        <h2>Лекции</h2>
-        <span className="muted">
-          {activeLectures.length}{" "}
-          {pluralizeRu(activeLectures.length, "активная", "активные", "активных")}
-        </span>
+    <section className="material-section lecture-hub" aria-labelledby="lecture-hub-title">
+      <div className="section-heading lecture-hub__header">
+        <div>
+          <span className="section-kicker">Первый шаг перед занятием</span>
+          <h2 id="lecture-hub-title">Готовые лекции</h2>
+          <p className="muted">
+            {activeLectures.length > 0
+              ? `${activeLectures.length} ${pluralizeRu(activeLectures.length, "лекция готова", "лекции готовы", "лекций готовы")}`
+              : "Создайте лекцию и привяжите презентацию."}
+          </p>
+        </div>
+        {canManage && activeLectures.length > 0 && (
+          <button type="button" className="btn-ghost" onClick={() => setShowCreate((value) => !value)}>
+            <Plus size={16} aria-hidden="true" />
+            Новая лекция
+          </button>
+        )}
       </div>
-      {canManage && (
-        <div className="inline-form">
+      {canManage && showCreate && (
+        <div className="inline-form lecture-create-form">
           <input
             value={title}
             onChange={(event) => onTitleChange(event.target.value)}
@@ -91,28 +111,63 @@ export function LectureList({
           >
             Создать
           </button>
+          <button type="button" className="btn-ghost" onClick={() => setShowCreate(false)}>
+            Отмена
+          </button>
         </div>
       )}
-      <div className="list-toolbar">
-        <Tabs value={tab} onValueChange={(value) => setTab(value as LectureTab)}>
-          <TabsList>
-            <TabsTrigger value="active">Активные ({activeLectures.length})</TabsTrigger>
-            <TabsTrigger value="archive">Архив ({archivedLectures.length})</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <SearchField value={query} onChange={setQuery} placeholder="Найти лекцию или дек" />
-      </div>
-      <LectureRows
-        lectures={paged.pageItems}
-        empty={tab === "archive" ? "В архиве лекций нет." : "Лекции ещё не созданы."}
-        canManage={canManage}
-        startingId={startingId}
-        onStart={onStart}
-        onArchive={onArchive}
-        onRestore={onRestore}
-        onHardDelete={onHardDelete}
-      />
-      <PaginationBar {...paged} onPageChange={paged.setPage} />
+      {tab === "active" && activeLectures.length === 0 ? (
+        <div className="lecture-empty-state">
+          <Presentation size={28} aria-hidden="true" />
+          <div>
+            <strong>{decks.length === 0 ? "Сначала добавьте презентацию" : "Соберите первую лекцию"}</strong>
+            <p className="muted">
+              {decks.length === 0
+                ? "После загрузки презентации здесь появится быстрый запуск занятия."
+                : "Название и презентация уже могут стать готовой лекцией."}
+            </p>
+          </div>
+          {decks.length === 0 ? (
+            <button type="button" className="btn-primary" onClick={onAddPresentation}>
+              Добавить презентацию
+            </button>
+          ) : (
+            <button type="button" className="btn-primary" onClick={() => setShowCreate(true)}>
+              Создать лекцию
+            </button>
+          )}
+        </div>
+      ) : (
+        <>
+          {(showTabs || showSearch) && (
+            <div className="list-toolbar lecture-hub__toolbar">
+              {showTabs && (
+                <Tabs value={tab} onValueChange={(value) => setTab(value as LectureTab)}>
+                  <TabsList>
+                    <TabsTrigger value="active">Готовые ({activeLectures.length})</TabsTrigger>
+                    <TabsTrigger value="archive">Архив ({archivedLectures.length})</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              )}
+              {showSearch && (
+                <SearchField value={query} onChange={setQuery} placeholder="Найти лекцию" />
+              )}
+            </div>
+          )}
+          <LectureRows
+            lectures={paged.pageItems}
+            empty={tab === "archive" ? "В архиве лекций нет." : "По запросу лекций нет."}
+            primary={tab === "active"}
+            canManage={canManage}
+            startingId={startingId}
+            onStart={onStart}
+            onArchive={onArchive}
+            onRestore={onRestore}
+            onHardDelete={onHardDelete}
+          />
+          <PaginationBar {...paged} onPageChange={paged.setPage} />
+        </>
+      )}
     </section>
   );
 }
@@ -120,6 +175,7 @@ export function LectureList({
 interface LectureRowsProps {
   lectures: Lecture[];
   empty: string;
+  primary: boolean;
   canManage: boolean;
   startingId?: string;
   onStart?: (lectureId: string) => void;
@@ -131,6 +187,7 @@ interface LectureRowsProps {
 function LectureRows({
   lectures,
   empty,
+  primary,
   canManage,
   startingId,
   onStart,
@@ -141,21 +198,28 @@ function LectureRows({
   return (
     <ul className="card-list">
       {lectures.length === 0 && empty && <li className="muted">{empty}</li>}
-      {lectures.map((lecture) => (
-        <li key={lecture.id} className="card-link">
-          <span className="card-title">{lecture.title}</span>
-          <span className="muted">
-            {lecture.deckTitle} v{lecture.deckVersion}
-          </span>
+      {lectures.map((lecture, index) => (
+        <li
+          key={lecture.id}
+          className={`lecture-row${primary && index === 0 ? " lecture-row--primary" : ""}`}
+        >
+          <div className="lecture-row__copy">
+            {primary && index === 0 && <span className="section-kicker">Следующая лекция</span>}
+            <strong>{lecture.title}</strong>
+            <span className="muted">
+              {lecture.deckTitle} · версия {lecture.deckVersion}
+            </span>
+          </div>
           {canManage && !lecture.archived && (
-            <>
+            <div className="lecture-row__actions">
               <button
                 type="button"
-                className="btn-ghost"
+                className={primary && index === 0 ? "btn-primary" : "btn-ghost"}
                 disabled={startingId === lecture.id}
                 onClick={() => onStart?.(lecture.id)}
               >
-                Старт
+                <Play size={16} aria-hidden="true" />
+                {startingId === lecture.id ? "Запускаем…" : "Начать"}
               </button>
               <ConfirmActionButton
                 title="Архивировать лекцию?"
@@ -163,12 +227,12 @@ function LectureRows({
                 disabled={startingId === lecture.id}
                 onConfirm={() => onArchive?.(lecture.id)}
               >
-                Архив
+                В архив
               </ConfirmActionButton>
-            </>
+            </div>
           )}
           {canManage && lecture.archived && (
-            <>
+            <div className="lecture-row__actions">
               <button type="button" className="btn-ghost" onClick={() => onRestore?.(lecture.id)}>
                 Восстановить
               </button>
@@ -180,7 +244,7 @@ function LectureRows({
               >
                 Удалить навсегда
               </ConfirmActionButton>
-            </>
+            </div>
           )}
         </li>
       ))}

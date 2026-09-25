@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { ArrowRight } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -85,6 +86,12 @@ export function CoursesPage() {
     [activeCourses, archivedCourses, query, tab]
   );
   const paged = usePagedList(visibleCourses, 20);
+  const showTabs = archivedCourses.length > 0;
+  const showSearch = courses.length > 5 || Boolean(query);
+
+  useEffect(() => {
+    if (!showTabs && tab === "archive") setTab("active");
+  }, [showTabs, tab]);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -130,15 +137,17 @@ export function CoursesPage() {
         <p className="muted">Нет курсов. Создайте первый.</p>
       )}
 
-      {!isLoading && !isError && courses.length > 0 && (
+      {!isLoading && !isError && courses.length > 0 && (showTabs || showSearch) && (
         <div className="list-toolbar">
-          <Tabs value={tab} onValueChange={(value) => setTab(value as CourseTab)}>
-            <TabsList>
-              <TabsTrigger value="active">Активные ({activeCourses.length})</TabsTrigger>
-              <TabsTrigger value="archive">Архив ({archivedCourses.length})</TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <SearchField value={query} onChange={setQuery} placeholder="Найти курс" />
+          {showTabs && (
+            <Tabs value={tab} onValueChange={(value) => setTab(value as CourseTab)}>
+              <TabsList>
+                <TabsTrigger value="active">Активные ({activeCourses.length})</TabsTrigger>
+                <TabsTrigger value="archive">Архив ({archivedCourses.length})</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+          {showSearch && <SearchField value={query} onChange={setQuery} placeholder="Найти курс" />}
         </div>
       )}
 
@@ -147,8 +156,15 @@ export function CoursesPage() {
           {paged.pageItems.map((course) => (
             <li key={course.id} className="course-card">
               <Link to={`/courses/${course.id}`} className="course-card__main">
-                <span className="card-title">{course.title}</span>
-                {course.archived && <span className="badge badge--muted">архив</span>}
+                <span className="course-card__copy">
+                  <span className="card-title">{course.title}</span>
+                  <small>Открыть курс и готовые лекции</small>
+                </span>
+                {course.archived ? (
+                  <span className="badge badge--muted">архив</span>
+                ) : (
+                  <ArrowRight className="course-card__arrow" size={18} aria-hidden="true" />
+                )}
               </Link>
               {canCreateCourse && !course.archived && (
                 <div className="course-card__actions">
@@ -191,7 +207,7 @@ export function CoursesPage() {
       {!isLoading && !isError && courses.length > 0 && visibleCourses.length === 0 && (
         <p className="muted">Ничего не найдено.</p>
       )}
-      <PaginationBar {...paged} onPageChange={paged.setPage} />
+      {paged.pageCount > 1 && <PaginationBar {...paged} onPageChange={paged.setPage} />}
     </div>
   );
 }

@@ -35,7 +35,7 @@ export function PaginationBar({
   total,
   onPageChange
 }: PaginationBarProps) {
-  if (total === 0) return null;
+  if (total === 0 || pageCount <= 1) return null;
   const start = (page - 1) * pageSize + 1;
   const end = Math.min(total, page * pageSize);
 
@@ -44,29 +44,25 @@ export function PaginationBar({
       <span className="muted">
         {start}-{end} из {total}
       </span>
-      {pageCount > 1 && (
-        <div className="pager">
-          <button
-            type="button"
-            className="btn-ghost"
-            disabled={page <= 1}
-            onClick={() => onPageChange(page - 1)}
-          >
-            Назад
-          </button>
-          <span className="muted">
-            {page} / {pageCount}
-          </span>
-          <button
-            type="button"
-            className="btn-ghost"
-            disabled={page >= pageCount}
-            onClick={() => onPageChange(page + 1)}
-          >
-            Далее
-          </button>
-        </div>
-      )}
+      <div className="pager">
+        <button
+          type="button"
+          className="btn-ghost"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+        >
+          Назад
+        </button>
+        <span className="muted">{page} / {pageCount}</span>
+        <button
+          type="button"
+          className="btn-ghost"
+          disabled={page >= pageCount}
+          onClick={() => onPageChange(page + 1)}
+        >
+          Далее
+        </button>
+      </div>
     </div>
   );
 }

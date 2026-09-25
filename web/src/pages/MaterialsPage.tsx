@@ -1,21 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Plus, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { userErrorMessage } from "../app/api/errors";
 import {
   createLecture,
-  archiveDeck,
-  hardDeleteDeck,
-  hardDeleteLecture,
-  deleteLecture,
   deleteSlideNote,
   getDeck,
   getImportJob,
   listDecks,
   listLectures,
-  restoreDeck,
-  restoreLecture,
   saveSlideNote,
   uploadDeck,
   type ImportJob
@@ -24,13 +19,13 @@ import { getCourse } from "../app/api/courses-api";
 import { DeckUploadPanel } from "../widgets/DeckUploadPanel";
 import { DeckViewer } from "../widgets/DeckViewer";
 import { LectureList } from "../widgets/LectureList";
-import { startLiveSession } from "../app/api/live-api";
 import { DeckListPanel } from "../widgets/DeckListPanel";
 import { titleFromFileName } from "../shared/lib/fileName";
+import { CourseSectionNav } from "../widgets/CourseSectionNav";
+import { useMaterialsActions } from "./useMaterialsActions";
 
 export function MaterialsPage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [fileName, setFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -42,7 +37,8 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [lectureTitle, setLectureTitle] = useState("");
   const [lectureDeckId, setLectureDeckId] = useState("");
-  const [startingLectureId, setStartingLectureId] = useState("");
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const courseQuery = useQuery({
     queryKey: ["courses", courseId],
     queryFn: () => getCourse(courseId)
@@ -87,7 +83,8 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     setNotesOpen(false);
     setError(null);
     setLectureTitle("");
-    setStartingLectureId("");
+    setUploadOpen(false);
+    setViewerOpen(false);
   }, [courseId]);
   useEffect(() => {
     if (!jobQuery.data) return;
@@ -133,9 +130,6 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const displayedProgress = importing
     ? latestJob?.progressPercent ?? uploadProgress
     : uploadProgress;
-  const selectedDeckTitle =
-    decks.find((deck) => deck.id === selectedDeckId)?.title ?? "Материалы курса";
-
   const createLectureMut = useMutation({
     mutationFn: () => createLecture(courseId, lectureTitle.trim(), lectureDeckId),
     onSuccess: () => {
@@ -162,44 +156,19 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     }
   });
 
-  const archiveDeckMut = useMutation({
-    mutationFn: (deckId: string) => archiveDeck(courseId, deckId),
-    onSuccess: () => {
-      setSelectedDeckId("");
-      setLectureDeckId("");
-      void qc.invalidateQueries({ queryKey: ["content", courseId, "decks"] });
-    }
-  });
-  const restoreDeckMut = useMutation({
-    mutationFn: (deckId: string) => restoreDeck(courseId, deckId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["content", courseId, "decks"] })
-  });
-  const hardDeleteDeckMut = useMutation({
-    mutationFn: (deckId: string) => hardDeleteDeck(courseId, deckId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["content", courseId, "decks"] })
-  });
-
-  const deleteLectureMut = useMutation({
-    mutationFn: (lectureId: string) => deleteLecture(courseId, lectureId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["content", courseId, "lectures"] })
-  });
-  const restoreLectureMut = useMutation({
-    mutationFn: (lectureId: string) => restoreLecture(courseId, lectureId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["content", courseId, "lectures"] })
-  });
-  const hardDeleteLectureMut = useMutation({
-    mutationFn: (lectureId: string) => hardDeleteLecture(courseId, lectureId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["content", courseId, "lectures"] })
-  });
-
-  const startSessionMut = useMutation({
-    mutationFn: (lectureId: string) => startLiveSession(courseId, lectureId),
-    onMutate: (lectureId) => setStartingLectureId(lectureId),
-    onSuccess: (session) => {
-      void qc.invalidateQueries({ queryKey: ["active-session"] });
-      navigate(`/courses/${courseId}/sessions/${session.id}/join`);
-    },
-    onSettled: () => setStartingLectureId("")
+  const {
+    archiveDeckMut,
+    restoreDeckMut,
+    hardDeleteDeckMut,
+    deleteLectureMut,
+    restoreLectureMut,
+    hardDeleteLectureMut,
+    startSessionMut,
+    startingLectureId
+  } = useMaterialsActions(courseId, () => {
+    setSelectedDeckId("");
+    setLectureDeckId("");
+    setViewerOpen(false);
   });
 
   async function handleFile(file: File) {
@@ -212,6 +181,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     }
     setFileName(file.name);
     setUploadProgress(1);
+    setUploadOpen(true);
     try {
       const uploadedJob = await uploadDeck(courseId, effectiveTitle, file, setUploadProgress);
       setJob(uploadedJob);
@@ -229,10 +199,50 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
           ← Курс
         </Link>
         <h1>Материалы курса</h1>
-        <span className="muted">{selectedDeckTitle}</span>
+        <span className="muted">{courseQuery.data?.title}</span>
       </div>
 
-      {canManage && (
+      <CourseSectionNav courseId={courseId} />
+
+      <LectureList
+        lectures={lectures}
+        decks={activeDecks}
+        canManage={canManage}
+        title={lectureTitle}
+        deckId={lectureDeckId}
+        creating={createLectureMut.isPending}
+        startingId={startingLectureId}
+        onTitleChange={setLectureTitle}
+        onDeckChange={setLectureDeckId}
+        onCreate={() => createLectureMut.mutate()}
+        onStart={(lectureId) => startSessionMut.mutate(lectureId)}
+        onArchive={(lectureId) => deleteLectureMut.mutate(lectureId)}
+        onRestore={(lectureId) => restoreLectureMut.mutate(lectureId)}
+        onHardDelete={(lectureId) => hardDeleteLectureMut.mutate(lectureId)}
+        onAddPresentation={() => setUploadOpen(true)}
+      />
+
+      <section className="materials-workspace" aria-labelledby="materials-workspace-title">
+        <div className="section-heading materials-workspace__heading">
+          <div>
+            <span className="section-kicker">Подготовка</span>
+            <h2 id="materials-workspace-title">Презентации</h2>
+            <p className="muted">Выберите презентацию для просмотра или добавьте новую.</p>
+          </div>
+          {canManage && (
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={importing}
+              onClick={() => setUploadOpen((value) => !value)}
+            >
+              {uploadOpen ? <X size={16} aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}
+              {uploadOpen ? "Скрыть загрузку" : "Добавить презентацию"}
+            </button>
+          )}
+        </div>
+
+      {canManage && (uploadOpen || importing || Boolean(error)) && (
         <DeckUploadPanel
           title={title}
           fileName={fileName}
@@ -260,41 +270,31 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
         onSelect={(deckId) => {
           setSelectedDeckId(deckId);
           setLectureDeckId(deckId);
+          setViewerOpen(true);
         }}
         onArchive={(deckId) => archiveDeckMut.mutate(deckId)}
         onRestore={(deckId) => restoreDeckMut.mutate(deckId)}
         onHardDelete={(deckId) => hardDeleteDeckMut.mutate(deckId)}
       />
 
-      {selectedDeck && (
-        <DeckViewer
-          deck={selectedDeck}
-          activeIndex={activeSlide}
-          notesOpen={notesOpen}
-          savingNote={saveNoteMut.isPending}
-          onSlideChange={setActiveSlide}
-          onNotesOpenChange={setNotesOpen}
-          onSaveNote={(content) => saveNoteMut.mutateAsync(content).then(() => undefined)}
-          onClearNote={() => clearNoteMut.mutate()}
-        />
+      {selectedDeck && viewerOpen && (
+        <div className="material-viewer-shell">
+          <button type="button" className="btn-ghost material-viewer-close" onClick={() => setViewerOpen(false)}>
+            <X size={16} aria-hidden="true" /> Закрыть просмотр
+          </button>
+          <DeckViewer
+            deck={selectedDeck}
+            activeIndex={activeSlide}
+            notesOpen={notesOpen}
+            savingNote={saveNoteMut.isPending}
+            onSlideChange={setActiveSlide}
+            onNotesOpenChange={setNotesOpen}
+            onSaveNote={(content) => saveNoteMut.mutateAsync(content).then(() => undefined)}
+            onClearNote={() => clearNoteMut.mutate()}
+          />
+        </div>
       )}
-
-      <LectureList
-        lectures={lectures}
-        decks={activeDecks}
-        canManage={canManage}
-        title={lectureTitle}
-        deckId={lectureDeckId}
-        creating={createLectureMut.isPending}
-        startingId={startingLectureId}
-        onTitleChange={setLectureTitle}
-        onDeckChange={setLectureDeckId}
-        onCreate={() => createLectureMut.mutate()}
-        onStart={(lectureId) => startSessionMut.mutate(lectureId)}
-        onArchive={(lectureId) => deleteLectureMut.mutate(lectureId)}
-        onRestore={(lectureId) => restoreLectureMut.mutate(lectureId)}
-        onHardDelete={(lectureId) => hardDeleteLectureMut.mutate(lectureId)}
-      />
+      </section>
     </div>
   );
 }

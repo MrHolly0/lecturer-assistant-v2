@@ -52,7 +52,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <span>Lecturer Assistant</span>
           </Link>
           <button
-            className="icon-touch-target lg:hidden"
+            className="icon-touch-target shrink-0 lg:hidden"
             onClick={() => setSidebarOpen(false)}
             aria-label="Закрыть меню"
           >
@@ -74,7 +74,7 @@ export function Layout({ children }: { children: ReactNode }) {
                       className={({ isActive }) =>
                         `mb-0.5 flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition-colors ${
                           isActive
-                            ? "border border-border bg-accent text-accent-foreground"
+                            ? "border border-border border-l-[3px] border-l-foreground bg-accent font-semibold text-accent-foreground"
                             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                         }`
                       }
@@ -118,7 +118,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 text-card-foreground lg:hidden">
           <button
-            className="icon-touch-target"
+            className="icon-touch-target shrink-0"
             onClick={() => setSidebarOpen(true)}
             aria-label="Открыть меню"
           >

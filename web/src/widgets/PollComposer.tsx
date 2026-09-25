@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Plus, Search, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import { listQuestions, type QuestionBankEntry } from "../app/api/interaction-api";
 import { userErrorMessage } from "../app/api/errors";
 import { pluralizeRu } from "../shared/lib/plural";
@@ -108,9 +109,19 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
                 );
               })}
               {eligibleQuestions.length === 0 && !search && (
-                <p className="muted poll-message">
-                  В банке нет одиночных вопросов с отмеченным правильным ответом.
-                </p>
+                <div className="poll-message poll-bank-empty">
+                  <p className="muted">
+                    В банке нет вопросов с одним правильным ответом.
+                  </p>
+                  <Link
+                    className="btn-ghost"
+                    to={`/courses/${courseId}/questions`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Plus size={14} aria-hidden="true" /> Создать в банке
+                  </Link>
+                </div>
               )}
               {eligibleQuestions.length === 0 && search && (
                 <p className="muted poll-message">По этому запросу вопросов нет.</p>

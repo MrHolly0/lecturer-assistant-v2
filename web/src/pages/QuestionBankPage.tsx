@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Tag } from "lucide-react";
+import { ListChecks, Plus, Pencil, Trash2, Tag } from "lucide-react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { archiveQuestion, listQuestions, type QuestionBankEntry } from "../app/api/interaction-api";
 import { Button } from "../shared/ui/button";
@@ -8,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Badge } from "../shared/ui/badge";
 import { QUESTION_TYPES } from "../shared/lib/questionTypes";
 import { QuestionDialog } from "../widgets/QuestionDialog";
+import { CourseSectionNav } from "../widgets/CourseSectionNav";
 
 interface Props {
   courseId: string;
@@ -37,10 +39,18 @@ export function QuestionBankPage({ courseId }: Props) {
   });
 
   return (
-    <div className="qbank-shell">
+    <div className="page page--wide qbank-shell">
+      <div className="page-header qbank-page-header">
+        <div>
+          <Link to={`/courses/${courseId}`} className="breadcrumb">← Курс</Link>
+          <h1>Банк вопросов</h1>
+          <p className="muted">Подготовьте короткие проверки до начала лекции.</p>
+        </div>
+      </div>
+      <CourseSectionNav courseId={courseId} />
       <div className="qbank-toolbar">
-        <h1>Банк вопросов</h1>
-        <div className="qbank-filters">
+        <h2>Вопросы курса</h2>
+        {questions.length > 0 && <div className="qbank-filters">
           <Select
             value={tagFilter ?? "__all__"}
             onValueChange={(v) => setTagFilter(v === "__all__" ? undefined : v)}
@@ -58,11 +68,11 @@ export function QuestionBankPage({ courseId }: Props) {
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <Button onClick={() => setCreating(true)}>
+        </div>}
+        {questions.length > 0 && <Button onClick={() => setCreating(true)}>
           <Plus size={14} />
           Новый вопрос
-        </Button>
+        </Button>}
       </div>
 
       {questionsQuery.isLoading && <p className="muted">Загрузка…</p>}
@@ -115,7 +125,20 @@ export function QuestionBankPage({ courseId }: Props) {
           </li>
         ))}
         {!questionsQuery.isLoading && questions.length === 0 && (
-          <li className="qbank-empty muted">Вопросов нет — создайте первый.</li>
+          <li className="qbank-empty">
+            <span className="qbank-empty__icon" aria-hidden="true">
+              <ListChecks size={28} />
+            </span>
+            <div>
+              <strong>Соберите первую проверку</strong>
+              <p className="muted">
+                Готовый вопрос можно запустить из боковой панели во время лекции.
+              </p>
+            </div>
+            <Button onClick={() => setCreating(true)}>
+              <Plus size={16} aria-hidden="true" /> Создать вопрос
+            </Button>
+          </li>
         )}
       </ul>
 
