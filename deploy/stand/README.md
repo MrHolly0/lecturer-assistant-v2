@@ -97,3 +97,50 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml start core
 
 `pg_dump` сохраняет только PostgreSQL. Файлы презентаций и PNG лежат в `blob-data`; для полного
 восстановления нужна отдельная копия этого тома, согласованная по времени с dump БД.
+
+## Согласованная копия БД и `blob-data`
+
+Чтобы БД и файлы относились к одному состоянию, на короткое окно останавливают компоненты,
+которые могут писать данные. `postgres`, `db-backup`, `web` и Caddy продолжают работать.
+Обработчик `trap` обязателен: он запускает компоненты обратно даже при ошибке копирования.
+
+```bash
+stamp='<UTC, например 20260925T105839Z>'
+compose=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
+
+restart_writers() {
+  "${compose[@]}" start converter core max-adapter telegram-adapter >/dev/null 2>&1 || true
+}
+trap restart_writers EXIT INT TERM
+"${compose[@]}" stop max-adapter telegram-adapter core converter
+
+"${compose[@]}" exec -T db-backup sh -ceu '
+  tmp="/backups/lecturer_assistant-quiesced-$1.dump.tmp"
+  pg_dump -Fc -f "$tmp"
+  mv "$tmp" "/backups/lecturer_assistant-quiesced-$1.dump"
+' sh "$stamp"
+
+# Точное имя тома сначала получают через docker inspect core-контейнера.
+docker run --rm \
+  -v '<compose-project>_blob-data:/source:ro' \
+  -v "$PWD/deploy/stand/backups:/backups" \
+  postgres:16-alpine sh -ceu '
+    tar -C /source -czf "/backups/blob-data-$1.tar.gz.tmp" .
+    mv "/backups/blob-data-$1.tar.gz.tmp" "/backups/blob-data-$1.tar.gz"
+  ' sh "$stamp"
+
+restart_writers
+trap - EXIT INT TERM
+```
+
+После запуска компонентов проверяют `/health`, SHA-256 обоих файлов и читаемость архива без
+печати списка файлов:
+
+```bash
+sha256sum deploy/stand/backups/*-$stamp.*
+docker run --rm -v "$PWD/deploy/stand/backups:/backups:ro" postgres:16-alpine \
+  tar -tzf "/backups/blob-data-$stamp.tar.gz" >/dev/null
+```
+
+Dump дополнительно восстанавливают в отдельную БД по процедуре выше. Оба файла должны храниться
+и переноситься как одна пара; каталог `deploy/stand/backups` не коммитят.
