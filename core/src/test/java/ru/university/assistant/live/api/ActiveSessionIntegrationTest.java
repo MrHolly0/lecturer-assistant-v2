@@ -17,6 +17,7 @@ class ActiveSessionIntegrationTest extends LiveFlowTestBase {
         assertEquals(courseId.toString(), body.get("courseId").asText());
         assertEquals(joinCode, body.get("joinCode").asText());
         assertEquals("Lecture 1", body.get("lectureTitle").asText());
+        assertEquals(groupId.toString(), body.get("groups").get(0).get("id").asText());
         assertEquals(1, body.get("currentSlideIdx").asInt());
     }
 

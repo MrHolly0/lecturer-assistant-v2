@@ -57,6 +57,7 @@ public class LectureSummaryService {
                 session.id(),
                 session.lectureId(),
                 session.lectureTitle(),
+                session.groups(),
                 session.status(),
                 session.startedAt(),
                 session.endedAt(),

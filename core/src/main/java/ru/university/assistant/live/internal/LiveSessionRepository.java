@@ -14,12 +14,15 @@ import org.springframework.stereotype.Repository;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.live.api.IdentityLevel;
 import ru.university.assistant.live.api.LiveSession;
+import ru.university.assistant.live.api.SessionGroup;
 import ru.university.assistant.live.api.SessionParticipant;
 import ru.university.assistant.live.api.SessionStatus;
+import ru.university.assistant.org.api.StudyGroup;
 
 @Repository
 class LiveSessionRepository {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+    private static final TypeReference<List<SessionGroup>> GROUP_LIST_TYPE = new TypeReference<>() {};
 
     private final JdbcClient jdbc;
     private final ObjectMapper objectMapper;
@@ -29,7 +32,8 @@ class LiveSessionRepository {
         this.objectMapper = objectMapper;
     }
 
-    LiveSession create(UUID sessionId, UUID lectureId, UUID createdBy, String joinCode) {
+    LiveSession create(
+            UUID sessionId, UUID lectureId, UUID createdBy, String joinCode, List<StudyGroup> groups) {
         jdbc.sql(
                         """
                         insert into live.sessions
@@ -43,13 +47,30 @@ class LiveSessionRepository {
                 .param("joinCode", joinCode)
                 .param("createdBy", createdBy)
                 .update();
+        for (StudyGroup group : groups) {
+            jdbc.sql(
+                            """
+                            insert into live.session_groups (session_id, group_id, group_name_snapshot)
+                            values (:sessionId, :groupId, :groupName)
+                            """)
+                    .param("sessionId", sessionId)
+                    .param("groupId", group.id())
+                    .param("groupName", group.name())
+                    .update();
+        }
         return findById(sessionId).orElseThrow();
     }
 
     Optional<LiveSession> findById(UUID sessionId) {
         return jdbc.sql(
                         """
-                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title, s.status,
+                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title,
+                            coalesce((select jsonb_agg(jsonb_build_object(
+                                    'id', sg.group_id, 'name', sg.group_name_snapshot)
+                                        order by sg.group_name_snapshot, sg.group_id)
+                                      from live.session_groups sg
+                                      where sg.session_id = s.id), '[]'::jsonb)::text as groups,
+                            s.status,
                             s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
@@ -63,7 +84,13 @@ class LiveSessionRepository {
     Optional<LiveSession> findByCourse(UUID courseId, UUID sessionId) {
         return jdbc.sql(
                         """
-                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title, s.status,
+                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title,
+                            coalesce((select jsonb_agg(jsonb_build_object(
+                                    'id', sg.group_id, 'name', sg.group_name_snapshot)
+                                        order by sg.group_name_snapshot, sg.group_id)
+                                      from live.session_groups sg
+                                      where sg.session_id = s.id), '[]'::jsonb)::text as groups,
+                            s.status,
                             s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
@@ -78,7 +105,13 @@ class LiveSessionRepository {
     Optional<LiveSession> findByJoinCode(UUID courseId, String joinCode) {
         return jdbc.sql(
                         """
-                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title, s.status,
+                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title,
+                            coalesce((select jsonb_agg(jsonb_build_object(
+                                    'id', sg.group_id, 'name', sg.group_name_snapshot)
+                                        order by sg.group_name_snapshot, sg.group_id)
+                                      from live.session_groups sg
+                                      where sg.session_id = s.id), '[]'::jsonb)::text as groups,
+                            s.status,
                             s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
@@ -93,7 +126,13 @@ class LiveSessionRepository {
     Optional<LiveSession> findByJoinCode(String joinCode) {
         return jdbc.sql(
                         """
-                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title, s.status,
+                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title,
+                            coalesce((select jsonb_agg(jsonb_build_object(
+                                    'id', sg.group_id, 'name', sg.group_name_snapshot)
+                                        order by sg.group_name_snapshot, sg.group_id)
+                                      from live.session_groups sg
+                                      where sg.session_id = s.id), '[]'::jsonb)::text as groups,
+                            s.status,
                             s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
@@ -108,7 +147,13 @@ class LiveSessionRepository {
     Optional<LiveSession> findActiveForCreator(UUID personId) {
         return jdbc.sql(
                         """
-                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title, s.status,
+                        select s.id, l.course_id, s.lecture_id, s.deck_id, l.title as lecture_title,
+                            coalesce((select jsonb_agg(jsonb_build_object(
+                                    'id', sg.group_id, 'name', sg.group_name_snapshot)
+                                        order by sg.group_name_snapshot, sg.group_id)
+                                      from live.session_groups sg
+                                      where sg.session_id = s.id), '[]'::jsonb)::text as groups,
+                            s.status,
                             s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
@@ -127,6 +172,13 @@ class LiveSessionRepository {
                 .param("lectureId", lectureId)
                 .query(UUID.class)
                 .optional();
+    }
+
+    String courseTitle(UUID courseId) {
+        return jdbc.sql("select title from org.courses where id = :courseId")
+                .param("courseId", courseId)
+                .query(String.class)
+                .single();
     }
 
     void lockDeckForSession(UUID deckId) {
@@ -211,7 +263,8 @@ class LiveSessionRepository {
                         values (:sessionId, :personId, 'web', :displayName)
                         on conflict (session_id, person_id, channel_type)
                         do update set left_at = null, kicked = false
-                        returning session_id, person_id, channel_type, display_name, joined_at, left_at, kicked
+                        returning session_id, person_id, channel_type, display_name,
+                                  group_id, group_name_snapshot, joined_at, left_at, kicked
                         """)
                 .param("sessionId", sessionId)
                 .param("personId", user.id())
@@ -227,7 +280,8 @@ class LiveSessionRepository {
                         values (:sessionId, :personId, 'web', :displayName)
                         on conflict (session_id, person_id, channel_type)
                         do update set left_at = null, kicked = false
-                        returning session_id, person_id, channel_type, display_name, joined_at, left_at, kicked
+                        returning session_id, person_id, channel_type, display_name,
+                                  group_id, group_name_snapshot, joined_at, left_at, kicked
                         """)
                 .param("sessionId", sessionId)
                 .param("personId", personId)
@@ -237,11 +291,12 @@ class LiveSessionRepository {
     }
 
     /** Регистрирует человека участником сессии; повторный вызов ничего не дублирует. */
-    JoinOutcome joinPerson(UUID sessionId, UUID personId, String displayName) {
+    JoinOutcome joinPerson(UUID sessionId, UUID personId, String displayName, StudyGroup group) {
         return jdbc.sql(
                         """
-                        insert into live.session_participants (session_id, person_id, channel_type, display_name)
-                        values (:sessionId, :personId, 'web', :displayName)
+                        insert into live.session_participants
+                            (session_id, person_id, channel_type, display_name, group_id, group_name_snapshot)
+                        values (:sessionId, :personId, 'web', :displayName, :groupId, :groupName)
                         on conflict (session_id, person_id, channel_type)
                         do update set left_at = null
                         returning (xmax = 0) as inserted, kicked
@@ -249,6 +304,8 @@ class LiveSessionRepository {
                 .param("sessionId", sessionId)
                 .param("personId", personId)
                 .param("displayName", displayName)
+                .param("groupId", group.id())
+                .param("groupName", group.name())
                 .query((rs, row) -> new JoinOutcome(rs.getBoolean("inserted"), rs.getBoolean("kicked")))
                 .single();
     }
@@ -306,7 +363,8 @@ class LiveSessionRepository {
     List<SessionParticipant> listParticipants(UUID sessionId) {
         return jdbc.sql(
                         """
-                        select session_id, person_id, channel_type, display_name, joined_at, left_at, kicked
+                        select session_id, person_id, channel_type, display_name,
+                               group_id, group_name_snapshot, joined_at, left_at, kicked
                         from live.session_participants
                         where session_id = :sessionId
                         order by left_at nulls first, joined_at desc
@@ -323,6 +381,7 @@ class LiveSessionRepository {
                 rs.getObject("lecture_id", UUID.class),
                 rs.getObject("deck_id", UUID.class),
                 rs.getString("lecture_title"),
+                readGroups(rs.getString("groups")),
                 SessionStatus.valueOf(rs.getString("status")),
                 rs.getString("join_code"),
                 rs.getInt("current_slide_idx"),
@@ -337,6 +396,8 @@ class LiveSessionRepository {
                 rs.getObject("person_id", UUID.class),
                 rs.getString("channel_type"),
                 rs.getString("display_name"),
+                rs.getObject("group_id", UUID.class),
+                rs.getString("group_name_snapshot"),
                 rs.getTimestamp("joined_at").toInstant(),
                 rs.getTimestamp("left_at") == null ? null : rs.getTimestamp("left_at").toInstant(),
                 rs.getBoolean("kicked"));
@@ -356,6 +417,14 @@ class LiveSessionRepository {
             return objectMapper.readValue(json == null ? "{}" : json, MAP_TYPE);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Cannot read session JSON", exception);
+        }
+    }
+
+    private List<SessionGroup> readGroups(String json) {
+        try {
+            return objectMapper.readValue(json == null ? "[]" : json, GROUP_LIST_TYPE);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Cannot read session groups", exception);
         }
     }
 

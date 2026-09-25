@@ -18,10 +18,19 @@ class CourseAnalyticsRepository {
 
     List<AnalyticsGroupRef> groups(UUID courseId) {
         return jdbc.sql("""
-                        select id, name
-                        from org.study_groups
-                        where course_id = :courseId
-                        order by name, id
+                        select g.id, coalesce(latest.group_name_snapshot, g.name) as name
+                        from org.study_groups g
+                        left join lateral (
+                            select sg.group_name_snapshot
+                            from live.session_groups sg
+                            join live.sessions s on s.id = sg.session_id
+                            join live.lectures l on l.id = s.lecture_id
+                            where sg.group_id = g.id and l.course_id = :courseId
+                            order by s.started_at desc nulls last, s.id desc
+                            limit 1
+                        ) latest on true
+                        where g.course_id = :courseId
+                        order by name, g.id
                         """)
                 .param("courseId", courseId)
                 .query((rs, row) -> new AnalyticsGroupRef(
@@ -142,7 +151,7 @@ class CourseAnalyticsRepository {
             return emptyMetrics(0);
         }
         Scope scope = new Scope("%s.person_id in (:personIds)", personIds);
-        return metrics(courseId, personIds.size(), scope);
+        return metrics(courseId, personIds.size(), scope, null);
     }
 
     LearningMetrics unidentifiedMetrics(UUID courseId) {
@@ -153,17 +162,28 @@ class CourseAnalyticsRepository {
                     where ip.id = %s.person_id and ip.status = 'EPHEMERAL'))
                 """,
                 null);
-        return metrics(courseId, 0, scope);
+        return metrics(courseId, 0, scope, null);
     }
 
-    private LearningMetrics metrics(UUID courseId, int memberCount, Scope scope) {
-        long[] attendance = attendance(courseId, scope);
-        long[] signals = signals(courseId, scope);
-        long[] checks = checks(courseId, scope);
-        long[] questions = questions(courseId, scope);
+    LearningMetrics historicalGroupMetrics(UUID courseId, UUID groupId) {
+        Scope stableProfiles = new Scope(
+                """
+                (%s.person_id is not null and exists (
+                    select 1 from iam.persons ip
+                    where ip.id = %s.person_id and ip.status <> 'EPHEMERAL'))
+                """,
+                null);
+        return metrics(courseId, -1, stableProfiles, groupId);
+    }
+
+    private LearningMetrics metrics(UUID courseId, int memberCount, Scope scope, UUID groupId) {
+        long[] attendance = attendance(courseId, scope, groupId);
+        long[] signals = signals(courseId, scope, groupId);
+        long[] checks = checks(courseId, scope, groupId);
+        long[] questions = questions(courseId, scope, groupId);
         long signalCount = signals[0] + signals[1] + signals[2];
         return new LearningMetrics(
-                memberCount,
+                memberCount < 0 ? (int) attendance[0] : memberCount,
                 (int) attendance[0],
                 attendance[1],
                 signals[0],
@@ -181,8 +201,9 @@ class CourseAnalyticsRepository {
                 questions[1]);
     }
 
-    private long[] attendance(UUID courseId, Scope scope) {
+    private long[] attendance(UUID courseId, Scope scope, UUID groupId) {
         String predicate = scope.predicate().formatted("sp", "sp");
+        String groupPredicate = groupId == null ? "" : " and sp.group_id = :groupId";
         JdbcClient.StatementSpec query = jdbc.sql("""
                         select count(distinct sp.person_id) as participants,
                                count(distinct (sp.session_id, sp.person_id)) as attendances
@@ -190,8 +211,9 @@ class CourseAnalyticsRepository {
                         join live.sessions s on s.id = sp.session_id
                         join live.lectures l on l.id = s.lecture_id
                         where l.course_id = :courseId
-                        """ + " and " + predicate)
+                        """ + " and " + predicate + groupPredicate)
                 .param("courseId", courseId);
+        query = bindGroup(query, groupId);
         query = bindScope(query, scope);
         return query.query((rs, row) -> new long[] {
                     rs.getLong("participants"), rs.getLong("attendances")
@@ -199,8 +221,9 @@ class CourseAnalyticsRepository {
                 .single();
     }
 
-    private long[] signals(UUID courseId, Scope scope) {
+    private long[] signals(UUID courseId, Scope scope, UUID groupId) {
         String predicate = scope.predicate().formatted("cs", "cs");
+        String groupPredicate = groupParticipantPredicate("s", "cs", groupId);
         JdbcClient.StatementSpec query = jdbc.sql("""
                         select count(*) filter (where cs.value = 'GREEN') as green,
                                count(*) filter (where cs.value = 'YELLOW') as yellow,
@@ -209,8 +232,9 @@ class CourseAnalyticsRepository {
                         join live.sessions s on s.id = cs.session_id
                         join live.lectures l on l.id = s.lecture_id
                         where l.course_id = :courseId
-                        """ + " and " + predicate)
+                        """ + " and " + predicate + groupPredicate)
                 .param("courseId", courseId);
+        query = bindGroup(query, groupId);
         query = bindScope(query, scope);
         return query.query((rs, row) -> new long[] {
                     rs.getLong("green"), rs.getLong("yellow"), rs.getLong("red")
@@ -218,11 +242,16 @@ class CourseAnalyticsRepository {
                 .single();
     }
 
-    private long[] checks(UUID courseId, Scope scope) {
+    private long[] checks(UUID courseId, Scope scope, UUID groupId) {
         String predicate = scope.predicate().formatted("answers", "answers");
+        String groupPredicate = groupId == null
+                ? ""
+                : " and exists (select 1 from live.session_participants sp"
+                        + " where sp.session_id = answers.session_id and sp.person_id = answers.person_id"
+                        + " and sp.group_id = :groupId)";
         JdbcClient.StatementSpec query = jdbc.sql("""
                         with answers as (
-                            select pr.person_id,
+                            select pr.person_id, s.id as session_id,
                                    qp.correct_option_idx is not null as graded,
                                    qp.correct_option_idx is not null
                                        and pr.option_idx = qp.correct_option_idx as correct
@@ -232,7 +261,7 @@ class CourseAnalyticsRepository {
                             join live.lectures l on l.id = s.lecture_id
                             where l.course_id = :courseId and qp.status = 'CLOSED'
                             union all
-                            select ar.person_id,
+                            select ar.person_id, s.id as session_id,
                                    ci.correct_idx is not null and ai.answer_idx is not null as graded,
                                    ci.correct_idx is not null and ai.answer_idx = ci.correct_idx as correct
                             from interaction.activity_responses ar
@@ -260,8 +289,9 @@ class CourseAnalyticsRepository {
                                count(*) filter (where graded) as graded,
                                count(*) filter (where correct) as correct
                         from answers
-                        """ + " where " + predicate)
+                        """ + " where " + predicate + groupPredicate)
                 .param("courseId", courseId);
+        query = bindGroup(query, groupId);
         query = bindScope(query, scope);
         return query.query((rs, row) -> new long[] {
                     rs.getLong("answers"), rs.getLong("graded"), rs.getLong("correct")
@@ -269,8 +299,9 @@ class CourseAnalyticsRepository {
                 .single();
     }
 
-    private long[] questions(UUID courseId, Scope scope) {
+    private long[] questions(UUID courseId, Scope scope, UUID groupId) {
         String predicate = scope.predicate().formatted("q", "q");
+        String groupPredicate = groupParticipantPredicate("s", "q", groupId);
         JdbcClient.StatementSpec query = jdbc.sql("""
                         select count(*) as questions,
                                count(*) filter (where q.status = 'ANSWERED') as answered
@@ -278,8 +309,9 @@ class CourseAnalyticsRepository {
                         join live.sessions s on s.id = q.session_id
                         join live.lectures l on l.id = s.lecture_id
                         where l.course_id = :courseId
-                        """ + " and " + predicate)
+                        """ + " and " + predicate + groupPredicate)
                 .param("courseId", courseId);
+        query = bindGroup(query, groupId);
         query = bindScope(query, scope);
         return query.query((rs, row) -> new long[] {
                     rs.getLong("questions"), rs.getLong("answered")
@@ -289,6 +321,19 @@ class CourseAnalyticsRepository {
 
     private JdbcClient.StatementSpec bindScope(JdbcClient.StatementSpec query, Scope scope) {
         return scope.personIds() == null ? query : query.param("personIds", scope.personIds());
+    }
+
+    private JdbcClient.StatementSpec bindGroup(JdbcClient.StatementSpec query, UUID groupId) {
+        return groupId == null ? query : query.param("groupId", groupId);
+    }
+
+    private String groupParticipantPredicate(String sessionAlias, String personAlias, UUID groupId) {
+        return groupId == null
+                ? ""
+                : " and exists (select 1 from live.session_participants sp"
+                        + " where sp.session_id = " + sessionAlias + ".id"
+                        + " and sp.person_id = " + personAlias + ".person_id"
+                        + " and sp.group_id = :groupId)";
     }
 
     private LearningMetrics emptyMetrics(int memberCount) {

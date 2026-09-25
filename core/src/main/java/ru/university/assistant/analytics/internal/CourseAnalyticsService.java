@@ -35,7 +35,7 @@ public class CourseAnalyticsService {
                 .map(group -> new GroupLearningAnalytics(
                         group.id(),
                         group.name(),
-                        analytics.metrics(courseId, analytics.stableStudentIds(courseId, group.id(), false))))
+                        analytics.historicalGroupMetrics(courseId, group.id())))
                 .toList();
         List<UUID> ungroupedIds = analytics.stableStudentIds(courseId, null, true);
         return new CourseGroupAnalytics(

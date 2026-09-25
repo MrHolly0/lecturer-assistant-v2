@@ -1,6 +1,7 @@
 package ru.university.assistant.live.api;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -10,6 +11,7 @@ public record LiveSession(
         UUID lectureId,
         UUID deckId,
         String lectureTitle,
+        List<SessionGroup> groups,
         SessionStatus status,
         String joinCode,
         int currentSlideIdx,

@@ -8,6 +8,8 @@ public record SessionParticipant(
         UUID personId,
         String channelType,
         String displayName,
+        UUID groupId,
+        String groupName,
         Instant joinedAt,
         Instant leftAt,
         boolean kicked) {}

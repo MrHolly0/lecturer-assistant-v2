@@ -28,12 +28,16 @@ class SessionHistoryIntegrationTest extends LiveFlowTestBase {
         end(firstSessionId);
 
         JsonNode repeated = json(post("/api/v1/courses/{c}/lectures/{l}/sessions", courseId, lectureId)
-                .header("Authorization", "Bearer " + lecturerToken), 201);
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"groups\":[{\"groupId\":\"" + groupId + "\"}]}"), 201);
         UUID secondSessionId = UUID.fromString(repeated.get("id").asText());
         end(secondSessionId);
 
         JsonNode active = json(post("/api/v1/courses/{c}/lectures/{l}/sessions", courseId, lectureId)
-                .header("Authorization", "Bearer " + lecturerToken), 201);
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"groups\":[{\"groupId\":\"" + groupId + "\"}]}"), 201);
         UUID activeSessionId = UUID.fromString(active.get("id").asText());
         UUID otherCourseSessionId = createCompletedSessionInAnotherCourse();
 

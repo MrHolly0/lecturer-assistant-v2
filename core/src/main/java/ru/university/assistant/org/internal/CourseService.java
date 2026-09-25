@@ -18,6 +18,8 @@ import ru.university.assistant.org.api.CourseDetails;
 import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.CourseMember;
 import ru.university.assistant.org.api.CourseRole;
+import ru.university.assistant.org.api.GroupMismatchException;
+import ru.university.assistant.org.api.GroupSelectionRequiredException;
 import ru.university.assistant.org.api.CreateCourseInvitationRequest;
 import ru.university.assistant.org.api.CreateCourseRequest;
 import ru.university.assistant.org.api.CreateStudyGroupRequest;
@@ -135,6 +137,10 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     public void deleteGroup(AuthenticatedUser user, UUID courseId, UUID groupId) {
         requireManage(user, courseId);
         requireGroup(courseId, groupId);
+        if (courses.groupUsedBySession(groupId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Group is used by lecture history and cannot be deleted");
+        }
         courses.deleteGroup(groupId);
     }
 
@@ -213,6 +219,45 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
 
     @Override
     @Transactional
+    public StudyGroup resolveSessionGroup(UUID courseId, UUID groupId, String groupName) {
+        String normalizedName = normalizeGroupName(groupName);
+        if ((groupId == null) == (normalizedName == null)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Exactly one of groupId or groupName is required");
+        }
+        if (groupId != null) {
+            return courses.findGroup(courseId, groupId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+        }
+        return courses.getOrCreateGroup(UuidV7.generate(), courseId, normalizedName);
+    }
+
+    @Override
+    @Transactional
+    public StudyGroup ensureStudentMemberInSessionGroups(
+            UUID courseId, UUID personId, List<StudyGroup> allowedGroups, UUID requestedGroupId) {
+        if (allowedGroups.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session has no study groups");
+        }
+        courses.addMemberIfAbsent(courseId, personId, CourseRole.STUDENT);
+        CourseRole role = courses.lockMemberRole(courseId, personId);
+        if (role != CourseRole.STUDENT) {
+            return selectAllowedGroup(allowedGroups, requestedGroupId);
+        }
+        StudyGroup current = courses.findStudentGroup(courseId, personId).orElse(null);
+        if (current == null) {
+            StudyGroup selected = selectAllowedGroup(allowedGroups, requestedGroupId);
+            courses.addGroupMember(selected.id(), personId);
+            return selected;
+        }
+        if (allowedGroups.stream().noneMatch(group -> group.id().equals(current.id()))) {
+            throw new GroupMismatchException(current, allowedGroups);
+        }
+        return current;
+    }
+
+    @Override
+    @Transactional
     public void addMemberFromInvitation(UUID courseId, UUID groupId, UUID personId, CourseRole role) {
         courses.addMember(courseId, personId, role);
         if (groupId != null) {
@@ -260,6 +305,27 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
             case ASSISTANT -> PersonRole.ASSISTANT;
             case STUDENT -> PersonRole.STUDENT;
         };
+    }
+
+    private String normalizeGroupName(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim().replaceAll("\\s+", " ");
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private StudyGroup selectAllowedGroup(List<StudyGroup> allowedGroups, UUID requestedGroupId) {
+        if (requestedGroupId != null) {
+            return allowedGroups.stream()
+                    .filter(group -> group.id().equals(requestedGroupId))
+                    .findFirst()
+                    .orElseThrow(() -> new GroupSelectionRequiredException(allowedGroups));
+        }
+        if (allowedGroups.size() == 1) {
+            return allowedGroups.get(0);
+        }
+        throw new GroupSelectionRequiredException(allowedGroups);
     }
 
     private void requireGroup(UUID courseId, UUID groupId) {

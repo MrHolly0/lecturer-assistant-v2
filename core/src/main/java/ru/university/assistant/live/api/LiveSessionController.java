@@ -34,8 +34,9 @@ public class LiveSessionController {
     public LiveSession start(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
-            @PathVariable UUID lectureId) {
-        return liveSessions.start(user, courseId, lectureId);
+            @PathVariable UUID lectureId,
+            @Valid @RequestBody StartSessionRequest request) {
+        return liveSessions.start(user, courseId, lectureId, request);
     }
 
     @GetMapping("/sessions/{sessionId}")

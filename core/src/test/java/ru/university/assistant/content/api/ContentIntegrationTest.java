@@ -85,6 +85,7 @@ class ContentIntegrationTest {
                             live.web_participant_tokens,
                             live.slide_log,
                             live.session_participants,
+                            live.session_groups,
                             live.sessions,
                             content.attachments,
                             live.lectures,
@@ -262,7 +263,9 @@ class ContentIntegrationTest {
 
         String sessionResponse = mockMvc.perform(post(
                                 "/api/v1/courses/{courseId}/lectures/{lectureId}/sessions", courseId, lectureId)
-                        .header("Authorization", bearer(lecturerToken)))
+                        .header("Authorization", bearer(lecturerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"groups\":[{\"groupName\":\"Группа А\"}]}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("LIVE"))
                 .andExpect(jsonPath("$.currentSlideIdx").value(1))
@@ -698,7 +701,9 @@ class ContentIntegrationTest {
     private JsonNode startSession(String token, UUID courseId, String lectureId) throws Exception {
         String response = mockMvc.perform(post(
                                 "/api/v1/courses/{courseId}/lectures/{lectureId}/sessions", courseId, lectureId)
-                        .header("Authorization", bearer(token)))
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"groups\":[{\"groupName\":\"Группа А\"}]}"))
                 .andExpect(status().isCreated())
                 .andReturn()
                 .getResponse()

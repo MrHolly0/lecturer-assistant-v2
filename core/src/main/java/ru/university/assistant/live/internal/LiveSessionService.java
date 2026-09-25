@@ -1,6 +1,7 @@
 package ru.university.assistant.live.internal;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,13 +20,18 @@ import ru.university.assistant.live.api.LiveSessionAccessApi;
 import ru.university.assistant.live.api.SaveAnnotationsRequest;
 import ru.university.assistant.live.api.SessionParticipant;
 import ru.university.assistant.live.api.SessionStatus;
+import ru.university.assistant.live.api.StartSessionGroup;
+import ru.university.assistant.live.api.StartSessionRequest;
 import ru.university.assistant.org.api.CourseAccessApi;
+import ru.university.assistant.org.api.CourseMembershipApi;
+import ru.university.assistant.org.api.StudyGroup;
 import ru.university.assistant.shared.api.CodeGenerator;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
 public class LiveSessionService implements LiveSessionAccessApi {
     private final CourseAccessApi courseAccess;
+    private final CourseMembershipApi memberships;
     private final LiveSessionRepository sessions;
     private final EventBus events;
     private final LiveSessionPublisher publisher;
@@ -33,11 +39,13 @@ public class LiveSessionService implements LiveSessionAccessApi {
 
     LiveSessionService(
             CourseAccessApi courseAccess,
+            CourseMembershipApi memberships,
             LiveSessionRepository sessions,
             EventBus events,
             LiveSessionPublisher publisher,
             ChannelFanoutApi channelFanout) {
         this.courseAccess = courseAccess;
+        this.memberships = memberships;
         this.sessions = sessions;
         this.events = events;
         this.publisher = publisher;
@@ -45,18 +53,38 @@ public class LiveSessionService implements LiveSessionAccessApi {
     }
 
     @Transactional
-    public LiveSession start(AuthenticatedUser user, UUID courseId, UUID lectureId) {
+    public LiveSession start(
+            AuthenticatedUser user, UUID courseId, UUID lectureId, StartSessionRequest request) {
         courseAccess.requireManage(user, courseId);
+        List<StudyGroup> groups = resolveGroups(courseId, request);
         UUID deckId = sessions.lectureDeckId(courseId, lectureId).orElse(null);
         if (deckId == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Lecture not found");
         }
         lockCurrentLectureDeck(courseId, lectureId, deckId);
-        LiveSession session = sessions.create(UuidV7.generate(), lectureId, user.id(), CodeGenerator.readableCode(6));
+        LiveSession session = sessions.create(
+                UuidV7.generate(), lectureId, user.id(), CodeGenerator.readableCode(6), groups);
         sessions.addSlideLog(session.id(), session.currentSlideIdx());
-        event(user, session, "session.started", Map.of("joinCode", session.joinCode()));
+        event(user, session, "session.started", Map.of(
+                "joinCode", session.joinCode(),
+                "groupIds", groups.stream().map(StudyGroup::id).toList()));
         publisher.publish("session.started", session);
         return session;
+    }
+
+    private List<StudyGroup> resolveGroups(UUID courseId, StartSessionRequest request) {
+        if (request == null || request.groups() == null || request.groups().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one study group is required");
+        }
+        LinkedHashMap<UUID, StudyGroup> unique = new LinkedHashMap<>();
+        for (StartSessionGroup selection : request.groups()) {
+            StudyGroup group = memberships.resolveSessionGroup(
+                    courseId, selection.groupId(), selection.groupName());
+            if (unique.putIfAbsent(group.id(), group) != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Study groups must be unique");
+            }
+        }
+        return List.copyOf(unique.values());
     }
 
     private void lockCurrentLectureDeck(UUID courseId, UUID lectureId, UUID initialDeckId) {

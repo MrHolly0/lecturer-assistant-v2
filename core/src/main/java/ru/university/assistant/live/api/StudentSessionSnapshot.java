@@ -8,7 +8,9 @@ import ru.university.assistant.interaction.api.ActivePollView;
 public record StudentSessionSnapshot(
         UUID sessionId,
         UUID courseId,
+        String courseTitle,
         String lectureTitle,
+        java.util.List<SessionGroup> groups,
         SessionStatus status,
         String joinCode,
         int currentSlideIdx,

@@ -18,13 +18,7 @@ class CourseAnalyticsIntegrationTest extends LiveFlowTestBase {
         StudentFixture first = profileStudent(1101);
         StudentFixture second = profileStudent(1102);
         String guestToken = join(null, "{\"displayName\":\"Гость\"}").get("participantToken").asText();
-        UUID firstGroup = createGroup("ИКБО-01");
-        UUID secondGroup = createGroup("ИКБО-02");
-        assign(firstGroup, first.personId());
-        jdbc.sql("insert into org.group_members (group_id, person_id) values (:groupId, :personId)")
-                .param("groupId", secondGroup)
-                .param("personId", first.personId())
-                .update();
+        UUID firstGroup = groupId;
 
         signal(first.jwt(), null, "RED");
         signal(second.jwt(), null, "GREEN");
@@ -55,13 +49,13 @@ class CourseAnalyticsIntegrationTest extends LiveFlowTestBase {
         assertEquals(1, analytics.at("/overall/questionsAsked").asInt());
 
         JsonNode groupOne = group(analytics, firstGroup);
-        assertEquals(1, groupOne.at("/metrics/memberCount").asInt());
+        assertEquals(2, groupOne.at("/metrics/memberCount").asInt());
         assertEquals(1, groupOne.at("/metrics/redSignals").asInt());
-        assertEquals(2, groupOne.at("/metrics/checkAnswers").asInt());
-        assertEquals(1, groupOne.at("/metrics/gradedAnswers").asInt());
-        assertEquals(1.0, groupOne.at("/metrics/correctRate").asDouble());
-        assertEquals(1, analytics.at("/ungrouped/memberCount").asInt());
-        assertEquals(1, analytics.at("/ungrouped/greenSignals").asInt());
+        assertEquals(1, groupOne.at("/metrics/greenSignals").asInt());
+        assertEquals(3, groupOne.at("/metrics/checkAnswers").asInt());
+        assertEquals(2, groupOne.at("/metrics/gradedAnswers").asInt());
+        assertEquals(0.5, groupOne.at("/metrics/correctRate").asDouble());
+        assertEquals(0, analytics.at("/ungrouped/memberCount").asInt());
         assertEquals(0, analytics.at("/unidentified/memberCount").asInt());
         assertEquals(1, analytics.at("/unidentified/participantCount").asInt());
         assertEquals(1, analytics.at("/unidentified/yellowSignals").asInt());
@@ -77,7 +71,7 @@ class CourseAnalyticsIntegrationTest extends LiveFlowTestBase {
         JsonNode student = json(get("/api/v1/courses/{c}/analytics/students/{p}", courseId, first.personId())
                 .header("Authorization", "Bearer " + lecturerToken), 200);
         assertEquals(first.personId().toString(), student.get("personId").asText());
-        assertEquals(2, student.get("groups").size());
+        assertEquals(1, student.get("groups").size());
         assertEquals(2, student.at("/metrics/checkAnswers").asInt());
         assertEquals(1, student.at("/metrics/gradedAnswers").asInt());
     }

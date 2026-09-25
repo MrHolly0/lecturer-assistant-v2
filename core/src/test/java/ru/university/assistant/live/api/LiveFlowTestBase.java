@@ -66,6 +66,7 @@ abstract class LiveFlowTestBase {
     String adminToken;
     String lecturerToken;
     UUID courseId;
+    UUID groupId;
     UUID sessionId;
     String joinCode;
     String lectureId;
@@ -91,7 +92,8 @@ abstract class LiveFlowTestBase {
                             interaction.activity_definitions, interaction.poll_responses,
                             interaction.quick_polls, interaction.question_bank,
                             qa.questions, feedback.comprehension_signals,
-                            live.web_participant_tokens, live.slide_log, live.session_participants, live.sessions,
+                            live.web_participant_tokens, live.slide_log, live.session_participants,
+                            live.session_groups, live.sessions,
                             content.attachments, live.lectures, content.slide_notes, content.slides,
                             content.slide_decks, content.import_jobs, iam.channel_identities,
                             iam.identity_link_codes, iam.refresh_tokens, iam.invitations, iam.course_bans,
@@ -147,8 +149,11 @@ abstract class LiveFlowTestBase {
                 .get("id")
                 .asText();
         JsonNode session = json(post("/api/v1/courses/{courseId}/lectures/{lectureId}/sessions", courseId, lectureId)
-                .header("Authorization", "Bearer " + lecturerToken), 201);
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"groups\":[{\"groupName\":\"Группа А\"}]}"), 201);
         sessionId = UUID.fromString(session.get("id").asText());
+        groupId = UUID.fromString(session.get("groups").get(0).get("id").asText());
         joinCode = session.get("joinCode").asText();
     }
 
@@ -161,7 +166,9 @@ abstract class LiveFlowTestBase {
                 .get("id")
                 .asText();
         return json(post("/api/v1/courses/{courseId}/lectures/{lectureId}/sessions", courseId, other)
-                .header("Authorization", "Bearer " + lecturerToken), 201);
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"groups\":[{\"groupId\":\"" + groupId + "\"}]}"), 201);
     }
 
     JsonNode join(String jwt, String body) throws Exception {

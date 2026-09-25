@@ -178,6 +178,29 @@ class CourseRepository {
                 .single();
     }
 
+    StudyGroup getOrCreateGroup(UUID id, UUID courseId, String name) {
+        return jdbc.sql(
+                        """
+                        insert into org.study_groups (id, course_id, name)
+                        values (:id, :courseId, :name)
+                        on conflict (course_id, name) do update set name = excluded.name
+                        returning id, course_id, name
+                        """)
+                .param("id", id)
+                .param("courseId", courseId)
+                .param("name", name)
+                .query(this::mapGroup)
+                .single();
+    }
+
+    Optional<StudyGroup> findGroup(UUID courseId, UUID groupId) {
+        return jdbc.sql("select id, course_id, name from org.study_groups where course_id = :courseId and id = :id")
+                .param("courseId", courseId)
+                .param("id", groupId)
+                .query(this::mapGroup)
+                .optional();
+    }
+
     List<StudyGroup> listGroups(UUID courseId) {
         return jdbc.sql(
                         """
@@ -206,6 +229,14 @@ class CourseRepository {
                 .update();
     }
 
+    boolean groupUsedBySession(UUID groupId) {
+        return jdbc.sql("select count(*) from live.session_groups where group_id = :groupId")
+                        .param("groupId", groupId)
+                        .query(Long.class)
+                        .single()
+                > 0;
+    }
+
     void addGroupMember(UUID groupId, UUID personId) {
         jdbc.sql(
                         """
@@ -216,6 +247,37 @@ class CourseRepository {
                 .param("groupId", groupId)
                 .param("personId", personId)
                 .update();
+    }
+
+    CourseRole lockMemberRole(UUID courseId, UUID personId) {
+        return jdbc.sql(
+                        """
+                        select role from org.course_members
+                        where course_id = :courseId and person_id = :personId
+                        for update
+                        """)
+                .param("courseId", courseId)
+                .param("personId", personId)
+                .query(String.class)
+                .optional()
+                .map(CourseRole::valueOf)
+                .orElseThrow();
+    }
+
+    Optional<StudyGroup> findStudentGroup(UUID courseId, UUID personId) {
+        return jdbc.sql(
+                        """
+                        select g.id, g.course_id, g.name
+                        from org.group_members gm
+                        join org.study_groups g on g.id = gm.group_id
+                        where g.course_id = :courseId and gm.person_id = :personId
+                        order by gm.joined_at, g.id
+                        limit 1
+                        """)
+                .param("courseId", courseId)
+                .param("personId", personId)
+                .query(this::mapGroup)
+                .optional();
     }
 
     List<CourseMember> listGroupMembers(UUID courseId, UUID groupId) {

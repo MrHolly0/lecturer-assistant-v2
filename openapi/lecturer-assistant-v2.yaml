@@ -549,6 +549,8 @@ paths:
       responses:
         "204":
           description: Group deleted.
+        "409":
+          description: Group is referenced by lecture history and cannot be deleted.
   /courses/{courseId}/groups/{groupId}/members:
     get:
       operationId: listStudyGroupMembers
@@ -1093,6 +1095,12 @@ paths:
       parameters:
         - $ref: "#/components/parameters/CourseId"
         - $ref: "#/components/parameters/LectureId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartSessionRequest"
       responses:
         "201":
           description: Started session.
@@ -1364,6 +1372,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudentJoinResponse"
+        "409":
+          description: A group must be selected, or the student's current group is not allowed for this session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionGroupJoinConflict"
   /student/sessions/{joinCode}/events:
     get:
       operationId: streamStudentSession
@@ -2062,7 +2076,7 @@ components:
   schemas:
     ActiveSessionSummary:
       type: object
-      required: [sessionId, courseId, joinCode, lectureTitle, currentSlideIdx]
+      required: [sessionId, courseId, joinCode, lectureTitle, groups, currentSlideIdx]
       properties:
         sessionId:
           type: string
@@ -2074,6 +2088,10 @@ components:
           type: string
         lectureTitle:
           type: string
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionGroup"
         currentSlideIdx:
           type: integer
     SystemInfo:
@@ -2764,9 +2782,46 @@ components:
     SessionStatus:
       type: string
       enum: [SCHEDULED, LIVE, PAUSED, ENDED, ARCHIVED]
+    SessionGroup:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    StartSessionGroupSelection:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [groupId]
+          properties:
+            groupId:
+              type: string
+              format: uuid
+        - type: object
+          additionalProperties: false
+          required: [groupName]
+          properties:
+            groupName:
+              type: string
+              minLength: 1
+              maxLength: 120
+    StartSessionRequest:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/StartSessionGroupSelection"
     SessionHistoryItem:
       type: object
-      required: [id, lectureId, lectureTitle, status, startedAt, endedAt]
+      required: [id, lectureId, lectureTitle, groups, status, startedAt, endedAt]
       properties:
         id:
           type: string
@@ -2776,6 +2831,10 @@ components:
           format: uuid
         lectureTitle:
           type: string
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionGroup"
         status:
           $ref: "#/components/schemas/SessionStatus"
         startedAt:
@@ -2811,6 +2870,7 @@ components:
         - lectureId
         - deckId
         - lectureTitle
+        - groups
         - status
         - joinCode
         - currentSlideIdx
@@ -2830,6 +2890,10 @@ components:
           format: uuid
         lectureTitle:
           type: string
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionGroup"
         status:
           $ref: "#/components/schemas/SessionStatus"
         joinCode:
@@ -2861,6 +2925,13 @@ components:
           enum: [web, telegram, vk]
         displayName:
           type: string
+        groupId:
+          type: string
+          format: uuid
+          nullable: true
+        groupName:
+          type: string
+          nullable: true
         joinedAt:
           type: string
           format: date-time
@@ -3223,7 +3294,9 @@ components:
       required:
         - sessionId
         - courseId
+        - courseTitle
         - lectureTitle
+        - groups
         - status
         - joinCode
         - currentSlideIdx
@@ -3237,8 +3310,14 @@ components:
         courseId:
           type: string
           format: uuid
+        courseTitle:
+          type: string
         lectureTitle:
           type: string
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionGroup"
         status:
           $ref: "#/components/schemas/SessionStatus"
         joinCode:
@@ -3275,6 +3354,26 @@ components:
           maxLength: 120
         participantToken:
           type: string
+        groupId:
+          type: string
+          format: uuid
+          description: Required when the session has multiple groups and the participant has no current course group.
+    SessionGroupJoinConflict:
+      type: object
+      required: [error, allowedGroups]
+      properties:
+        error:
+          type: string
+          enum: [GROUP_SELECTION_REQUIRED, GROUP_MISMATCH]
+        currentGroup:
+          allOf:
+            - $ref: "#/components/schemas/SessionGroup"
+          nullable: true
+        allowedGroups:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/SessionGroup"
     StudentJoinResponse:
       type: object
       required: [participantToken, participantId, identityLevel, snapshot]
@@ -3364,6 +3463,7 @@ components:
         - sessionId
         - lectureId
         - lectureTitle
+        - groups
         - status
         - startedAt
         - endedAt
@@ -3387,6 +3487,10 @@ components:
           format: uuid
         lectureTitle:
           type: string
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionGroup"
         status:
           $ref: "#/components/schemas/SessionStatus"
         startedAt:

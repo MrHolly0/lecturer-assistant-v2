@@ -63,6 +63,7 @@ class AuthOrgIntegrationTest {
                             analytics.events,
                             live.slide_log,
                             live.session_participants,
+                            live.session_groups,
                             live.sessions,
                             content.attachments,
                             live.lectures,

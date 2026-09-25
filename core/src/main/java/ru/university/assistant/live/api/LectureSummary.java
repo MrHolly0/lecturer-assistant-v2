@@ -10,6 +10,7 @@ public record LectureSummary(
         UUID sessionId,
         UUID lectureId,
         String lectureTitle,
+        List<SessionGroup> groups,
         SessionStatus status,
         Instant startedAt,
         Instant endedAt,
