@@ -3,7 +3,7 @@
 schema_version: draft-0.1-unconfirmed
 document_status: requires_organizer_confirmation
 prepared_at: "2026-09-25"
-source_revision: "3c6e9a2"
+source_revision: "4587114"
 
 confirmation_required:
   - "Подтвердить официальную схему, версию и регистр имён полей DATA-API.yaml."
@@ -223,15 +223,29 @@ data_categories:
     fields:
       - session_id
       - lecture_id
+      - deck_id
       - status
       - join_code
       - current_slide_idx
       - annotations
+      - settings
       - participant_person_id
       - participant_display_name
       - channel_type
       - joined_at
       - participant_token_hash
+      - started_at
+      - ended_at
+    derived_metrics:
+      - name: total_duration_seconds
+        source: started_at_and_ended_at
+      - name: paused_duration_seconds
+        source: session.paused_and_session.resumed_events
+      - name: active_duration_seconds
+        source: total_duration_minus_paused_duration
+    implementation_note: >-
+      deck_id фиксирует версию презентации для уже начатой сессии. Поэтому изменение
+      порядка или удаление слайдов в материале не меняет snapshot этой сессии.
 
   - id: feedback_and_questions
     purpose: "Обратная связь преподавателю во время лекции."
@@ -409,7 +423,7 @@ test_data:
 limitations:
   - "Официальная схема DATA-API.yaml не получена; этот файл нельзя считать финальным контрактом."
   - "Вход преподавателя через код в живом MAX проверен владельцем; web-MAX дошёл только до экрана входа, а проверки через web API и mock API не заменяют отдельный протокол полного студенческого сценария."
-  - "Tuna-стенд обновлён на hash 2e49aff4e57a6dbf8b258db5deb4eeb36acf105b: восемь контейнеров healthy, имя MAX-бота и новые экраны присутствуют; deploy smoke не заменяет полный студенческий MAX-протокол."
+  - "Tuna-стенд обновлён на backend 0b8813b и web 4587114: core и web healthy, /health отвечает 200, авторизованный browser-smoke новых функций пройден; это не заменяет полный студенческий MAX-протокол."
   - "Восстановление PostgreSQL и читаемость согласованного архива blob-data проверены 25.09.2026; по решению владельца резервная пара хранится только на текущем хосте."
   - "Финальные публичные URL и наличие seed-учёток на сдаваемом стенде подтверждает владелец перед отправкой."
   - "Правовое основание, сроки хранения и ответственный за обработку данных должны быть определены владельцем."
