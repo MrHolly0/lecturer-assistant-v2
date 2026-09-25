@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setMaxLinkRequired(false);
-      loginWithMax(initData, linkCode ?? undefined)
+      loginWithMax(initData, linkCode ?? undefined, startParam ?? undefined)
         .then(({ user: maxUser }) => {
           if (!active) return;
           setUserState(maxUser);

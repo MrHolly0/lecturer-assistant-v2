@@ -907,6 +907,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/sessions/{sessionId}/summary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the completed lecture summary for a lecturer.
+     * @description Available to course managers after the session is ENDED or ARCHIVED.
+     */
+    get: operations["getLectureSummary"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/student/sessions/{joinCode}": {
     parameters: {
       query?: never;
@@ -1023,6 +1043,26 @@ export interface paths {
     get: operations["getActivePoll"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/polls/from-bank": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start a quick poll from an existing course question.
+     * @description Copies the question text and options into the live poll. The source question must be an active CHOICE or TRUE_FALSE question with 2-6 options and exactly one correct option. The saved correct option is revealed to students only after the poll closes.
+     */
+    post: operations["startPollFromBank"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1333,6 +1373,8 @@ export interface components {
       initData: string;
       /** @description Optional one-time code from POST /identity/max/link-codes. Ignored if this MAX account is already linked to a person (repeat logins never need it). */
       linkCode?: string;
+      /** @description Optional MAX start_param used only to attribute the miniapp.opened pilot event. */
+      startParam?: string;
     };
     MaxAuthResponse: {
       accessToken: string;
@@ -1630,6 +1672,8 @@ export interface components {
       id: string;
       /** Format: uuid */
       sessionId: string;
+      /** Format: uuid */
+      sourceQuestionId?: string | null;
       questionText: string;
       options: string[];
       status: components["schemas"]["PollStatus"];
@@ -1662,6 +1706,10 @@ export interface components {
     StartPollRequest: {
       questionText: string;
       options: string[];
+    };
+    StartBankPollRequest: {
+      /** Format: uuid */
+      questionId: string;
     };
     ClosePollRequest: {
       correctOptionIdx?: number;
@@ -1828,6 +1876,52 @@ export interface components {
     ProblemSlide: {
       slideIdx: number;
       signals: components["schemas"]["SignalAggregate"];
+    };
+    LectureSummary: {
+      /** Format: uuid */
+      sessionId: string;
+      /** Format: uuid */
+      lectureId: string;
+      lectureTitle: string;
+      status: components["schemas"]["SessionStatus"];
+      /** Format: date-time */
+      startedAt: string;
+      /** Format: date-time */
+      endedAt: string;
+      /** Format: int64 */
+      durationSeconds: number;
+      participantCount: number;
+      participants: components["schemas"]["SessionParticipant"][];
+      signalTotals: components["schemas"]["SignalAggregate"];
+      /** @description Slides with at least one RED signal, ordered by RED count descending. */
+      problemSlides: components["schemas"]["SummaryProblemSlide"][];
+      pollResults: components["schemas"]["SummaryPollResult"][];
+      questionsCount: number;
+      unansweredQuestionCount: number;
+      unansweredQuestions: components["schemas"]["StudentQuestion"][];
+    };
+    SummaryProblemSlide: {
+      slideIdx: number;
+      green: number;
+      yellow: number;
+      red: number;
+      total: number;
+    };
+    SummaryPollResult: {
+      /** Format: uuid */
+      pollId: string;
+      /** Format: uuid */
+      sourceQuestionId?: string | null;
+      questionText: string;
+      options: string[];
+      status: components["schemas"]["PollStatus"];
+      votes: number[];
+      totalResponses: number;
+      correctOptionIdx?: number | null;
+      /** Format: date-time */
+      startedAt: string;
+      /** Format: date-time */
+      closedAt?: string | null;
     };
     ChannelCapabilities: {
       inlineButtons: boolean;
@@ -3449,6 +3543,50 @@ export interface operations {
       };
     };
   };
+  getLectureSummary: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Participants, problem slides, all poll results, and unanswered questions. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LectureSummary"];
+        };
+      };
+      /** @description The caller cannot manage this course. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found in this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session has not ended yet. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   getStudentSession: {
     parameters: {
       query?: never;
@@ -3646,6 +3784,54 @@ export interface operations {
       };
       /** @description No active poll. */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  startPollFromBank: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["StartBankPollRequest"];
+      };
+    };
+    responses: {
+      /** @description Started poll. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PollResult"];
+        };
+      };
+      /** @description Session or question not found in this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description A poll is already open for this session. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The question type or option set cannot be used as a quick poll. */
+      422: {
         headers: {
           [name: string]: unknown;
         };

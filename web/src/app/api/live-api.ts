@@ -5,6 +5,7 @@ import { refreshAuthSession } from "./refresh";
 
 export type LiveSession = components["schemas"]["LiveSession"];
 export type SessionParticipant = components["schemas"]["SessionParticipant"];
+export type LectureSummary = components["schemas"]["LectureSummary"];
 export type LiveSessionMessage = { type: string; session: LiveSession };
 
 export interface ActiveSession {
@@ -39,6 +40,14 @@ export async function listSessionParticipants(
 ): Promise<SessionParticipant[]> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/participants`);
   return res.json() as Promise<SessionParticipant[]>;
+}
+
+export async function getLectureSummary(
+  courseId: string,
+  sessionId: string
+): Promise<LectureSummary> {
+  const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/summary`);
+  return res.json() as Promise<LectureSummary>;
 }
 
 export async function joinLiveSession(courseId: string, joinCode: string): Promise<LiveSession> {

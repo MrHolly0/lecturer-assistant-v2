@@ -1,57 +1,29 @@
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, BarChart3, Clock3, MessageSquareText, UsersRound } from "lucide-react";
 import { Link } from "react-router-dom";
-import { getActivePoll } from "../app/api/interaction-api";
-import type { LiveSession, SessionParticipant } from "../app/api/live-api";
 import { userErrorMessage } from "../app/api/errors";
-import type { StudentEngagement } from "../app/api/student-api";
+import { getLectureSummary, type LectureSummary, type LiveSession } from "../app/api/live-api";
 import { pluralizeRu } from "../shared/lib/plural";
 
 interface PresenterSessionSummaryProps {
   courseId: string;
   session: LiveSession;
-  participants: SessionParticipant[];
-  engagement?: StudentEngagement;
 }
 
-export function PresenterSessionSummary({
-  courseId,
-  session,
-  participants,
-  engagement
-}: PresenterSessionSummaryProps) {
-  const pollQuery = useQuery({
-    queryKey: ["poll", courseId, session.id, "active"],
-    queryFn: () => getActivePoll(courseId, session.id)
+export function PresenterSessionSummary({ courseId, session }: PresenterSessionSummaryProps) {
+  const summaryQuery = useQuery({
+    queryKey: ["live", courseId, session.id, "summary"],
+    queryFn: () => getLectureSummary(courseId, session.id)
   });
-  const duration = formatDuration(session.startedAt, session.endedAt);
-  const participantCount = useMemo(
-    () => new Set(participants.map((participant) => participant.personId)).size,
-    [participants]
-  );
-  const signalTotals = useMemo(
-    () =>
-      (engagement?.problemSlides ?? []).reduce(
-        (total, slide) => ({
-          green: total.green + slide.signals.green,
-          yellow: total.yellow + slide.signals.yellow,
-          red: total.red + slide.signals.red,
-          total: total.total + slide.signals.total
-        }),
-        { green: 0, yellow: 0, red: 0, total: 0 }
-      ),
-    [engagement?.problemSlides]
-  );
-  const poll = pollQuery.data;
+  const summary = summaryQuery.data;
 
   return (
     <main className="session-summary-shell">
       <header className="session-summary-header">
         <div>
           <span className="session-summary-kicker">Лекция завершена</span>
-          <h1>{session.lectureTitle}</h1>
-          <p className="muted">Краткий итог занятия доступен сразу после завершения.</p>
+          <h1>{summary?.lectureTitle ?? session.lectureTitle}</h1>
+          <p className="muted">Итог занятия сформирован по данным живой сессии.</p>
         </div>
         <Link to={`/courses/${courseId}/materials`} className="btn-ghost session-summary-back">
           <ArrowLeft size={17} />
@@ -59,76 +31,100 @@ export function PresenterSessionSummary({
         </Link>
       </header>
 
-      <section className="session-summary-metrics" aria-label="Основные показатели">
-        <SummaryMetric icon={Clock3} label="Длительность" value={duration} />
-        <SummaryMetric
-          icon={UsersRound}
-          label="Участники"
-          value={`${participantCount} ${pluralizeRu(participantCount, "студент", "студента", "студентов")}`}
-        />
-        <SummaryMetric
-          icon={BarChart3}
-          label="Сигналы"
-          value={`${signalTotals.total} ${pluralizeRu(signalTotals.total, "сигнал", "сигнала", "сигналов")}`}
-        />
-        <SummaryMetric
-          icon={MessageSquareText}
-          label="Вопросы"
-          value={`${engagement?.questions.length ?? 0} ${pluralizeRu(engagement?.questions.length ?? 0, "вопрос", "вопроса", "вопросов")}`}
-        />
-      </section>
-
-      <div className="session-summary-grid">
-        <section className="session-summary-section">
-          <div className="section-heading">
-            <h2>Где было непонятно</h2>
-            <span className="muted">по сигналам аудитории</span>
-          </div>
-          {(engagement?.problemSlides.length ?? 0) === 0 ? (
-            <p className="muted">Проблемных слайдов не зафиксировано.</p>
-          ) : (
-            <ol className="summary-problem-list">
-              {engagement?.problemSlides.slice(0, 6).map((item) => (
-                <li key={item.slideIdx}>
-                  <strong>Слайд {item.slideIdx}</strong>
-                  <span>{item.signals.red} не понимают</span>
-                  <span>{item.signals.yellow} есть вопрос</span>
-                </li>
-              ))}
-            </ol>
-          )}
+      {summaryQuery.isLoading && <p className="muted">Собираем итог лекции…</p>}
+      {summaryQuery.isError && (
+        <section className="session-summary-error" role="alert">
+          <p>{userErrorMessage(summaryQuery.error, "Не удалось загрузить итог лекции.")}</p>
+          <button type="button" className="btn-ghost" onClick={() => summaryQuery.refetch()}>
+            Повторить
+          </button>
         </section>
+      )}
 
-        <section className="session-summary-section">
-          <div className="section-heading">
-            <h2>Последняя проверка</h2>
-            {poll && (
-              <span className="muted">
-                {poll.totalResponses}{" "}
-                {pluralizeRu(poll.totalResponses, "ответ", "ответа", "ответов")}
-              </span>
-            )}
+      {summary && (
+        <>
+          <section className="session-summary-metrics" aria-label="Основные показатели">
+            <SummaryMetric
+              icon={Clock3}
+              label="Длительность"
+              value={formatDuration(summary.durationSeconds)}
+            />
+            <SummaryMetric
+              icon={UsersRound}
+              label="Участники"
+              value={`${summary.participantCount} ${pluralizeRu(summary.participantCount, "студент", "студента", "студентов")}`}
+            />
+            <SummaryMetric
+              icon={BarChart3}
+              label="Сигналы"
+              value={`${summary.signalTotals.total} ${pluralizeRu(summary.signalTotals.total, "сигнал", "сигнала", "сигналов")}`}
+            />
+            <SummaryMetric
+              icon={MessageSquareText}
+              label="Вопросы без ответа"
+              value={`${summary.unansweredQuestionCount} из ${summary.questionsCount}`}
+            />
+          </section>
+
+          <div className="session-summary-grid">
+            <ProblemSlides summary={summary} />
+            <PollResults summary={summary} />
           </div>
-          {pollQuery.isLoading && <p className="muted">Загрузка результата…</p>}
-          {pollQuery.isError && (
-            <p className="form-error" role="alert">
-              {userErrorMessage(pollQuery.error, "Не удалось загрузить результат проверки.")}
-            </p>
-          )}
-          {!pollQuery.isLoading && !pollQuery.isError && !poll && (
-            <p className="muted">Во время лекции проверок не запускали.</p>
-          )}
-          {poll && (
-            <div className="summary-poll">
-              <h3>{poll.poll.questionText}</h3>
-              {poll.poll.options.map((option, index) => {
+        </>
+      )}
+    </main>
+  );
+}
+
+function ProblemSlides({ summary }: { summary: LectureSummary }) {
+  return (
+    <section className="session-summary-section">
+      <div className="section-heading">
+        <h2>Где было непонятно</h2>
+        <span className="muted">по сигналам аудитории</span>
+      </div>
+      {summary.problemSlides.length === 0 ? (
+        <p className="muted">Красных сигналов не зафиксировано.</p>
+      ) : (
+        <ol className="summary-problem-list">
+          {summary.problemSlides.map((item) => (
+            <li key={item.slideIdx}>
+              <strong>Слайд {item.slideIdx}</strong>
+              <span>{item.red} не понимают</span>
+              <span>{item.yellow} есть вопрос</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function PollResults({ summary }: { summary: LectureSummary }) {
+  return (
+    <section className="session-summary-section">
+      <div className="section-heading">
+        <h2>Проверки</h2>
+        <span className="muted">
+          {summary.pollResults.length}{" "}
+          {pluralizeRu(summary.pollResults.length, "опрос", "опроса", "опросов")}
+        </span>
+      </div>
+      {summary.pollResults.length === 0 ? (
+        <p className="muted">Во время лекции проверок не запускали.</p>
+      ) : (
+        <div className="summary-poll-list">
+          {summary.pollResults.map((poll) => (
+            <article className="summary-poll" key={poll.pollId}>
+              <h3>{poll.questionText}</h3>
+              {poll.options.map((option, index) => {
                 const count = poll.votes[index] ?? 0;
                 const percent =
                   poll.totalResponses > 0 ? Math.round((count / poll.totalResponses) * 100) : 0;
                 return (
                   <div
                     key={index}
-                    className={`summary-poll-row${poll.poll.correctOptionIdx === index ? " summary-poll-row--correct" : ""}`}
+                    className={`summary-poll-row${poll.correctOptionIdx === index ? " summary-poll-row--correct" : ""}`}
                   >
                     <span>{option}</span>
                     <div><i style={{ width: `${percent}%` }} /></div>
@@ -136,11 +132,15 @@ export function PresenterSessionSummary({
                   </div>
                 );
               })}
-            </div>
-          )}
-        </section>
-      </div>
-    </main>
+              <small className="muted">
+                {poll.totalResponses}{" "}
+                {pluralizeRu(poll.totalResponses, "ответ", "ответа", "ответов")}
+              </small>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -162,9 +162,7 @@ function SummaryMetric({
   );
 }
 
-function formatDuration(startedAt?: string, endedAt?: string) {
-  if (!startedAt || !endedAt) return "—";
-  const seconds = Math.max(0, Math.round((Date.parse(endedAt) - Date.parse(startedAt)) / 1000));
+function formatDuration(seconds: number) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   if (hours > 0) return `${hours} ч ${minutes} мин`;

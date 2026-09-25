@@ -9,6 +9,7 @@ export type QuickPoll = components["schemas"]["QuickPoll"];
 export type PollResult = components["schemas"]["PollResult"];
 export type ActivePollView = components["schemas"]["ActivePollView"];
 export type StartPollRequest = components["schemas"]["StartPollRequest"];
+export type StartBankPollRequest = components["schemas"]["StartBankPollRequest"];
 export type ClosePollRequest = components["schemas"]["ClosePollRequest"];
 export type PollVote = components["schemas"]["PollVote"];
 
@@ -23,6 +24,18 @@ export async function startPoll(
   request: StartPollRequest
 ): Promise<PollResult> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/polls`, {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+  return res.json() as Promise<PollResult>;
+}
+
+export async function startPollFromBank(
+  courseId: string,
+  sessionId: string,
+  request: StartBankPollRequest
+): Promise<PollResult> {
+  const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/polls/from-bank`, {
     method: "POST",
     body: JSON.stringify(request)
   });

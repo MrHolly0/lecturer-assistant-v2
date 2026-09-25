@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
 export interface PollDraft {
   questionText: string;
   options: string[];
+  questionId?: string;
   correctOptionIdx?: number;
 }
 
@@ -91,6 +92,7 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
                     disabled={pending}
                     onClick={() =>
                       onStart({
+                        questionId: item.id,
                         questionText: item.text,
                         options: item.options.map((option) => option.text),
                         correctOptionIdx

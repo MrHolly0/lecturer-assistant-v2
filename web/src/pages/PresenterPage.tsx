@@ -156,8 +156,6 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       <PresenterSessionSummary
         courseId={courseId}
         session={session}
-        participants={participants}
-        engagement={engagementQuery.data}
       />
     );
   }

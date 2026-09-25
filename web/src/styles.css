@@ -2257,6 +2257,20 @@ html[data-max-mini-app="true"] .student-session-shell {
   padding-top: 18px;
 }
 
+.session-summary-error {
+  align-items: start;
+  background: color-mix(in srgb, var(--destructive) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--destructive) 35%, var(--border));
+  border-radius: var(--radius);
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.session-summary-error p {
+  margin: 0;
+}
+
 .summary-problem-list {
   display: grid;
   gap: 8px;
@@ -2285,6 +2299,16 @@ html[data-max-mini-app="true"] .student-session-shell {
 .summary-poll {
   display: grid;
   gap: 10px;
+}
+
+.summary-poll-list {
+  display: grid;
+  gap: 18px;
+}
+
+.summary-poll + .summary-poll {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
 }
 
 .summary-poll h3 {

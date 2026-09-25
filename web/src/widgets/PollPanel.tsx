@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart2, CheckCircle2, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { closePoll, getActivePoll, startPoll } from "../app/api/interaction-api";
+import {
+  closePoll,
+  getActivePoll,
+  startPoll,
+  startPollFromBank
+} from "../app/api/interaction-api";
 import { userErrorMessage } from "../app/api/errors";
 import { pluralizeRu } from "../shared/lib/plural";
 import { PollComposer, type PollDraft } from "./PollComposer";
@@ -28,14 +33,16 @@ export function PollPanel({ courseId, sessionId }: Props) {
 
   const startMut = useMutation({
     mutationFn: (draft: PollDraft) =>
-      startPoll(courseId, sessionId, {
-        questionText: draft.questionText,
-        options: draft.options
-      }),
+      draft.questionId
+        ? startPollFromBank(courseId, sessionId, { questionId: draft.questionId })
+        : startPoll(courseId, sessionId, {
+            questionText: draft.questionText,
+            options: draft.options
+          }),
     onSuccess: (result, draft) => {
       qc.setQueryData(["poll", courseId, sessionId, "active"], result);
       setView("idle");
-      setMarkedCorrect(draft.correctOptionIdx);
+      setMarkedCorrect(result.poll.correctOptionIdx ?? draft.correctOptionIdx);
       toast.success("Опрос запущен.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось запустить опрос."))
