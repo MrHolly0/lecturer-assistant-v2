@@ -56,7 +56,7 @@
 | Frontend | `npm run lint` — 0 ошибок; production build успешен |
 | Визуальная QA | 332, 390 и 1280 px, светлая и тёмная темы, локальный mock API |
 | Нагрузка | 150/150 SSE-сессий, 22 500 событий, 0/900 HTTP-ошибок, p95 смены слайда 1 648 мс на `12856ce` |
-| Публичный стенд | Backend `0b8813b` + web `dc4a5ef` healthy: quick start, pause/resume, projector close, analytics, reorder и итог с раздельным активным/паузным временем прошли авторизованный browser-smoke |
+| Публичный стенд | `945c0ea`: health и compose healthy; без секрета создание админа возвращает `404`. Авторизованный browser-smoke quick start, pause/resume, projector close, analytics, reorder и итога был на предыдущей сборке; на текущем hash его нужно повторить |
 | Живой MAX | Вход преподавателя подтверждён владельцем; полный студент — не подтверждён |
 
 Локальная визуальная проверка с mock API подтверждает компоновку и состояния интерфейса, но не заменяет проверку публичного API или MAX WebView.
