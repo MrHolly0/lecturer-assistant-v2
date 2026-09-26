@@ -22,6 +22,16 @@ class PersonRepository {
         return jdbc.sql("select count(*) from iam.persons").query(Long.class).single();
     }
 
+    void lockAdminBootstrap() {
+        jdbc.sql("select pg_advisory_xact_lock(4282026)").query((resultSet, rowNumber) -> 0).single();
+    }
+
+    long countAdmins() {
+        return jdbc.sql("select count(*) from iam.persons where role = 'ADMIN'")
+                .query(Long.class)
+                .single();
+    }
+
     PersonRecord create(UUID id, String displayName, String email, String passwordHash, PersonRole role) {
         return jdbc.sql(
                         """

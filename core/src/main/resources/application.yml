@@ -38,6 +38,7 @@ server:
 app:
   version: ${APP_VERSION:0.0.1-SNAPSHOT}
   security:
+    admin-setup-token: ${ADMIN_SETUP_TOKEN:}
     jwt-secret: ${JWT_SECRET:phase-1-local-development-secret-change-me}
     require-strong-secret: ${REQUIRE_STRONG_JWT_SECRET:false}
     access-token-minutes: ${ACCESS_TOKEN_MINUTES:15}

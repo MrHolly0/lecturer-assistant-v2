@@ -3,24 +3,19 @@ import type { FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ChevronDown, MessageCircle } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { login, bootstrapAdmin } from "../app/api/auth-api";
+import { login } from "../app/api/auth-api";
 import { useAuth } from "../app/AuthContext";
 import { ApiError } from "../app/api/http";
 import { landingPath } from "../app/routes";
 import { buildMaxBotUrl } from "../app/max/deepLink";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
-
-type Mode = "login" | "bootstrap";
 
 export function LoginPage() {
   const { setUser } = useAuth();
   const navigate = useNavigate();
-  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const [browserLoginOpen, setBrowserLoginOpen] = useState(false);
   const maxBotUrl = buildMaxBotUrl();
@@ -38,29 +33,13 @@ export function LoginPage() {
     }
   });
 
-  const bootstrapMut = useMutation({
-    mutationFn: () => bootstrapAdmin(displayName, email, password),
-    onSuccess: (data) => {
-      setUser(data.user);
-      navigate(landingPath(data.user.role), { replace: true });
-    },
-    onError: (err) => {
-      setError(
-        err instanceof ApiError && err.status === 409
-          ? "Пользователи уже существуют — войдите обычным способом"
-          : "Ошибка создания администратора"
-      );
-    }
-  });
-
   function submit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (mode === "login") loginMut.mutate();
-    else bootstrapMut.mutate();
+    loginMut.mutate();
   }
 
-  const pending = loginMut.isPending || bootstrapMut.isPending;
+  const pending = loginMut.isPending;
 
   return (
     <div className="auth-shell">
@@ -105,32 +84,7 @@ export function LoginPage() {
 
           {browserLoginOpen && (
             <div className="auth-browser-entry__form">
-              <Tabs
-                value={mode}
-                onValueChange={(value) => {
-                  setMode(value as Mode);
-                  setError("");
-                }}
-              >
-                <TabsList className="auth-tabs">
-                  <TabsTrigger value="login">Войти</TabsTrigger>
-                  <TabsTrigger value="bootstrap">Первый запуск</TabsTrigger>
-                </TabsList>
-              </Tabs>
-
               <form onSubmit={submit} className="auth-form">
-                {mode === "bootstrap" && (
-                  <label className="field">
-                    <span>Имя</span>
-                    <input
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      required
-                      minLength={2}
-                      autoFocus
-                    />
-                  </label>
-                )}
                 <label className="field">
                   <span>Email</span>
                   <input
@@ -138,7 +92,7 @@ export function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    autoFocus={mode === "login"}
+                    autoFocus
                   />
                 </label>
                 <label className="field">
@@ -153,7 +107,7 @@ export function LoginPage() {
                 </label>
                 {error && <p className="form-error">{error}</p>}
                 <Button type="submit" disabled={pending}>
-                  {pending ? "..." : mode === "login" ? "Войти" : "Создать аккаунт администратора"}
+                  {pending ? "..." : "Войти"}
                 </Button>
               </form>
             </div>

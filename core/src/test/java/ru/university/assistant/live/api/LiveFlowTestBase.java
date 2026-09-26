@@ -43,6 +43,7 @@ import ru.university.assistant.iam.internal.MaxInitDataSigner;
 @AutoConfigureMockMvc
 @Import(LiveFlowTestBase.FakeConversionConfig.class)
 abstract class LiveFlowTestBase {
+    private static final String ADMIN_SETUP_TOKEN = "integration-admin-setup-token-with-enough-length";
     private static final String BOT_TOKEN = "identity-test-bot-token-not-a-secret";
     private static final Path BLOB_ROOT =
             Path.of(System.getProperty("java.io.tmpdir"), "lecturer-assistant-v2-identity-blobs-" + UUID.randomUUID());
@@ -78,6 +79,7 @@ abstract class LiveFlowTestBase {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("app.security.jwt-secret", () -> "integration-test-secret-with-enough-length");
+        registry.add("app.security.admin-setup-token", () -> ADMIN_SETUP_TOKEN);
         registry.add("app.content.blob-root", () -> BLOB_ROOT.toString());
         registry.add("app.max.bot-token", () -> BOT_TOKEN);
     }
@@ -102,6 +104,7 @@ abstract class LiveFlowTestBase {
                         """)
                 .update();
         adminToken = json(post("/api/v1/auth/bootstrap-admin")
+                        .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"displayName\":\"Admin\",\"email\":\"admin@example.test\","
                                 + "\"password\":\"password-123\"}"), 200)

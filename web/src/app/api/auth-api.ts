@@ -15,22 +15,6 @@ export interface MaxLoginResult {
 
 let maxLoginInFlight: Promise<MaxLoginResult> | null = null;
 
-export async function bootstrapAdmin(
-  displayName: string,
-  email: string,
-  password: string
-): Promise<AuthResponse> {
-  const res = await apiFetch("/auth/bootstrap-admin", {
-    method: "POST",
-    body: JSON.stringify({ displayName, email, password }),
-    skipAuthorization: true,
-    skipAuthRefresh: true
-  });
-  const data: AuthResponse = await res.json();
-  setStoredAuth({ accessToken: data.accessToken });
-  return data;
-}
-
 export async function login(email: string, password: string): Promise<AuthResponse> {
   const res = await apiFetch("/auth/login", {
     method: "POST",

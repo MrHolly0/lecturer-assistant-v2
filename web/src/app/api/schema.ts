@@ -30,7 +30,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Create the first admin while the installation has no users. */
+    /** Provision the first admin with an operator setup token, only while no admin exists. */
     post: operations["bootstrapAdmin"];
     delete?: never;
     options?: never;
@@ -2474,7 +2474,10 @@ export interface operations {
   bootstrapAdmin: {
     parameters: {
       query?: never;
-      header?: never;
+      header: {
+        /** @description One-time installation secret configured as ADMIN_SETUP_TOKEN on the server. */
+        "X-Admin-Setup-Token": string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -2495,7 +2498,14 @@ export interface operations {
           "application/json": components["schemas"]["AuthResponse"];
         };
       };
-      /** @description Installation already has users. */
+      /** @description Setup token is unavailable or invalid. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Installation already has an admin. */
       409: {
         headers: {
           [name: string]: unknown;

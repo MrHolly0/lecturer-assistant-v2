@@ -40,6 +40,7 @@ import ru.university.assistant.iam.internal.MaxInitDataSigner;
 @AutoConfigureMockMvc
 class MaxAuthIntegrationTest {
     private static final String BOT_TOKEN = "integration-bot-token-not-a-secret";
+    private static final String ADMIN_SETUP_TOKEN = "integration-admin-setup-token-with-enough-length";
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -60,6 +61,7 @@ class MaxAuthIntegrationTest {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("app.security.jwt-secret", () -> "integration-test-secret-with-enough-length");
         registry.add("app.max.bot-token", () -> BOT_TOKEN);
+        registry.add("app.security.admin-setup-token", () -> ADMIN_SETUP_TOKEN);
     }
 
     @BeforeEach
@@ -271,6 +273,7 @@ class MaxAuthIntegrationTest {
     @Test
     void anAdminCanLinkTheirOwnMaxAccountWithoutChangingRole() throws Exception {
         String adminToken = json(post("/api/v1/auth/bootstrap-admin")
+                        .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"displayName\":\"Admin\",\"email\":\"admin@example.test\","
                                 + "\"password\":\"password-123\"}"),
@@ -287,6 +290,7 @@ class MaxAuthIntegrationTest {
 
     private String registerLecturer() throws Exception {
         String adminToken = json(post("/api/v1/auth/bootstrap-admin")
+                        .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"displayName\":\"Admin\",\"email\":\"admin@example.test\","
                                 + "\"password\":\"password-123\"}"),

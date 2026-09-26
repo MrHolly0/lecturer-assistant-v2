@@ -54,9 +54,10 @@ function fail(message) {
   process.exit(1);
 }
 
-async function call(method, path, { token, json, form, expect = [200, 201, 202, 204] } = {}) {
+async function call(method, path, { token, setupToken, json, form, expect = [200, 201, 202, 204] } = {}) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (setupToken) headers["X-Admin-Setup-Token"] = setupToken;
   let body;
   if (json !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -107,16 +108,22 @@ async function ensureAdmin() {
   const admin = accounts.admin;
   const existing = await login(admin);
   if (existing) return { token: existing, created: false };
+  const setupToken = process.env.ADMIN_SETUP_TOKEN;
+  if (!setupToken) fail(
+    "тестовый администратор не вошёл. Если установка новая, задайте ADMIN_SETUP_TOKEN в .env " +
+    "и пересоздайте core; если администратор уже есть, проверьте SEED_PASSWORD_ADMIN."
+  );
   const result = await call("POST", "/auth/bootstrap-admin", {
+    setupToken,
     json: { displayName: admin.displayName, email: admin.email, password: admin.password },
     expect: [200],
   });
   if (result.ok) return { token: result.data.accessToken, created: true };
   if (result.status === 409) {
     fail(
-      "в базе уже есть пользователи, а войти как тестовый администратор не удалось. " +
+      "в базе уже есть администратор, а войти как тестовый администратор не удалось. " +
         "Либо база заполнена вручную, либо SEED_PASSWORD_ADMIN отличается от того, с которым " +
-        "запускали в первый раз. Для чистого старта: docker compose down -v",
+        "запускали в первый раз. Не удаляйте данные стенда: используйте существующего администратора.",
     );
   }
   fail(`bootstrap-admin: ${result.status} ${result.text}`);

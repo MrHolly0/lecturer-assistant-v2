@@ -24,9 +24,16 @@ paths:
   /auth/bootstrap-admin:
     post:
       operationId: bootstrapAdmin
-      summary: Create the first admin while the installation has no users.
+      summary: Provision the first admin with an operator setup token, only while no admin exists.
       tags: [auth]
       security: []
+      parameters:
+        - in: header
+          name: X-Admin-Setup-Token
+          required: true
+          description: One-time installation secret configured as ADMIN_SETUP_TOKEN on the server.
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -46,7 +53,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
         "409":
-          description: Installation already has users.
+          description: Installation already has an admin.
+        "404":
+          description: Setup token is unavailable or invalid.
   /auth/register:
     post:
       operationId: registerByInvitation

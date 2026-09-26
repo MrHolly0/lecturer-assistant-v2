@@ -49,6 +49,7 @@ import ru.university.assistant.content.internal.StoredBlob;
 @SpringBootTest
 @AutoConfigureMockMvc
 class ContentIntegrationTest {
+    private static final String ADMIN_SETUP_TOKEN = "integration-admin-setup-token-with-enough-length";
     private static final Path BLOB_ROOT =
             Path.of(System.getProperty("java.io.tmpdir"), "lecturer-assistant-v2-test-blobs-" + UUID.randomUUID());
 
@@ -70,6 +71,7 @@ class ContentIntegrationTest {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("app.security.jwt-secret", () -> "integration-test-secret-with-enough-length");
+        registry.add("app.security.admin-setup-token", () -> ADMIN_SETUP_TOKEN);
         registry.add("app.content.blob-root", () -> BLOB_ROOT.toString());
     }
 
@@ -639,6 +641,7 @@ class ContentIntegrationTest {
 
     private String bootstrapAdmin() throws Exception {
         String response = mockMvc.perform(post("/api/v1/auth/bootstrap-admin")
+                        .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"displayName":"Admin","email":"admin@example.test","password":"password-123"}

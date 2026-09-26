@@ -34,6 +34,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @SpringBootTest
 @AutoConfigureMockMvc
 class AuthOrgIntegrationTest {
+    private static final String ADMIN_SETUP_TOKEN = "integration-admin-setup-token-with-enough-length";
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
 
@@ -52,6 +53,7 @@ class AuthOrgIntegrationTest {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("app.security.jwt-secret", () -> "integration-test-secret-with-enough-length");
+        registry.add("app.security.admin-setup-token", () -> ADMIN_SETUP_TOKEN);
     }
 
     @BeforeEach
@@ -84,6 +86,41 @@ class AuthOrgIntegrationTest {
                         restart identity cascade
                         """)
                 .update();
+    }
+
+    @Test
+    void adminSetupRequiresOperatorTokenAndAllowsStudentToArriveFirst() throws Exception {
+        String body = """
+                {"displayName":"Admin","email":"admin@example.test","password":"password-123"}
+                """;
+        mockMvc.perform(post("/api/v1/auth/bootstrap-admin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/auth/bootstrap-admin")
+                        .header("X-Admin-Setup-Token", "wrong-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound());
+
+        jdbc.sql("""
+                        insert into iam.persons (id, display_name, email, password_hash, role, status)
+                        values (:id, 'First MAX student', 'max-123@max.local', 'unused', 'STUDENT', 'ACTIVE')
+                        """)
+                .param("id", UUID.randomUUID())
+                .update();
+
+        mockMvc.perform(post("/api/v1/auth/bootstrap-admin")
+                        .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.role").value("ADMIN"));
+        mockMvc.perform(post("/api/v1/auth/bootstrap-admin")
+                        .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isConflict());
     }
 
     @Test
@@ -291,6 +328,7 @@ class AuthOrgIntegrationTest {
                 {"displayName":"Admin","email":"admin@example.test","password":"password-123"}
                 """;
         return tokenFrom(mockMvc.perform(post("/api/v1/auth/bootstrap-admin")
+                .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
                 .andExpect(status().isOk())

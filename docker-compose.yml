@@ -33,6 +33,7 @@ services:
       DB_USERNAME: ${DB_USERNAME:-lecturer}
       DB_PASSWORD: ${DB_PASSWORD:-lecturer_dev_password}
       JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-not-for-production}
+      ADMIN_SETUP_TOKEN: ${ADMIN_SETUP_TOKEN:-}
       SLIDE_IMAGE_URL_SECRET: ${SLIDE_IMAGE_URL_SECRET:-local-dev-slide-url-secret-not-for-production}
       SLIDE_IMAGE_URL_TTL: ${SLIDE_IMAGE_URL_TTL:-PT1H}
       ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-15}
@@ -150,6 +151,7 @@ services:
       SEED_PASSWORD_ADMIN: ${SEED_PASSWORD_ADMIN:-}
       SEED_PASSWORD_LECTURER: ${SEED_PASSWORD_LECTURER:-}
       SEED_PASSWORD_ASSISTANT: ${SEED_PASSWORD_ASSISTANT:-}
+      ADMIN_SETUP_TOKEN: ${ADMIN_SETUP_TOKEN:-}
     depends_on:
       web:
         condition: service_healthy

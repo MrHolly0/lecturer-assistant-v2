@@ -82,8 +82,9 @@ public class AuthService implements EphemeralPersonApi {
 
     @Transactional
     public AuthTokens bootstrapAdmin(RegisterRequest request) {
-        if (persons.count() > 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Installation already has users");
+        persons.lockAdminBootstrap();
+        if (persons.countAdmins() > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Installation already has an admin");
         }
         PersonRecord person = createPerson(request, PersonRole.ADMIN);
         return issueTokens(person);

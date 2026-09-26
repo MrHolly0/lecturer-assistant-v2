@@ -1,6 +1,8 @@
 package ru.university.assistant.iam.api;
 
 import jakarta.validation.Valid;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,18 +30,31 @@ public class AuthController {
     private final AuthService authService;
     private final Duration refreshTtl;
     private final boolean refreshCookieSecure;
+    private final String adminSetupToken;
 
     AuthController(
             AuthService authService,
             @Value("${app.security.refresh-token-days}") long refreshTokenDays,
-            @Value("${app.security.refresh-cookie-secure:true}") boolean refreshCookieSecure) {
+            @Value("${app.security.refresh-cookie-secure:true}") boolean refreshCookieSecure,
+            @Value("${app.security.admin-setup-token:}") String adminSetupToken) {
         this.authService = authService;
         this.refreshTtl = Duration.ofDays(refreshTokenDays);
         this.refreshCookieSecure = refreshCookieSecure;
+        this.adminSetupToken = adminSetupToken;
     }
 
     @PostMapping("/bootstrap-admin")
-    public ResponseEntity<AuthResponse> bootstrapAdmin(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<AuthResponse> bootstrapAdmin(
+            @RequestHeader(name = "X-Admin-Setup-Token", required = false) String setupToken,
+            @Valid @RequestBody RegisterRequest request) {
+        if (adminSetupToken.isBlank()
+                || adminSetupToken.length() < 32
+                || setupToken == null
+                || !MessageDigest.isEqual(
+                        adminSetupToken.getBytes(StandardCharsets.UTF_8),
+                        setupToken.getBytes(StandardCharsets.UTF_8))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
         return authenticated(authService.bootstrapAdmin(request));
     }
 
