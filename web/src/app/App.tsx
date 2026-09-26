@@ -49,6 +49,7 @@ function MaxNavigationRoot() {
   const {
     loading,
     maxAuthError,
+    maxSignedOut,
     maxLinkRequired,
     maxCredentialsRequired,
     loginAndLinkMax,
@@ -56,6 +57,7 @@ function MaxNavigationRoot() {
     submitMaxLinkCode,
     continueMaxAuth,
     retryMaxAuth,
+    resumeMaxAuth,
     user
   } = useAuth();
   const location = useLocation();
@@ -101,6 +103,7 @@ function MaxNavigationRoot() {
   }, [isMax, loading, location.pathname, startParamHandled, startTarget, user]);
 
   if (isMax && loading) return <LoadingScreen message="Входим через MAX…" />;
+  if (isMax && maxSignedOut) return <MaxSignedOutScreen onLogin={resumeMaxAuth} />;
   if (isMax && maxLinkRequired) {
     return (
       <MaxLinkCodeScreen
@@ -164,6 +167,27 @@ function MaxAuthScreen({ error, onRetry }: { error: string | null; onRetry: () =
         </p>
         <Button className="max-auth-retry" type="button" onClick={onRetry}>
           Попробовать снова
+        </Button>
+      </section>
+    </main>
+  );
+}
+
+function MaxSignedOutScreen({ onLogin }: { onLogin: () => void }) {
+  return (
+    <main className="auth-shell">
+      <section className="auth-card max-auth-card" aria-labelledby="max-signed-out-title">
+        <div className="auth-header">
+          <span className="max-auth-eyebrow">Мини-приложение MAX</span>
+          <h1 className="auth-title" id="max-signed-out-title">
+            Вы вышли из аккаунта
+          </h1>
+          <p className="auth-hint">
+            Повторный вход через MAX откроет ту же привязанную учётную запись.
+          </p>
+        </div>
+        <Button className="max-auth-retry" type="button" onClick={onLogin}>
+          Войти через MAX
         </Button>
       </section>
     </main>

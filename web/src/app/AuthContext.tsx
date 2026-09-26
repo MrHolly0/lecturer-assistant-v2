@@ -17,11 +17,13 @@ import { useMaxBridge } from "./max/context";
 import { normalizeLinkCode, readMaxLinkCode } from "./max/deepLink";
 
 type UserProfile = components["schemas"]["UserProfile"];
+const MAX_SIGNED_OUT_KEY = "la_max_signed_out";
 
 interface AuthContextValue {
   user: UserProfile | null;
   loading: boolean;
   maxAuthError: string | null;
+  maxSignedOut: boolean;
   maxLinkRequired: boolean;
   maxCredentialsRequired: boolean;
   loginAndLinkMax: (email: string, password: string) => Promise<void>;
@@ -34,6 +36,7 @@ interface AuthContextValue {
   submitMaxLinkCode: (code: string) => void;
   continueMaxAuth: () => void;
   retryMaxAuth: () => void;
+  resumeMaxAuth: () => void;
   setUser: (user: UserProfile | null) => void;
   signOut: () => Promise<void>;
 }
@@ -42,6 +45,7 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
   maxAuthError: null,
+  maxSignedOut: false,
   maxLinkRequired: false,
   maxCredentialsRequired: false,
   loginAndLinkMax: async () => {},
@@ -49,6 +53,7 @@ const AuthContext = createContext<AuthContextValue>({
   submitMaxLinkCode: () => {},
   continueMaxAuth: () => {},
   retryMaxAuth: () => {},
+  resumeMaxAuth: () => {},
   setUser: () => {},
   signOut: async () => {}
 });
@@ -58,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [maxAuthError, setMaxAuthError] = useState<string | null>(null);
+  const [maxSignedOut, setMaxSignedOut] = useState(() => readMaxSignedOut());
   const [maxLinkRequired, setMaxLinkRequired] = useState(false);
   const [maxCredentialsRequired, setMaxCredentialsRequired] = useState(false);
   const [requestedMaxLinkCode, setRequestedMaxLinkCode] = useState<string | null>(null);
@@ -71,6 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       toast.error("Сессия истекла. Войдите снова.", { id: "auth-expired" });
     };
     window.addEventListener("auth:expired", expireAuth);
+
+    if (isMax && maxSignedOut) {
+      setLoading(false);
+      setMaxAuthError(null);
+      return () => window.removeEventListener("auth:expired", expireAuth);
+    }
 
     setLoading(true);
     setMaxAuthError(null);
@@ -166,11 +178,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       active = false;
       window.removeEventListener("auth:expired", expireAuth);
     };
-  }, [allowMaxAuthWithoutCode, initData, isMax, maxAuthAttempt, requestedMaxLinkCode, startParam]);
+  }, [
+    allowMaxAuthWithoutCode,
+    initData,
+    isMax,
+    maxAuthAttempt,
+    maxSignedOut,
+    requestedMaxLinkCode,
+    startParam
+  ]);
 
   function retryMaxAuth() {
     setLoading(true);
     setMaxAuthAttempt((attempt) => attempt + 1);
+  }
+
+  function resumeMaxAuth() {
+    try {
+      sessionStorage.removeItem(MAX_SIGNED_OUT_KEY);
+    } catch {
+      // The current WebView can still resume even if storage is unavailable.
+    }
+    setLoading(true);
+    setMaxSignedOut(false);
   }
 
   function submitMaxLinkCode(code: string) {
@@ -241,6 +271,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signOut() {
     await logout();
     clearStoredAuth();
+    if (isMax) {
+      try {
+        sessionStorage.setItem(MAX_SIGNED_OUT_KEY, "true");
+      } catch {
+        // In-memory state still keeps this WebView signed out.
+      }
+      setMaxSignedOut(true);
+      setMaxAuthError(null);
+    }
     setUserState(null);
   }
 
@@ -250,6 +289,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         maxAuthError,
+        maxSignedOut,
         maxLinkRequired,
         maxCredentialsRequired,
         loginAndLinkMax,
@@ -257,6 +297,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         submitMaxLinkCode,
         continueMaxAuth,
         retryMaxAuth,
+        resumeMaxAuth,
         setUser: setUserState,
         signOut
       }}
@@ -264,6 +305,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
+}
+
+function readMaxSignedOut(): boolean {
+  try {
+    return sessionStorage.getItem(MAX_SIGNED_OUT_KEY) === "true";
+  } catch {
+    return false;
+  }
 }
 
 export function useAuth() {
