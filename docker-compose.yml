@@ -127,6 +127,8 @@ services:
 
   telegram-adapter:
     <<: *restart
+    # Для MAX-сценария не нужен: включается только по запросу.
+    profiles: ["telegram"]
     build:
       context: adapters/telegram
     environment:

@@ -1,6 +1,17 @@
 .git
 .idea
 .DS_Store
+# Локальные скрытые файлы и каталоги не входят в контекст сборки.
+.*
+.github
+docs
+e2e
+deploy/stand
+deploy/seed
+core/src/test
+README.md
+DATA-API.yaml
+docker-compose*.yml
 
 target
 build
@@ -16,6 +27,9 @@ out
 **/*.tsbuildinfo
 
 *.log
+*.dump
+*.bak
+*.sql.gz
 .env
 .env.*
 !.env.example

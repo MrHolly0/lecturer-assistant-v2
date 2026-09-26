@@ -109,10 +109,10 @@ stamp='<UTC, например 20260925T105839Z>'
 compose=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
 
 restart_writers() {
-  "${compose[@]}" start converter core max-adapter telegram-adapter >/dev/null 2>&1 || true
+  "${compose[@]}" start converter core max-adapter >/dev/null 2>&1 || true
 }
 trap restart_writers EXIT INT TERM
-"${compose[@]}" stop max-adapter telegram-adapter core converter
+"${compose[@]}" stop max-adapter core converter
 
 "${compose[@]}" exec -T db-backup sh -ceu '
   tmp="/backups/lecturer_assistant-quiesced-$1.dump.tmp"

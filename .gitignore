@@ -1,5 +1,8 @@
 .DS_Store
 .idea/
+# Локальные скрытые каталоги инструментов; .github остаётся доступен.
+/.*/
+!/.github/
 *.iml
 
 target/
@@ -21,4 +24,7 @@ web/vite.config.js
 !.env.example
 
 *.log
+*.dump
+*.bak
+*.sql.gz
 tmp/
