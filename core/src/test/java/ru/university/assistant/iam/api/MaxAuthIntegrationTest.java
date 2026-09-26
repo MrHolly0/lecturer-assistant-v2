@@ -260,12 +260,29 @@ class MaxAuthIntegrationTest {
     }
 
     @Test
-    void onlyALecturerCanRequestAMaxLinkCode() throws Exception {
+    void aStudentCannotRequestAMaxLinkCode() throws Exception {
         String studentToken = login(signed(701, Instant.now()), 200).get("accessToken").asText();
 
         mockMvc.perform(post("/api/v1/identity/max/link-codes")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void anAdminCanLinkTheirOwnMaxAccountWithoutChangingRole() throws Exception {
+        String adminToken = json(post("/api/v1/auth/bootstrap-admin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"Admin\",\"email\":\"admin@example.test\","
+                                + "\"password\":\"password-123\"}"),
+                        200)
+                .get("accessToken")
+                .asText();
+        String code = requestMaxLinkCode(adminToken);
+
+        JsonNode linked = loginWithCode(signed(701, Instant.now()), code, 200);
+
+        assertEquals("ADMIN", linked.get("role").asText());
+        assertEquals(1L, count("iam.persons"));
     }
 
     private String registerLecturer() throws Exception {

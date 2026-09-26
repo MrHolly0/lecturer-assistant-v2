@@ -34,11 +34,11 @@ public class IdentityService implements ChannelIdentityApi {
         return new IdentityLinkCodeResponse(code, expiresAt);
     }
 
-    /** B-03: код, которым преподаватель в браузере привязывает свой MAX-аккаунт к своей же личности. */
+    /** Одноразовый код для привязки собственного MAX-аккаунта после входа по паролю. */
     @Transactional
     public IdentityLinkCodeResponse createMaxLinkCode(AuthenticatedUser user) {
-        if (user.role() != PersonRole.LECTURER) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a lecturer can link a MAX account");
+        if (user.role() == PersonRole.STUDENT) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only staff can link a MAX account");
         }
         String code = CodeGenerator.readableCode(6);
         var expiresAt = clock.instant().plus(Duration.ofMinutes(5));

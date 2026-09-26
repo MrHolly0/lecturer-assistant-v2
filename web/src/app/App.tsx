@@ -36,6 +36,7 @@ import { readMaxLinkCode } from "./max/deepLink";
 import { canRedirectToTeacherRemote, isMobileMax, teacherRemotePath } from "./max/navigation";
 import { getMyActiveSession } from "./api/live-api";
 import { MaxLinkCodeScreen } from "../widgets/MaxLinkCodeScreen";
+import { MaxCredentialsScreen } from "../widgets/MaxCredentialsScreen";
 import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
 import { Button } from "../shared/ui/button";
 
@@ -49,6 +50,9 @@ function MaxNavigationRoot() {
     loading,
     maxAuthError,
     maxLinkRequired,
+    maxCredentialsRequired,
+    loginAndLinkMax,
+    registerAndLinkMax,
     submitMaxLinkCode,
     continueMaxAuth,
     retryMaxAuth,
@@ -104,6 +108,15 @@ function MaxNavigationRoot() {
         error={maxAuthError}
         onSubmit={submitMaxLinkCode}
         onContinue={continueMaxAuth}
+      />
+    );
+  }
+  if (isMax && maxCredentialsRequired) {
+    return (
+      <MaxCredentialsScreen
+        onLogin={loginAndLinkMax}
+        onRegister={registerAndLinkMax}
+        onStudent={continueMaxAuth}
       />
     );
   }

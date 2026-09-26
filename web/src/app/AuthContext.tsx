@@ -2,7 +2,15 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import type { components } from "./api/schema";
-import { getCurrentUser, loginWithMax, logout, refreshAuth } from "./api/auth-api";
+import {
+  getCurrentUser,
+  login,
+  loginWithMax,
+  logout,
+  refreshAuth,
+  registerByInvitation
+} from "./api/auth-api";
+import { createMaxLinkCode } from "./api/max-identity-api";
 import { ApiError } from "./api/http";
 import { clearStoredAuth, getStoredAuth } from "./auth";
 import { useMaxBridge } from "./max/context";
@@ -15,6 +23,14 @@ interface AuthContextValue {
   loading: boolean;
   maxAuthError: string | null;
   maxLinkRequired: boolean;
+  maxCredentialsRequired: boolean;
+  loginAndLinkMax: (email: string, password: string) => Promise<void>;
+  registerAndLinkMax: (
+    name: string,
+    email: string,
+    password: string,
+    invitationCode: string
+  ) => Promise<void>;
   submitMaxLinkCode: (code: string) => void;
   continueMaxAuth: () => void;
   retryMaxAuth: () => void;
@@ -27,6 +43,9 @@ const AuthContext = createContext<AuthContextValue>({
   loading: true,
   maxAuthError: null,
   maxLinkRequired: false,
+  maxCredentialsRequired: false,
+  loginAndLinkMax: async () => {},
+  registerAndLinkMax: async () => {},
   submitMaxLinkCode: () => {},
   continueMaxAuth: () => {},
   retryMaxAuth: () => {},
@@ -40,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [maxAuthError, setMaxAuthError] = useState<string | null>(null);
   const [maxLinkRequired, setMaxLinkRequired] = useState(false);
+  const [maxCredentialsRequired, setMaxCredentialsRequired] = useState(false);
   const [requestedMaxLinkCode, setRequestedMaxLinkCode] = useState<string | null>(null);
   const [allowMaxAuthWithoutCode, setAllowMaxAuthWithoutCode] = useState(false);
   const [maxAuthAttempt, setMaxAuthAttempt] = useState(0);
@@ -66,26 +86,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const startLinkCode = readMaxLinkCode(startParam);
       const linkCode = requestedMaxLinkCode === null ? null : requestedMaxLinkCode || null;
       const opensLecture = Boolean(startParam && !startLinkCode);
-      const knownLinkedAccount = localStorage.getItem("la_max_account_linked") === "true";
       const waitsForPrefilledCode = Boolean(startLinkCode && requestedMaxLinkCode === null);
       if (waitsForPrefilledCode) {
         setMaxLinkRequired(true);
+        setMaxCredentialsRequired(false);
         setLoading(false);
         return () => window.removeEventListener("auth:expired", expireAuth);
       }
 
-      if (!linkCode && !opensLecture && !knownLinkedAccount && !allowMaxAuthWithoutCode) {
+      if (!linkCode && !opensLecture && !allowMaxAuthWithoutCode) {
         loginWithMax(initData, undefined, startParam ?? undefined, true)
           .then(({ user: maxUser }) => {
             if (!active) return;
             setUserState(maxUser);
             setMaxLinkRequired(false);
-            localStorage.setItem("la_max_account_linked", "true");
+            setMaxCredentialsRequired(false);
           })
           .catch((error: unknown) => {
             if (!active) return;
             if (error instanceof ApiError && error.status === 404) {
-              setMaxLinkRequired(true);
+              setMaxCredentialsRequired(true);
             } else {
               setMaxAuthError(maxAuthErrorMessage(error, false));
             }
@@ -100,13 +120,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setMaxLinkRequired(false);
+      setMaxCredentialsRequired(false);
       loginWithMax(initData, linkCode ?? undefined, startParam ?? undefined)
         .then(({ user: maxUser }) => {
           if (!active) return;
           setUserState(maxUser);
-          if (linkCode || maxUser.role !== "STUDENT") {
-            localStorage.setItem("la_max_account_linked", "true");
-          }
         })
         .catch((error: unknown) => {
           if (!active) return;
@@ -164,10 +182,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function continueMaxAuth() {
     setMaxAuthError(null);
+    setMaxCredentialsRequired(false);
     setLoading(true);
     setRequestedMaxLinkCode("");
     setAllowMaxAuthWithoutCode(true);
     setMaxAuthAttempt((attempt) => attempt + 1);
+  }
+
+  async function linkAuthenticatedAccount(authenticate: () => Promise<{ user: UserProfile }>) {
+    if (!initData)
+      throw new Error("MAX не передал данные для входа. Откройте мини-приложение снова.");
+    try {
+      const { user: account } = await authenticate();
+      if (account.role === "STUDENT") {
+        throw new Error("Для студента вход по паролю не нужен. Используйте вход через MAX.");
+      }
+      const { code } = await createMaxLinkCode();
+      const { user: maxUser } = await loginWithMax(initData, code);
+      if (maxUser.id !== account.id) {
+        throw new Error(
+          "Этот профиль MAX уже привязан к другой учётной записи. Обратитесь к администратору."
+        );
+      }
+      setUserState(maxUser);
+      setMaxCredentialsRequired(false);
+      setMaxAuthError(null);
+    } catch (error) {
+      clearStoredAuth();
+      throw error;
+    }
+  }
+
+  function loginAndLinkMax(email: string, password: string) {
+    return linkAuthenticatedAccount(() => login(email, password));
+  }
+
+  function registerAndLinkMax(
+    name: string,
+    email: string,
+    password: string,
+    invitationCode: string
+  ) {
+    let registered = false;
+    return linkAuthenticatedAccount(async () => {
+      const auth = await registerByInvitation(name, email, password, invitationCode);
+      registered = true;
+      return auth;
+    }).catch((error: unknown) => {
+      if (registered) {
+        throw new Error(
+          "Аккаунт создан, но MAX не подключился. Переключитесь на вход и попробуйте с новым паролем."
+        );
+      }
+      throw error;
+    });
   }
 
   async function signOut() {
@@ -183,6 +251,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         maxAuthError,
         maxLinkRequired,
+        maxCredentialsRequired,
+        loginAndLinkMax,
+        registerAndLinkMax,
         submitMaxLinkCode,
         continueMaxAuth,
         retryMaxAuth,
