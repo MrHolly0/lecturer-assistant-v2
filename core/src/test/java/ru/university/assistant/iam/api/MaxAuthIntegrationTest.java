@@ -120,6 +120,18 @@ class MaxAuthIntegrationTest {
     }
 
     @Test
+    void existingOnlyDoesNotCreateAnAccountForUnknownMaxUser() throws Exception {
+        json(post("/api/v1/auth/max")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "initData", signed(601, Instant.now()), "existingOnly", true))),
+                404);
+
+        assertEquals(0L, count("iam.persons"));
+        assertEquals(0L, count("iam.channel_identities"));
+    }
+
+    @Test
     void differentMaxUsersGetDifferentPeople() throws Exception {
         String a = login(signed(101, Instant.now()), 200).get("personId").asText();
         String b = login(signed(102, Instant.now()), 200).get("personId").asText();
@@ -195,6 +207,14 @@ class MaxAuthIntegrationTest {
         JsonNode again = login(signed(701, Instant.now()), 200); // без linkCode
 
         assertEquals("LECTURER", again.get("role").asText());
+        assertEquals(2L, count("iam.persons"));
+
+        JsonNode onAnotherDevice = json(post("/api/v1/auth/max")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "initData", signed(701, Instant.now()), "existingOnly", true))),
+                200);
+        assertEquals("LECTURER", onAnotherDevice.get("role").asText());
         assertEquals(2L, count("iam.persons"));
     }
 

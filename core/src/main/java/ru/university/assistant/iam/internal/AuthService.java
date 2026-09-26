@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -122,7 +123,7 @@ public class AuthService implements EphemeralPersonApi {
      * не создавая никого нового и не меняя её роль.
      */
     @Transactional
-    public AuthTokens loginWithMax(String initData, String linkCode, String startParam) {
+    public AuthTokens loginWithMax(String initData, String linkCode, String startParam, boolean existingOnly) {
         if (!maxInitData.isConfigured()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "MAX login is not configured");
         }
@@ -134,10 +135,13 @@ public class AuthService implements EphemeralPersonApi {
         }
         String externalId = Long.toString(data.userId());
         identities.lockExternalId(MAX_CHANNEL, externalId);
-        PersonRecord person = identities
+        Optional<PersonRecord> existingPerson = identities
                 .findByExternalId(MAX_CHANNEL, externalId)
-                .flatMap(identity -> persons.findById(identity.personId()))
-                .orElseGet(() -> linkCode != null && !linkCode.isBlank()
+                .flatMap(identity -> persons.findById(identity.personId()));
+        if (existingOnly && existingPerson.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "MAX account is not linked");
+        }
+        PersonRecord person = existingPerson.orElseGet(() -> linkCode != null && !linkCode.isBlank()
                         ? linkMaxAccountByCode(linkCode, data, externalId)
                         : createMaxStudent(data, externalId));
         String normalizedStartParam = startParam == null ? "" : startParam.trim().toUpperCase();

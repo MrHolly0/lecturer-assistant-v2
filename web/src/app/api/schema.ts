@@ -1601,6 +1601,8 @@ export interface components {
       linkCode?: string;
       /** @description Optional MAX start_param used only to attribute the miniapp.opened pilot event. */
       startParam?: string;
+      /** @description Authenticate an existing MAX identity without creating a student account. */
+      existingOnly?: boolean;
     };
     MaxAuthResponse: {
       accessToken: string;
@@ -2610,6 +2612,13 @@ export interface operations {
       };
       /** @description Person is disabled. */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description MAX identity has no account when existingOnly is true. */
+      404: {
         headers: {
           [name: string]: unknown;
         };

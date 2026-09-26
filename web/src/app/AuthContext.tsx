@@ -68,13 +68,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const opensLecture = Boolean(startParam && !startLinkCode);
       const knownLinkedAccount = localStorage.getItem("la_max_account_linked") === "true";
       const waitsForPrefilledCode = Boolean(startLinkCode && requestedMaxLinkCode === null);
-      if (
-        waitsForPrefilledCode ||
-        (!linkCode && !opensLecture && !knownLinkedAccount && !allowMaxAuthWithoutCode)
-      ) {
+      if (waitsForPrefilledCode) {
         setMaxLinkRequired(true);
         setLoading(false);
         return () => window.removeEventListener("auth:expired", expireAuth);
+      }
+
+      if (!linkCode && !opensLecture && !knownLinkedAccount && !allowMaxAuthWithoutCode) {
+        loginWithMax(initData, undefined, startParam ?? undefined, true)
+          .then(({ user: maxUser }) => {
+            if (!active) return;
+            setUserState(maxUser);
+            setMaxLinkRequired(false);
+            localStorage.setItem("la_max_account_linked", "true");
+          })
+          .catch((error: unknown) => {
+            if (!active) return;
+            if (error instanceof ApiError && error.status === 404) {
+              setMaxLinkRequired(true);
+            } else {
+              setMaxAuthError(maxAuthErrorMessage(error, false));
+            }
+          })
+          .finally(() => {
+            if (active) setLoading(false);
+          });
+        return () => {
+          active = false;
+          window.removeEventListener("auth:expired", expireAuth);
+        };
       }
 
       setMaxLinkRequired(false);

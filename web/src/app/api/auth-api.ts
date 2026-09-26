@@ -67,10 +67,11 @@ export async function refreshAuth(): Promise<AuthResponse | null> {
 export function loginWithMax(
   initData: string,
   linkCode?: string,
-  startParam?: string
+  startParam?: string,
+  existingOnly = false
 ): Promise<MaxLoginResult> {
   if (maxLoginInFlight) return maxLoginInFlight;
-  maxLoginInFlight = performMaxLogin(initData, linkCode, startParam).finally(() => {
+  maxLoginInFlight = performMaxLogin(initData, linkCode, startParam, existingOnly).finally(() => {
     maxLoginInFlight = null;
   });
   return maxLoginInFlight;
@@ -79,13 +80,15 @@ export function loginWithMax(
 async function performMaxLogin(
   initData: string,
   linkCode?: string,
-  startParam?: string
+  startParam?: string,
+  existingOnly = false
 ): Promise<MaxLoginResult> {
   clearStoredAuth();
   try {
     const request: MaxAuthRequest = { initData };
     if (linkCode) request.linkCode = linkCode;
     if (startParam) request.startParam = startParam;
+    if (existingOnly) request.existingOnly = true;
     const res = await apiFetch("/auth/max", {
       method: "POST",
       body: JSON.stringify(request),

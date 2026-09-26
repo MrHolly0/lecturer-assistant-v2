@@ -54,7 +54,8 @@ public class AuthController {
 
     @PostMapping("/max")
     public ResponseEntity<MaxAuthResponse> loginWithMax(@Valid @RequestBody MaxAuthRequest request) {
-        AuthTokens tokens = authService.loginWithMax(request.initData(), request.linkCode(), request.startParam());
+        AuthTokens tokens = authService.loginWithMax(
+                request.initData(), request.linkCode(), request.startParam(), request.existingOnly());
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshCookie(tokens.refreshToken()).toString())
                 .body(tokens.toMaxResponse());

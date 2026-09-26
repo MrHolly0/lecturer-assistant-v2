@@ -12,4 +12,5 @@ import jakarta.validation.constraints.Size;
 public record MaxAuthRequest(
         @NotBlank @Size(max = 8192) String initData,
         @Size(max = 32) String linkCode,
-        @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9_-]+") String startParam) {}
+        @Size(max = 64) @Pattern(regexp = "[A-Za-z0-9_-]+") String startParam,
+        boolean existingOnly) {}
