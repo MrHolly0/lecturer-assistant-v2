@@ -1,0 +1,430 @@
+# Справочный снимок паспорта данных от 25.09.2026. Не использовать как
+# DATA-API.yaml: проверочный API-файл находится в корне репозитория.
+# Технические ревизии и пробелы ниже отражают состояние на дату снимка.
+schema_version: draft-0.1-unconfirmed
+document_status: requires_organizer_confirmation
+prepared_at: "2026-09-25"
+source_revision: "dc4a5ef"
+
+confirmation_required:
+  - "Подтвердить официальную схему, версию и регистр имён полей DATA-API.yaml."
+  - "Уточнить, нужен ли DATA-API как паспорт данных, машиночитаемый контракт выгрузки или дополнение к OpenAPI."
+  - "Уточнить обязательные значения для владельца данных, правового основания, срока хранения и контакта команды."
+  - "Подставить URL репозитория и публичный URL OpenAPI после их утверждения владельцем."
+  - "Подтвердить перед отправкой финальный адрес стенда и перечень тестовых логинов; пароли в файл не включать."
+
+project:
+  name: lecturer-assistant-v2
+  product_name: Lecturer Assistant
+  description: >-
+    Веб-приложение и мини-приложение MAX для проведения лекции с синхронным
+    показом слайда, сигналами понимания, вопросами студентов и быстрыми опросами.
+  repository_url: null
+  deployment_url: https://lecturer-assistant.ru.tuna.am
+  owner: null
+  contact: null
+
+api:
+  specification:
+    format: OpenAPI
+    version: "3.0.3"
+    file: openapi/lecturer-assistant-v2.yaml
+    declared_api_version: "0.1.0"
+    relative_server: /api/v1
+  protocols:
+    - HTTP_JSON
+    - SERVER_SENT_EVENTS
+    - WEBSOCKET
+  authentication:
+    - method: bearer_jwt_hs256
+      scope: authenticated_application_api
+      access_token_ttl_minutes_default: 15
+    - method: http_only_refresh_cookie
+      scope: token_refresh
+      refresh_token_ttl_days_default: 30
+      stored_server_side_as_hash: true
+    - method: max_init_data_hmac_sha256
+      scope: POST_/api/v1/auth/max
+      max_age_default: PT1H
+      source: signed_MAX_Web_App_initData
+    - method: x_internal_api_key
+      scope: /internal/v1/channels/*
+  known_contract_gaps:
+    - "WebSocket /ws/session/{sessionId} не описан отдельным AsyncAPI-контрактом."
+
+data_sources:
+  - id: account_input
+    type: user_input
+    description: "Имя, email и пароль при локальной регистрации или входе по приглашению."
+  - id: max_init_data
+    type: external_platform
+    provider: MAX
+    description: "Подписанные параметры запуска мини-приложения MAX."
+  - id: max_bot_updates
+    type: external_platform
+    provider: MAX_Bot_API
+    description: >-
+      События bot_started и message_created, принимаемые отдельным адаптером через
+      long polling или webhook; необработанные события в БД приложения не сохраняются.
+  - id: presentation_upload
+    type: user_file
+    accepted_formats:
+      - PDF
+      - PPT
+      - PPTX
+      - ODP
+    max_size_bytes_default: 104857600
+  - id: live_interaction
+    type: user_input
+    description: "Сигналы понимания, вопросы и ответы на опросы во время сессии."
+  - id: external_dataset
+    type: none
+    description: "Внешние датасеты и обучающие выборки не используются."
+
+data_categories:
+  - id: user_account
+    purpose: "Аутентификация, авторизация и отображение участника."
+    storage: postgres
+    tables:
+      - iam.persons
+      - iam.refresh_tokens
+    fields:
+      - name: id
+        type: uuid
+      - name: display_name
+        type: string
+        personal_data: true
+      - name: email
+        type: string
+        personal_data: true
+      - name: password_hash
+        type: bcrypt_hash
+        secret_derived_data: true
+      - name: role
+        type: enum
+        values:
+          - ADMIN
+          - LECTURER
+          - ASSISTANT
+          - STUDENT
+      - name: status
+        type: enum
+        values:
+          - ACTIVE
+          - DISABLED
+          - EPHEMERAL
+      - name: refresh_token_hash
+        type: sha256_hash
+        secret_derived_data: true
+      - name: created_at
+        type: timestamp
+
+  - id: max_identity
+    purpose: "Повторный вход одного пользователя MAX без отдельного пароля."
+    source: max_init_data
+    storage: postgres
+    tables:
+      - iam.channel_identities
+      - iam.persons
+    received_fields:
+      - name: user.id
+        type: integer
+        personal_data: true
+      - name: user.first_name
+        type: string
+        personal_data: true
+      - name: user.last_name
+        type: string
+        personal_data: true
+      - name: user.username
+        type: string
+        personal_data: true
+      - name: auth_date
+        type: unix_timestamp
+      - name: start_param
+        type: string
+      - name: hash
+        type: hmac_signature
+    persisted_fields:
+      - name: channel_type
+        value: max
+      - name: external_id
+        source: user.id
+        personal_data: true
+      - name: display_hint
+        source: user.username
+        personal_data: true
+      - name: display_name
+        source: user.first_name_and_last_name_or_username
+        personal_data: true
+      - name: generated_email
+        format: "max-<user.id>@max.local"
+        personal_data: true
+    not_persisted_as_raw_value:
+      - initData
+      - hash
+
+  - id: organization_and_course
+    purpose: "Разделение курсов и прав доступа."
+    storage: postgres
+    tables:
+      - org.courses
+      - org.course_members
+      - org.study_groups
+      - org.group_members
+      - iam.invitations
+      - iam.course_bans
+    fields:
+      - course_id
+      - course_title
+      - owner_person_id
+      - membership_role
+      - group_name
+      - invitation_code
+      - invitation_expiration
+      - ban_reason
+      - archive_status
+
+  - id: educational_content
+    purpose: "Подготовка и показ лекционных материалов."
+    storage:
+      metadata: postgres
+      files: docker_volume_blob-data
+    tables:
+      - content.import_jobs
+      - content.slide_decks
+      - content.slides
+      - content.slide_notes
+      - content.attachments
+      - live.lectures
+    fields:
+      - source_filename
+      - source_content_type
+      - source_size_bytes
+      - source_file_ref
+      - slide_image_ref
+      - slide_text_extract
+      - slide_note_text
+      - attachment_filename
+      - lecture_title
+      - archive_status
+    processing:
+      - "LibreOffice преобразует PPT, PPTX и ODP в PDF."
+      - "Poppler преобразует страницы PDF в PNG и извлекает текст."
+      - "Внешние сервисы обработки учебных материалов не используются."
+
+  - id: live_session
+    purpose: "Синхронизация текущего состояния лекции."
+    storage: postgres
+    tables:
+      - live.sessions
+      - live.session_participants
+      - live.slide_log
+      - live.web_participant_tokens
+    fields:
+      - session_id
+      - lecture_id
+      - deck_id
+      - status
+      - join_code
+      - current_slide_idx
+      - annotations
+      - settings
+      - participant_person_id
+      - participant_display_name
+      - channel_type
+      - joined_at
+      - participant_token_hash
+      - started_at
+      - ended_at
+    derived_metrics:
+      - name: total_duration_seconds
+        source: started_at_and_ended_at
+      - name: paused_duration_seconds
+        source: session.paused_and_session.resumed_events
+      - name: active_duration_seconds
+        source: total_duration_minus_paused_duration
+    implementation_note: >-
+      deck_id фиксирует версию презентации для уже начатой сессии. Поэтому изменение
+      порядка или удаление слайдов в материале не меняет snapshot этой сессии.
+
+  - id: feedback_and_questions
+    purpose: "Обратная связь преподавателю во время лекции."
+    storage: postgres
+    tables:
+      - feedback.comprehension_signals
+      - qa.questions
+    fields:
+      - signal_value
+      - signal_channel_type
+      - slide_idx
+      - question_text
+      - question_display_name
+      - question_status
+      - answer_text
+      - created_at
+    implementation_note: >-
+      Сигнал хранится как последнее значение пользователя для конкретного слайда;
+      смена слайда сбрасывает текущий агрегат, история остаётся доступна по slide_idx.
+      Ответ и закрытие вопроса предусмотрены схемой БД, но не доступны в текущем
+      интерфейсе преподавателя.
+
+  - id: polls_and_activities
+    purpose: "Короткая проверка понимания и банк вопросов."
+    storage: postgres
+    tables:
+      - interaction.quick_polls
+      - interaction.poll_responses
+      - interaction.question_bank
+      - interaction.activity_definitions
+      - interaction.activity_runs
+      - interaction.activity_responses
+    fields:
+      - question_text
+      - answer_options
+      - correct_option_idx
+      - selected_option_idx
+      - source_question_id
+      - activity_answer
+      - tags
+      - created_at
+      - answered_at
+
+  - id: technical_events_and_delivery
+    purpose: "Технический аудит событий и доставка сообщений через канальные адаптеры."
+    storage: postgres
+    tables:
+      - analytics.events
+      - analytics.outbox
+      - channel.outbox
+      - channel.delivery_reports
+      - channel.dialog_states
+      - channel.thread_refs
+    fields:
+      - aggregate_type
+      - aggregate_id
+      - verb
+      - actor_person_id
+      - context
+      - payload
+      - delivery_status
+      - adapter_message_id
+      - last_error
+      - occurred_at
+    pilot_metrics_export:
+      file: docs/hackathon/research/metrics.sql
+      contains_personal_data: false
+      verification: "MetricsSqlIntegrationTest прошёл 25.09.2026."
+
+storage:
+  database:
+    product: PostgreSQL
+    major_version: 16
+    docker_volume: postgres-data
+  file_store:
+    type: local_filesystem_in_docker_volume
+    docker_volume: blob-data
+    container_path: /data/blobs
+  client_storage:
+    access_token: sessionStorage
+    refresh_token: HttpOnly_cookie
+    anonymous_participant_token: sessionStorage
+  backups:
+    configured_in_repository: true
+    mechanism: daily_pg_dump
+    retention_days_default: 14
+    location: deploy/stand/backups
+    database_restore_tested_at: "2026-09-25"
+    blob_volume_backup_status: local_archive_verified
+    off_host_copy: false_by_owner_decision
+  encryption_at_rest:
+    configured_in_repository: false
+  retention_policy:
+    status: not_defined
+    note: >-
+      В коде есть архивирование и ручное безвозвратное удаление курсов, лекций и
+      презентаций. Автоматические сроки хранения и очистка персональных данных не реализованы.
+
+external_transfers:
+  - provider: MAX
+    direction: inbound
+    data: "Подписанный initData мини-приложения."
+    status: implemented
+  - provider: MAX_Bot_API
+    direction: bidirectional
+    public_name: t428_hakaton_max_bot
+    public_url: https://max.ru/t428_hakaton_max_bot
+    data: "События бота, идентификатор пользователя, текст команды и исходящие сообщения с кнопками."
+    status: implemented_in_compose_partially_verified_live
+    note: >-
+      adapters/max входит в compose, поддерживает long polling и webhook, /start,
+      bot_started, open_app и доставку из channel.outbox. Владелец проверил вход
+      преподавателя через одноразовый код в живом MAX. Полный студенческий сценарий
+      должен быть подтверждён отдельным двухустройственным протоколом; core пока
+      не создаёт итоговые сообщения в outbox.
+  - provider: MAX_CDN
+    direction: outbound_request_from_client
+    data: "Загрузка JavaScript Bridge без прикладных данных проекта в URL."
+    status: implemented
+  - provider: Telegram_Bot_API
+    direction: bidirectional
+    data: "Команды, сообщения и идентификатор чата."
+    status: adapter_in_compose_requires_token
+  - provider: Tuna
+    direction: network_proxy
+    data: "HTTPS-трафик постоянного демонстрационного стенда к локальному Caddy."
+    status: active_at_https://lecturer-assistant.ru.tuna.am
+
+security_controls:
+  implemented:
+    - "Пароли хешируются BCrypt."
+    - "Access token подписывается HMAC-SHA256 и имеет срок действия."
+    - "Refresh token и токен анонимного участника сохраняются в БД только как хеши."
+    - "MAX initData проверяется по HMAC-SHA256; auth_date ограничен по возрасту."
+    - "Webhook MAX проверяет секретный заголовок и скрытый путь, вычисленный из хеша токена."
+    - "URL изображений слайдов подписываются и имеют срок действия."
+    - "Роли и права курсов проверяются в прикладных сервисах."
+    - "HTTP CORS и WebSocket origins ограничиваются APP_CORS_ALLOWED_ORIGINS."
+    - "Для входа через MAX и отправки сигналов действует настраиваемое ограничение частоты запросов."
+  known_gaps:
+    - "Небезопасные dev-дефолты разрешены базовым compose."
+    - "Ограничитель частоты работает в памяти одного процесса и не является общим для нескольких экземпляров core."
+    - "Политика сроков хранения персональных данных и шифрование данных на диске не утверждены."
+
+test_data:
+  repository_seed_available: true
+  seed_command: docker compose run --rm seed
+  seed_presentation: deploy/seed/test-lecture.pptx
+  deployment_accounts_available: owner_confirmation_required_before_submission
+  required_accounts:
+    - role: ADMIN
+      login: admin@lecturer-assistant.test
+      password_delivery: closed_channel_only
+    - role: LECTURER
+      login: lecturer@lecturer-assistant.test
+      password_delivery: closed_channel_only
+    - role: ASSISTANT
+      login: assistant@lecturer-assistant.test
+      password_delivery: closed_channel_only
+    - role: STUDENT
+      login: null
+      note: "Для целевого сценария предполагается вход через тестовый аккаунт MAX."
+      password_delivery: not_applicable_for_MAX_login
+  seeded_dataset:
+    - "Курс [ТЕСТ] Цифровые образовательные решения."
+    - "Тестовая презентация deploy/seed/test-lecture.pptx без персональных данных."
+    - "Лекция [ТЕСТ] Лекция 1. Обратная связь на лекции."
+    - "Два вопроса в банке."
+  prohibited_content:
+    - secrets
+    - bot_tokens
+    - passwords
+    - real_student_personal_data
+
+limitations:
+  - "Официальная схема DATA-API.yaml не получена; этот файл нельзя считать финальным контрактом."
+  - "Вход преподавателя через код в живом MAX проверен владельцем; web-MAX дошёл только до экрана входа, а проверки через web API и mock API не заменяют отдельный протокол полного студенческого сценария."
+  - "Tuna-стенд обновлён на backend 0b8813b и web dc4a5ef: core и web healthy, /health отвечает 200, авторизованный browser-smoke новых функций пройден; это не заменяет полный студенческий MAX-протокол."
+  - "Восстановление PostgreSQL и читаемость согласованного архива blob-data проверены 25.09.2026; по решению владельца резервная пара хранится только на текущем хосте."
+  - "Финальные публичные URL и наличие seed-учёток на сдаваемом стенде подтверждает владелец перед отправкой."
+  - "Правовое основание, сроки хранения и ответственный за обработку данных должны быть определены владельцем."
