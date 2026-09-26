@@ -2526,8 +2526,10 @@ textarea {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  display: flex;
+  container-type: inline-size;
+  display: grid;
   gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: 72px;
   padding: 6px 10px 6px 6px;
   transition:
@@ -2548,14 +2550,17 @@ textarea {
   display: flex;
   flex: 1;
   gap: 10px;
+  min-width: 0;
   padding: 10px;
   text-decoration: none;
 }
 
 .course-card__actions {
+  align-items: center;
   display: flex;
-  flex-shrink: 0;
   gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .course-quick-start {
@@ -2579,11 +2584,37 @@ textarea {
 }
 
 .course-quick-start__title {
+  align-items: baseline;
+  display: flex;
   font-size: 0.82rem;
-  max-width: 180px;
-  overflow: hidden;
+  gap: 5px;
+  max-width: 220px;
+  min-width: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.course-quick-start__label {
+  color: var(--muted-foreground);
+  flex: none;
+}
+
+.course-quick-start__lecture-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@container (max-width: 1040px) {
+  .course-card__main,
+  .course-card__actions {
+    grid-column: 1 / -1;
+  }
+
+  .course-card__actions {
+    justify-content: space-between;
+    padding: 0 10px 8px;
+  }
 }
 
 .start-session-dialog {
@@ -2729,7 +2760,6 @@ textarea {
 @media (max-width: 700px) {
   .course-card {
     align-items: stretch;
-    flex-wrap: wrap;
   }
 
   .course-card__main,
@@ -2739,6 +2769,7 @@ textarea {
 
   .course-card__actions {
     display: grid;
+    justify-content: stretch;
   }
 
   .course-quick-start {

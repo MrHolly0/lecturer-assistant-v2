@@ -67,8 +67,9 @@ export function CourseQuickStart({ courseId, blocked }: { courseId: string; bloc
         <span className="course-quick-start__state">Нет готовых лекций</span>
       )}
       {lectures.length === 1 && (
-        <span className="course-quick-start__title" title={lectures[0].title}>
-          {lectures[0].title}
+        <span className="course-quick-start__title" title={`Лекция: ${lectures[0].title}`}>
+          <span className="course-quick-start__label">Лекция</span>
+          <span className="course-quick-start__lecture-name">{lectures[0].title}</span>
         </span>
       )}
       {lectures.length > 1 && (
