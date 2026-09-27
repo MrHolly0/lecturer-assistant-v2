@@ -239,10 +239,28 @@ export interface paths {
     put?: never;
     /**
      * Create a one-time code to link the caller's MAX account to their own person.
-     * @description Requires a browser JWT of a LECTURER. The code is 6 characters from A-Z0-9, valid for 5 minutes, single-use. Pass it as linkCode in the next POST /auth/max from the same person's MAX account to attach that MAX account to this person instead of creating a new student (B-03).
+     * @description Requires a browser JWT of a LECTURER. The code is 6 characters from A-Z0-9, valid for 5 minutes, single-use. Pass it as linkCode in POST /auth/max to attach this MAX account to the code owner's account. If MAX was linked to another account, the link moves.
      */
     post: operations["createMaxLinkCode"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/identity/max": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check whether the current staff account is linked to MAX. */
+    get: operations["getMaxIdentityStatus"];
+    put?: never;
+    post?: never;
+    /** Disconnect MAX from the current staff account. */
+    delete: operations["unlinkMaxIdentity"];
     options?: never;
     head?: never;
     patch?: never;
@@ -1682,7 +1700,7 @@ export interface components {
     MaxAuthRequest: {
       /** @description Raw window.WebApp.initData string, never initDataUnsafe. */
       initData: string;
-      /** @description Optional one-time code from POST /identity/max/link-codes. Ignored if this MAX account is already linked to a person (repeat logins never need it). */
+      /** @description Optional one-time code from POST /identity/max/link-codes. When supplied, it moves an existing MAX binding to the code owner's account. Repeat logins need no code. */
       linkCode?: string;
       /** @description Optional MAX start_param used only to attribute the miniapp.opened pilot event. */
       startParam?: string;
@@ -2959,6 +2977,53 @@ export interface operations {
         };
       };
       /** @description Caller is not a lecturer. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getMaxIdentityStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description MAX connection status. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            connected: boolean;
+          };
+        };
+      };
+    };
+  };
+  unlinkMaxIdentity: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description MAX disconnected. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description A student account cannot be disconnected without another login method. */
       403: {
         headers: {
           [name: string]: unknown;

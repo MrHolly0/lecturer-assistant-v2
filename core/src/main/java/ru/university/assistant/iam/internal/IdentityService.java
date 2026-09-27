@@ -47,6 +47,18 @@ public class IdentityService implements ChannelIdentityApi {
     }
 
     @Transactional
+    public void unlinkMax(AuthenticatedUser user) {
+        if (user.role() == PersonRole.STUDENT) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only staff can unlink a MAX account");
+        }
+        identities.deleteForPerson(user.id(), "max");
+    }
+
+    public boolean isMaxLinked(AuthenticatedUser user) {
+        return identities.existsForPerson(user.id(), "max");
+    }
+
+    @Transactional
     public ChannelIdentityResponse link(LinkIdentityRequest request) {
         String channelType = request.channelType().toLowerCase();
         if (!channelType.equals("telegram")

@@ -28,7 +28,9 @@ async function performRefresh(): Promise<RefreshedAuth | null> {
 
     setStoredAuth({ accessToken: data.accessToken });
     window.dispatchEvent(
-      new CustomEvent("auth:refreshed", { detail: { accessToken: data.accessToken } })
+      new CustomEvent("auth:refreshed", {
+        detail: { accessToken: data.accessToken, user: data.user }
+      })
     );
     return data;
   } catch {

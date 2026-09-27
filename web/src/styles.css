@@ -5420,25 +5420,53 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .teacher-remote-tabs__list {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  background: transparent;
+  border-radius: 0;
+  display: flex;
+  gap: 8px;
   height: auto;
+  justify-content: flex-start;
+  margin-inline: -14px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: 2px 14px 8px;
+  scroll-padding-inline: 14px;
+  scrollbar-width: none;
+  touch-action: pan-x;
   width: 100%;
 }
 
+.teacher-remote-tabs__list::-webkit-scrollbar {
+  display: none;
+}
+
 .teacher-remote-tabs__list [role="tab"] {
-  gap: 5px;
-  line-height: 1.15;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  flex: 0 0 auto;
+  font-weight: var(--font-weight-medium);
+  gap: 6px;
+  line-height: 1;
   min-height: 44px;
-  min-width: 0;
-  overflow: hidden;
-  padding-inline: 6px;
-  text-overflow: ellipsis;
-  white-space: normal;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.teacher-remote-tabs__list [role="tab"][data-state="active"] {
+  background: var(--foreground);
+  border-color: var(--foreground);
+  color: var(--background);
 }
 
 .teacher-remote-tabs__list .tab-badge {
   min-width: 20px;
+}
+
+.teacher-remote-end {
+  align-self: center;
+  min-height: 40px;
+  width: fit-content;
 }
 
 .teacher-remote-section,
@@ -5636,7 +5664,8 @@ html[data-max-mini-app="true"] .student-session-shell {
   }
 
   .teacher-remote-tabs__list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-inline: -10px;
+    padding-inline: 10px;
   }
 
   .teacher-question-sheet__actions,

@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Clock3, Pause, Play, Radio, RefreshCw } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  LogOut,
+  MoreHorizontal,
+  Pause,
+  Play,
+  Radio,
+  RefreshCw,
+  Square
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
@@ -20,6 +31,24 @@ import {
 import { formatSessionTime, useSessionTimers } from "../app/live/useSessionTimers";
 import { getStudentEngagement } from "../app/api/student-api";
 import { Button, LinkButton } from "../shared/ui/button";
+import { useAuth } from "../app/AuthContext";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "../shared/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "../shared/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { PollPanel } from "../widgets/PollPanel";
 import { SessionGroups } from "../widgets/SessionGroups";
@@ -39,6 +68,7 @@ export function TeacherRemotePage({
   sessionId: string;
 }) {
   const navigate = useNavigate();
+  const { signOut } = useAuth();
   const queryClient = useQueryClient();
   const slideInFlightRef = useRef(false);
   const [sessionOverride, setSessionOverride] = useState<LiveSession | null>(null);
@@ -74,6 +104,12 @@ export function TeacherRemotePage({
   useEffect(() => {
     if (sessionQuery.data) setSessionOverride(sessionQuery.data);
   }, [sessionQuery.data]);
+
+  useEffect(() => {
+    if (session?.status !== "ENDED" && session?.status !== "ARCHIVED") return;
+    queryClient.setQueryData(["active-session"], null);
+    void queryClient.invalidateQueries({ queryKey: ["active-session"] });
+  }, [queryClient, session?.status]);
 
   useEffect(() => {
     if (!session?.id) return;
@@ -149,11 +185,21 @@ export function TeacherRemotePage({
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось отменить занятие."))
   });
+  const endMutation = useMutation({
+    mutationFn: () => endLiveSession(courseId, sessionId),
+    onSuccess: () => {
+      queryClient.setQueryData(["active-session"], null);
+      void queryClient.invalidateQueries({ queryKey: ["active-session"] });
+      navigate(`/courses/${courseId}`, { replace: true });
+      toast.success("Лекция завершена. Итоги доступны в курсе.");
+    },
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось завершить лекцию."))
+  });
 
   if (sessionQuery.isLoading) {
     return <RemoteState title="Подключаем пульт…" />;
   }
-  if (sessionQuery.isError || !session) {
+  if (!session) {
     return (
       <RemoteState title="Не удалось открыть пульт" description="Проверьте связь и повторите.">
         <Button type="button" variant="outline" onClick={() => sessionQuery.refetch()}>
@@ -178,6 +224,12 @@ export function TeacherRemotePage({
   if (session.status === "ENDED" || session.status === "ARCHIVED") {
     return (
       <RemoteState title="Лекция завершена" description="Итог уже доступен в кабинете.">
+        <LinkButton to={`/courses/${courseId}`} variant="outline">
+          К курсу
+        </LinkButton>
+        <LinkButton to="/courses" variant="ghost">
+          Все курсы
+        </LinkButton>
         <LinkButton to={`/courses/${courseId}/sessions/${sessionId}/summary`}>
           Открыть итог
         </LinkButton>
@@ -205,6 +257,26 @@ export function TeacherRemotePage({
         <div className="teacher-remote-header__actions">
           <TeacherRemoteConnection state={connection} />
           <ThemeToggle compact />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="icon" variant="ghost" aria-label="Меню пульта">
+                <MoreHorizontal size={22} aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => navigate("/courses")}>К курсам</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate("/settings/max")}>
+                MAX и вход
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  void signOut().then(() => navigate("/login", { replace: true }));
+                }}
+              >
+                <LogOut size={16} aria-hidden="true" /> Выйти из аккаунта
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -253,6 +325,33 @@ export function TeacherRemotePage({
           Далее <ChevronRight size={25} aria-hidden="true" />
         </Button>
       </div>
+
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className="teacher-remote-end"
+            disabled={endMutation.isPending}
+          >
+            <Square size={15} aria-hidden="true" /> Завершить лекцию
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Завершить лекцию?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Показ на проекторе и у студентов закончится. Данные останутся в итогах лекции.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Продолжить показ</AlertDialogCancel>
+            <AlertDialogAction onClick={() => endMutation.mutate()}>
+              Завершить лекцию
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Tabs defaultValue="control" className="teacher-remote-tabs">
         <TabsList className="teacher-remote-tabs__list">

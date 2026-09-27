@@ -288,8 +288,8 @@ paths:
       summary: Create a one-time code to link the caller's MAX account to their own person.
       description: >
         Requires a browser JWT of a LECTURER. The code is 6 characters from A-Z0-9, valid for 5 minutes,
-        single-use. Pass it as linkCode in the next POST /auth/max from the same person's MAX account
-        to attach that MAX account to this person instead of creating a new student (B-03).
+        single-use. Pass it as linkCode in POST /auth/max to attach this MAX account to the
+        code owner's account. If MAX was linked to another account, the link moves.
       tags: [identity]
       responses:
         "201":
@@ -300,6 +300,31 @@ paths:
                 $ref: "#/components/schemas/IdentityLinkCode"
         "403":
           description: Caller is not a lecturer.
+  /identity/max:
+    get:
+      operationId: getMaxIdentityStatus
+      summary: Check whether the current staff account is linked to MAX.
+      tags: [identity]
+      responses:
+        "200":
+          description: MAX connection status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connected]
+                properties:
+                  connected:
+                    type: boolean
+    delete:
+      operationId: unlinkMaxIdentity
+      summary: Disconnect MAX from the current staff account.
+      tags: [identity]
+      responses:
+        "204":
+          description: MAX disconnected.
+        "403":
+          description: A student account cannot be disconnected without another login method.
   /identity/link-codes:
     post:
       operationId: createIdentityLinkCode
@@ -2327,8 +2352,8 @@ components:
           type: string
           maxLength: 32
           description: >
-            Optional one-time code from POST /identity/max/link-codes. Ignored if this MAX account is
-            already linked to a person (repeat logins never need it).
+            Optional one-time code from POST /identity/max/link-codes. When supplied, it moves
+            an existing MAX binding to the code owner's account. Repeat logins need no code.
         startParam:
           type: string
           maxLength: 64

@@ -9,12 +9,21 @@ export interface ApiRequestInit extends RequestInit {
   skipAuthRefresh?: boolean;
 }
 
+let lastForbiddenRefreshAt = 0;
+
 export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise<Response> {
   const { skipAuthorization = false, skipAuthRefresh = false, ...requestInit } = init;
   const accessToken = skipAuthorization ? null : getStoredAuth()?.accessToken ?? null;
   let response = await sendRequest(path, requestInit, accessToken);
 
-  if (response.status === 401 && !skipAuthRefresh && accessToken) {
+  const refreshForbidden = Boolean(
+    response.status === 403 &&
+      !skipAuthRefresh &&
+      accessToken &&
+      Date.now() - lastForbiddenRefreshAt > 60_000
+  );
+  if (refreshForbidden) lastForbiddenRefreshAt = Date.now();
+  if ((response.status === 401 || refreshForbidden) && !skipAuthRefresh && accessToken) {
     const currentToken = getStoredAuth()?.accessToken ?? null;
     const refreshed =
       currentToken && currentToken !== accessToken ? true : await refreshAuthSession();

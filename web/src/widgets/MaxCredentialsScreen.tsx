@@ -12,12 +12,14 @@ interface MaxCredentialsScreenProps {
     invitationCode: string
   ) => Promise<void>;
   onStudent: () => void;
+  onCode: () => void;
 }
 
 export function MaxCredentialsScreen({
   onLogin,
   onRegister,
-  onStudent
+  onStudent,
+  onCode
 }: MaxCredentialsScreenProps) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
@@ -55,7 +57,7 @@ export function MaxCredentialsScreen({
           </h1>
           <p className="auth-hint">
             {mode === "login"
-              ? "Если входите впервые, укажите логин и пароль. MAX подключится к вашему аккаунту автоматически."
+              ? "Войдите по паролю. MAX будет привязан к этому аккаунту вместо прежнего."
               : "Введите приглашение администратора и задайте пароль. MAX подключится сразу после регистрации."}
           </p>
         </header>
@@ -132,6 +134,9 @@ export function MaxCredentialsScreen({
           <Button variant="ghost" type="button" disabled={pending} onClick={onStudent}>
             Я студент — войти через MAX
           </Button>
+          <Button variant="ghost" type="button" disabled={pending} onClick={onCode}>
+            Войти по коду
+          </Button>
         </div>
       </section>
     </main>
@@ -145,6 +150,9 @@ function credentialsErrorMessage(error: unknown, mode: "login" | "register") {
       return "Приглашение недействительно или истекло. Попросите администратора создать новое.";
     }
     if (mode === "register" && error.status === 409) return "Этот email уже зарегистрирован.";
+    if (mode === "login" && error.status === 409) {
+      return "Этот аккаунт уже связан с другим MAX. Отвяжите его в кабинете преподавателя.";
+    }
     if (error.status === 403) return "Учётная запись отключена администратором.";
     if (error.status === 503) return "Вход через MAX временно недоступен.";
   }

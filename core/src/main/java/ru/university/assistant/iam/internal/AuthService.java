@@ -118,10 +118,8 @@ public class AuthService implements EphemeralPersonApi {
 
     /**
      * Вход по initData мини-приложения MAX. Личность определяется только подписанным user.id:
-     * повторный вход находит того же человека и берёт его роль, код привязки не нужен.
-     * Первый вход без валидного linkCode создаёт нового студента; с валидным (B-03) —
-     * связывает MAX-аккаунт с уже существующей личностью (например, преподавателем),
-     * не создавая никого нового и не меняя её роль.
+     * повторный вход находит того же человека и берёт его роль. Явно предъявленный
+     * одноразовый код переносит привязку на выбранный профиль после проверки кода.
      */
     @Transactional
     public AuthTokens loginWithMax(String initData, String linkCode, String startParam, boolean existingOnly) {
@@ -139,12 +137,12 @@ public class AuthService implements EphemeralPersonApi {
         Optional<PersonRecord> existingPerson = identities
                 .findByExternalId(MAX_CHANNEL, externalId)
                 .flatMap(identity -> persons.findById(identity.personId()));
-        if (existingOnly && existingPerson.isEmpty()) {
+        if (existingOnly && existingPerson.isEmpty() && (linkCode == null || linkCode.isBlank())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "MAX account is not linked");
         }
-        PersonRecord person = existingPerson.orElseGet(() -> linkCode != null && !linkCode.isBlank()
-                        ? linkMaxAccountByCode(linkCode, data, externalId)
-                        : createMaxStudent(data, externalId));
+        PersonRecord person = linkCode != null && !linkCode.isBlank()
+                ? linkMaxAccountByCode(linkCode, data, externalId, existingPerson)
+                : existingPerson.orElseGet(() -> createMaxStudent(data, externalId));
         String normalizedStartParam = startParam == null ? "" : startParam.trim().toUpperCase();
         Map<String, Object> context = normalizedStartParam.isEmpty()
                 ? Map.of()
@@ -159,7 +157,8 @@ public class AuthService implements EphemeralPersonApi {
         return issueTokens(person);
     }
 
-    private PersonRecord linkMaxAccountByCode(String linkCode, MaxInitData data, String externalId) {
+    private PersonRecord linkMaxAccountByCode(
+            String linkCode, MaxInitData data, String externalId, Optional<PersonRecord> existingPerson) {
         String code = linkCode.trim().toUpperCase();
         UUID personId = identities.tryConsumeMaxLinkCode(code).orElseThrow(() -> {
             boolean alreadyUsed = identities.findMaxLinkCodeUsedAt(code).isPresent();
@@ -170,7 +169,18 @@ public class AuthService implements EphemeralPersonApi {
         PersonRecord person = persons
                 .findById(personId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid link code"));
-        identities.createIdentity(UuidV7.generate(), personId, MAX_CHANNEL, externalId, data.username());
+        ensureActive(person);
+        if (existingPerson.isEmpty() || !existingPerson.get().id().equals(personId)) {
+            identities.lockPersonChannel(personId, MAX_CHANNEL);
+            if (identities.existsForPerson(personId, MAX_CHANNEL)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Target account already linked to MAX");
+            }
+            if (existingPerson.isPresent()) {
+                identities.moveMaxIdentity(externalId, personId, data.username());
+            } else {
+                identities.createIdentity(UuidV7.generate(), personId, MAX_CHANNEL, externalId, data.username());
+            }
+        }
         return person;
     }
 

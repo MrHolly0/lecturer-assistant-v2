@@ -14,6 +14,7 @@ export interface MaxLoginResult {
 }
 
 let maxLoginInFlight: Promise<MaxLoginResult> | null = null;
+let maxLoginKey: string | null = null;
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
   const res = await apiFetch("/auth/login", {
@@ -54,9 +55,17 @@ export function loginWithMax(
   startParam?: string,
   existingOnly = false
 ): Promise<MaxLoginResult> {
-  if (maxLoginInFlight) return maxLoginInFlight;
+  const key = JSON.stringify([initData, linkCode, startParam, existingOnly]);
+  if (maxLoginInFlight) {
+    if (maxLoginKey === key) return maxLoginInFlight;
+    return maxLoginInFlight
+      .catch(() => undefined)
+      .then(() => loginWithMax(initData, linkCode, startParam, existingOnly));
+  }
+  maxLoginKey = key;
   maxLoginInFlight = performMaxLogin(initData, linkCode, startParam, existingOnly).finally(() => {
     maxLoginInFlight = null;
+    maxLoginKey = null;
   });
   return maxLoginInFlight;
 }

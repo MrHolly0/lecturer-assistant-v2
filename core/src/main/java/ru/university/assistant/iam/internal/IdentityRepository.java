@@ -95,6 +95,13 @@ class IdentityRepository {
                 .singleRow();
     }
 
+    void lockPersonChannel(UUID personId, String channelType) {
+        jdbc.sql("select pg_advisory_xact_lock(hashtextextended(:key, 0))")
+                .param("key", "person:" + personId + ":" + channelType)
+                .query()
+                .singleRow();
+    }
+
     ChannelIdentityResponse createIdentity(
             UUID id, UUID personId, String channelType, String externalId, String displayHint) {
         return jdbc.sql(
@@ -120,6 +127,25 @@ class IdentityRepository {
                 .param("channelType", channelType)
                 .query(Boolean.class)
                 .single();
+    }
+
+    void moveMaxIdentity(String externalId, UUID personId, String displayHint) {
+        jdbc.sql("""
+                        update iam.channel_identities
+                        set person_id = :personId, display_hint = :displayHint, linked_at = now()
+                        where channel_type = 'max' and external_id = :externalId
+                        """)
+                .param("personId", personId)
+                .param("displayHint", displayHint)
+                .param("externalId", externalId)
+                .update();
+    }
+
+    void deleteForPerson(UUID personId, String channelType) {
+        jdbc.sql("delete from iam.channel_identities where person_id = :personId and channel_type = :channelType")
+                .param("personId", personId)
+                .param("channelType", channelType)
+                .update();
     }
 
     Optional<ChannelIdentityResponse> findByExternalId(String channelType, String externalId) {

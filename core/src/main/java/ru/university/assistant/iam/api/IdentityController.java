@@ -1,6 +1,8 @@
 package ru.university.assistant.iam.api;
 
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,6 +32,19 @@ public class IdentityController {
     public IdentityLinkCodeResponse createMaxLinkCode(@AuthenticationPrincipal AuthenticatedUser user) {
         return identityService.createMaxLinkCode(user);
     }
+
+    @GetMapping("/max")
+    public MaxIdentityStatus maxStatus(@AuthenticationPrincipal AuthenticatedUser user) {
+        return new MaxIdentityStatus(identityService.isMaxLinked(user));
+    }
+
+    @DeleteMapping("/max")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unlinkMax(@AuthenticationPrincipal AuthenticatedUser user) {
+        identityService.unlinkMax(user);
+    }
+
+    public record MaxIdentityStatus(boolean connected) {}
 
     @PostMapping("/link")
     public ChannelIdentityResponse link(@Valid @RequestBody LinkIdentityRequest request) {

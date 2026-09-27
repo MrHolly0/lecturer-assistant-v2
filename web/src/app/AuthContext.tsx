@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { components } from "./api/schema";
 import {
@@ -12,6 +13,7 @@ import {
 } from "./api/auth-api";
 import { createMaxLinkCode } from "./api/max-identity-api";
 import { ApiError } from "./api/http";
+import { refreshAuthSession } from "./api/refresh";
 import { clearStoredAuth, getStoredAuth } from "./auth";
 import { useMaxBridge } from "./max/context";
 import { normalizeLinkCode, readMaxLinkCode } from "./max/deepLink";
@@ -37,6 +39,8 @@ interface AuthContextValue {
   continueMaxAuth: () => void;
   retryMaxAuth: () => void;
   resumeMaxAuth: () => void;
+  chooseMaxLinkCode: () => void;
+  chooseMaxCredentials: () => void;
   setUser: (user: UserProfile | null) => void;
   signOut: () => Promise<void>;
 }
@@ -54,11 +58,14 @@ const AuthContext = createContext<AuthContextValue>({
   continueMaxAuth: () => {},
   retryMaxAuth: () => {},
   resumeMaxAuth: () => {},
+  chooseMaxLinkCode: () => {},
+  chooseMaxCredentials: () => {},
   setUser: () => {},
   signOut: async () => {}
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const { initData, isMax, startParam } = useMaxBridge();
   const [user, setUserState] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,19 +76,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [requestedMaxLinkCode, setRequestedMaxLinkCode] = useState<string | null>(null);
   const [allowMaxAuthWithoutCode, setAllowMaxAuthWithoutCode] = useState(false);
   const [maxAuthAttempt, setMaxAuthAttempt] = useState(0);
+  const [maxAuthChoice, setMaxAuthChoice] = useState<"automatic" | "code" | "credentials">(
+    "automatic"
+  );
 
   useEffect(() => {
     let active = true;
     const expireAuth = () => {
-      setUserState(null);
-      toast.error("Сессия истекла. Войдите снова.", { id: "auth-expired" });
+      if (isMax && initData && !maxSignedOut) {
+        setLoading(true);
+        void loginWithMax(initData, undefined, undefined, true)
+          .then(({ user: restored }) => {
+            if (active) setUserState(restored);
+          })
+          .catch(() => {
+            if (!active) return;
+            setUserState(null);
+            setMaxAuthError("Вход устарел. Откройте мини-приложение снова или войдите по коду.");
+          })
+          .finally(() => {
+            if (active) setLoading(false);
+          });
+      } else {
+        setUserState(null);
+        toast.error("Сессия истекла. Войдите снова.", { id: "auth-expired" });
+      }
+    };
+    const updateAuth = (event: Event) => {
+      const refreshed = (event as CustomEvent<{ user: UserProfile }>).detail;
+      if (!maxSignedOut && refreshed?.user) setUserState(refreshed.user);
     };
     window.addEventListener("auth:expired", expireAuth);
+    window.addEventListener("auth:refreshed", updateAuth);
+    const cleanup = () => {
+      active = false;
+      window.removeEventListener("auth:expired", expireAuth);
+      window.removeEventListener("auth:refreshed", updateAuth);
+    };
 
     if (isMax && maxSignedOut) {
       setLoading(false);
       setMaxAuthError(null);
-      return () => window.removeEventListener("auth:expired", expireAuth);
+      return cleanup;
     }
 
     setLoading(true);
@@ -92,7 +128,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           "MAX не передал данные для входа. Закройте и снова откройте мини-приложение."
         );
         setLoading(false);
-        return () => window.removeEventListener("auth:expired", expireAuth);
+        return cleanup;
+      }
+
+      if (maxAuthChoice === "code" && requestedMaxLinkCode === null) {
+        setMaxLinkRequired(true);
+        setMaxCredentialsRequired(false);
+        setLoading(false);
+        return cleanup;
+      }
+      if (maxAuthChoice === "credentials") {
+        setMaxLinkRequired(false);
+        setMaxCredentialsRequired(true);
+        setLoading(false);
+        return cleanup;
       }
 
       const startLinkCode = readMaxLinkCode(startParam);
@@ -103,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setMaxLinkRequired(true);
         setMaxCredentialsRequired(false);
         setLoading(false);
-        return () => window.removeEventListener("auth:expired", expireAuth);
+        return cleanup;
       }
 
       if (!linkCode && !opensLecture && !allowMaxAuthWithoutCode) {
@@ -125,10 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .finally(() => {
             if (active) setLoading(false);
           });
-        return () => {
-          active = false;
-          window.removeEventListener("auth:expired", expireAuth);
-        };
+        return cleanup;
       }
 
       setMaxLinkRequired(false);
@@ -146,10 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .finally(() => {
           if (active) setLoading(false);
         });
-      return () => {
-        active = false;
-        window.removeEventListener("auth:expired", expireAuth);
-      };
+      return cleanup;
     }
 
     if (!getStoredAuth()) {
@@ -161,10 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .finally(() => {
           if (active) setLoading(false);
         });
-      return () => {
-        active = false;
-        window.removeEventListener("auth:expired", expireAuth);
-      };
+      return cleanup;
     }
     getCurrentUser()
       .then((currentUser) => {
@@ -174,19 +214,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => {
         if (active) setLoading(false);
       });
-    return () => {
-      active = false;
-      window.removeEventListener("auth:expired", expireAuth);
-    };
+    return cleanup;
   }, [
     allowMaxAuthWithoutCode,
     initData,
     isMax,
     maxAuthAttempt,
+    maxAuthChoice,
     maxSignedOut,
     requestedMaxLinkCode,
     startParam
   ]);
+
+  const authenticatedUserId = user?.id;
+  useEffect(() => {
+    if (!authenticatedUserId || maxSignedOut) return;
+    let lastCheck = Date.now();
+    let checking = false;
+    const revalidate = async () => {
+      if (document.visibilityState !== "visible" || checking || Date.now() - lastCheck < 60_000)
+        return;
+      lastCheck = Date.now();
+      checking = true;
+      try {
+        const refreshed = await refreshAuthSession();
+        if (refreshed) {
+          setUserState(refreshed.user);
+          await queryClient.invalidateQueries({ type: "active" });
+        } else if (isMax && initData) {
+          const restored = await loginWithMax(initData, undefined, undefined, true);
+          setUserState(restored.user);
+          await queryClient.invalidateQueries({ type: "active" });
+        }
+      } catch {
+        // The next authenticated request shows the recovery screen if credentials expired.
+      } finally {
+        checking = false;
+      }
+    };
+    document.addEventListener("visibilitychange", revalidate);
+    window.addEventListener("focus", revalidate);
+    const interval = window.setInterval(revalidate, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", revalidate);
+      window.removeEventListener("focus", revalidate);
+      window.clearInterval(interval);
+    };
+  }, [authenticatedUserId, initData, isMax, maxSignedOut, queryClient]);
 
   function retryMaxAuth() {
     setLoading(true);
@@ -201,6 +275,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setLoading(true);
     setMaxSignedOut(false);
+    setMaxAuthChoice("automatic");
+    setRequestedMaxLinkCode(null);
+    setAllowMaxAuthWithoutCode(false);
+  }
+
+  function chooseMaxLinkCode() {
+    try {
+      sessionStorage.removeItem(MAX_SIGNED_OUT_KEY);
+    } catch {
+      // In-memory state still allows another authentication method.
+    }
+    setMaxAuthError(null);
+    setRequestedMaxLinkCode(null);
+    setMaxAuthChoice("code");
+    setMaxLinkRequired(true);
+    setMaxCredentialsRequired(false);
+    setMaxSignedOut(false);
+  }
+
+  function chooseMaxCredentials() {
+    try {
+      sessionStorage.removeItem(MAX_SIGNED_OUT_KEY);
+    } catch {
+      // In-memory state still allows another authentication method.
+    }
+    setMaxAuthError(null);
+    setMaxAuthChoice("credentials");
+    setMaxLinkRequired(false);
+    setMaxCredentialsRequired(true);
+    setMaxSignedOut(false);
   }
 
   function submitMaxLinkCode(code: string) {
@@ -214,6 +318,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMaxAuthError(null);
     setMaxCredentialsRequired(false);
     setLoading(true);
+    setMaxAuthChoice("automatic");
     setRequestedMaxLinkCode("");
     setAllowMaxAuthWithoutCode(true);
     setMaxAuthAttempt((attempt) => attempt + 1);
@@ -234,6 +339,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           "Этот профиль MAX уже привязан к другой учётной записи. Обратитесь к администратору."
         );
       }
+      queryClient.clear();
       setUserState(maxUser);
       setMaxCredentialsRequired(false);
       setMaxAuthError(null);
@@ -271,6 +377,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signOut() {
     await logout();
     clearStoredAuth();
+    queryClient.clear();
     if (isMax) {
       try {
         sessionStorage.setItem(MAX_SIGNED_OUT_KEY, "true");
@@ -279,6 +386,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setMaxSignedOut(true);
       setMaxAuthError(null);
+      setMaxLinkRequired(false);
+      setMaxCredentialsRequired(false);
+      setMaxAuthChoice("automatic");
+      setRequestedMaxLinkCode(null);
+      setAllowMaxAuthWithoutCode(false);
     }
     setUserState(null);
   }
@@ -298,6 +410,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         continueMaxAuth,
         retryMaxAuth,
         resumeMaxAuth,
+        chooseMaxLinkCode,
+        chooseMaxCredentials,
         setUser: setUserState,
         signOut
       }}
@@ -322,7 +436,8 @@ export function useAuth() {
 function maxAuthErrorMessage(error: unknown, linking: boolean): string {
   if (error instanceof ApiError) {
     if (linking && error.status === 400) return "Код неверный или истёк.";
-    if (linking && error.status === 409) return "Код уже использован.";
+    if (linking && error.status === 409)
+      return "Код уже использован или выбранный аккаунт привязан к другому MAX.";
     if (error.status === 401) {
       return "Срок действия входа MAX истёк. Закройте и снова откройте мини-приложение.";
     }

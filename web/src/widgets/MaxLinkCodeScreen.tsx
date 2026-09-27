@@ -9,13 +9,15 @@ interface MaxLinkCodeScreenProps {
   error: string | null;
   onSubmit: (code: string) => void;
   onContinue: () => void;
+  onCredentials: () => void;
 }
 
 export function MaxLinkCodeScreen({
   initialCode,
   error,
   onSubmit,
-  onContinue
+  onContinue,
+  onCredentials
 }: MaxLinkCodeScreenProps) {
   const [code, setCode] = useState(initialCode);
 
@@ -41,7 +43,8 @@ export function MaxLinkCodeScreen({
             </h1>
           </div>
           <p className="auth-hint">
-            Введите код со страницы «Подключить MAX» в кабинете преподавателя.
+            Введите код со страницы «MAX и вход» в кабинете преподавателя. Если MAX уже привязан к
+            другому аккаунту, связь перейдёт к владельцу кода.
           </p>
         </div>
         <form className="auth-form" onSubmit={submit}>
@@ -69,6 +72,9 @@ export function MaxLinkCodeScreen({
         </form>
         <Button variant="ghost" type="button" onClick={onContinue}>
           Уже подключали MAX? Войти без кода
+        </Button>
+        <Button variant="ghost" type="button" onClick={onCredentials}>
+          Войти по email и паролю
         </Button>
       </section>
     </main>

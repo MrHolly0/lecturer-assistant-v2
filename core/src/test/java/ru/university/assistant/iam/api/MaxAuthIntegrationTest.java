@@ -2,7 +2,9 @@ package ru.university.assistant.iam.api;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -218,6 +220,83 @@ class MaxAuthIntegrationTest {
                 200);
         assertEquals("LECTURER", onAnotherDevice.get("role").asText());
         assertEquals(2L, count("iam.persons"));
+    }
+
+    @Test
+    void validCodeMovesAnExistingMaxBindingToAnotherAccount() throws Exception {
+        String formerStudentId = login(signed(701, Instant.now()), 200).get("personId").asText();
+        String lecturerToken = registerLecturer();
+        String lecturerId = json(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + lecturerToken), 200)
+                .get("id").asText();
+        String code = requestMaxLinkCode(lecturerToken);
+
+        JsonNode switched = loginWithCode(signed(701, Instant.now()), code, 200);
+
+        assertEquals("LECTURER", switched.get("role").asText());
+        assertEquals(lecturerId, switched.get("personId").asText());
+        assertEquals(lecturerId, login(signed(701, Instant.now()), 200).get("personId").asText());
+        assertEquals(3L, count("iam.persons"));
+        assertEquals(1L, count("iam.channel_identities where channel_type = 'max'"));
+        assertEquals(0L, count("iam.channel_identities where person_id = '" + formerStudentId + "'"));
+        loginWithCode(signed(701, Instant.now()), code, 409);
+    }
+
+    @Test
+    void promotedStudentKeepsTheirMaxAccountAndGetsLecturerAccess() throws Exception {
+        String adminToken = json(post("/api/v1/auth/bootstrap-admin")
+                        .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"Admin\",\"email\":\"admin@example.test\","
+                                + "\"password\":\"password-123\"}"), 200)
+                .get("accessToken").asText();
+        String studentId = login(signed(701, Instant.now()), 200).get("personId").asText();
+
+        mockMvc.perform(put("/api/v1/admin/users/{personId}/role", studentId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"LECTURER\"}"))
+                .andExpect(status().isOk());
+
+        JsonNode promoted = login(signed(701, Instant.now()), 200);
+        assertEquals(studentId, promoted.get("personId").asText());
+        assertEquals("LECTURER", promoted.get("role").asText());
+        assertEquals(2L, count("iam.persons"));
+    }
+
+    @Test
+    void accountAlreadyLinkedToAnotherMaxCannotBeTakenOver() throws Exception {
+        String lecturerToken = registerLecturer();
+        loginWithCode(signed(701, Instant.now()), requestMaxLinkCode(lecturerToken), 200);
+        String secondCode = requestMaxLinkCode(lecturerToken);
+
+        loginWithCode(signed(702, Instant.now()), secondCode, 409);
+
+        assertEquals(1L, count("iam.channel_identities where channel_type = 'max'"));
+        assertEquals(2L, count("iam.persons"));
+        assertEquals("LECTURER", login(signed(701, Instant.now()), 200).get("role").asText());
+    }
+
+    @Test
+    void userCanUnlinkOnlyTheirOwnMaxIdentity() throws Exception {
+        String lecturerToken = registerLecturer();
+        loginWithCode(signed(701, Instant.now()), requestMaxLinkCode(lecturerToken), 200);
+        login(signed(702, Instant.now()), 200);
+
+        mockMvc.perform(get("/api/v1/identity/max")
+                        .header("Authorization", "Bearer " + lecturerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.connected").value(true));
+
+        mockMvc.perform(delete("/api/v1/identity/max")
+                        .header("Authorization", "Bearer " + lecturerToken))
+                .andExpect(status().isNoContent());
+
+        assertEquals(0L, count("iam.channel_identities where external_id = '701'"));
+        assertEquals(1L, count("iam.channel_identities where external_id = '702'"));
+        mockMvc.perform(get("/api/v1/identity/max")
+                        .header("Authorization", "Bearer " + lecturerToken))
+                .andExpect(jsonPath("$.connected").value(false));
     }
 
     @Test

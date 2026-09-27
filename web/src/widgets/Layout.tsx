@@ -15,7 +15,7 @@ const navItems = [
   {
     path: "/settings/max",
     icon: Link2,
-    label: "Подключить MAX",
+    label: "MAX и вход",
     roles: ["ADMIN", "LECTURER", "ASSISTANT"]
   },
   { path: "/admin/users", icon: Shield, label: "Пользователи", roles: ["ADMIN"] }

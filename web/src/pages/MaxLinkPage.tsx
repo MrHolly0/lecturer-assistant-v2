@@ -1,14 +1,54 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, RefreshCw } from "lucide-react";
-import { createMaxLinkCode, type MaxLinkCode } from "../app/api/max-identity-api";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { useAuth } from "../app/AuthContext";
+import { userErrorMessage } from "../app/api/errors";
+import {
+  createMaxLinkCode,
+  getMaxIdentityStatus,
+  unlinkMaxIdentity,
+  type MaxLinkCode
+} from "../app/api/max-identity-api";
+import { useMaxBridge } from "../app/max/context";
 import { buildMaxLinkUrl } from "../app/max/deepLink";
 import { LocalQrCode } from "../widgets/LocalQrCode";
 import { Button } from "../shared/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "../shared/ui/alert-dialog";
 
 export function MaxLinkPage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { signOut } = useAuth();
+  const { isMax } = useMaxBridge();
   const [linkCode, setLinkCode] = useState<MaxLinkCode | null>(null);
   const [now, setNow] = useState(Date.now());
+  const status = useQuery({ queryKey: ["identity", "max"], queryFn: getMaxIdentityStatus });
+  const unlink = useMutation({
+    mutationFn: unlinkMaxIdentity,
+    onSuccess: async () => {
+      setLinkCode(null);
+      if (isMax) {
+        await signOut();
+        navigate("/login", { replace: true });
+      } else {
+        await queryClient.invalidateQueries({ queryKey: ["identity", "max"] });
+        toast.success("MAX отвязан от учётной записи.");
+      }
+    },
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось отвязать MAX."))
+  });
   const createCode = useMutation({
     mutationFn: createMaxLinkCode,
     onSuccess: (created) => {
@@ -32,7 +72,12 @@ export function MaxLinkPage() {
       <div className="page-header">
         <div>
           <span className="muted">Аккаунт преподавателя</span>
-          <h1>Подключить MAX</h1>
+          <h1>MAX и вход</h1>
+          {status.data && (
+            <p className="muted">
+              {status.data.connected ? "MAX подключён к этому аккаунту" : "MAX пока не подключён"}
+            </p>
+          )}
         </div>
       </div>
 
@@ -89,6 +134,36 @@ export function MaxLinkPage() {
           </div>
         )}
       </section>
+
+      {status.data?.connected && (
+        <section className="max-link-unlink">
+          <h2>Сменить привязку</h2>
+          <p className="muted">
+            После отвязки вход через MAX в этот аккаунт перестанет работать. В браузере сохраняется
+            вход по email и паролю.
+          </p>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="outline" disabled={unlink.isPending}>
+                Отвязать MAX
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Отвязать MAX от этого аккаунта?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Для повторного подключения потребуется новый код из кабинета или вход по email и
+                  паролю в MAX.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Оставить привязку</AlertDialogCancel>
+                <AlertDialogAction onClick={() => unlink.mutate()}>Отвязать MAX</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </section>
+      )}
     </div>
   );
 }

@@ -58,6 +58,8 @@ function MaxNavigationRoot() {
     continueMaxAuth,
     retryMaxAuth,
     resumeMaxAuth,
+    chooseMaxLinkCode,
+    chooseMaxCredentials,
     user
   } = useAuth();
   const location = useLocation();
@@ -70,7 +72,8 @@ function MaxNavigationRoot() {
     queryFn: getMyActiveSession,
     enabled: teacherInMax,
     retry: 1,
-    staleTime: 1000
+    staleTime: 1000,
+    refetchInterval: 5000
   });
   const remotePath = activeSession.data
     ? teacherRemotePath(activeSession.data.courseId, activeSession.data.sessionId)
@@ -104,7 +107,15 @@ function MaxNavigationRoot() {
 
   if (location.pathname.startsWith("/projection/")) return <Outlet />;
   if (isMax && loading) return <LoadingScreen message="Входим через MAX…" />;
-  if (isMax && maxSignedOut) return <MaxSignedOutScreen onLogin={resumeMaxAuth} />;
+  if (isMax && maxSignedOut) {
+    return (
+      <MaxSignedOutScreen
+        onLogin={resumeMaxAuth}
+        onCode={chooseMaxLinkCode}
+        onCredentials={chooseMaxCredentials}
+      />
+    );
+  }
   if (isMax && maxLinkRequired) {
     return (
       <MaxLinkCodeScreen
@@ -112,6 +123,7 @@ function MaxNavigationRoot() {
         error={maxAuthError}
         onSubmit={submitMaxLinkCode}
         onContinue={continueMaxAuth}
+        onCredentials={chooseMaxCredentials}
       />
     );
   }
@@ -121,11 +133,19 @@ function MaxNavigationRoot() {
         onLogin={loginAndLinkMax}
         onRegister={registerAndLinkMax}
         onStudent={continueMaxAuth}
+        onCode={chooseMaxLinkCode}
       />
     );
   }
   if (isMax && !user) {
-    return <MaxAuthScreen error={maxAuthError} onRetry={retryMaxAuth} />;
+    return (
+      <MaxAuthScreen
+        error={maxAuthError}
+        onRetry={retryMaxAuth}
+        onCode={chooseMaxLinkCode}
+        onCredentials={chooseMaxCredentials}
+      />
+    );
   }
   if (isMax && !startParamHandled && startTarget && location.pathname !== startTarget) {
     return <Navigate to={startTarget} replace />;
@@ -153,7 +173,17 @@ function LoadingScreen({ message = "Загрузка…" }: { message?: string }
   );
 }
 
-function MaxAuthScreen({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+function MaxAuthScreen({
+  error,
+  onRetry,
+  onCode,
+  onCredentials
+}: {
+  error: string | null;
+  onRetry: () => void;
+  onCode: () => void;
+  onCredentials: () => void;
+}) {
   return (
     <main className="auth-shell">
       <section className="auth-card max-auth-card" aria-labelledby="max-auth-title">
@@ -169,12 +199,26 @@ function MaxAuthScreen({ error, onRetry }: { error: string | null; onRetry: () =
         <Button className="max-auth-retry" type="button" onClick={onRetry}>
           Попробовать снова
         </Button>
+        <Button type="button" variant="outline" onClick={onCode}>
+          Войти по коду
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCredentials}>
+          Войти по email и паролю
+        </Button>
       </section>
     </main>
   );
 }
 
-function MaxSignedOutScreen({ onLogin }: { onLogin: () => void }) {
+function MaxSignedOutScreen({
+  onLogin,
+  onCode,
+  onCredentials
+}: {
+  onLogin: () => void;
+  onCode: () => void;
+  onCredentials: () => void;
+}) {
   return (
     <main className="auth-shell">
       <section className="auth-card max-auth-card" aria-labelledby="max-signed-out-title">
@@ -184,11 +228,18 @@ function MaxSignedOutScreen({ onLogin }: { onLogin: () => void }) {
             Вы вышли из аккаунта
           </h1>
           <p className="auth-hint">
-            Повторный вход через MAX откроет ту же привязанную учётную запись.
+            Выберите аккаунт для входа. Код или пароль позволят перепривязать MAX к другой учётной
+            записи.
           </p>
         </div>
         <Button className="max-auth-retry" type="button" onClick={onLogin}>
           Войти через MAX
+        </Button>
+        <Button type="button" variant="outline" onClick={onCode}>
+          Войти по коду
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCredentials}>
+          Другой аккаунт по email и паролю
         </Button>
       </section>
     </main>

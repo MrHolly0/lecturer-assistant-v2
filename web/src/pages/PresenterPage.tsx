@@ -98,7 +98,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
 
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
-      if (session?.status === "LIVE") {
+      if (session?.status === "LIVE" && sessionStorage.getItem("la_app_updating") !== "true") {
         event.preventDefault();
         event.returnValue = "";
       }
