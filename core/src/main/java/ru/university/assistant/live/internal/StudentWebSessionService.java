@@ -4,6 +4,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
@@ -103,6 +104,10 @@ public class StudentWebSessionService {
     public StudentSessionSnapshot snapshot(String joinCode) {
         LiveSession session = sessionByCode(joinCode);
         return snapshots.create(session, null, false);
+    }
+
+    public Optional<String> activeJoinCodeFor(AuthenticatedUser user) {
+        return sessions.findActiveJoinCodeForParticipant(user.id());
     }
 
     /** Снапшот с личными полями студента. Идентификация необязательна: без неё это общий снапшот. */

@@ -1,5 +1,6 @@
 import { Eraser, Pencil, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "../shared/ui/popover";
 
 type Point = { x: number; y: number };
 type DrawAction = { color: string; size: number; points: Point[]; erase?: boolean };
@@ -30,6 +31,8 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
   const [color, setColor] = useState(COLORS[0]);
   const [size, setSize] = useState(PEN_SIZES[1]);
   const [eraserSize, setEraserSize] = useState(ERASER_SIZES[1]);
+  const [penMenuOpen, setPenMenuOpen] = useState(false);
+  const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
   const [drawing, setDrawing] = useState(false);
   const [points, setPoints] = useState<Point[]>([]);
   const slideKey = String(slideIdx);
@@ -46,8 +49,13 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
       redraw(canvas, actions);
     };
     resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(wrap);
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", resize);
+    };
   }, [actions]);
 
   function commit(next: DrawAction[]) {
@@ -85,14 +93,26 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
             ]);
         }}
         onPointerUp={() => {
-          if (!active || !drawing || points.length < 2) return;
-          commit([...actions, { color, size: erase ? eraserSize : size, points, erase }]);
+          if (!active || !drawing) return;
+          if (points.length >= 2) {
+            commit([...actions, { color, size: erase ? eraserSize : size, points, erase }]);
+          }
           setDrawing(false);
           setPoints([]);
         }}
+        onPointerCancel={() => {
+          setDrawing(false);
+          setPoints([]);
+          const canvas = canvasRef.current;
+          if (canvas) redraw(canvas, actions);
+        }}
       />
       {active && (
-        <div className="drawing-toolbar" role="toolbar" aria-label="Инструменты рисования">
+        <div
+          className="drawing-toolbar drawing-toolbar--desktop"
+          role="toolbar"
+          aria-label="Инструменты рисования"
+        >
           <button
             type="button"
             className={`icon-button ${!erase ? "icon-button--active" : ""}`}
@@ -185,6 +205,118 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
             disabled={actions.length === 0}
           >
             <Trash2 size={16} />
+          </button>
+        </div>
+      )}
+      {active && (
+        <div
+          className="drawing-toolbar drawing-toolbar--mobile"
+          role="toolbar"
+          aria-label="Инструменты рисования"
+        >
+          <Popover open={penMenuOpen} onOpenChange={setPenMenuOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={`drawing-mobile-tool${!erase ? " drawing-mobile-tool--active" : ""}`}
+                onClick={() => setErase(false)}
+                aria-label={`Перо, ${COLOR_LABELS[color]}, ${size} пикселей. Настроить`}
+              >
+                <Pencil size={17} aria-hidden="true" />
+                <span className="drawing-mobile-color" style={{ backgroundColor: color }} />
+                <span className="drawing-mobile-tool__label">Перо</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="drawing-mobile-popover" align="start" side="top">
+              <span className="drawing-mobile-popover__label">Цвет пера</span>
+              <div className="drawing-swatches" role="group" aria-label="Цвет пера">
+                {COLORS.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={`color-swatch${color === item ? " color-swatch--active" : ""}`}
+                    style={{ backgroundColor: item }}
+                    onClick={() => {
+                      setColor(item);
+                      setErase(false);
+                    }}
+                    aria-label={`Цвет пера: ${COLOR_LABELS[item]}`}
+                    aria-pressed={color === item}
+                  />
+                ))}
+              </div>
+              <span className="drawing-mobile-popover__label">Толщина пера</span>
+              <div className="drawing-sizes" role="group" aria-label="Толщина пера">
+                {PEN_SIZES.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={`size-dot${size === item ? " size-dot--active" : ""}`}
+                    onClick={() => {
+                      setSize(item);
+                      setErase(false);
+                      setPenMenuOpen(false);
+                    }}
+                    aria-label={`Толщина пера ${item} пикселей`}
+                    aria-pressed={size === item}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <Popover open={eraserMenuOpen} onOpenChange={setEraserMenuOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={`drawing-mobile-tool${erase ? " drawing-mobile-tool--active" : ""}`}
+                onClick={() => setErase(true)}
+                aria-label={`Ластик, ${eraserSize} пикселей. Настроить`}
+              >
+                <Eraser size={17} aria-hidden="true" />
+                <span className="drawing-mobile-tool__label">Ластик</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="drawing-mobile-popover" align="start" side="top">
+              <span className="drawing-mobile-popover__label">Толщина ластика</span>
+              <div className="drawing-sizes" role="group" aria-label="Толщина ластика">
+                {ERASER_SIZES.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={`size-dot${eraserSize === item ? " size-dot--active" : ""}`}
+                    onClick={() => {
+                      setEraserSize(item);
+                      setErase(true);
+                      setEraserMenuOpen(false);
+                    }}
+                    aria-label={`Толщина ластика ${item} пикселей`}
+                    aria-pressed={eraserSize === item}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <button
+            type="button"
+            className="drawing-mobile-tool drawing-mobile-tool--icon"
+            onClick={() => commit(actions.slice(0, -1))}
+            aria-label="Отменить последнее действие"
+            disabled={actions.length === 0}
+          >
+            <Undo2 size={17} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="drawing-mobile-tool drawing-mobile-tool--icon"
+            onClick={() => commit([])}
+            aria-label="Очистить рисунок"
+            disabled={actions.length === 0}
+          >
+            <Trash2 size={17} aria-hidden="true" />
           </button>
         </div>
       )}

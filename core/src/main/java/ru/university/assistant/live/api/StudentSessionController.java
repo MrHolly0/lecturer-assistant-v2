@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,6 +35,16 @@ class StudentSessionController {
         this.studentSessions = studentSessions;
         this.broadcaster = broadcaster;
     }
+
+    @GetMapping("/api/v1/me/student-active-session")
+    public ResponseEntity<StudentActiveSessionSummary> activeStudentSession(
+            @AuthenticationPrincipal AuthenticatedUser user) {
+        return studentSessions.activeJoinCodeFor(user)
+                .map(code -> ResponseEntity.ok(new StudentActiveSessionSummary(code)))
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    public record StudentActiveSessionSummary(String joinCode) {}
 
     @GetMapping("/api/v1/courses/{courseId}/sessions/{sessionId}/engagement")
     public StudentEngagement engagement(

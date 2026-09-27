@@ -373,6 +373,20 @@ paths:
                 $ref: "#/components/schemas/ActiveSessionSummary"
         "204":
           description: No running session belongs to this person.
+  /me/student-active-session:
+    get:
+      operationId: getMyStudentActiveSession
+      summary: Find a prepared or running lecture that the signed-in student has joined.
+      tags: [student]
+      responses:
+        "200":
+          description: Resume this student's current lecture without entering its code again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentActiveSessionSummary"
+        "204":
+          description: The student has not joined an active lecture.
   /courses:
     get:
       operationId: listCourses
@@ -2316,6 +2330,12 @@ components:
           type: string
           format: date-time
           nullable: true
+    StudentActiveSessionSummary:
+      type: object
+      required: [joinCode]
+      properties:
+        joinCode:
+          type: string
     SystemInfo:
       type: object
       required: [name, version, status]

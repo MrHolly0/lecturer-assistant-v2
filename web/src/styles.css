@@ -1252,6 +1252,10 @@ textarea {
   width: 100%;
 }
 
+.presenter-drawing-exit {
+  display: none;
+}
+
 .presenter-topbar {
   align-items: center;
   background: var(--card);
@@ -1589,6 +1593,10 @@ textarea {
   pointer-events: auto;
   position: absolute;
   top: 16px;
+}
+
+.drawing-toolbar--mobile {
+  display: none;
 }
 
 .icon-button--active,
@@ -2579,10 +2587,61 @@ textarea {
 }
 
 @media (max-width: 900px) {
+  html:has(.presenter-shell--drawing),
+  body:has(.presenter-shell--drawing) {
+    overflow: hidden;
+  }
+
   .presenter-shell {
     height: auto;
     min-height: 100vh;
     overflow-y: auto;
+  }
+
+  .presenter-shell--drawing {
+    height: var(--app-viewport-height);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .presenter-shell--drawing .presenter-topbar {
+    align-items: center;
+    flex-wrap: nowrap;
+    min-height: 52px;
+  }
+
+  .presenter-shell--drawing .presenter-back,
+  .presenter-shell--drawing .presenter-meta,
+  .presenter-shell--drawing .presenter-actions,
+  .presenter-shell--drawing .deck-controls,
+  .presenter-shell--drawing .presenter-strip-controls,
+  .presenter-shell--drawing .presenter-side {
+    display: none;
+  }
+
+  .presenter-shell--drawing .presenter-drawing-exit {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+
+  .presenter-shell--drawing .presenter-grid {
+    align-items: center;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .presenter-shell--drawing .presenter-main {
+    flex: 1;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  .presenter-shell--drawing .presenter-stage {
+    aspect-ratio: 16 / 9;
+    flex: 0 0 auto;
+    max-height: calc(var(--app-viewport-height) - 84px);
+    min-height: 0;
+    width: 100%;
   }
 
   .presenter-grid {
@@ -2630,9 +2689,81 @@ textarea {
 }
 
 @media (max-width: 560px) {
+  .drawing-toolbar--desktop {
+    display: none;
+  }
+
+  .drawing-toolbar--mobile {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    bottom: max(8px, var(--app-safe-area-bottom));
+    left: 8px;
+    max-width: none;
+    padding: 4px;
+    position: fixed;
+    right: 8px;
+    top: auto;
+    z-index: 10;
+  }
+
+  .drawing-mobile-tool {
+    align-items: center;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    color: var(--foreground);
+    display: inline-flex;
+    flex: 1 1 auto;
+    gap: 5px;
+    justify-content: center;
+    min-height: 40px;
+    min-width: 0;
+    padding: 0 8px;
+  }
+
+  .drawing-mobile-tool--active {
+    border-color: var(--primary);
+    box-shadow: inset 0 0 0 1px var(--primary);
+  }
+
+  .drawing-mobile-tool--icon {
+    flex: 0 0 40px;
+    padding: 0;
+  }
+
+  .drawing-mobile-tool:disabled {
+    opacity: 0.45;
+  }
+
+  .drawing-mobile-color {
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    flex: 0 0 12px;
+    height: 12px;
+  }
+
+  .drawing-mobile-popover {
+    display: grid;
+    gap: 10px;
+    max-width: calc(100vw - 24px);
+    padding: 12px;
+    width: max-content;
+  }
+
+  .drawing-mobile-popover__label {
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-medium);
+  }
+
   .presenter-topbar,
   .presenter-grid {
     padding: 8px;
+  }
+
+  .presenter-shell--drawing .presenter-grid {
+    padding-bottom: 64px;
   }
 
   .presenter-actions {
@@ -2656,6 +2787,7 @@ textarea {
   }
 
   .student-session-shell {
+    box-sizing: border-box;
     gap: 12px;
     padding: max(12px, env(safe-area-inset-top)) 12px max(20px, env(safe-area-inset-bottom));
   }

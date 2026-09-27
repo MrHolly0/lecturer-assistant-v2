@@ -19,6 +19,34 @@ import org.springframework.http.MediaType;
 /** B-04 / D-01 / D-14: участник лекции — это человек, повторный вход не плодит участников и членов курса. */
 class StudentIdentityIntegrationTest extends LiveFlowTestBase {
     @Test
+    void returningMaxStudentResumesJoinedLectureWithoutAnotherCode() throws Exception {
+        String jwt = maxLogin(9090);
+        json(get("/api/v1/me/student-active-session").header("Authorization", "Bearer " + jwt), 204);
+
+        join(jwt, "{}");
+        JsonNode active = json(get("/api/v1/me/student-active-session")
+                .header("Authorization", "Bearer " + jwt), 200);
+        assertEquals(joinCode, active.get("joinCode").asText());
+
+        json(post("/api/v1/courses/{courseId}/sessions/{sessionId}/end", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        json(get("/api/v1/me/student-active-session").header("Authorization", "Bearer " + jwt), 204);
+    }
+
+    @Test
+    void studentResumeNeverReturnsAnotherStudentOrKickedParticipation() throws Exception {
+        String joinedJwt = maxLogin(9091);
+        String otherJwt = maxLogin(9092);
+        join(joinedJwt, "{}");
+        json(get("/api/v1/me/student-active-session").header("Authorization", "Bearer " + otherJwt), 204);
+
+        json(post("/api/v1/courses/{courseId}/sessions/{sessionId}/participants/{personId}/kick",
+                        courseId, sessionId, personIdOf(joinedJwt))
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        json(get("/api/v1/me/student-active-session").header("Authorization", "Bearer " + joinedJwt), 204);
+    }
+
+    @Test
     void projectorCanReceivePublicUpdatesWithoutLecturerLogin() throws Exception {
         mockMvc.perform(get("/api/v1/student/sessions/{joinCode}/events/public", joinCode)
                         .accept(MediaType.TEXT_EVENT_STREAM))

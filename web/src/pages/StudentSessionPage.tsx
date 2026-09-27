@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CirclePause, CircleStop, MessageCircle } from "lucide-react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   askStudentQuestion,
@@ -45,6 +45,7 @@ const STATUS_LABELS: Record<StudentSessionSnapshot["status"], string> = {
 
 export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const normalizedCode = joinCode.trim().toUpperCase();
   const storageKey = `student-session:${normalizedCode}`;
   const [participantToken, setParticipantToken] = useState(() =>
@@ -83,6 +84,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       ),
     onSuccess: (response) => {
       sessionStorage.setItem(storageKey, response.participantToken);
+      if (user) queryClient.setQueryData(["student-active-session"], { joinCode: normalizedCode });
       setParticipantToken(response.participantToken);
       setSnapshot(response.snapshot);
       setJoinIssue(null);
@@ -158,6 +160,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     setSnapshot(sessionQuery.data);
     setMyVote(sessionQuery.data.myVote ?? null);
   }, [sessionQuery.data]);
+
+  useEffect(() => {
+    if (!user || (current?.status !== "ENDED" && current?.status !== "ARCHIVED")) return;
+    void queryClient.invalidateQueries({ queryKey: ["student-active-session"] });
+  }, [current?.status, queryClient, user]);
 
   useEffect(() => {
     if (current?.groups?.length === 1 && !selectedGroupId) {

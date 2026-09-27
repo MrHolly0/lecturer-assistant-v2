@@ -175,6 +175,22 @@ class LiveSessionRepository {
                 .map(this::withTiming);
     }
 
+    Optional<String> findActiveJoinCodeForParticipant(UUID personId) {
+        return jdbc.sql("""
+                        select s.join_code
+                        from live.session_participants sp
+                        join live.sessions s on s.id = sp.session_id
+                        where sp.person_id = :personId and sp.channel_type = 'web'
+                            and sp.left_at is null and sp.kicked = false
+                            and s.status in ('SCHEDULED', 'LIVE', 'PAUSED')
+                        order by sp.joined_at desc, s.created_at desc
+                        limit 1
+                        """)
+                .param("personId", personId)
+                .query(String.class)
+                .optional();
+    }
+
     Optional<UUID> lectureDeckId(UUID courseId, UUID lectureId) {
         return jdbc.sql("select deck_id from live.lectures where course_id = :courseId and id = :lectureId")
                 .param("courseId", courseId)

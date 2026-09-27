@@ -107,6 +107,17 @@ export function PresenterTopbar({
         </div>
       </div>
 
+      {drawing && (
+        <Button
+          type="button"
+          variant="outline"
+          className="presenter-drawing-exit"
+          onClick={() => onDrawingChange(false)}
+        >
+          Готово
+        </Button>
+      )}
+
       <div className="presenter-actions">
         {sessionActive && (
           <>

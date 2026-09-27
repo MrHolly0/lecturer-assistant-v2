@@ -18,6 +18,7 @@ export type StudentQuestion = components["schemas"]["StudentQuestion"];
 export type StudentQuestionAnswer = components["schemas"]["StudentQuestionAnswer"];
 export type UpdateStudentQuestionRequest = components["schemas"]["UpdateStudentQuestionRequest"];
 export type StudentEngagement = components["schemas"]["StudentEngagement"];
+export type StudentActiveSessionSummary = components["schemas"]["StudentActiveSessionSummary"];
 export type StudentConnectionState =
   | "CONNECTING"
   | "CONNECTED"
@@ -42,6 +43,12 @@ export async function publicFetch(path: string, init?: RequestInit): Promise<Res
 
 export function studentFetch(path: string, init?: RequestInit): Promise<Response> {
   return getStoredAuth() ? apiFetch(path, init) : publicFetch(path, init);
+}
+
+export async function getMyStudentActiveSession(): Promise<StudentActiveSessionSummary | null> {
+  const response = await apiFetch("/me/student-active-session");
+  if (response.status === 204) return null;
+  return response.json() as Promise<StudentActiveSessionSummary>;
 }
 
 export async function getStudentSession(

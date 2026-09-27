@@ -35,6 +35,7 @@ import { useMaxBridge } from "./max/context";
 import { readMaxLinkCode } from "./max/deepLink";
 import { canRedirectToTeacherRemote, isMobileMax, teacherRemotePath } from "./max/navigation";
 import { getLiveSession, getMyActiveSession } from "./api/live-api";
+import { getMyStudentActiveSession } from "./api/student-api";
 import { MaxLinkCodeScreen } from "../widgets/MaxLinkCodeScreen";
 import { MaxCredentialsScreen } from "../widgets/MaxCredentialsScreen";
 import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
@@ -67,6 +68,7 @@ function MaxNavigationRoot() {
   const [startParamHandled, setStartParamHandled] = useState(false);
   const mobileMax = isMobileMax(maxEnvironment);
   const teacherInMax = Boolean(user && user.role !== "STUDENT" && mobileMax);
+  const studentInMax = Boolean(isMax && user?.role === "STUDENT");
   const activeSession = useQuery({
     queryKey: ["active-session"],
     queryFn: getMyActiveSession,
@@ -78,6 +80,12 @@ function MaxNavigationRoot() {
   const remotePath = activeSession.data
     ? teacherRemotePath(activeSession.data.courseId, activeSession.data.sessionId)
     : null;
+  const studentActiveSession = useQuery({
+    queryKey: ["student-active-session"],
+    queryFn: getMyStudentActiveSession,
+    enabled: studentInMax,
+    retry: 1
+  });
   const startTarget =
     user?.role === "STUDENT" && startParam && maxStartParamPattern.test(startParam)
       ? `/s/${encodeURIComponent(startParam.toUpperCase())}`
@@ -149,6 +157,18 @@ function MaxNavigationRoot() {
   }
   if (isMax && !startParamHandled && startTarget && location.pathname !== startTarget) {
     return <Navigate to={startTarget} replace />;
+  }
+  if (
+    studentInMax &&
+    !startTarget &&
+    (location.pathname === "/" || location.pathname === "/login")
+  ) {
+    if (studentActiveSession.isLoading) return <LoadingScreen message="Ищем вашу лекцию…" />;
+    if (studentActiveSession.data) {
+      return (
+        <Navigate to={`/s/${encodeURIComponent(studentActiveSession.data.joinCode)}`} replace />
+      );
+    }
   }
   if (teacherInMax && activeSession.isLoading && canRedirectToTeacherRemote(location.pathname)) {
     return <LoadingScreen message="Ищем активную лекцию…" />;

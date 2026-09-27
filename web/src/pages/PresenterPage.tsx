@@ -32,6 +32,11 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   const [localSession, setLocalSession] = useState<LiveSession | null>(null);
   const [drawing, setDrawing] = useState(false);
 
+  useEffect(() => {
+    if (!drawing || !window.matchMedia("(max-width: 900px)").matches) return;
+    window.scrollTo(0, 0);
+  }, [drawing]);
+
   const sessionQuery = useQuery({
     queryKey: ["live", courseId, sessionId],
     queryFn: () => getLiveSession(courseId, sessionId)
@@ -167,7 +172,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   if (!deck || !slide) return <div className="presenter-shell">Загрузка...</div>;
 
   return (
-    <div className="presenter-shell">
+    <div className={`presenter-shell${drawing ? " presenter-shell--drawing" : ""}`}>
       <PresenterTopbar
         courseId={courseId}
         session={session}

@@ -320,6 +320,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/me/student-active-session": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Find a prepared or running lecture that the signed-in student has joined. */
+    get: operations["getMyStudentActiveSession"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses": {
     parameters: {
       query?: never;
@@ -1686,6 +1703,9 @@ export interface components {
       status: components["schemas"]["SessionStatus"];
       /** Format: date-time */
       startedAt?: string | null;
+    };
+    StudentActiveSessionSummary: {
+      joinCode: string;
     };
     SystemInfo: {
       /** @example lecturer-assistant-v2 */
@@ -3115,6 +3135,33 @@ export interface operations {
         };
       };
       /** @description No running session belongs to this person. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getMyStudentActiveSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Resume this student's current lecture without entering its code again. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentActiveSessionSummary"];
+        };
+      };
+      /** @description The student has not joined an active lecture. */
       204: {
         headers: {
           [name: string]: unknown;
