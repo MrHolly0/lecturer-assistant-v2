@@ -40,7 +40,7 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
   const activeQuery = useQuery({
     queryKey: ["poll", courseId, sessionId, "active"],
     queryFn: () => getActivePoll(courseId, sessionId),
-    refetchInterval: (query) => (query.state.data?.poll.status === "OPEN" ? 1500 : false)
+    refetchInterval: (query) => (query.state.data?.poll.status === "OPEN" ? 1500 : 3000)
   });
   const activePoll = activeQuery.data;
 
@@ -73,6 +73,10 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
 
   useEffect(() => {
     if (activePoll?.poll.status === "CLOSED") setMarkedCorrect(undefined);
+  }, [activePoll?.poll.id, activePoll?.poll.status]);
+
+  useEffect(() => {
+    if (activePoll?.poll.status === "OPEN") setView("idle");
   }, [activePoll?.poll.id, activePoll?.poll.status]);
 
   useEffect(() => {

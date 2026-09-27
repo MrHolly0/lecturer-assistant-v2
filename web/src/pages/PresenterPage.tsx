@@ -75,6 +75,9 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       setLocalSession(message.session);
       channel.postMessage(message.session);
       void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId] });
+      if (message.type.startsWith("interaction.poll")) {
+        void qc.invalidateQueries({ queryKey: ["poll", courseId, sessionId] });
+      }
       if (message.type.startsWith("participant.")) {
         void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "participants"] });
         if (message.type === "participant.joined") toast("Студент подключился", { duration: 2500 });
