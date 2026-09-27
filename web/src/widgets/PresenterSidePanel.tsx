@@ -8,6 +8,7 @@ import { PollPanel } from "./PollPanel";
 import { formatSessionTime } from "../app/live/useSessionTimers";
 import { LiveSlideNotesEditor } from "./LiveSlideNotesEditor";
 import { TeacherRemoteQuestions } from "./TeacherRemoteQuestions";
+import { SessionParticipantList } from "./SessionParticipantList";
 
 interface PresenterSidePanelProps {
   slide: Slide;
@@ -95,23 +96,11 @@ export function PresenterSidePanel({
               {pluralizeRu(activeParticipants.length, "студент", "студента", "студентов")} на связи
             </span>
           </div>
-          {activeParticipants.length === 0 && <p className="muted">Пока никто не подключился.</p>}
-          {activeParticipants.length > 0 && (
-            <ul className="participant-list">
-              {activeParticipants.map((participant) => (
-                <li key={`${participant.personId}-${participant.channelType}`}>
-                  <span>{participant.displayName}</span>
-                  <small>
-                    {participant.channelType} ·{" "}
-                    {new Date(participant.joinedAt).toLocaleTimeString("ru-RU", {
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    })}
-                  </small>
-                </li>
-              ))}
-            </ul>
-          )}
+          <SessionParticipantList
+            courseId={courseId}
+            sessionId={sessionId}
+            participants={participants}
+          />
         </TabsContent>
         <TabsContent value="notes" className="live-panel">
           <div className="section-heading">

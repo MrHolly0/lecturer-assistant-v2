@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
@@ -26,6 +27,8 @@ import { useSessionTimers } from "../app/live/useSessionTimers";
 export function PresenterPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const qc = useQueryClient();
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const slideInFlightRef = useRef(false);
+  const slideStripRef = useRef<HTMLDivElement | null>(null);
   const [localSession, setLocalSession] = useState<LiveSession | null>(null);
   const [drawing, setDrawing] = useState(false);
 
@@ -72,11 +75,9 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       setLocalSession(message.session);
       channel.postMessage(message.session);
       void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId] });
-      if (message.type === "participant.joined") {
+      if (message.type.startsWith("participant.")) {
         void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "participants"] });
-        toast("Студент подключился", { duration: 2500 });
-      } else if (message.type === "participant.left") {
-        void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "participants"] });
+        if (message.type === "participant.joined") toast("Студент подключился", { duration: 2500 });
       }
       if (message.type === "qa.question_asked") {
         void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "engagement"] });
@@ -123,7 +124,17 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   }
 
   function go(idx: number) {
-    if (!session || !deck || paused || idx < 1 || idx > deck.slides.length) return;
+    if (
+      !session ||
+      !deck ||
+      paused ||
+      slideInFlightRef.current ||
+      idx < 1 ||
+      idx > deck.slides.length
+    )
+      return;
+    if (idx === session.currentSlideIdx) return;
+    slideInFlightRef.current = true;
     const next = { ...session, currentSlideIdx: idx };
     setSession(next);
     slideMut.mutate(idx, {
@@ -131,6 +142,9 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       onError: () => {
         setSession(session);
         toast.error("Не удалось переключить слайд.");
+      },
+      onSettled: () => {
+        slideInFlightRef.current = false;
       }
     });
   }
@@ -201,7 +215,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
             <Button
               variant="outline"
               type="button"
-              disabled={paused || session.currentSlideIdx <= 1}
+              disabled={paused || slideMut.isPending || session.currentSlideIdx <= 1}
               onClick={() => go(session.currentSlideIdx - 1)}
             >
               Назад
@@ -211,26 +225,57 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
             </span>
             <Button
               type="button"
-              disabled={paused || session.currentSlideIdx >= deck.slides.length}
+              disabled={
+                paused || slideMut.isPending || session.currentSlideIdx >= deck.slides.length
+              }
               onClick={() => go(session.currentSlideIdx + 1)}
             >
               Далее
             </Button>
           </div>
-          <div className="presenter-slide-strip">
-            {deck.slides.map((item, index) => (
-              <button
-                key={item.id}
-                type="button"
-                disabled={paused}
-                className={`slide-thumb ${item.idx === session.currentSlideIdx ? "slide-thumb--active" : ""}`}
-                onClick={() => go(item.idx)}
-                title={`Перейти к слайду ${item.idx}`}
-              >
-                <img src={slideImageUrl(item)} alt={`Слайд ${item.idx}`} />
-                <span className="slide-thumb__number">{index + 1}</span>
-              </button>
-            ))}
+          <div className="presenter-strip-controls">
+            <Button
+              type="button"
+              variant="outline"
+              aria-label="Перейти к первому слайду"
+              title="Перейти к первому слайду"
+              onClick={() => {
+                slideStripRef.current?.scrollTo({ left: 0, behavior: "smooth" });
+                go(1);
+              }}
+            >
+              <ChevronsLeft size={18} aria-hidden="true" />
+            </Button>
+            <div className="presenter-slide-strip" ref={slideStripRef} aria-label="Слайды лекции">
+              {deck.slides.map((item, index) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  disabled={paused || slideMut.isPending}
+                  className={`slide-thumb ${item.idx === session.currentSlideIdx ? "slide-thumb--active" : ""}`}
+                  onClick={() => go(item.idx)}
+                  title={`Перейти к слайду ${item.idx}`}
+                >
+                  <img src={slideImageUrl(item)} alt={`Слайд ${item.idx}`} />
+                  <span className="slide-thumb__number">{index + 1}</span>
+                </button>
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              aria-label="Перейти к последнему слайду"
+              title="Перейти к последнему слайду"
+              onClick={() => {
+                slideStripRef.current?.scrollTo({
+                  left: slideStripRef.current.scrollWidth,
+                  behavior: "smooth"
+                });
+                go(deck.slides.length);
+              }}
+            >
+              <ChevronsRight size={18} aria-hidden="true" />
+            </Button>
           </div>
         </section>
         <PresenterSidePanel

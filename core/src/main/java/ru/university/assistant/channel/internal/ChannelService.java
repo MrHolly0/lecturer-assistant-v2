@@ -1,10 +1,15 @@
 package ru.university.assistant.channel.internal;
 
 import java.time.Duration;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.university.assistant.channel.api.ChannelCapabilities;
+import ru.university.assistant.channel.api.ContentType;
 import ru.university.assistant.channel.api.ChannelFanoutApi;
 import ru.university.assistant.channel.api.ChannelInternalApi;
 import ru.university.assistant.channel.api.DeliveryReportBatch;
@@ -83,6 +88,20 @@ public class ChannelService implements ChannelInternalApi, ChannelFanoutApi {
                         List.of(),
                         ReplyMode.EDIT_LAST,
                         "slide")));
+    }
+
+    @Override
+    @Transactional
+    public void sendSlideToStudent(UUID sessionId, UUID personId, int slideIdx, String imageUrl) {
+        UUID identityId = channels.maxIdentityForPerson(personId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.CONFLICT, "Откройте бота MAX и привяжите аккаунт, чтобы получить слайд в чате"));
+        UUID deliveryId = UUID.nameUUIDFromBytes(
+                (sessionId + ":" + personId + ":" + slideIdx).getBytes(StandardCharsets.UTF_8));
+        channels.enqueue("max", new OutboundMessage(
+                deliveryId, identityId, null, OutboundPriority.P0_INTERACTIVE,
+                new OutboundContent(ContentType.IMAGE, null, imageUrl, "Слайд " + slideIdx),
+                List.of(), ReplyMode.NEW, "requested-slide"));
     }
 
     private void enqueueCommandResponse(String channelType, java.util.UUID identityId, String text) {

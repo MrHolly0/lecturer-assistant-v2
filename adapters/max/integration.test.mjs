@@ -13,7 +13,7 @@ import { webhookPathFor } from "./lib.mjs";
 const ADAPTER_PATH = fileURLToPath(new URL("./max-adapter.mjs", import.meta.url));
 const BOT_TOKEN = "integration-test-token";
 
-function startFakeCore() {
+function startFakeCore(outboxMessages = []) {
   const calls = [];
   const server = http.createServer((request, response) => {
     let raw = "";
@@ -23,7 +23,8 @@ function startFakeCore() {
       if (request.url.endsWith("/capabilities")) {
         response.writeHead(204).end();
       } else if (request.url.includes("/outbox")) {
-        response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ messages: [] }));
+        response.writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ messages: outboxMessages.splice(0) }));
       } else if (request.url.endsWith("/delivery-reports")) {
         response.writeHead(204).end();
       } else {
@@ -33,6 +34,47 @@ function startFakeCore() {
   });
   return { server, calls };
 }
+
+test("requested slide is sent to MAX as an image attachment", async () => {
+  const core = startFakeCore([{
+    id: "slide-delivery-1",
+    externalUserId: "777",
+    content: { type: "IMAGE", ref: "/api/v1/slides/1/image?t=signed", caption: "Слайд 1" },
+    keyboard: []
+  }]);
+  const max = startFakeMax();
+  const corePort = await listen(core.server);
+  const maxPort = await listen(max.server);
+  const child = spawn(process.execPath, [ADAPTER_PATH], {
+    env: {
+      ...process.env,
+      CORE_URL: `http://127.0.0.1:${corePort}`,
+      MAX_API_BASE: `http://127.0.0.1:${maxPort}`,
+      MAX_BOT_TOKEN: BOT_TOKEN,
+      MAX_WEBAPP_URL: "https://app.example/mini",
+      MAX_RATE_LIMIT_RPS: "50"
+    },
+    stdio: ["ignore", "ignore", "pipe"]
+  });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => (stderr += chunk));
+  try {
+    await waitUntil(() => max.messages.some((message) => message.query.user_id === "777"));
+    const sent = max.messages.find((message) => message.query.user_id === "777");
+    assert.equal(sent.body.text, "Слайд 1");
+    assert.deepEqual(sent.body.attachments, [{
+      type: "image",
+      payload: { url: "https://app.example/api/v1/slides/1/image?t=signed" }
+    }]);
+    await waitUntil(() => core.calls.some((call) => call.url.endsWith("/delivery-reports")));
+    assert.ok(core.calls.some((call) => call.url.endsWith("/capabilities") && call.body.images));
+  } finally {
+    child.kill();
+    core.server.close();
+    max.server.close();
+  }
+  assert.equal(stderr, "", `adapter logged to stderr: ${stderr}`);
+});
 
 function startFakeMax() {
   const messages = [];

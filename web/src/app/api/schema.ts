@@ -946,6 +946,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/sessions/{sessionId}/participants/{personId}/kick": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Remove a student from this presentation; a fresh join is allowed. */
+    post: operations["kickSessionParticipant"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/participants/{personId}/request-name": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Ask a student to enter their first and last name (self-reported). */
+    post: operations["requestSessionParticipantName"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/sessions/{sessionId}/begin": {
     parameters: {
       query?: never;
@@ -1156,6 +1190,40 @@ export interface paths {
     put?: never;
     /** Join a live session as a web student. */
     post: operations["joinStudentSession"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/name": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Submit first and last name after a teacher request. */
+    post: operations["submitStudentName"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/slides/current/send-to-chat": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Queue the current slide image for the student's linked MAX chat. */
+    post: operations["sendStudentSlideToChat"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2021,6 +2089,10 @@ export interface components {
       /** Format: date-time */
       leftAt?: string;
       kicked: boolean;
+      /** Format: date-time */
+      nameRequestedAt?: string | null;
+      /** Format: date-time */
+      nameSubmittedAt?: string | null;
     };
     ChangeSlideRequest: {
       slideIdx: number;
@@ -2212,6 +2284,15 @@ export interface components {
       questionAnswers: components["schemas"]["StudentQuestionAnswer"][];
       /** @description The student's choice in activePoll. Filled only in identified GET requests, null in SSE events. */
       myVote?: number | null;
+      /** @description Current participant was removed and must join again. */
+      kicked: boolean;
+      /** @description Teacher requested a self-reported first and last name. */
+      nameRequested: boolean;
+    };
+    StudentNameRequest: {
+      participantToken?: string;
+      lastName: string;
+      firstName: string;
     };
     /** @description Anonymous entry sends displayName; returning anonymous student sends the previous participantToken and gets the same participant back. A request with a Bearer JWT (for example after /auth/max) joins as that person. */
     StudentJoinRequest: {
@@ -4189,6 +4270,54 @@ export interface operations {
       };
     };
   };
+  kickSessionParticipant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        personId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Removed participant. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionParticipant"];
+        };
+      };
+    };
+  };
+  requestSessionParticipantName: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        personId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Updated participant. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionParticipant"];
+        };
+      };
+    };
+  };
   beginLiveSession: {
     parameters: {
       query?: never;
@@ -4596,6 +4725,61 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["SessionGroupJoinConflict"];
         };
+      };
+    };
+  };
+  submitStudentName: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["StudentNameRequest"];
+      };
+    };
+    responses: {
+      /** @description Student session snapshot. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentSessionSnapshot"];
+        };
+      };
+    };
+  };
+  sendStudentSlideToChat: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Image queued for delivery to MAX. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No linked MAX identity or no current slide. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

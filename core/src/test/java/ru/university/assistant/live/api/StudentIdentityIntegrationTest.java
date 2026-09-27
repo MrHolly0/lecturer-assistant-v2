@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -12,9 +13,76 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 
 /** B-04 / D-01 / D-14: участник лекции — это человек, повторный вход не плодит участников и членов курса. */
 class StudentIdentityIntegrationTest extends LiveFlowTestBase {
+    @Test
+    void lecturerCanRemoveStudentWhoCanExplicitlyRejoin() throws Exception {
+        String jwt = maxLogin(505);
+        String personId = personIdOf(jwt);
+        JsonNode first = join(jwt, "{}");
+        String token = first.get("participantToken").asText();
+
+        json(post("/api/v1/courses/{courseId}/sessions/{sessionId}/participants/{personId}/kick",
+                        courseId, sessionId, personId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        mockMvc.perform(get("/api/v1/student/sessions/{joinCode}", joinCode)
+                        .header("Authorization", "Bearer " + jwt))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.kicked").value(true))
+                .andExpect(jsonPath("$.currentSlide").isEmpty());
+        act("/api/v1/student/sessions/{joinCode}/signals", jwt, "{\"value\":\"GREEN\"}", 403);
+        act("/api/v1/student/sessions/{joinCode}/signals", null,
+                "{\"participantToken\":\"" + token + "\",\"value\":\"GREEN\"}", 403);
+
+        JsonNode rejoined = join(jwt, "{}");
+        assertEquals(false, rejoined.get("snapshot").get("kicked").asBoolean());
+        act("/api/v1/student/sessions/{joinCode}/signals", jwt, "{\"value\":\"GREEN\"}", 200);
+        assertEquals(1L, count("live.session_participants where person_id = '" + personId + "'"));
+    }
+
+    @Test
+    void nameRequestAndSlideDeliveryUseCurrentStudentAndMaxIdentity() throws Exception {
+        String jwt = maxLogin(606);
+        String personId = personIdOf(jwt);
+        JsonNode joined = join(jwt, "{}");
+        String token = joined.get("participantToken").asText();
+
+        json(post("/api/v1/courses/{courseId}/sessions/{sessionId}/participants/{personId}/request-name",
+                        courseId, sessionId, personId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        mockMvc.perform(get("/api/v1/student/sessions/{joinCode}", joinCode)
+                        .header("Authorization", "Bearer " + jwt))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nameRequested").value(true));
+
+        json(post("/api/v1/student/sessions/{joinCode}/name", joinCode)
+                .header("Authorization", "Bearer " + jwt)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"lastName\":\"Петров\",\"firstName\":\"Иван\"}"), 200);
+        mockMvc.perform(get("/api/v1/courses/{courseId}/sessions/{sessionId}/participants", courseId, sessionId)
+                        .header("Authorization", "Bearer " + lecturerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].displayName").value("Петров Иван"))
+                .andExpect(jsonPath("$[0].nameSubmittedAt").exists());
+
+        for (int i = 0; i < 2; i++) {
+            json(post("/api/v1/student/sessions/{joinCode}/slides/current/send-to-chat", joinCode)
+                    .header("X-Participant-Token", token), 202);
+        }
+        assertEquals(1L, count("channel.outbox where channel_type = 'max' and content->>'type' = 'IMAGE' "
+                + "and content->>'ref' like '%" + courseId + "%'"));
+        String imageUrl = jdbc.sql("""
+                        select content->>'ref' from channel.outbox
+                        where channel_type = 'max' and content->>'type' = 'IMAGE'
+                            and content->>'ref' like :coursePattern
+                        """)
+                .param("coursePattern", "%" + courseId + "%")
+                .query(String.class)
+                .single();
+        mockMvc.perform(get(imageUrl)).andExpect(status().isOk());
+    }
     @Test
     void anonymousStudentReturningWithTokenIsTheSameParticipantAndNeverEntersCourse() throws Exception {
         JsonNode first = join(null, "{\"displayName\":\"Гость Аня\"}");

@@ -46,13 +46,17 @@ class StudentSessionSnapshotService {
 
     StudentSessionSnapshot create(LiveSession session, UUID viewerPersonId, boolean includeMyVote) {
         SnapshotData data = load(session);
-        return personalize(data, viewerPersonId, includeMyVote);
+        LiveSessionRepository.ParticipationState state = viewerPersonId == null ? null
+                : sessions.participationState(session.id(), viewerPersonId).orElse(null);
+        return personalize(data, viewerPersonId, includeMyVote, state);
     }
 
     Map<UUID, StudentSessionSnapshot> createForViewers(LiveSession session, Set<UUID> viewerPersonIds) {
         SnapshotData data = load(session);
+        Map<UUID, LiveSessionRepository.ParticipationState> states =
+                sessions.participationStates(session.id(), viewerPersonIds);
         return viewerPersonIds.stream().collect(Collectors.toMap(
-                Function.identity(), viewer -> personalize(data, viewer, false)));
+                Function.identity(), viewer -> personalize(data, viewer, false, states.get(viewer))));
     }
 
     private SnapshotData load(LiveSession session) {
@@ -81,14 +85,18 @@ class StudentSessionSnapshotService {
                 feedback.aggregate(session.id(), session.currentSlideIdx()),
                 activePoll,
                 null,
-                visibleAnswers(answers, null));
+                visibleAnswers(answers, null),
+                false,
+                false);
         return new SnapshotData(shared, answers);
     }
 
     private StudentSessionSnapshot personalize(
-            SnapshotData data, UUID viewerPersonId, boolean includeMyVote) {
+            SnapshotData data, UUID viewerPersonId, boolean includeMyVote,
+            LiveSessionRepository.ParticipationState state) {
         StudentSessionSnapshot shared = data.shared();
-        Integer myVote = includeMyVote && viewerPersonId != null && shared.activePoll() != null
+        boolean kicked = state != null && state.kicked();
+        Integer myVote = !kicked && includeMyVote && viewerPersonId != null && shared.activePoll() != null
                 ? quickPolls.myVote(shared.activePoll().pollId(), viewerPersonId)
                 : null;
         return new StudentSessionSnapshot(
@@ -101,12 +109,14 @@ class StudentSessionSnapshotService {
                 shared.joinCode(),
                 shared.currentSlideIdx(),
                 shared.slideCount(),
-                shared.currentSlide(),
+                kicked ? null : shared.currentSlide(),
                 shared.annotations(),
                 shared.signalAggregate(),
-                shared.activePoll(),
+                kicked ? null : shared.activePoll(),
                 myVote,
-                visibleAnswers(data.answers(), viewerPersonId));
+                kicked ? List.of() : visibleAnswers(data.answers(), viewerPersonId),
+                kicked,
+                state != null && state.active() && state.nameRequested());
     }
 
     private List<StudentQuestionAnswer> visibleAnswers(

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CirclePause, CircleStop, MessageCircle } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -6,6 +7,8 @@ import {
   connectStudentSession,
   getStudentSession,
   joinStudentSession,
+  sendStudentSlideToChat,
+  submitStudentName,
   submitStudentSignal,
   type SignalValue,
   type StudentConnectionState,
@@ -25,6 +28,7 @@ import { SessionGroups } from "../widgets/SessionGroups";
 import { StudentGroupJoinIssue, StudentGroupPicker } from "../widgets/StudentGroupJoin";
 import { StudentSessionError, StudentSessionLoading } from "../widgets/StudentSessionState";
 import { ThemeToggle } from "../widgets/ThemeToggle";
+import { Button } from "../shared/ui/button";
 import { joinIssueFromError, type JoinIssue } from "../app/api/studentGroupJoinIssue";
 
 interface StudentSessionPageProps {
@@ -49,8 +53,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const autoJoinRequested = useRef(false);
   const reconnectRef = useRef<() => void>(() => undefined);
   const [displayName, setDisplayName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [question, setQuestion] = useState("");
   const [lastSignal, setLastSignal] = useState<SignalValue | null>(null);
+  const [requestedSlideIdx, setRequestedSlideIdx] = useState<number | null>(null);
   const [snapshot, setSnapshot] = useState<StudentSessionSnapshot | null>(null);
   const [questions, setQuestions] = useState<StudentQuestion[]>([]);
   const [myVote, setMyVote] = useState<number | null>(null);
@@ -65,7 +72,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   });
   const current = snapshot ?? sessionQuery.data ?? null;
   const isLive = current?.status === "LIVE";
-  const isJoined = Boolean(participantToken);
+  const isJoined = Boolean(participantToken) && !current?.kicked;
 
   const joinMut = useMutation({
     mutationFn: () =>
@@ -128,6 +135,23 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     retry: shouldRetryMutation,
     retryDelay: mutationRetryDelay
   });
+  const nameMut = useMutation({
+    mutationFn: () =>
+      submitStudentName(normalizedCode, participantToken, lastName.trim(), firstName.trim()),
+    onSuccess: (next) => {
+      setSnapshot(next);
+      toast.success("Имя и фамилия отправлены преподавателю.");
+    },
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить имя."))
+  });
+  const slideChatMut = useMutation({
+    mutationFn: () => sendStudentSlideToChat(normalizedCode, participantToken),
+    onSuccess: () => {
+      setRequestedSlideIdx(current?.currentSlideIdx ?? null);
+      toast.success("Слайд отправляется в чат MAX.");
+    },
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить слайд в MAX."))
+  });
 
   useEffect(() => {
     if (!sessionQuery.data) return;
@@ -154,6 +178,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
 
   useEffect(() => {
     setLastSignal(null);
+    setRequestedSlideIdx(null);
   }, [current?.currentSlideIdx]);
 
   useEffect(() => {
@@ -214,9 +239,75 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         />
       )}
 
+      {current.kicked && (
+        <div className="student-session-notice student-session-notice--ended" role="alert">
+          <CircleStop size={22} aria-hidden="true" />
+          <div>
+            <strong>Вы отключены от занятия</strong>
+            <span>Вы можете снова войти по коду лекции.</span>
+            <Button type="button" disabled={joinMut.isPending} onClick={() => joinMut.mutate()}>
+              {joinMut.isPending ? "Подключаем…" : "Войти снова"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isJoined && current.nameRequested && (
+        <form
+          className="student-name-request"
+          onSubmit={(event) => {
+            event.preventDefault();
+            nameMut.mutate();
+          }}
+        >
+          <strong>Преподаватель просит указать имя и фамилию</strong>
+          <p>Укажите данные, под которыми вас можно найти в списке участников.</p>
+          <div className="student-name-request__fields">
+            <label>
+              Фамилия
+              <input
+                autoComplete="family-name"
+                minLength={2}
+                maxLength={80}
+                required
+                value={lastName}
+                onChange={(event) => setLastName(event.target.value)}
+              />
+            </label>
+            <label>
+              Имя
+              <input
+                autoComplete="given-name"
+                minLength={2}
+                maxLength={80}
+                required
+                value={firstName}
+                onChange={(event) => setFirstName(event.target.value)}
+              />
+            </label>
+          </div>
+          <Button type="submit" disabled={nameMut.isPending}>
+            Отправить преподавателю
+          </Button>
+        </form>
+      )}
+
       {current.status === "PAUSED" && (
-        <div className="student-pause-message" role="status">
-          Преподаватель приостановил показ. Ответы станут доступны после продолжения.
+        <div className="student-session-notice student-session-notice--paused" role="status">
+          <CirclePause size={22} aria-hidden="true" />
+          <div>
+            <strong>Лекция на паузе</strong>
+            <span>Преподаватель скоро продолжит показ. Отвечать пока нельзя.</span>
+          </div>
+        </div>
+      )}
+      {(current.status === "ENDED" || current.status === "ARCHIVED") && (
+        <div className="student-session-notice student-session-notice--ended" role="status">
+          <CircleStop size={22} aria-hidden="true" />
+          <div>
+            <strong>Лекция завершена</strong>
+            <span>Показ и отправка ответов остановлены.</span>
+          </div>
         </div>
       )}
 
@@ -225,6 +316,22 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           <div className="student-slide-meta">
             <span>Слайд {slideLabel}</span>
             {!isLive && <span className="muted">Показ сейчас не идет</span>}
+            {user &&
+              current.currentSlide &&
+              (current.status === "LIVE" || current.status === "PAUSED") && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={slideChatMut.isPending || requestedSlideIdx === current.currentSlideIdx}
+                  onClick={() => slideChatMut.mutate()}
+                >
+                  <MessageCircle size={16} aria-hidden="true" />{" "}
+                  {requestedSlideIdx === current.currentSlideIdx
+                    ? "Запрошен в MAX"
+                    : "Получить в чате MAX"}
+                </Button>
+              )}
           </div>
           {current.currentSlide ? (
             <div className="student-slide-viewport">
@@ -242,7 +349,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         </section>
       )}
 
-      {!isJoined ? (
+      {current.kicked ? null : !isJoined ? (
         joinIssue ? (
           <StudentGroupJoinIssue
             issue={joinIssue}

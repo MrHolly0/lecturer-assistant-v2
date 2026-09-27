@@ -12,4 +12,6 @@ public record SessionParticipant(
         String groupName,
         Instant joinedAt,
         Instant leftAt,
-        boolean kicked) {}
+        boolean kicked,
+        Instant nameRequestedAt,
+        Instant nameSubmittedAt) {}

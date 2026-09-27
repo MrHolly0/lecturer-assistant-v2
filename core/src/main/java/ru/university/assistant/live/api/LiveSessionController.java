@@ -72,6 +72,20 @@ public class LiveSessionController {
         return liveSessions.participants(user, courseId, sessionId);
     }
 
+    @PostMapping("/sessions/{sessionId}/participants/{personId}/kick")
+    public SessionParticipant kickParticipant(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId, @PathVariable UUID sessionId, @PathVariable UUID personId) {
+        return liveSessions.kickParticipant(user, courseId, sessionId, personId);
+    }
+
+    @PostMapping("/sessions/{sessionId}/participants/{personId}/request-name")
+    public SessionParticipant requestParticipantName(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId, @PathVariable UUID sessionId, @PathVariable UUID personId) {
+        return liveSessions.requestParticipantName(user, courseId, sessionId, personId);
+    }
+
     @PostMapping("/sessions/join")
     public LiveSession join(
             @AuthenticationPrincipal AuthenticatedUser user,

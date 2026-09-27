@@ -72,9 +72,7 @@ async function registerCapabilities() {
       inlineButtons: true,
       // Эндпоинта редактирования сообщения в справке нет (есть только POST/GET/DELETE /messages).
       editMessage: false,
-      // Вложения (attachments) в этом адаптере не реализованы — картинки слайдов студентам
-      // показывает мини-приложение, а не бот; на будущее лучше явно не обещать поддержку.
-      images: false,
+      images: true,
       // ТРЕБУЕТ ПРОВЕРКИ: MAX_API_NOTES.md §1.5 — лимит длины text не задокументирован,
       // значение ниже — осторожная оценка, не факт из справки.
       maxTextLength: 4000,
@@ -121,14 +119,15 @@ async function maxApi(path, { method = "GET", query, body } = {}) {
 }
 
 // buttonRows: массив рядов, ряд — массив кнопок MAX (payload.buttons[][]).
-async function sendMessage(userId, text, buttonRows) {
-  const attachments = buttonRows?.length
-      ? [{ type: "inline_keyboard", payload: { buttons: buttonRows } }]
-      : undefined;
+async function sendMessage(userId, text, buttonRows, imageUrl) {
+  const attachments = [
+    ...(imageUrl ? [{ type: "image", payload: { url: new URL(imageUrl, webAppUrl).toString() } }] : []),
+    ...(buttonRows?.length ? [{ type: "inline_keyboard", payload: { buttons: buttonRows } }] : []),
+  ];
   return maxApi("/messages", {
     method: "POST",
     query: { user_id: userId },
-    body: { text, attachments, notify: true },
+    body: { text, attachments: attachments.length ? attachments : undefined, notify: true },
   });
 }
 
@@ -247,7 +246,10 @@ async function pollCoreOutbox() {
     const started = Date.now();
     try {
       const result = await sendMessage(
-          message.externalUserId, message.content.text ?? "", renderKeyboard(message.keyboard));
+          message.externalUserId,
+          message.content.type === "IMAGE" ? message.content.caption ?? "Слайд лекции" : message.content.text ?? "",
+          renderKeyboard(message.keyboard),
+          message.content.type === "IMAGE" ? message.content.ref : undefined);
       reports.push({
         messageId: message.id,
         status: "DELIVERED",

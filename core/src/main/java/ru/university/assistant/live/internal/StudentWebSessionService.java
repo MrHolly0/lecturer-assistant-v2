@@ -13,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.analytics.api.DomainEvent;
 import ru.university.assistant.analytics.api.EventBus;
+import ru.university.assistant.channel.api.ChannelFanoutApi;
+import ru.university.assistant.content.api.StudentDeckApi;
 import ru.university.assistant.feedback.api.FeedbackApi;
 import ru.university.assistant.feedback.api.SignalAggregate;
 import ru.university.assistant.iam.api.AuthenticatedUser;
@@ -26,6 +28,7 @@ import ru.university.assistant.live.api.SessionStatus;
 import ru.university.assistant.live.api.StudentEngagement;
 import ru.university.assistant.live.api.StudentJoinRequest;
 import ru.university.assistant.live.api.StudentJoinResponse;
+import ru.university.assistant.live.api.StudentNameRequest;
 import ru.university.assistant.live.api.StudentQuestionRequest;
 import ru.university.assistant.live.api.StudentSessionSnapshot;
 import ru.university.assistant.live.api.StudentSignalRequest;
@@ -61,6 +64,8 @@ public class StudentWebSessionService {
     private final QuickPollApi quickPolls;
     private final ActivityRespondApi activityRespond;
     private final ApplicationEventPublisher applicationEvents;
+    private final ChannelFanoutApi channelFanout;
+    private final StudentDeckApi studentDecks;
 
     StudentWebSessionService(
             LiveSessionRepository sessions,
@@ -75,7 +80,9 @@ public class StudentWebSessionService {
             LiveSessionPublisher publisher,
             QuickPollApi quickPolls,
             ActivityRespondApi activityRespond,
-            ApplicationEventPublisher applicationEvents) {
+            ApplicationEventPublisher applicationEvents,
+            ChannelFanoutApi channelFanout,
+            StudentDeckApi studentDecks) {
         this.sessions = sessions;
         this.snapshots = snapshots;
         this.feedback = feedback;
@@ -89,6 +96,8 @@ public class StudentWebSessionService {
         this.quickPolls = quickPolls;
         this.activityRespond = activityRespond;
         this.applicationEvents = applicationEvents;
+        this.channelFanout = channelFanout;
+        this.studentDecks = studentDecks;
     }
 
     public StudentSessionSnapshot snapshot(String joinCode) {
@@ -133,6 +142,7 @@ public class StudentWebSessionService {
                     .filter(participant -> participant.sessionId().equals(session.id()))
                     .orElse(null);
             if (existing != null) {
+                requireActive(session.id(), existing.personId());
                 sessions.touchWebParticipant(existing.id());
                 return new StudentJoinResponse(
                         presented,
@@ -142,7 +152,13 @@ public class StudentWebSessionService {
             }
         }
         if (user != null) {
+            boolean rejoined = sessions.clearKickForRejoin(session.id(), user.id());
             registerPerson(session, user, request == null ? null : request.groupId());
+            if (rejoined) {
+                events.publish(new DomainEvent("live.session", session.id(), "participant.rejoined", user.id(),
+                        Map.of("courseId", session.courseId(), "sessionId", session.id()), Map.of()));
+                publisher.publish("participant.rejoined", session);
+            }
             sessions.deleteProfileTokens(session.id(), user.id());
             String token = randomToken();
             WebParticipant participant = sessions.createWebToken(
@@ -283,6 +299,44 @@ public class StudentWebSessionService {
         return participantSession(joinCode, participantToken, null).participant().personId();
     }
 
+    @Transactional
+    public StudentSessionSnapshot submitName(
+            String joinCode, StudentNameRequest request, AuthenticatedUser user) {
+        ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
+        String lastName = request.lastName().trim().replaceAll("\\s+", " ");
+        String firstName = request.firstName().trim().replaceAll("\\s+", " ");
+        if (lastName.length() < 2 || firstName.length() < 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter first and last name");
+        }
+        String name = lastName + " " + firstName;
+        sessions.submitParticipantName(current.session().id(), current.participant().personId(), name)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Name was not requested"));
+        publisher.publish("participant.name_submitted", current.session());
+        return snapshots.create(current.session(), current.participant().personId(), true);
+    }
+
+    @Transactional
+    public void sendCurrentSlideToChat(String joinCode, String participantToken, AuthenticatedUser user) {
+        ParticipantSession current = participantSession(joinCode, participantToken, user);
+        if (current.session().status() != SessionStatus.LIVE
+                && current.session().status() != SessionStatus.PAUSED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not running");
+        }
+        channelFanout.sendSlideToStudent(
+                current.session().id(), current.participant().personId(),
+                current.session().currentSlideIdx(),
+                studentDecks.slideImageUrlForDelivery(
+                        current.session().courseId(), current.session().deckId(),
+                        current.session().currentSlideIdx()));
+    }
+
+    private void requireActive(UUID sessionId, UUID personId) {
+        if (sessions.participationState(sessionId, personId).filter(LiveSessionRepository.ParticipationState::active)
+                .isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Вас удалили из этой лекции");
+        }
+    }
+
     private ParticipantSession participantSession(String joinCode, String participantToken, AuthenticatedUser user) {
         LiveSession session = sessionByCode(joinCode);
         if (participantToken == null || participantToken.isBlank()) {
@@ -299,6 +353,7 @@ public class StudentWebSessionService {
         if (!participant.sessionId().equals(session.id())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Participant token does not belong to session");
         }
+        requireActive(session.id(), participant.personId());
         return new ParticipantSession(session, participant);
     }
 

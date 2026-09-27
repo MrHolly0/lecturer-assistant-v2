@@ -87,7 +87,11 @@ function PollResult({ poll, myVote }: { poll: StudentActivePoll; myVote: number 
             <div className="student-poll-bar-label">
               <PollOptionText text={option} />
               <small>
-                {isCorrect && "Правильный ответ"}
+                {isCorrect && (
+                  <>
+                    <CheckCircle2 size={15} aria-hidden="true" /> Правильный ответ
+                  </>
+                )}
                 {isCorrect && isMyVote && " · "}
                 {isMyVote && "Ваш ответ"}
               </small>

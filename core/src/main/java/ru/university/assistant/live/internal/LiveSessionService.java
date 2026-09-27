@@ -153,6 +153,31 @@ public class LiveSessionService implements LiveSessionAccessApi {
     }
 
     @Transactional
+    public SessionParticipant kickParticipant(AuthenticatedUser user, UUID courseId, UUID sessionId, UUID personId) {
+        courseAccess.requireManage(user, courseId);
+        LiveSession current = session(courseId, sessionId);
+        ensureRunning(current);
+        SessionParticipant participant = sessions.kickParticipant(sessionId, personId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Active participant not found"));
+        event(user, current, "participant.kicked", Map.of("personId", personId));
+        publisher.publish("participant.kicked", current);
+        return participant;
+    }
+
+    @Transactional
+    public SessionParticipant requestParticipantName(
+            AuthenticatedUser user, UUID courseId, UUID sessionId, UUID personId) {
+        courseAccess.requireManage(user, courseId);
+        LiveSession current = session(courseId, sessionId);
+        ensureRunning(current);
+        SessionParticipant participant = sessions.requestParticipantName(sessionId, personId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Active participant not found"));
+        event(user, current, "participant.name_requested", Map.of("personId", personId));
+        publisher.publish("participant.name_requested", current);
+        return participant;
+    }
+
+    @Transactional
     public LiveSession join(AuthenticatedUser user, UUID courseId, JoinSessionRequest request) {
         courseAccess.requireVisible(user, courseId);
         LiveSession session = sessions.findByJoinCode(courseId, request.joinCode().trim().toUpperCase())
@@ -169,6 +194,12 @@ public class LiveSessionService implements LiveSessionAccessApi {
         courseAccess.requireManage(user, courseId);
         LiveSession before = session(courseId, sessionId);
         ensureLive(before);
+        if (request.slideIdx() < 1 || request.slideIdx() > sessions.deckSlideCount(before.deckId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Slide index is outside the deck");
+        }
+        if (request.slideIdx() == before.currentSlideIdx()) {
+            return before;
+        }
         LiveSession after = sessions.updateSlide(courseId, sessionId, request.slideIdx());
         event(user, after, "session.slide_changed",
                 Map.of("from", before.currentSlideIdx(), "to", after.currentSlideIdx()));
@@ -231,6 +262,12 @@ public class LiveSessionService implements LiveSessionAccessApi {
     private void ensureLive(LiveSession session) {
         if (session.status() != SessionStatus.LIVE) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not live");
+        }
+    }
+
+    private void ensureRunning(LiveSession session) {
+        if (session.status() != SessionStatus.LIVE && session.status() != SessionStatus.PAUSED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not running");
         }
     }
 

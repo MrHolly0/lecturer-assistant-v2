@@ -69,6 +69,23 @@ class StudentSessionController {
         return studentSessions.join(joinCode, request, user);
     }
 
+    @PostMapping("/api/v1/student/sessions/{joinCode}/name")
+    public StudentSessionSnapshot submitName(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String joinCode,
+            @Valid @RequestBody StudentNameRequest request) {
+        return studentSessions.submitName(joinCode, request, user);
+    }
+
+    @PostMapping("/api/v1/student/sessions/{joinCode}/slides/current/send-to-chat")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void sendCurrentSlideToChat(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String joinCode,
+            @RequestHeader(value = "X-Participant-Token", required = false) String participantToken) {
+        studentSessions.sendCurrentSlideToChat(joinCode, participantToken, user);
+    }
+
     @GetMapping(path = "/api/v1/student/sessions/{joinCode}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter events(@PathVariable String joinCode, @RequestParam String participantToken) {
         UUID viewerPersonId = studentSessions.participantPersonId(joinCode, participantToken);

@@ -52,6 +52,32 @@ export async function listSessionParticipants(
   return res.json() as Promise<SessionParticipant[]>;
 }
 
+export async function kickSessionParticipant(
+  courseId: string,
+  sessionId: string,
+  personId: string
+): Promise<SessionParticipant> {
+  const res = await apiFetch(
+    `/courses/${courseId}/sessions/${sessionId}/participants/${personId}/kick`,
+    {
+      method: "POST"
+    }
+  );
+  return res.json() as Promise<SessionParticipant>;
+}
+
+export async function requestSessionParticipantName(
+  courseId: string,
+  sessionId: string,
+  personId: string
+): Promise<SessionParticipant> {
+  const res = await apiFetch(
+    `/courses/${courseId}/sessions/${sessionId}/participants/${personId}/request-name`,
+    { method: "POST" }
+  );
+  return res.json() as Promise<SessionParticipant>;
+}
+
 export async function getLectureSummary(
   courseId: string,
   sessionId: string

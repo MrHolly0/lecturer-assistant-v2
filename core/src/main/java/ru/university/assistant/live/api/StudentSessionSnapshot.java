@@ -23,4 +23,6 @@ public record StudentSessionSnapshot(
         ActivePollView activePoll,
         /** Выбор текущего студента в опросе; заполняется только в GET-снапшоте с идентификацией, в SSE — null. */
         Integer myVote,
-        List<StudentQuestionAnswer> questionAnswers) {}
+        List<StudentQuestionAnswer> questionAnswers,
+        boolean kicked,
+        boolean nameRequested) {}

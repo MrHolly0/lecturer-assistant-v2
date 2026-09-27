@@ -69,6 +69,34 @@ export async function joinStudentSession(
   return res.json() as Promise<StudentJoinResponse>;
 }
 
+export async function submitStudentName(
+  joinCode: string,
+  participantToken: string,
+  lastName: string,
+  firstName: string
+): Promise<StudentSessionSnapshot> {
+  const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/name`, {
+    method: "POST",
+    body: JSON.stringify({ participantToken, lastName, firstName })
+  });
+  return res.json() as Promise<StudentSessionSnapshot>;
+}
+
+export async function sendStudentSlideToChat(
+  joinCode: string,
+  participantToken: string
+): Promise<void> {
+  const headers = new Headers();
+  if (participantToken) headers.set("X-Participant-Token", participantToken);
+  await studentFetch(
+    `/student/sessions/${encodeURIComponent(joinCode)}/slides/current/send-to-chat`,
+    {
+      method: "POST",
+      headers
+    }
+  );
+}
+
 export async function submitStudentSignal(
   joinCode: string,
   participantToken: string,

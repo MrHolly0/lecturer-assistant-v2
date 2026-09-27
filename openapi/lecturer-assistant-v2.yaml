@@ -1186,6 +1186,42 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/SessionParticipant"
+  /courses/{courseId}/sessions/{sessionId}/participants/{personId}/kick:
+    post:
+      operationId: kickSessionParticipant
+      summary: Remove a student from this presentation; a fresh join is allowed.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+        - name: personId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Removed participant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionParticipant" }
+  /courses/{courseId}/sessions/{sessionId}/participants/{personId}/request-name:
+    post:
+      operationId: requestSessionParticipantName
+      summary: Ask a student to enter their first and last name (self-reported).
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+        - name: personId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Updated participant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionParticipant" }
   /courses/{courseId}/sessions/{sessionId}/begin:
     post:
       operationId: beginLiveSession
@@ -1453,6 +1489,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SessionGroupJoinConflict"
+  /student/sessions/{joinCode}/name:
+    post:
+      operationId: submitStudentName
+      summary: Submit first and last name after a teacher request.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StudentNameRequest" }
+      responses:
+        "200":
+          description: Student session snapshot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudentSessionSnapshot" }
+  /student/sessions/{joinCode}/slides/current/send-to-chat:
+    post:
+      operationId: sendStudentSlideToChat
+      summary: Queue the current slide image for the student's linked MAX chat.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+        - name: X-Participant-Token
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        "202":
+          description: Image queued for delivery to MAX.
+        "409":
+          description: No linked MAX identity or no current slide.
   /student/sessions/{joinCode}/events:
     get:
       operationId: streamStudentSession
@@ -3044,6 +3116,14 @@ components:
           format: date-time
         kicked:
           type: boolean
+        nameRequestedAt:
+          type: string
+          format: date-time
+          nullable: true
+        nameSubmittedAt:
+          type: string
+          format: date-time
+          nullable: true
     ChangeSlideRequest:
       type: object
       required: [slideIdx]
@@ -3408,6 +3488,8 @@ components:
         - currentSlide
         - signalAggregate
         - questionAnswers
+        - kicked
+        - nameRequested
       properties:
         sessionId:
           type: string
@@ -3435,6 +3517,7 @@ components:
           minimum: 0
         currentSlide:
           $ref: "#/components/schemas/StudentSlide"
+          nullable: true
         annotations:
           type: object
           additionalProperties: true
@@ -3452,6 +3535,26 @@ components:
           type: integer
           nullable: true
           description: The student's choice in activePoll. Filled only in identified GET requests, null in SSE events.
+        kicked:
+          type: boolean
+          description: Current participant was removed and must join again.
+        nameRequested:
+          type: boolean
+          description: Teacher requested a self-reported first and last name.
+    StudentNameRequest:
+      type: object
+      required: [lastName, firstName]
+      properties:
+        participantToken:
+          type: string
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 80
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 80
     StudentJoinRequest:
       type: object
       description: >

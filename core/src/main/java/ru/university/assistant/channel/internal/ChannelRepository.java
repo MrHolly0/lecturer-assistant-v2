@@ -172,6 +172,16 @@ class ChannelRepository {
                 .list();
     }
 
+    java.util.Optional<UUID> maxIdentityForPerson(UUID personId) {
+        return jdbc.sql("""
+                        select id from iam.channel_identities
+                        where person_id = :personId and channel_type = 'max'
+                        """)
+                .param("personId", personId)
+                .query(UUID.class)
+                .optional();
+    }
+
     private void markDelivered(DeliveryReport report) {
         jdbc.sql(
                         """

@@ -43,7 +43,7 @@ public class StudentSseBroadcaster {
         // Сразу отдаём текущее состояние, чтобы клиент не ждал до секунды.
         StudentSessionSnapshot initial = safeSnapshot(code, viewerPersonId);
         if (initial != null) {
-            send(code, client, "snapshot", initial);
+            sendSnapshot(code, client, initial);
         }
     }
 
@@ -75,7 +75,7 @@ public class StudentSseBroadcaster {
                     continue;
                 }
                 ended = snapshot.status() == SessionStatus.ENDED || snapshot.status() == SessionStatus.ARCHIVED;
-                boolean delivered = send(code, client, "snapshot", snapshot);
+                boolean delivered = sendSnapshot(code, client, snapshot);
                 if (ended && delivered) {
                     client.emitter().complete();
                 }
@@ -117,6 +117,27 @@ public class StudentSseBroadcaster {
         }
     }
 
+    private boolean sendSnapshot(String code, Client client, StudentSessionSnapshot snapshot) {
+        if (!snapshot.equals(client.lastSnapshot)) {
+            boolean delivered = send(code, client, "snapshot", snapshot);
+            if (delivered) {
+                client.lastSnapshot = snapshot;
+                client.nextHeartbeatAt = System.nanoTime() + java.time.Duration.ofSeconds(15).toNanos();
+            }
+            return delivered;
+        }
+        if (System.nanoTime() >= client.nextHeartbeatAt) {
+            try {
+                client.emitter.send(SseEmitter.event().comment("keepalive"));
+                client.nextHeartbeatAt = System.nanoTime() + java.time.Duration.ofSeconds(15).toNanos();
+            } catch (IOException | IllegalStateException exception) {
+                remove(code, client);
+                return false;
+            }
+        }
+        return true;
+    }
+
     private void remove(String code, Client client) {
         Set<Client> set = clientsByCode.get(code);
         if (set != null) {
@@ -127,5 +148,18 @@ public class StudentSseBroadcaster {
         }
     }
 
-    private record Client(UUID viewerPersonId, SseEmitter emitter) {}
+    private static final class Client {
+        private final UUID viewerPersonId;
+        private final SseEmitter emitter;
+        private volatile StudentSessionSnapshot lastSnapshot;
+        private volatile long nextHeartbeatAt;
+
+        private Client(UUID viewerPersonId, SseEmitter emitter) {
+            this.viewerPersonId = viewerPersonId;
+            this.emitter = emitter;
+        }
+
+        UUID viewerPersonId() { return viewerPersonId; }
+        SseEmitter emitter() { return emitter; }
+    }
 }

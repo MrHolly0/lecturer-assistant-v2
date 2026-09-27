@@ -99,6 +99,18 @@ public class ContentService implements StudentDeckApi {
         return signDeck(deck);
     }
 
+    @Override
+    public String slideImageUrlForDelivery(UUID courseId, UUID deckId, int slideIdx) {
+        SlideDeckDetails deck = repository.findDeck(courseId, deckId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
+        Slide slide = deck.slides().stream()
+                .filter(item -> item.idx() == slideIdx)
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Slide not found"));
+        return signedUrls.slideImageUrl(courseId, deckId, slide.id(), slideIdx,
+                signedUrls.deliveryToken(courseId, deckId));
+    }
+
     public BlobResource getSlideImage(
             AuthenticatedUser user, UUID courseId, UUID deckId, int slideIndex, String token) {
         if (!signedUrls.isValid(token, courseId, deckId)) {

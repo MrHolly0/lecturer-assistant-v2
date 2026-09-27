@@ -3,6 +3,7 @@ package ru.university.assistant.content.internal;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.UUID;
 import javax.crypto.Mac;
@@ -23,6 +24,11 @@ class SignedSlideUrlService {
 
     String token(UUID courseId, UUID deckId) {
         long expiresAt = windowExpiry();
+        return expiresAt + "." + signature(courseId, deckId, expiresAt);
+    }
+
+    String deliveryToken(UUID courseId, UUID deckId) {
+        long expiresAt = Instant.now(clock).plus(Duration.ofHours(2)).getEpochSecond();
         return expiresAt + "." + signature(courseId, deckId, expiresAt);
     }
 

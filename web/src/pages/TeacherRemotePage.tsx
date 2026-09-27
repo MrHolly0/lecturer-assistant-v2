@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Clock3, Pause, Play, Radio, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -11,6 +11,7 @@ import {
   connectLiveSession,
   endLiveSession,
   getLiveSession,
+  listSessionParticipants,
   pauseLiveSession,
   resumeLiveSession,
   type LiveConnectionState,
@@ -28,6 +29,7 @@ import { TeacherRemoteScheduledState } from "../widgets/TeacherRemoteScheduledSt
 import { TeacherRemoteSignals } from "../widgets/TeacherRemoteSignals";
 import { LiveSlideNotesEditor } from "../widgets/LiveSlideNotesEditor";
 import { ThemeToggle } from "../widgets/ThemeToggle";
+import { SessionParticipantList } from "../widgets/SessionParticipantList";
 
 export function TeacherRemotePage({
   courseId,
@@ -38,6 +40,7 @@ export function TeacherRemotePage({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const slideInFlightRef = useRef(false);
   const [sessionOverride, setSessionOverride] = useState<LiveSession | null>(null);
   const [connection, setConnection] = useState<LiveConnectionState>("connecting");
   const sessionQuery = useQuery({
@@ -56,6 +59,11 @@ export function TeacherRemotePage({
     queryKey: ["live", courseId, sessionId, "engagement"],
     queryFn: () => getStudentEngagement(courseId, sessionId),
     enabled: Boolean(sessionId),
+    refetchInterval: 3000
+  });
+  const participantsQuery = useQuery({
+    queryKey: ["live", courseId, sessionId, "participants"],
+    queryFn: () => listSessionParticipants(courseId, sessionId),
     refetchInterval: 3000
   });
   const deck = deckQuery.data;
@@ -81,6 +89,11 @@ export function TeacherRemotePage({
         if (message.type.startsWith("poll.") || message.type.startsWith("interaction.poll")) {
           void queryClient.invalidateQueries({ queryKey: ["poll", courseId, sessionId] });
         }
+        if (message.type.startsWith("participant.")) {
+          void queryClient.invalidateQueries({
+            queryKey: ["live", courseId, sessionId, "participants"]
+          });
+        }
       },
       setConnection
     );
@@ -90,8 +103,23 @@ export function TeacherRemotePage({
   const slideMutation = useMutation({
     mutationFn: (slideIdx: number) => changeLiveSessionSlide(courseId, sessionId, slideIdx),
     onSuccess: setSessionOverride,
-    onError: (error) => toast.error(userErrorMessage(error, "Не удалось переключить слайд."))
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось переключить слайд.")),
+    onSettled: () => {
+      slideInFlightRef.current = false;
+    }
   });
+  const go = (idx: number) => {
+    if (
+      slideInFlightRef.current ||
+      slideMutation.isPending ||
+      paused ||
+      idx < 1 ||
+      idx > (deck?.slides.length ?? 0)
+    )
+      return;
+    slideInFlightRef.current = true;
+    slideMutation.mutate(idx);
+  };
   const pauseMutation = useMutation({
     mutationFn: () => pauseLiveSession(courseId, sessionId),
     onSuccess: setSessionOverride,
@@ -204,7 +232,7 @@ export function TeacherRemotePage({
           type="button"
           variant="outline"
           disabled={paused || actionPending || currentSlideIdx <= 1}
-          onClick={() => slideMutation.mutate(currentSlideIdx - 1)}
+          onClick={() => go(currentSlideIdx - 1)}
         >
           <ChevronLeft size={25} aria-hidden="true" /> Назад
         </Button>
@@ -220,7 +248,7 @@ export function TeacherRemotePage({
         <Button
           type="button"
           disabled={paused || actionPending || currentSlideIdx >= slideCount}
-          onClick={() => slideMutation.mutate(currentSlideIdx + 1)}
+          onClick={() => go(currentSlideIdx + 1)}
         >
           Далее <ChevronRight size={25} aria-hidden="true" />
         </Button>
@@ -235,6 +263,7 @@ export function TeacherRemotePage({
             {openQuestionCount > 0 && <span className="tab-badge">{openQuestionCount}</span>}
           </TabsTrigger>
           <TabsTrigger value="notes">Заметки</TabsTrigger>
+          <TabsTrigger value="students">Студенты</TabsTrigger>
         </TabsList>
         <TabsContent value="control">
           <TeacherRemoteSignals engagement={engagementQuery.data} />
@@ -249,6 +278,13 @@ export function TeacherRemotePage({
           {slide && (
             <LiveSlideNotesEditor courseId={courseId} deckId={slide.deckId} slide={slide} />
           )}
+        </TabsContent>
+        <TabsContent value="students" className="teacher-remote-students">
+          <SessionParticipantList
+            courseId={courseId}
+            sessionId={sessionId}
+            participants={participantsQuery.data ?? []}
+          />
         </TabsContent>
       </Tabs>
     </main>

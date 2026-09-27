@@ -10,7 +10,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import ru.university.assistant.iam.api.AuthenticatedUser;
@@ -236,6 +238,13 @@ class LiveSessionRepository {
         return findByCourse(courseId, sessionId).orElseThrow();
     }
 
+    int deckSlideCount(UUID deckId) {
+        return jdbc.sql("select count(*) from content.slides where deck_id = :deckId")
+                .param("deckId", deckId)
+                .query(Integer.class)
+                .single();
+    }
+
     LiveSession updateAnnotations(UUID courseId, UUID sessionId, Map<String, Object> annotations) {
         jdbc.sql(
                         """
@@ -284,7 +293,8 @@ class LiveSessionRepository {
                         on conflict (session_id, person_id, channel_type)
                         do update set left_at = null, kicked = false
                         returning session_id, person_id, channel_type, display_name,
-                                  group_id, group_name_snapshot, joined_at, left_at, kicked
+                                  group_id, group_name_snapshot, joined_at, left_at, kicked,
+                                  name_requested_at, name_submitted_at
                         """)
                 .param("sessionId", sessionId)
                 .param("personId", user.id())
@@ -301,7 +311,8 @@ class LiveSessionRepository {
                         on conflict (session_id, person_id, channel_type)
                         do update set left_at = null, kicked = false
                         returning session_id, person_id, channel_type, display_name,
-                                  group_id, group_name_snapshot, joined_at, left_at, kicked
+                                  group_id, group_name_snapshot, joined_at, left_at, kicked,
+                                  name_requested_at, name_submitted_at
                         """)
                 .param("sessionId", sessionId)
                 .param("personId", personId)
@@ -344,6 +355,96 @@ class LiveSessionRepository {
 
     record JoinOutcome(boolean inserted, boolean kicked) {}
 
+    boolean clearKickForRejoin(UUID sessionId, UUID personId) {
+        return jdbc.sql("""
+                        update live.session_participants
+                        set kicked = false, left_at = null, joined_at = now(),
+                            name_requested_at = null, name_submitted_at = null
+                        where session_id = :sessionId and person_id = :personId
+                            and channel_type = 'web' and kicked = true
+                        """)
+                .param("sessionId", sessionId)
+                .param("personId", personId)
+                .update() == 1;
+    }
+
+    Optional<SessionParticipant> kickParticipant(UUID sessionId, UUID personId) {
+        return jdbc.sql("""
+                        update live.session_participants
+                        set kicked = true, left_at = now(), name_requested_at = null
+                        where session_id = :sessionId and person_id = :personId
+                            and channel_type = 'web' and left_at is null and kicked = false
+                        returning session_id, person_id, channel_type, display_name,
+                                  group_id, group_name_snapshot, joined_at, left_at, kicked,
+                                  name_requested_at, name_submitted_at
+                        """)
+                .param("sessionId", sessionId)
+                .param("personId", personId)
+                .query(this::mapParticipant)
+                .optional();
+    }
+
+    Optional<SessionParticipant> requestParticipantName(UUID sessionId, UUID personId) {
+        return jdbc.sql("""
+                        update live.session_participants
+                        set name_requested_at = now(), name_submitted_at = null
+                        where session_id = :sessionId and person_id = :personId
+                            and channel_type = 'web' and left_at is null and kicked = false
+                        returning session_id, person_id, channel_type, display_name,
+                                  group_id, group_name_snapshot, joined_at, left_at, kicked,
+                                  name_requested_at, name_submitted_at
+                        """)
+                .param("sessionId", sessionId)
+                .param("personId", personId)
+                .query(this::mapParticipant)
+                .optional();
+    }
+
+    Optional<SessionParticipant> submitParticipantName(UUID sessionId, UUID personId, String displayName) {
+        return jdbc.sql("""
+                        update live.session_participants
+                        set display_name = :displayName, name_submitted_at = now()
+                        where session_id = :sessionId and person_id = :personId
+                            and channel_type = 'web' and left_at is null and kicked = false
+                            and name_requested_at is not null and name_submitted_at is null
+                        returning session_id, person_id, channel_type, display_name,
+                                  group_id, group_name_snapshot, joined_at, left_at, kicked,
+                                  name_requested_at, name_submitted_at
+                        """)
+                .param("sessionId", sessionId)
+                .param("personId", personId)
+                .param("displayName", displayName)
+                .query(this::mapParticipant)
+                .optional();
+    }
+
+    Optional<ParticipationState> participationState(UUID sessionId, UUID personId) {
+        return participationStates(sessionId, Set.of(personId)).values().stream().findFirst();
+    }
+
+    Map<UUID, ParticipationState> participationStates(UUID sessionId, Set<UUID> personIds) {
+        if (personIds.isEmpty()) return Map.of();
+        return jdbc.sql("""
+                        select person_id, kicked, left_at, name_requested_at, name_submitted_at
+                        from live.session_participants
+                        where session_id = :sessionId and person_id in (:personIds)
+                            and channel_type = 'web'
+                        """)
+                .param("sessionId", sessionId)
+                .param("personIds", personIds)
+                .query((rs, row) -> new ParticipationState(
+                        rs.getObject("person_id", UUID.class),
+                        rs.getBoolean("kicked"),
+                        rs.getTimestamp("left_at") != null,
+                        rs.getTimestamp("name_requested_at") != null
+                                && rs.getTimestamp("name_submitted_at") == null))
+                .list().stream().collect(Collectors.toMap(ParticipationState::personId, state -> state));
+    }
+
+    record ParticipationState(UUID personId, boolean kicked, boolean left, boolean nameRequested) {
+        boolean active() { return !kicked && !left; }
+    }
+
     WebParticipant createWebToken(
             UUID id, UUID sessionId, UUID personId, String tokenHash, String displayName, IdentityLevel level) {
         jdbc.sql(
@@ -384,7 +485,8 @@ class LiveSessionRepository {
         return jdbc.sql(
                         """
                         select session_id, person_id, channel_type, display_name,
-                               group_id, group_name_snapshot, joined_at, left_at, kicked
+                               group_id, group_name_snapshot, joined_at, left_at, kicked,
+                               name_requested_at, name_submitted_at
                         from live.session_participants
                         where session_id = :sessionId
                         order by left_at nulls first, joined_at desc
@@ -513,7 +615,9 @@ class LiveSessionRepository {
                 rs.getString("group_name_snapshot"),
                 rs.getTimestamp("joined_at").toInstant(),
                 rs.getTimestamp("left_at") == null ? null : rs.getTimestamp("left_at").toInstant(),
-                rs.getBoolean("kicked"));
+                rs.getBoolean("kicked"),
+                rs.getTimestamp("name_requested_at") == null ? null : rs.getTimestamp("name_requested_at").toInstant(),
+                rs.getTimestamp("name_submitted_at") == null ? null : rs.getTimestamp("name_submitted_at").toInstant());
     }
 
     private WebParticipant mapWebParticipant(ResultSet rs, int rowNumber) throws SQLException {
