@@ -14,6 +14,7 @@ import {
   closePoll,
   getActivePoll,
   listClosedPolls,
+  setPollCorrectOption,
   startPoll,
   startPollFromBank,
   type PollResult
@@ -35,7 +36,6 @@ type View = "idle" | "create";
 export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
   const qc = useQueryClient();
   const [view, setView] = useState<View>("idle");
-  const [markedCorrect, setMarkedCorrect] = useState<number | undefined>(undefined);
 
   const activeQuery = useQuery({
     queryKey: ["poll", courseId, sessionId, "active"],
@@ -52,17 +52,17 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
             questionText: draft.questionText,
             options: draft.options
           }),
-    onSuccess: (result, draft) => {
+    onSuccess: (result) => {
       qc.setQueryData(["poll", courseId, sessionId, "active"], result);
       setView("idle");
-      setMarkedCorrect(result.poll.correctOptionIdx ?? draft.correctOptionIdx);
       toast.success("Опрос запущен.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось запустить опрос."))
   });
 
   const closeMut = useMutation({
-    mutationFn: (pollId: string) => closePoll(courseId, sessionId, pollId, markedCorrect),
+    mutationFn: ({ pollId, correctOptionIdx }: { pollId: string; correctOptionIdx: number }) =>
+      closePoll(courseId, sessionId, pollId, correctOptionIdx),
     onSuccess: (result) => {
       qc.setQueryData(["poll", courseId, sessionId, "active"], result);
       void qc.invalidateQueries({ queryKey: ["poll", courseId, sessionId, "closed"] });
@@ -71,9 +71,18 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось закрыть опрос."))
   });
 
-  useEffect(() => {
-    if (activePoll?.poll.status === "CLOSED") setMarkedCorrect(undefined);
-  }, [activePoll?.poll.id, activePoll?.poll.status]);
+  const correctMut = useMutation({
+    mutationFn: ({
+      pollId,
+      correctOptionIdx
+    }: {
+      pollId: string;
+      correctOptionIdx: number | null;
+    }) => setPollCorrectOption(courseId, sessionId, pollId, correctOptionIdx),
+    onSuccess: (result) => qc.setQueryData(["poll", courseId, sessionId, "active"], result),
+    onError: (error) =>
+      toast.error(userErrorMessage(error, "Не удалось сохранить правильный вариант."))
+  });
 
   useEffect(() => {
     if (activePoll?.poll.status === "OPEN") setView("idle");
@@ -113,6 +122,7 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
 
   if (activePoll) {
     const total = activePoll.totalResponses;
+    const selectedCorrect = activePoll.poll.correctOptionIdx;
     return (
       <>
         <div className="poll-panel">
@@ -128,9 +138,7 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
               const count = activePoll.votes[idx] ?? 0;
               const pct = total > 0 ? Math.round((count / total) * 100) : 0;
               const isClosed = activePoll.poll.status === "CLOSED";
-              const isCorrect = isClosed
-                ? activePoll.poll.correctOptionIdx === idx
-                : markedCorrect === idx;
+              const isCorrect = selectedCorrect === idx;
               return (
                 <div
                   key={idx}
@@ -141,8 +149,13 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
                     className="poll-bar-correct-toggle"
                     aria-label={`Отметить вариант ${idx + 1} правильным`}
                     aria-pressed={isCorrect}
-                    disabled={isClosed}
-                    onClick={() => setMarkedCorrect(isCorrect ? undefined : idx)}
+                    disabled={isClosed || correctMut.isPending}
+                    onClick={() =>
+                      correctMut.mutate({
+                        pollId: activePoll.poll.id,
+                        correctOptionIdx: isCorrect ? null : idx
+                      })
+                    }
                   >
                     {isCorrect ? <CheckCircle2 size={18} /> : <Circle size={18} />}
                   </button>
@@ -158,14 +171,21 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
           {activePoll.poll.status === "OPEN" && (
             <>
               <p className="poll-correct-hint">
-                {markedCorrect === undefined
+                {selectedCorrect === null || selectedCorrect === undefined
                   ? "Выберите правильный вариант перед закрытием."
                   : "Выбранный правильный ответ станет виден студентам после закрытия."}
               </p>
               <Button
                 type="button"
-                disabled={closeMut.isPending || markedCorrect === undefined}
-                onClick={() => closeMut.mutate(activePoll.poll.id)}
+                disabled={closeMut.isPending || correctMut.isPending || selectedCorrect == null}
+                onClick={() => {
+                  if (selectedCorrect != null) {
+                    closeMut.mutate({
+                      pollId: activePoll.poll.id,
+                      correctOptionIdx: selectedCorrect
+                    });
+                  }
+                }}
               >
                 Закрыть и показать результат
               </Button>

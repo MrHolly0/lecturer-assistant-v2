@@ -75,7 +75,7 @@ export function ProjectionPage({ joinCode }: { joinCode: string }) {
           Показ приостановлен
         </div>
       )}
-      {session.currentSlideIdx === 1 && (
+      {session.status === "SCHEDULED" && (
         <div className="projection-code">
           <span>Код подключения</span>
           <strong>{session.joinCode}</strong>

@@ -1,9 +1,14 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleStop, Loader2, Play } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { beginLiveSession, endLiveSession, getLiveSession } from "../app/api/live-api";
+import {
+  beginLiveSession,
+  connectLiveSession,
+  endLiveSession,
+  getLiveSession
+} from "../app/api/live-api";
 import { getCourse } from "../app/api/courses-api";
 import { userErrorMessage } from "../app/api/errors";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
@@ -35,7 +40,8 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
   const maxEnvironment = useMaxBridge();
   const sessionQuery = useQuery({
     queryKey: ["live", courseId, sessionId],
-    queryFn: () => getLiveSession(courseId, sessionId)
+    queryFn: () => getLiveSession(courseId, sessionId),
+    refetchInterval: 2000
   });
   const courseQuery = useQuery({
     queryKey: ["courses", courseId],
@@ -47,6 +53,20 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
   const presenterPath = isMobileMax(maxEnvironment)
     ? teacherRemotePath(courseId, sessionId)
     : `/courses/${courseId}/sessions/${sessionId}/presenter`;
+  const sawScheduled = useRef(false);
+
+  useEffect(() => {
+    return connectLiveSession(sessionId, (message) => {
+      queryClient.setQueryData(["live", courseId, sessionId], message.session);
+    });
+  }, [courseId, queryClient, sessionId]);
+
+  useEffect(() => {
+    if (session?.status === "SCHEDULED") sawScheduled.current = true;
+    if (session?.status === "LIVE" && sawScheduled.current) {
+      navigate(presenterPath, { replace: true });
+    }
+  }, [navigate, presenterPath, session?.status]);
   const beginMutation = useMutation({
     mutationFn: () => beginLiveSession(courseId, sessionId),
     onSuccess: (started) => {

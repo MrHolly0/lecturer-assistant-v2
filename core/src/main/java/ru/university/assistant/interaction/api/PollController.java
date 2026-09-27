@@ -7,6 +7,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -84,6 +85,19 @@ class PollController {
             @PathVariable UUID pollId) {
         courseAccess.requireManage(user, courseId);
         return pollService.getResult(courseId, sessionId, pollId);
+    }
+
+    @PutMapping("/polls/{pollId}/correct-option")
+    public PollResult setCorrectOption(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID sessionId,
+            @PathVariable UUID pollId,
+            @RequestBody SetPollCorrectOptionRequest request) {
+        courseAccess.requireManage(user, courseId);
+        PollResult result = pollService.setCorrectOption(courseId, sessionId, pollId, request.correctOptionIdx());
+        liveSessions.publishSessionUpdate(sessionId, "interaction.poll_corrected");
+        return result;
     }
 
     @PostMapping("/polls/{pollId}/close")

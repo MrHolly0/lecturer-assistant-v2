@@ -82,6 +82,22 @@ export async function closePoll(
   return res.json() as Promise<PollResult>;
 }
 
+export async function setPollCorrectOption(
+  courseId: string,
+  sessionId: string,
+  pollId: string,
+  correctOptionIdx: number | null
+): Promise<PollResult> {
+  const res = await apiFetch(
+    `/courses/${courseId}/sessions/${sessionId}/polls/${pollId}/correct-option`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ correctOptionIdx })
+    }
+  );
+  return res.json() as Promise<PollResult>;
+}
+
 export async function listQuestions(courseId: string, tag?: string): Promise<QuestionBankEntry[]> {
   const params = tag ? `?tag=${encodeURIComponent(tag)}` : "";
   const res = await apiFetch(`/courses/${courseId}/questions${params}`);

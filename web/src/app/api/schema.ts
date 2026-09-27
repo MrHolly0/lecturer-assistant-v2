@@ -1408,6 +1408,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/sessions/{sessionId}/polls/{pollId}/correct-option": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set the teacher's correct option for an open poll without revealing it to students. */
+    put: operations["setPollCorrectOption"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/student/sessions/{joinCode}/polls/{pollId}/respond": {
     parameters: {
       query?: never;
@@ -2199,6 +2216,9 @@ export interface components {
     };
     ClosePollRequest: {
       correctOptionIdx?: number;
+    };
+    SetPollCorrectOptionRequest: {
+      correctOptionIdx: number | null;
     };
     PollResponseRequest: {
       participantToken?: string;
@@ -5206,6 +5226,55 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["PollResult"];
         };
+      };
+      /** @description Poll not found, or it does not belong to this session. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Poll already closed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  setPollCorrectOption: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        pollId: components["parameters"]["PollId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetPollCorrectOptionRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated teacher poll result. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PollResult"];
+        };
+      };
+      /** @description Correct option index is outside the poll options. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Poll not found, or it does not belong to this session. */
       404: {

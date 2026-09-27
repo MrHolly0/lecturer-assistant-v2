@@ -1783,6 +1783,34 @@ paths:
           description: Poll not found, or it does not belong to this session.
         "409":
           description: Poll already closed.
+  /courses/{courseId}/sessions/{sessionId}/polls/{pollId}/correct-option:
+    put:
+      operationId: setPollCorrectOption
+      summary: Set the teacher's correct option for an open poll without revealing it to students.
+      tags: [interaction]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/PollId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPollCorrectOptionRequest"
+      responses:
+        "200":
+          description: Updated teacher poll result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollResult"
+        "400":
+          description: Correct option index is outside the poll options.
+        "404":
+          description: Poll not found, or it does not belong to this session.
+        "409":
+          description: Poll already closed.
   /student/sessions/{joinCode}/polls/{pollId}/respond:
     post:
       operationId: respondToPoll
@@ -3315,6 +3343,13 @@ components:
       properties:
         correctOptionIdx:
           type: integer
+    SetPollCorrectOptionRequest:
+      type: object
+      required: [correctOptionIdx]
+      properties:
+        correctOptionIdx:
+          type: integer
+          nullable: true
     PollResponseRequest:
       type: object
       required: [optionIdx]

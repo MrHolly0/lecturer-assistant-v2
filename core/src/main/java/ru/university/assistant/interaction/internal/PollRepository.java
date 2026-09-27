@@ -147,6 +147,20 @@ class PollRepository {
                 .single();
     }
 
+    Optional<QuickPoll> setCorrectOption(UUID pollId, Integer correctOptionIdx) {
+        return jdbc.sql("""
+                        update interaction.quick_polls
+                        set correct_option_idx = :correctOptionIdx
+                        where id = :id and status = 'OPEN'
+                        returning id, session_id, source_question_id, question_text, options, status,
+                                  correct_option_idx, created_at, closed_at
+                        """)
+                .param("id", pollId)
+                .param("correctOptionIdx", correctOptionIdx)
+                .query(this::map)
+                .optional();
+    }
+
     boolean respond(UUID id, UUID pollId, UUID personId, int optionIdx) {
         int rows = jdbc.sql("""
                         insert into interaction.poll_responses (id, poll_id, person_id, option_idx)

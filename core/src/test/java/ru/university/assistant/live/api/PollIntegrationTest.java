@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.UUID;
@@ -57,6 +58,66 @@ class PollIntegrationTest extends LiveFlowTestBase {
         }
         assertEquals(0, snapshot(joinCode, first, null).get("myVote").asInt());
         assertTrue(snapshot(joinCode, null, null).get("myVote").isNull());
+    }
+
+    @Test
+    void correctAnswerSelectionIsSharedBetweenTeachersButHiddenFromStudentsUntilClose() throws Exception {
+        UUID pollId = startPoll(sessionId);
+        String path = "/api/v1/courses/{c}/sessions/{s}/polls/{p}/correct-option";
+
+        JsonNode selected = json(put(path, courseId, sessionId, pollId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"correctOptionIdx\":1}"), 200);
+        assertEquals(1, selected.at("/poll/correctOptionIdx").asInt());
+
+        JsonNode secondTeacherView = json(get("/api/v1/courses/{c}/sessions/{s}/polls/active", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        assertEquals(1, secondTeacherView.at("/poll/correctOptionIdx").asInt());
+        assertTrue(snapshot(joinCode, null, null).at("/activePoll/correctOptionIdx").isNull());
+
+        json(put(path, courseId, sessionId, pollId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"correctOptionIdx\":null}"), 200);
+        assertTrue(json(get("/api/v1/courses/{c}/sessions/{s}/polls/active", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200)
+                .at("/poll/correctOptionIdx").isNull());
+
+        json(put(path, courseId, sessionId, pollId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"correctOptionIdx\":2}"), 200);
+        json(post("/api/v1/courses/{c}/sessions/{s}/polls/{p}/close", courseId, sessionId, pollId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"), 200);
+        assertEquals(2, snapshot(joinCode, null, null).at("/activePoll/correctOptionIdx").asInt());
+        json(put(path, courseId, sessionId, pollId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"correctOptionIdx\":0}"), 409);
+    }
+
+    @Test
+    void correctAnswerSelectionChecksRoleSessionAndOptionIndex() throws Exception {
+        UUID pollId = startPoll(sessionId);
+        String path = "/api/v1/courses/{c}/sessions/{s}/polls/{p}/correct-option";
+        String studentJwt = maxLogin(808);
+        JsonNode other = startAnotherSession();
+
+        json(put(path, courseId, sessionId, pollId)
+                .header("Authorization", "Bearer " + studentJwt)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"correctOptionIdx\":0}"), 403);
+        json(put(path, courseId, sessionId, pollId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"correctOptionIdx\":3}"), 400);
+        json(put(path, courseId, other.get("id").asText(), pollId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"correctOptionIdx\":0}"), 404);
     }
 
     @Test

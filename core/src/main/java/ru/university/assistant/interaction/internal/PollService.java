@@ -85,6 +85,21 @@ public class PollService implements QuickPollApi {
         return result(pollInSession(sessionId, pollId));
     }
 
+    @Transactional
+    public PollResult setCorrectOption(UUID courseId, UUID sessionId, UUID pollId, Integer correctOptionIdx) {
+        liveSessions.requireSessionInCourse(courseId, sessionId);
+        QuickPoll poll = pollInSession(sessionId, pollId);
+        if (poll.status() != PollStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Poll already closed");
+        }
+        if (correctOptionIdx != null && (correctOptionIdx < 0 || correctOptionIdx >= poll.options().size())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid correct option index");
+        }
+        QuickPoll updated = polls.setCorrectOption(pollId, correctOptionIdx)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Poll already closed"));
+        return result(updated);
+    }
+
     @Transactional(readOnly = true)
     public ClosedPollPage listClosed(UUID courseId, UUID sessionId, int limit, int offset) {
         liveSessions.requireSessionInCourse(courseId, sessionId);

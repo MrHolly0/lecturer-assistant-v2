@@ -11,7 +11,6 @@ export interface PollDraft {
   questionText: string;
   options: string[];
   questionId?: string;
-  correctOptionIdx?: number;
 }
 
 interface PollComposerProps {
@@ -78,7 +77,6 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
           {!questionsQuery.isLoading && !questionsQuery.isError && (
             <div className="poll-bank-list">
               {eligibleQuestions.map((item) => {
-                const correctOptionIdx = item.options.findIndex((option) => option.correct);
                 return (
                   <button
                     key={item.id}
@@ -89,8 +87,7 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
                       onStart({
                         questionId: item.id,
                         questionText: item.text,
-                        options: item.options.map((option) => option.text),
-                        correctOptionIdx
+                        options: item.options.map((option) => option.text)
                       })
                     }
                   >
