@@ -2337,7 +2337,7 @@ textarea {
 .student-group-issue > .ui-button,
 .student-group-choice > .ui-button {
   min-height: 44px;
-  justify-self: start;
+  justify-self: stretch;
 }
 
 .session-groups {

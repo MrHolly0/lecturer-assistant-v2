@@ -220,25 +220,27 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         </div>
       )}
 
-      <section className="student-slide-card">
-        <div className="student-slide-meta">
-          <span>Слайд {slideLabel}</span>
-          {!isLive && <span className="muted">Показ сейчас не идет</span>}
-        </div>
-        {current.currentSlide ? (
-          <div className="student-slide-viewport">
-            <img src={current.currentSlide.imageUrl} alt={`Слайд ${current.currentSlide.idx}`} />
-            <DrawingOverlay
-              slideIdx={current.currentSlide.idx}
-              annotations={(current.annotations ?? {}) as LiveAnnotations}
-              active={false}
-              onChange={() => undefined}
-            />
+      {isJoined && (
+        <section className="student-slide-card">
+          <div className="student-slide-meta">
+            <span>Слайд {slideLabel}</span>
+            {!isLive && <span className="muted">Показ сейчас не идет</span>}
           </div>
-        ) : (
-          <div className="student-slide-empty">Слайд пока не выбран</div>
-        )}
-      </section>
+          {current.currentSlide ? (
+            <div className="student-slide-viewport">
+              <img src={current.currentSlide.imageUrl} alt={`Слайд ${current.currentSlide.idx}`} />
+              <DrawingOverlay
+                slideIdx={current.currentSlide.idx}
+                annotations={(current.annotations ?? {}) as LiveAnnotations}
+                active={false}
+                onChange={() => undefined}
+              />
+            </div>
+          ) : (
+            <div className="student-slide-empty">Слайд пока не выбран</div>
+          )}
+        </section>
+      )}
 
       {!isJoined ? (
         joinIssue ? (
