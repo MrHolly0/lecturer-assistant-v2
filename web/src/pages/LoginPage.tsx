@@ -10,6 +10,7 @@ import { landingPath } from "../app/routes";
 import { buildMaxBotUrl } from "../app/max/deepLink";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
+import { ThemeToggle } from "../widgets/ThemeToggle";
 
 export function LoginPage() {
   const { setUser } = useAuth();
@@ -44,6 +45,9 @@ export function LoginPage() {
   return (
     <div className="auth-shell">
       <div className="auth-card">
+        <div className="auth-theme-switch">
+          <ThemeToggle compact />
+        </div>
         <div className="auth-header">
           <BrandMark className="mx-auto h-16 w-16 text-orange-500" />
           <h1 className="auth-title">Lecturer Assistant</h1>

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { ApiError } from "../app/api/http";
 import { Button } from "../shared/ui/button";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface MaxCredentialsScreenProps {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -44,6 +45,9 @@ export function MaxCredentialsScreen({
   return (
     <main className="auth-shell">
       <section className="auth-card max-credentials" aria-labelledby="max-credentials-title">
+        <div className="auth-theme-switch">
+          <ThemeToggle compact />
+        </div>
         <header className="auth-header">
           <span className="max-auth-eyebrow">Вход через MAX</span>
           <h1 className="auth-title" id="max-credentials-title">

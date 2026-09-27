@@ -217,7 +217,14 @@ textarea {
   gap: 20px;
   max-width: 420px;
   padding: 28px;
+  position: relative;
   width: 100%;
+}
+
+.auth-theme-switch {
+  position: absolute;
+  right: 8px;
+  top: 8px;
 }
 
 .auth-card > .auth-header {
@@ -1317,6 +1324,33 @@ textarea {
   min-width: 0;
 }
 
+.presenter-actions .ui-button > svg {
+  flex: 0 0 auto;
+}
+
+.presenter-connection-dialog {
+  justify-items: center;
+  max-width: 420px;
+  text-align: center;
+}
+
+.presenter-connection-code {
+  font-size: clamp(1.6rem, 7vw, 2.4rem);
+  letter-spacing: 0.12em;
+}
+
+.presenter-connection-dialog .qr-card img,
+.presenter-connection-dialog .qr-placeholder {
+  height: min(50vw, 224px);
+  width: min(50vw, 224px);
+}
+
+.presenter-connection-link {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .presenter-menu-trigger {
   white-space: nowrap;
 }
@@ -1419,6 +1453,28 @@ textarea {
 .projection-shell {
   height: 100vh;
   width: 100vw;
+}
+
+.projection-controls {
+  align-items: center;
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  bottom: max(12px, env(safe-area-inset-bottom));
+  color: var(--foreground);
+  display: flex;
+  gap: 8px;
+  left: 50%;
+  max-width: calc(100vw - 24px);
+  padding: 6px;
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.projection-controls .ui-button {
+  min-height: 44px;
 }
 
 .projection-fallback {
@@ -2071,6 +2127,7 @@ textarea {
 }
 
 .student-session-shell {
+  align-content: start;
   background: var(--background);
   color: var(--foreground);
   display: grid;
@@ -2097,6 +2154,14 @@ textarea {
 .student-session-topbar h1 {
   font-size: clamp(1.25rem, 4vw, 1.8rem);
   margin: 2px 0 0;
+}
+
+.student-session-topbar__actions,
+.teacher-remote-header__actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
 }
 
 .student-connection {
@@ -2168,6 +2233,7 @@ textarea {
 
 .student-slide-card,
 .student-action-panel {
+  align-content: start;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -2422,10 +2488,11 @@ textarea {
 
   .presenter-actions {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .presenter-actions .ui-button {
+    width: 100%;
     white-space: normal;
   }
 
@@ -2598,6 +2665,11 @@ textarea {
   display: flex;
   gap: 8px;
   min-width: 0;
+}
+
+.course-quick-start > .ui-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .course-quick-start__select {
@@ -2969,6 +3041,12 @@ html[data-max-mini-app="true"] .student-session-shell {
 
 html[data-max-mini-app="true"] .student-session-shell {
   padding: 18px;
+}
+
+@media (max-width: 560px) {
+  html[data-max-mini-app="true"] .student-session-shell {
+    padding: max(12px, env(safe-area-inset-top)) 12px max(20px, env(safe-area-inset-bottom));
+  }
 }
 
 .session-join-shell--center {

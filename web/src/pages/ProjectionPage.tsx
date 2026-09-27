@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { CirclePause, CircleStop } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, ChevronLeft, ChevronRight, CirclePause, CircleStop } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
-import { connectLiveSession, getLiveSession, type LiveSession } from "../app/api/live-api";
+import {
+  changeLiveSessionSlide,
+  connectLiveSession,
+  getLiveSession,
+  type LiveSession
+} from "../app/api/live-api";
+import { userErrorMessage } from "../app/api/errors";
+import { useMaxBridge } from "../app/max/context";
+import { isMobileMax, teacherRemotePath } from "../app/max/navigation";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 import { LocalQrCode } from "../widgets/LocalQrCode";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
@@ -11,6 +21,8 @@ import { Button } from "../shared/ui/button";
 import { SessionGroups } from "../widgets/SessionGroups";
 
 export function ProjectionPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
+  const navigate = useNavigate();
+  const maxEnvironment = useMaxBridge();
   const [localSession, setLocalSession] = useState<LiveSession | null>(null);
   const sessionQuery = useQuery({
     queryKey: ["live", courseId, sessionId],
@@ -28,6 +40,14 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
     deck?.slides.find((item) => item.idx === session?.currentSlideIdx) ?? deck?.slides[0];
   const showJoinCode = slide?.idx === 1;
   const joinUrl = useMemo(() => buildMaxJoinUrl(session?.joinCode ?? ""), [session?.joinCode]);
+  const presenterPath = isMobileMax(maxEnvironment)
+    ? teacherRemotePath(courseId, sessionId)
+    : `/courses/${courseId}/sessions/${sessionId}/presenter`;
+  const slideMutation = useMutation({
+    mutationFn: (index: number) => changeLiveSessionSlide(courseId, sessionId, index),
+    onSuccess: setLocalSession,
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось переключить слайд."))
+  });
 
   useEffect(() => {
     if (sessionQuery.data) setLocalSession(sessionQuery.data);
@@ -48,18 +68,29 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
 
   useEffect(() => {
     if (session?.status !== "ENDED" && session?.status !== "ARCHIVED") return;
-    const timer = window.setTimeout(() => window.close(), 250);
+    const timer = window.setTimeout(() => {
+      if (window.opener) window.close();
+      else navigate(`/courses/${courseId}/sessions/${sessionId}/summary`, { replace: true });
+    }, 250);
     return () => window.clearTimeout(timer);
-  }, [session?.status]);
+  }, [courseId, navigate, session?.status, sessionId]);
 
   if (session?.status === "ENDED" || session?.status === "ARCHIVED") {
     return (
       <main className="projection-shell projection-fallback">
         <CircleStop size={48} aria-hidden="true" />
         <h1>Лекция завершена</h1>
-        <p>Окно проектора можно закрыть.</p>
-        <Button type="button" variant="outline" onClick={() => window.close()}>
-          Закрыть окно
+        <p>Итог занятия доступен в кабинете.</p>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() =>
+            window.opener
+              ? window.close()
+              : navigate(`/courses/${courseId}/sessions/${sessionId}/summary`)
+          }
+        >
+          Открыть итог
         </Button>
       </main>
     );
@@ -101,6 +132,38 @@ export function ProjectionPage({ courseId, sessionId }: { courseId: string; sess
             <small>MAX-бот не настроен</small>
           )}
         </div>
+      )}
+      {maxEnvironment.isMax && (
+        <nav className="projection-controls" aria-label="Управление проектором">
+          <Button type="button" variant="outline" onClick={() => navigate(presenterPath)}>
+            <ArrowLeft size={18} aria-hidden="true" /> К лекции
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            aria-label="Предыдущий слайд"
+            disabled={session.status === "PAUSED" || slideMutation.isPending || slide.idx <= 1}
+            onClick={() => slideMutation.mutate(slide.idx - 1)}
+          >
+            <ChevronLeft size={20} aria-hidden="true" />
+          </Button>
+          <span>
+            {slide.idx} / {deck.slides.length}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            aria-label="Следующий слайд"
+            disabled={
+              session.status === "PAUSED" ||
+              slideMutation.isPending ||
+              slide.idx >= deck.slides.length
+            }
+            onClick={() => slideMutation.mutate(slide.idx + 1)}
+          >
+            <ChevronRight size={20} aria-hidden="true" />
+          </Button>
+        </nav>
       )}
     </main>
   );

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link2 } from "lucide-react";
 import { normalizeLinkCode } from "../app/max/deepLink";
 import { Button } from "../shared/ui/button";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface MaxLinkCodeScreenProps {
   initialCode: string;
@@ -28,6 +29,9 @@ export function MaxLinkCodeScreen({
   return (
     <main className="auth-shell">
       <section className="auth-card max-link-auth" aria-labelledby="max-link-auth-title">
+        <div className="auth-theme-switch">
+          <ThemeToggle compact />
+        </div>
         <div className="auth-header">
           <span className="max-auth-eyebrow">Мини-приложение MAX</span>
           <div className="max-link-auth__heading">

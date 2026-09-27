@@ -7,6 +7,7 @@ import { landingPath } from "../app/routes";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { Button, IconButton } from "../shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../shared/ui/tooltip";
+import { ThemeToggle } from "./ThemeToggle";
 
 const navItems = [
   { path: "/home", icon: Home, label: "Главная", roles: ["STUDENT"] },
@@ -93,6 +94,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="border-t border-border p-3">
+          <ThemeToggle />
           <div className="mb-2 flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground">
             <UserRound className="h-4 w-4 shrink-0" />
             <span className="min-w-0">

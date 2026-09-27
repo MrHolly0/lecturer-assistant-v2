@@ -24,6 +24,7 @@ import { StudentPollCard } from "../widgets/StudentPollCard";
 import { SessionGroups } from "../widgets/SessionGroups";
 import { StudentGroupJoinIssue, StudentGroupPicker } from "../widgets/StudentGroupJoin";
 import { StudentSessionError, StudentSessionLoading } from "../widgets/StudentSessionState";
+import { ThemeToggle } from "../widgets/ThemeToggle";
 import { joinIssueFromError, type JoinIssue } from "../app/api/studentGroupJoinIssue";
 
 interface StudentSessionPageProps {
@@ -197,9 +198,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           <h1>{current.lectureTitle}</h1>
           <SessionGroups groups={current.groups} compact />
         </div>
-        <span className={`badge student-status student-status--${current.status.toLowerCase()}`}>
-          {STATUS_LABELS[current.status]}
-        </span>
+        <div className="student-session-topbar__actions">
+          <span className={`badge student-status student-status--${current.status.toLowerCase()}`}>
+            {STATUS_LABELS[current.status]}
+          </span>
+          <ThemeToggle compact />
+        </div>
       </header>
 
       {isJoined && (

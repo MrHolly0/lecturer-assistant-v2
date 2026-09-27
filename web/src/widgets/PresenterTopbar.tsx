@@ -2,14 +2,28 @@ import {
   ArrowLeft,
   ChevronDown,
   Monitor,
+  Moon,
   Pause,
   PenLine,
   Play,
   QrCode,
   Square,
+  Sun,
   Wrench
 } from "lucide-react";
 import type { LiveSession } from "../app/api/live-api";
+import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useMaxBridge } from "../app/max/context";
+import { buildMaxJoinUrl } from "../app/max/deepLink";
+import { LocalQrCode } from "./LocalQrCode";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from "../shared/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -48,19 +62,16 @@ export function PresenterTopbar({
   onResume,
   onEnd
 }: PresenterTopbarProps) {
+  const navigate = useNavigate();
+  const maxEnvironment = useMaxBridge();
+  const [connectionOpen, setConnectionOpen] = useState(false);
   const sessionActive = session.status === "LIVE" || session.status === "PAUSED";
-  const openProjection = () =>
-    window.open(
-      `/#/courses/${courseId}/sessions/${sessionId}/projection`,
-      "projection",
-      "width=1280,height=720"
-    );
-  const openConnection = () =>
-    window.open(
-      `/#/courses/${courseId}/sessions/${sessionId}/join`,
-      "session-join",
-      "width=560,height=760"
-    );
+  const joinUrl = buildMaxJoinUrl(session.joinCode);
+  const openProjection = () => {
+    const path = `/courses/${courseId}/sessions/${sessionId}/projection`;
+    if (maxEnvironment.isMax) navigate(path);
+    else window.open(`/#${path}`, "projection", "width=1280,height=720");
+  };
 
   return (
     <header className="presenter-topbar">
@@ -89,7 +100,11 @@ export function PresenterTopbar({
       <div className="presenter-actions">
         {sessionActive && (
           <>
-            <Button className="presenter-connect" type="button" onClick={openConnection}>
+            <Button
+              className="presenter-connect"
+              type="button"
+              onClick={() => setConnectionOpen(true)}
+            >
               <QrCode size={16} />
               Подключить студентов
             </Button>
@@ -106,6 +121,16 @@ export function PresenterTopbar({
                 <DropdownMenuItem onSelect={openProjection}>
                   <Monitor />
                   Открыть проектор
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() =>
+                    maxEnvironment.setPreferredTheme(
+                      maxEnvironment.theme === "dark" ? "light" : "dark"
+                    )
+                  }
+                >
+                  {maxEnvironment.theme === "dark" ? <Sun /> : <Moon />}
+                  {maxEnvironment.theme === "dark" ? "Светлая тема" : "Тёмная тема"}
                 </DropdownMenuItem>
                 <DropdownMenuCheckboxItem
                   checked={drawing}
@@ -154,6 +179,34 @@ export function PresenterTopbar({
           </>
         )}
       </div>
+      <Dialog open={connectionOpen} onOpenChange={setConnectionOpen}>
+        <DialogContent className="presenter-connection-dialog">
+          <DialogHeader>
+            <DialogTitle>Подключить студентов</DialogTitle>
+            <DialogDescription>
+              Покажите QR-код студентам или продиктуйте код занятия.
+            </DialogDescription>
+          </DialogHeader>
+          <strong className="presenter-connection-code">{session.joinCode}</strong>
+          {joinUrl ? (
+            <>
+              <LocalQrCode value={joinUrl} label="Открыть занятие в MAX" />
+              <a
+                className="presenter-connection-link"
+                href={joinUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Открыть ссылку для студентов
+              </a>
+            </>
+          ) : (
+            <p className="muted">
+              Ссылка MAX не настроена. Студенты могут ввести код в приложении.
+            </p>
+          )}
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }

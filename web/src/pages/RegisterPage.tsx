@@ -8,6 +8,7 @@ import { ApiError } from "../app/api/http";
 import { landingPath } from "../app/routes";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
+import { ThemeToggle } from "../widgets/ThemeToggle";
 
 export function RegisterPage({ code: initialCode }: { code: string }) {
   const { setUser } = useAuth();
@@ -42,6 +43,9 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
   return (
     <div className="auth-shell">
       <div className="auth-card">
+        <div className="auth-theme-switch">
+          <ThemeToggle compact />
+        </div>
         <div className="auth-header">
           <BrandMark className="mx-auto h-14 w-14 text-orange-500" />
           <h1 className="auth-title">Регистрация</h1>

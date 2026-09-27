@@ -27,6 +27,7 @@ import { TeacherRemoteQuestions } from "../widgets/TeacherRemoteQuestions";
 import { TeacherRemoteScheduledState } from "../widgets/TeacherRemoteScheduledState";
 import { TeacherRemoteSignals } from "../widgets/TeacherRemoteSignals";
 import { LiveSlideNotesEditor } from "../widgets/LiveSlideNotesEditor";
+import { ThemeToggle } from "../widgets/ThemeToggle";
 
 export function TeacherRemotePage({
   courseId,
@@ -173,7 +174,10 @@ export function TeacherRemotePage({
           <h1>{session.lectureTitle}</h1>
           <SessionGroups groups={session.groups} compact />
         </div>
-        <TeacherRemoteConnection state={connection} />
+        <div className="teacher-remote-header__actions">
+          <TeacherRemoteConnection state={connection} />
+          <ThemeToggle compact />
+        </div>
       </header>
 
       <section className="teacher-remote-stage" aria-label={`Слайд ${currentSlideIdx}`}>

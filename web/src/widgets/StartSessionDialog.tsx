@@ -115,7 +115,7 @@ export function StartSessionDialog({
         if (!startMutation.isPending) onOpenChange(next);
       }}
     >
-      <DialogContent className="start-session-dialog">
+      <DialogContent className="start-session-dialog top-4 translate-y-0">
         <DialogHeader>
           <DialogTitle>Запустить занятие</DialogTitle>
           <DialogDescription>
