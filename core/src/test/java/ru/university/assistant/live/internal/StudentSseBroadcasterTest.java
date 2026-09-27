@@ -12,7 +12,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.university.assistant.live.api.SessionStatus;
@@ -27,21 +26,19 @@ class StudentSseBroadcasterTest {
         CountDownLatch releaseSlow = new CountDownLatch(1);
         CountDownLatch slowFinished = new CountDownLatch(1);
         CountDownLatch fastDelivered = new CountDownLatch(1);
-        AtomicInteger slowReads = new AtomicInteger();
         when(sessions.snapshot("SLOW01")).thenAnswer(invocation -> {
-            if (slowReads.getAndIncrement() == 0) return snapshot(1);
             slowStarted.countDown();
             releaseSlow.await(3, TimeUnit.SECONDS);
             slowFinished.countDown();
             return snapshot(2);
         });
-        when(sessions.snapshot("FAST01")).thenReturn(snapshot(1), snapshot(2));
+        when(sessions.snapshot("FAST01")).thenReturn(snapshot(1));
         broadcaster.registerPublic("SLOW01", new CountingEmitter());
         broadcaster.registerPublic("FAST01", new CountingEmitter() {
             @Override
             public synchronized void send(SseEventBuilder builder) throws IOException {
                 super.send(builder);
-                if (events == 2) fastDelivered.countDown();
+                if (events == 1) fastDelivered.countDown();
             }
         });
 
@@ -57,6 +54,29 @@ class StudentSseBroadcasterTest {
     }
 
     @Test
+    void temporarySnapshotFailureDoesNotDisconnectWholeLecture() {
+        StudentWebSessionService sessions = mock(StudentWebSessionService.class);
+        StudentSseBroadcaster broadcaster = new StudentSseBroadcaster(sessions, 2);
+        StudentSessionSnapshot first = snapshot(1);
+        StudentSessionSnapshot second = snapshot(2);
+        when(sessions.snapshot("ABC234"))
+                .thenReturn(first)
+                .thenThrow(new IllegalStateException("temporary database contention"))
+                .thenReturn(second);
+        CountingEmitter emitter = new CountingEmitter();
+
+        broadcaster.registerPublic("ABC234", emitter);
+        broadcaster.broadcast();
+        assertEquals(1, emitter.events);
+        assertEquals(false, emitter.completed);
+        broadcaster.broadcast();
+        assertEquals(1, emitter.events);
+        broadcaster.broadcast();
+        assertEquals(2, emitter.events);
+        assertEquals(false, emitter.completed);
+    }
+
+    @Test
     void publicProjectorReceivesOnlyChangedStudentVisibleState() {
         StudentWebSessionService sessions = mock(StudentWebSessionService.class);
         StudentSseBroadcaster broadcaster = new StudentSseBroadcaster(sessions, 2);
@@ -66,6 +86,8 @@ class StudentSseBroadcasterTest {
         CountingEmitter emitter = new CountingEmitter();
 
         broadcaster.registerPublic("ABC234", emitter);
+        broadcaster.broadcast();
+        assertEquals(1, emitter.events);
         broadcaster.broadcast();
         assertEquals(1, emitter.events);
         broadcaster.broadcast();
@@ -79,13 +101,13 @@ class StudentSseBroadcasterTest {
         UUID viewer = UUID.randomUUID();
         StudentSessionSnapshot first = snapshot(1);
         StudentSessionSnapshot second = snapshot(2);
-        when(sessions.snapshotForViewer("ABC234", viewer)).thenReturn(first);
         when(sessions.snapshotsForViewers("ABC234", Set.of(viewer)))
                 .thenReturn(Map.of(viewer, first), Map.of(viewer, first), Map.of(viewer, second));
         CountingEmitter emitter = new CountingEmitter();
 
         broadcaster.register("ABC234", viewer, emitter);
         broadcaster.broadcast();
+        assertEquals(1, emitter.events);
         broadcaster.broadcast();
         assertEquals(1, emitter.events);
         broadcaster.broadcast();
@@ -100,6 +122,12 @@ class StudentSseBroadcasterTest {
 
     private static class CountingEmitter extends SseEmitter {
         protected int events;
+        protected boolean completed;
+
+        @Override
+        public void complete() {
+            completed = true;
+        }
 
         @Override
         public synchronized void send(SseEventBuilder builder) throws IOException {

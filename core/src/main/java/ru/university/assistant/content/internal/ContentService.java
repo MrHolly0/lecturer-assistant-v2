@@ -67,7 +67,12 @@ public class ContentService implements StudentDeckApi {
             StoredBlob source = blobStorage.store(
                     file.getInputStream(), file.getOriginalFilename(), file.getContentType(), file.getSize());
             ImportJob job = repository.createJob(UuidV7.generate(), courseId, source);
-            worker.process(job.id(), courseId, cleanTitle);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    worker.process(job.id(), courseId, cleanTitle);
+                }
+            });
             return job;
         } catch (IOException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot store uploaded file", exception);

@@ -11,11 +11,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.live.api.SessionStatus;
 import ru.university.assistant.live.api.StudentSessionSnapshot;
 import ru.university.assistant.qa.api.QuestionAnswerVisibility;
@@ -27,6 +31,7 @@ import ru.university.assistant.qa.api.QuestionAnswerVisibility;
  */
 @Component
 public class StudentSseBroadcaster {
+    private static final Logger LOG = LoggerFactory.getLogger(StudentSseBroadcaster.class);
     private final Map<String, Set<Client>> clientsByCode = new ConcurrentHashMap<>();
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
     private final StudentWebSessionService sessions;
@@ -55,15 +60,16 @@ public class StudentSseBroadcaster {
         set.add(client);
         emitter.onCompletion(() -> remove(code, client));
         emitter.onTimeout(() -> {
+            LOG.debug("Student stream timed out for {}", code);
             emitter.complete();
             remove(code, client);
         });
-        emitter.onError(error -> remove(code, client));
-        // Сразу отдаём текущее состояние, чтобы клиент не ждал до секунды.
-        StudentSessionSnapshot initial = safeSnapshot(code, viewerPersonId);
-        if (initial != null) {
-            sendSnapshot(code, client, initial);
-        }
+        emitter.onError(error -> {
+            LOG.debug("Student stream failed for {}: {}", code, error.toString());
+            remove(code, client);
+        });
+        // The scheduled batch sends the first snapshot within one second. Doing a full
+        // database read here for every joining student exhausts request workers in a burst.
     }
 
     public void registerPublic(String joinCode, SseEmitter emitter) {
@@ -108,8 +114,14 @@ public class StudentSseBroadcaster {
             publicSnapshot = set.stream().anyMatch(client -> client.viewerPersonId() == null)
                     ? sessions.snapshot(code) : null;
         } catch (RuntimeException exception) {
-            set.forEach(client -> client.emitter().complete());
-            clientsByCode.remove(code);
+            if (exception instanceof ResponseStatusException status
+                    && status.getStatusCode() == HttpStatus.NOT_FOUND) {
+                set.forEach(client -> client.emitter().complete());
+                clientsByCode.remove(code);
+                return;
+            }
+            // A transient database timeout must not eject an entire lecture. The next tick retries.
+            LOG.warn("Cannot prepare student stream snapshot for {}: {}", code, exception.toString());
             return;
         }
         boolean ended = false;
@@ -146,19 +158,12 @@ public class StudentSseBroadcaster {
         }
     }
 
-    private StudentSessionSnapshot safeSnapshot(String code, UUID viewerPersonId) {
-        try {
-            return viewerPersonId == null ? sessions.snapshot(code) : sessions.snapshotForViewer(code, viewerPersonId);
-        } catch (RuntimeException exception) {
-            return null;
-        }
-    }
-
     private boolean send(String code, Client client, String eventName, Object data) {
         try {
             client.emitter().send(SseEmitter.event().name(eventName).data(data));
             return true;
         } catch (IOException | IllegalStateException exception) {
+            LOG.debug("Student stream send failed for {}: {}", code, exception.toString());
             remove(code, client);
             return false;
         }

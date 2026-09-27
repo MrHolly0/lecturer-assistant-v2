@@ -1,5 +1,5 @@
-// Нагрузочный прогон веб-канала студента (DoD Фазы 5): 150 одновременных SSE-клиентов
-// одной сессии, p95 доставки слайда ≤2 с. Гоняется на отдельной тестовой сессии.
+// Нагрузочный прогон веб-канала студента: от одной тестовой лекции до нескольких
+// параллельных секций. Измеряет p95 доставки слайда и успешность загрузки PNG.
 //
 // Использует фиксированный runner k6 1.1.0 + xk6-sse 0.1.11 из e2e/k6/Dockerfile.
 // Точный запуск и формат артефактов описаны в e2e/README.md.
@@ -8,7 +8,7 @@
 // её URL изменился (иначе браузер берёт из кэша). Так видно эффект D-03: пока подпись ссылки
 // стабильна, на студента приходится одна загрузка на слайд, а не одна в секунду.
 
-import { check } from "k6";
+import { check, sleep } from "k6";
 import http from "k6/http";
 import sse from "k6/x/sse";
 import { Counter, Trend, Rate } from "k6/metrics";
@@ -22,6 +22,8 @@ const SMOKE = (__ENV.SMOKE || "").toLowerCase() === "true";
 const VUS = Number(__ENV.VUS || 150);
 const EVENTS_PER_CONNECTION = Number(__ENV.EVENTS_PER_CONNECTION || (SMOKE ? 10 : 150));
 const EXPECTED_SLIDE_CHANGES = Number(__ENV.EXPECTED_SLIDE_CHANGES || 0);
+const CLOSE_ON_SCHEDULE = (__ENV.CLOSE_ON_SCHEDULE || "").toLowerCase() === "true";
+const ARRIVAL_MS = Number(__ENV.ARRIVAL_MS || 0);
 
 // Формат: "2:1790331000000,3:1790331030000" (slideIdx:epochMillis).
 // Контроллер лектора должен переключать слайды в эти моменты. Это позволяет измерить
@@ -45,6 +47,8 @@ const slideImageMs = new Trend("slide_image_download_ms", true);
 const slideImageDownloads = new Counter("slide_image_downloads");
 const slideImageUrlChanges = new Counter("slide_image_url_changes");
 const slideImageOk = new Rate("slide_image_ok");
+const slideImageFailures = new Counter("slide_image_failures");
+const snapshotScopeOk = new Rate("snapshot_scope_ok");
 
 export const options = {
   scenarios: {
@@ -52,7 +56,7 @@ export const options = {
       executor: "per-vu-iterations",
       vus: SMOKE ? 1 : VUS,
       iterations: 1,
-      maxDuration: SMOKE ? "30s" : "4m"
+      maxDuration: __ENV.MAX_DURATION || (SMOKE ? "30s" : "4m")
     }
   },
   thresholds: {
@@ -60,6 +64,7 @@ export const options = {
     slide_first_snapshot_ms: ["p(95)<2000"],
     slide_change_delivery_ms: ["p(95)<2000"], // применяется, когда задан schedule
     slide_image_ok: ["rate>0.99"],
+    snapshot_scope_ok: ["rate==1"],
     slide_image_download_ms: ["p(95)<2000"],
     sse_open_ok: ["rate>0.99"],
     stream_complete: ["rate>0.99"],
@@ -89,6 +94,7 @@ export default function () {
   }
   const joinCode = JOIN_CODES[(__VU - 1) % JOIN_CODES.length];
   const tags = { section: String((__VU - 1) % JOIN_CODES.length + 1) };
+  if (ARRIVAL_MS > 0) sleep(((__VU - 1) * ARRIVAL_MS) / 1000);
 
   // 1) Эфемерный вход.
   const joinRes = http.post(
@@ -98,6 +104,7 @@ export default function () {
   );
   const joined = check(joinRes, { "join 200": (r) => r.status === 200 });
   joinOk.add(joined, tags);
+  if (!joined) console.error(`join section=${tags.section} status=${joinRes.status} error=${joinRes.error || ""}`);
   const token = joinRes.json("participantToken");
   if (!token) {
     streamComplete.add(false, tags);
@@ -123,6 +130,9 @@ export default function () {
         // не снапшот (например, служебное событие) — пропускаем
       }
       const slide = snapshot && snapshot.currentSlide;
+      if (snapshot && snapshot.joinCode) {
+        snapshotScopeOk.add(snapshot.joinCode === joinCode, tags);
+      }
       const imageUrl = slide && slide.imageUrl;
       if (slide && !firstSnapshotRecorded) {
         firstSnapshotRecorded = true;
@@ -146,9 +156,15 @@ export default function () {
         slideImageMs.add(image.timings.duration, tags);
         slideImageDownloads.add(1, tags);
         slideImageOk.add(image.status === 200, tags);
+        if (image.status !== 200) {
+          slideImageFailures.add(1, { ...tags, status: String(image.status) });
+          console.error(`image section=${tags.section} status=${image.status} error=${image.error || ""}`);
+        }
       }
 
-      if (seen >= EVENTS_PER_CONNECTION) {
+      if (CLOSE_ON_SCHEDULE && EXPECTED_SLIDE_CHANGES > 0
+          ? observedScheduledSlides.size >= EXPECTED_SLIDE_CHANGES
+          : seen >= EVENTS_PER_CONNECTION) {
         client.close();
       }
     });
@@ -158,6 +174,11 @@ export default function () {
     });
   });
   sseOpenRate.add(response && response.status === 200, tags);
-  streamComplete.add(firstSnapshotRecorded && seen >= EVENTS_PER_CONNECTION, tags);
+  if (!response || response.status !== 200) {
+    console.error(`sse section=${tags.section} status=${response?.status ?? "none"}`);
+  }
+  streamComplete.add(firstSnapshotRecorded && (CLOSE_ON_SCHEDULE
+    ? observedScheduledSlides.size >= EXPECTED_SLIDE_CHANGES
+    : seen >= EVENTS_PER_CONNECTION), tags);
   scheduledSlidesSeen.add(observedScheduledSlides.size >= EXPECTED_SLIDE_CHANGES, tags);
 }
