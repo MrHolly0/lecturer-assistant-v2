@@ -259,6 +259,12 @@ public class AuthService implements EphemeralPersonApi {
                 .toProfile();
     }
 
+    @Override
+    @Transactional
+    public void updateStudentDisplayName(UUID personId, String displayName) {
+        persons.updateStudentDisplayName(personId, displayName);
+    }
+
     public List<UserProfile> listUsers() {
         return persons.list().stream()
                 .filter(person -> person.status() != PersonStatus.EPHEMERAL)

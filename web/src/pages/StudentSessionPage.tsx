@@ -3,6 +3,13 @@ import { CirclePause, CircleStop, MessageCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  clearStudentResume,
+  readStudentResume,
+  readTabStudentToken,
+  storeStudentResume,
+  storeTabStudentToken
+} from "../app/studentResume";
+import {
   askStudentQuestion,
   connectStudentSession,
   getStudentSession,
@@ -16,7 +23,7 @@ import {
   type StudentSessionSnapshot
 } from "../app/api/student-api";
 import { respondToPoll } from "../app/api/interaction-api";
-import { userErrorMessage } from "../app/api/errors";
+import { ApiError, userErrorMessage } from "../app/api/errors";
 import { mutationRetryDelay, shouldRetryMutation } from "../app/api/retry";
 import { useAuth } from "../app/AuthContext";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
@@ -47,15 +54,16 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const normalizedCode = joinCode.trim().toUpperCase();
-  const storageKey = `student-session:${normalizedCode}`;
+  const resumeToken = useRef(readStudentResume(normalizedCode)?.participantToken ?? "");
   const [participantToken, setParticipantToken] = useState(() =>
-    user ? "" : sessionStorage.getItem(storageKey) ?? ""
+    user ? "" : readTabStudentToken(normalizedCode) ?? resumeToken.current
   );
   const autoJoinRequested = useRef(false);
   const reconnectRef = useRef<() => void>(() => undefined);
   const [displayName, setDisplayName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [editingName, setEditingName] = useState(false);
   const [question, setQuestion] = useState("");
   const [lastSignal, setLastSignal] = useState<SignalValue | null>(null);
   const [requestedSlideIdx, setRequestedSlideIdx] = useState<number | null>(null);
@@ -80,10 +88,13 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       joinStudentSession(
         normalizedCode,
         user ? undefined : displayName.trim(),
-        selectedGroupId || undefined
+        selectedGroupId || undefined,
+        user ? resumeToken.current || undefined : undefined
       ),
     onSuccess: (response) => {
-      sessionStorage.setItem(storageKey, response.participantToken);
+      storeTabStudentToken(normalizedCode, response.participantToken);
+      resumeToken.current = response.participantToken;
+      storeStudentResume({ joinCode: normalizedCode, participantToken: response.participantToken });
       if (user) queryClient.setQueryData(["student-active-session"], { joinCode: normalizedCode });
       setParticipantToken(response.participantToken);
       setSnapshot(response.snapshot);
@@ -91,6 +102,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       toast.success("Вы подключены к занятию.");
     },
     onError: (error) => {
+      if (user && resumeToken.current && error instanceof ApiError && error.status === 403) {
+        resumeToken.current = "";
+        clearStudentResume(normalizedCode);
+        joinMut.mutate();
+        return;
+      }
       const issue = joinIssueFromError(error);
       if (issue) {
         setJoinIssue(issue);
@@ -142,6 +159,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       submitStudentName(normalizedCode, participantToken, lastName.trim(), firstName.trim()),
     onSuccess: (next) => {
       setSnapshot(next);
+      setEditingName(false);
       toast.success("Имя и фамилия отправлены преподавателю.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить имя."))
@@ -162,9 +180,10 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   }, [sessionQuery.data]);
 
   useEffect(() => {
-    if (!user || (current?.status !== "ENDED" && current?.status !== "ARCHIVED")) return;
-    void queryClient.invalidateQueries({ queryKey: ["student-active-session"] });
-  }, [current?.status, queryClient, user]);
+    if (current?.status !== "ENDED" && current?.status !== "ARCHIVED") return;
+    clearStudentResume(normalizedCode);
+    if (user) void queryClient.invalidateQueries({ queryKey: ["student-active-session"] });
+  }, [current?.status, normalizedCode, queryClient, user]);
 
   useEffect(() => {
     if (current?.groups?.length === 1 && !selectedGroupId) {
@@ -175,9 +194,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   useEffect(() => {
     if (!user || participantToken || autoJoinRequested.current) return;
     autoJoinRequested.current = true;
-    sessionStorage.removeItem(storageKey);
     joinMut.mutate();
-  }, [joinMut, participantToken, storageKey, user]);
+  }, [joinMut, participantToken, user]);
 
   useEffect(() => {
     setMyVote(current?.myVote ?? null);
@@ -229,6 +247,15 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           {!current.courseTitle && <span className="muted">Код {current.joinCode}</span>}
           <h1>{current.lectureTitle}</h1>
           <SessionGroups groups={current.groups} compact />
+          {isJoined && !current.nameRequested && !editingName && (
+            <button
+              type="button"
+              className="student-edit-name"
+              onClick={() => setEditingName(true)}
+            >
+              Указать имя и фамилию
+            </button>
+          )}
         </div>
         <div className="student-session-topbar__actions">
           <span className={`badge student-status student-status--${current.status.toLowerCase()}`}>
@@ -259,7 +286,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         </div>
       )}
 
-      {isJoined && current.nameRequested && (
+      {isJoined && (current.nameRequested || editingName) && (
         <form
           className="student-name-request"
           onSubmit={(event) => {
@@ -267,7 +294,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             nameMut.mutate();
           }}
         >
-          <strong>Преподаватель просит указать имя и фамилию</strong>
+          <strong>
+            {current.nameRequested
+              ? "Преподаватель просит указать имя и фамилию"
+              : "Ваше имя на лекции"}
+          </strong>
           <p>Укажите данные, под которыми вас можно найти в списке участников.</p>
           <div className="student-name-request__fields">
             <label>
@@ -296,6 +327,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           <Button type="submit" disabled={nameMut.isPending}>
             Отправить преподавателю
           </Button>
+          {!current.nameRequested && (
+            <Button type="button" variant="ghost" onClick={() => setEditingName(false)}>
+              Отмена
+            </Button>
+          )}
         </form>
       )}
 

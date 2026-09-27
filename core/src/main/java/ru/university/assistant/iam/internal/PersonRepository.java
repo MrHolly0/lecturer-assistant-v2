@@ -66,6 +66,16 @@ class PersonRepository {
                 .single();
     }
 
+    void updateStudentDisplayName(UUID personId, String displayName) {
+        jdbc.sql("""
+                        update iam.persons set display_name = :displayName
+                        where id = :personId and role = 'STUDENT'
+                        """)
+                .param("personId", personId)
+                .param("displayName", displayName)
+                .update();
+    }
+
     Optional<PersonRecord> findByEmail(String email) {
         return jdbc.sql(
                         """

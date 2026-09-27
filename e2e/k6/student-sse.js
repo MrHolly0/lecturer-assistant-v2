@@ -14,8 +14,12 @@ import sse from "k6/x/sse";
 import { Counter, Trend, Rate } from "k6/metrics";
 
 const BASE = __ENV.BASE_URL || "http://localhost:8080";
-const JOIN_CODE = __ENV.JOIN_CODE;
+const JOIN_CODES = (__ENV.JOIN_CODES || __ENV.JOIN_CODE || "")
+  .split(",")
+  .map((code) => code.trim())
+  .filter(Boolean);
 const SMOKE = (__ENV.SMOKE || "").toLowerCase() === "true";
+const VUS = Number(__ENV.VUS || 150);
 const EVENTS_PER_CONNECTION = Number(__ENV.EVENTS_PER_CONNECTION || (SMOKE ? 10 : 150));
 const EXPECTED_SLIDE_CHANGES = Number(__ENV.EXPECTED_SLIDE_CHANGES || 0);
 
@@ -46,7 +50,7 @@ export const options = {
   scenarios: {
     students: {
       executor: "per-vu-iterations",
-      vus: SMOKE ? 1 : 150,
+      vus: SMOKE ? 1 : VUS,
       iterations: 1,
       maxDuration: SMOKE ? "30s" : "4m"
     }
@@ -62,32 +66,47 @@ export const options = {
     scheduled_slides_seen: ["rate>0.99"],
     sse_errors: ["count==0"],
     checks: ["rate>0.99"],
-    http_req_failed: ["rate<0.01"]
+    http_req_failed: ["rate<0.01"],
+    ...Object.fromEntries(
+      JOIN_CODES.flatMap((_, index) => {
+        const section = index + 1;
+        return [
+          [`slide_first_snapshot_ms{section:${section}}`, ["p(95)<2000"]],
+          [`sse_open_ok{section:${section}}`, ["rate>0.99"]],
+          [`slide_image_ok{section:${section}}`, ["rate>0.99"]],
+          ...(EXPECTED_SLIDE_CHANGES > 0
+            ? [[`slide_change_delivery_ms{section:${section}}`, ["p(95)<2000"]]]
+            : [])
+        ];
+      })
+    )
   }
 };
 
 export default function () {
-  if (!JOIN_CODE) {
-    throw new Error("Передайте join-код сессии: -e JOIN_CODE=...");
+  if (JOIN_CODES.length === 0) {
+    throw new Error("Передайте JOIN_CODE или список JOIN_CODES через запятую");
   }
+  const joinCode = JOIN_CODES[(__VU - 1) % JOIN_CODES.length];
+  const tags = { section: String((__VU - 1) % JOIN_CODES.length + 1) };
 
   // 1) Эфемерный вход.
   const joinRes = http.post(
-    `${BASE}/api/v1/student/sessions/${JOIN_CODE}/join`,
+    `${BASE}/api/v1/student/sessions/${joinCode}/join`,
     JSON.stringify({ displayName: `k6-${__VU}` }),
     { headers: { "Content-Type": "application/json" } }
   );
   const joined = check(joinRes, { "join 200": (r) => r.status === 200 });
-  joinOk.add(joined);
+  joinOk.add(joined, tags);
   const token = joinRes.json("participantToken");
   if (!token) {
-    streamComplete.add(false);
-    scheduledSlidesSeen.add(false);
+    streamComplete.add(false, tags);
+    scheduledSlidesSeen.add(false, tags);
     return;
   }
 
   // 2) Один SSE-поток на VU. Сценарий создаёт ровно одного участника на клиента.
-  const url = `${BASE}/api/v1/student/sessions/${JOIN_CODE}/events?participantToken=${token}`;
+  const url = `${BASE}/api/v1/student/sessions/${joinCode}/events?participantToken=${token}`;
   const startedAt = Date.now();
   let seen = 0;
   let lastImageUrl = null;
@@ -107,26 +126,26 @@ export default function () {
       const imageUrl = slide && slide.imageUrl;
       if (slide && !firstSnapshotRecorded) {
         firstSnapshotRecorded = true;
-        firstSlideMs.add(Date.now() - startedAt);
+        firstSlideMs.add(Date.now() - startedAt, tags);
       }
 
       const scheduledAt = slide && scheduledSlideChanges.get(slide.idx);
       if (scheduledAt && !observedScheduledSlides.has(slide.idx)) {
         observedScheduledSlides.add(slide.idx);
-        slideChangeDeliveryMs.add(Math.max(0, Date.now() - scheduledAt));
+        slideChangeDeliveryMs.add(Math.max(0, Date.now() - scheduledAt), tags);
       }
 
       // Как браузер: картинку качаем только при смене URL внутри одного подключения.
       if (imageUrl && imageUrl !== lastImageUrl) {
         if (lastImageUrl !== null) {
-          slideImageUrlChanges.add(1);
+          slideImageUrlChanges.add(1, tags);
         }
         lastImageUrl = imageUrl;
         const absoluteImageUrl = imageUrl.startsWith("http") ? imageUrl : `${BASE}${imageUrl}`;
         const image = http.get(absoluteImageUrl, { tags: { name: "slide_image" } });
-        slideImageMs.add(image.timings.duration);
-        slideImageDownloads.add(1);
-        slideImageOk.add(image.status === 200);
+        slideImageMs.add(image.timings.duration, tags);
+        slideImageDownloads.add(1, tags);
+        slideImageOk.add(image.status === 200, tags);
       }
 
       if (seen >= EVENTS_PER_CONNECTION) {
@@ -134,11 +153,11 @@ export default function () {
       }
     });
     client.on("error", function () {
-      sseErrors.add(1);
+      sseErrors.add(1, tags);
       client.close();
     });
   });
-  sseOpenRate.add(response && response.status === 200);
-  streamComplete.add(firstSnapshotRecorded && seen >= EVENTS_PER_CONNECTION);
-  scheduledSlidesSeen.add(observedScheduledSlides.size >= EXPECTED_SLIDE_CHANGES);
+  sseOpenRate.add(response && response.status === 200, tags);
+  streamComplete.add(firstSnapshotRecorded && seen >= EVENTS_PER_CONNECTION, tags);
+  scheduledSlidesSeen.add(observedScheduledSlides.size >= EXPECTED_SLIDE_CHANGES, tags);
 }

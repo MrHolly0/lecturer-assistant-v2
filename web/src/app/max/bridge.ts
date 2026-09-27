@@ -48,7 +48,7 @@ export function readTheme(webApp = getMaxWebApp()): MaxColorScheme {
 
 export function readEnvironment(): MaxEnvironment {
   const webApp = getMaxWebApp();
-  const isMax = isMaxLaunch(webApp);
+  const isMax = isMaxLaunch(webApp) || hasMaxLaunchMarker();
   const browserViewport = readBrowserViewport();
   const platform = isMax && isKnownPlatform(webApp?.platform) ? webApp.platform : "browser";
 
@@ -64,6 +64,13 @@ export function readEnvironment(): MaxEnvironment {
     viewport: browserViewport,
     hapticsSupported: isMax && canUseHaptics(webApp)
   };
+}
+
+function hasMaxLaunchMarker(): boolean {
+  if (typeof window === "undefined") return false;
+  return /(?:^|[?#&])WebApp(?:Data|Platform|StartParam)=/i.test(
+    `${window.location.search}${window.location.hash}`
+  );
 }
 
 export function readStartParam(webApp = getMaxWebApp()): string | null {

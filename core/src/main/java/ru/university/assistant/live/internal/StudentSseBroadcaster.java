@@ -1,12 +1,16 @@
 package ru.university.assistant.live.internal;
 
+import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -24,10 +28,24 @@ import ru.university.assistant.qa.api.QuestionAnswerVisibility;
 @Component
 public class StudentSseBroadcaster {
     private final Map<String, Set<Client>> clientsByCode = new ConcurrentHashMap<>();
+    private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
     private final StudentWebSessionService sessions;
+    private final ExecutorService workers;
 
-    StudentSseBroadcaster(StudentWebSessionService sessions) {
+    StudentSseBroadcaster(
+            StudentWebSessionService sessions,
+            @Value("${app.live.sse-broadcast-workers:4}") int workerCount) {
         this.sessions = sessions;
+        this.workers = Executors.newFixedThreadPool(Math.max(1, workerCount), task -> {
+            Thread thread = new Thread(task, "student-sse-broadcast");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    @PreDestroy
+    void stop() {
+        workers.shutdownNow();
     }
 
     public void register(String joinCode, UUID viewerPersonId, SseEmitter emitter) {
@@ -53,47 +71,64 @@ public class StudentSseBroadcaster {
     }
 
     @Scheduled(fixedRate = 1000)
+    void scheduleBroadcast() {
+        if (workers.isShutdown()) return;
+        for (String code : clientsByCode.keySet()) {
+            if (!inFlight.add(code)) continue;
+            workers.execute(() -> {
+                try {
+                    broadcastCode(code);
+                } finally {
+                    inFlight.remove(code);
+                }
+            });
+        }
+    }
+
+    /** Synchronous entry point for deterministic delivery tests. */
     void broadcast() {
-        for (Map.Entry<String, Set<Client>> entry : clientsByCode.entrySet()) {
-            String code = entry.getKey();
-            Set<Client> set = entry.getValue();
-            if (set.isEmpty()) {
-                clientsByCode.remove(code, set);
+        for (String code : clientsByCode.keySet()) broadcastCode(code);
+    }
+
+    private void broadcastCode(String code) {
+        Set<Client> set = clientsByCode.get(code);
+        if (set == null) return;
+        if (set.isEmpty()) {
+            clientsByCode.remove(code, set);
+            return;
+        }
+        Map<UUID, StudentSessionSnapshot> snapshots;
+        StudentSessionSnapshot publicSnapshot;
+        try {
+            Set<UUID> viewers = set.stream()
+                    .map(Client::viewerPersonId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+            snapshots = viewers.isEmpty() ? Map.of() : sessions.snapshotsForViewers(code, viewers);
+            publicSnapshot = set.stream().anyMatch(client -> client.viewerPersonId() == null)
+                    ? sessions.snapshot(code) : null;
+        } catch (RuntimeException exception) {
+            set.forEach(client -> client.emitter().complete());
+            clientsByCode.remove(code);
+            return;
+        }
+        boolean ended = false;
+        for (Client client : set) {
+            StudentSessionSnapshot snapshot = client.viewerPersonId() == null
+                    ? publicSnapshot : snapshots.get(client.viewerPersonId());
+            if (snapshot == null) {
+                client.emitter().complete();
+                remove(code, client);
                 continue;
             }
-            Map<UUID, StudentSessionSnapshot> snapshots;
-            StudentSessionSnapshot publicSnapshot;
-            try {
-                Set<UUID> viewers = set.stream()
-                        .map(Client::viewerPersonId)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toSet());
-                snapshots = viewers.isEmpty() ? Map.of() : sessions.snapshotsForViewers(code, viewers);
-                publicSnapshot = set.stream().anyMatch(client -> client.viewerPersonId() == null)
-                        ? sessions.snapshot(code) : null;
-            } catch (RuntimeException exception) {
-                set.forEach(client -> client.emitter().complete());
-                clientsByCode.remove(code);
-                continue;
+            ended |= snapshot.status() == SessionStatus.ENDED || snapshot.status() == SessionStatus.ARCHIVED;
+            boolean delivered = sendSnapshot(code, client, snapshot);
+            if (ended && delivered) {
+                client.emitter().complete();
             }
-            boolean ended = false;
-            for (Client client : set) {
-                StudentSessionSnapshot snapshot = client.viewerPersonId() == null
-                        ? publicSnapshot : snapshots.get(client.viewerPersonId());
-                if (snapshot == null) {
-                    client.emitter().complete();
-                    remove(code, client);
-                    continue;
-                }
-                ended |= snapshot.status() == SessionStatus.ENDED || snapshot.status() == SessionStatus.ARCHIVED;
-                boolean delivered = sendSnapshot(code, client, snapshot);
-                if (ended && delivered) {
-                    client.emitter().complete();
-                }
-            }
-            if (ended) {
-                clientsByCode.remove(code);
-            }
+        }
+        if (ended) {
+            clientsByCode.remove(code);
         }
     }
 

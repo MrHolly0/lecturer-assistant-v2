@@ -49,13 +49,34 @@ export function MaxBridgeProvider({ children }: { children: ReactNode }) {
     notifyReady();
     void refreshViewport();
 
+    const refreshBridge = () => {
+      const next = readEnvironment();
+      setEnvironment((current) =>
+        current.isMax === next.isMax &&
+        current.initData === next.initData &&
+        current.startParam === next.startParam
+          ? current
+          : next
+      );
+    };
+    let attempts = 0;
+    const bridgeTimer = window.setInterval(() => {
+      refreshBridge();
+      if (++attempts >= 25 || getMaxWebApp()?.initData) window.clearInterval(bridgeTimer);
+    }, 200);
+
     const visualViewport = window.visualViewport;
     window.addEventListener("resize", refreshViewport);
     visualViewport?.addEventListener("resize", refreshViewport);
+    window.addEventListener("focus", refreshBridge);
+    document.addEventListener("visibilitychange", refreshBridge);
 
     return () => {
+      window.clearInterval(bridgeTimer);
       window.removeEventListener("resize", refreshViewport);
       visualViewport?.removeEventListener("resize", refreshViewport);
+      window.removeEventListener("focus", refreshBridge);
+      document.removeEventListener("visibilitychange", refreshBridge);
     };
   }, [refreshViewport]);
 

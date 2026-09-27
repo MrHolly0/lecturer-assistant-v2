@@ -2247,6 +2247,20 @@ textarea {
   margin: 2px 0 0;
 }
 
+.student-edit-name {
+  background: none;
+  border: 0;
+  color: var(--foreground);
+  cursor: pointer;
+  display: block;
+  font-size: 0.85rem;
+  margin-top: 8px;
+  padding: 4px 0;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .student-session-topbar__actions,
 .teacher-remote-header__actions {
   align-items: center;

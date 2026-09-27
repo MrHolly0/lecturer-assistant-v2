@@ -71,12 +71,15 @@ export async function getPublicStudentSession(joinCode: string): Promise<Student
 export async function joinStudentSession(
   joinCode: string,
   displayName?: string,
-  groupId?: string
+  groupId?: string,
+  participantToken?: string
 ): Promise<StudentJoinResponse> {
   const authenticated = Boolean(getStoredAuth());
   const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/join`, {
     method: "POST",
-    body: JSON.stringify(authenticated ? { groupId } : { displayName, groupId })
+    body: JSON.stringify(
+      authenticated ? { groupId, participantToken } : { displayName, groupId, participantToken }
+    )
   });
   return res.json() as Promise<StudentJoinResponse>;
 }

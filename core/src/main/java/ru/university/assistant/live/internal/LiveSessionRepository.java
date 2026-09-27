@@ -337,6 +337,85 @@ class LiveSessionRepository {
                 .single();
     }
 
+    Optional<SessionParticipant> lockGuestParticipation(UUID sessionId, UUID personId) {
+        return jdbc.sql("""
+                        select session_id, person_id, channel_type, display_name,
+                               group_id, group_name_snapshot, joined_at, left_at, kicked,
+                               name_requested_at, name_submitted_at
+                        from live.session_participants
+                        where session_id = :sessionId and person_id = :personId
+                            and channel_type = 'web'
+                        for update
+                        """)
+                .param("sessionId", sessionId)
+                .param("personId", personId)
+                .query(this::mapParticipant)
+                .optional();
+    }
+
+    /** Bearer proof of the guest token promotes one lecture participation to the signed-in person. */
+    void claimGuestParticipation(UUID sessionId, UUID guestId, UUID personId, String guestName) {
+        jdbc.sql("""
+                        update live.session_participants profile
+                        set display_name = case when :guestName like 'Гость %'
+                                                then profile.display_name else :guestName end,
+                            joined_at = least(profile.joined_at, guest.joined_at),
+                            name_requested_at = coalesce(guest.name_requested_at, profile.name_requested_at),
+                            name_submitted_at = coalesce(guest.name_submitted_at, profile.name_submitted_at)
+                        from live.session_participants guest
+                        where profile.session_id = :sessionId and profile.person_id = :personId
+                            and profile.channel_type = 'web'
+                            and guest.session_id = :sessionId and guest.person_id = :guestId
+                            and guest.channel_type = 'web'
+                        """)
+                .param("sessionId", sessionId)
+                .param("personId", personId)
+                .param("guestId", guestId)
+                .param("guestName", guestName)
+                .update();
+
+        jdbc.sql("""
+                        delete from feedback.comprehension_signals guest
+                        using feedback.comprehension_signals profile
+                        where guest.person_id = :guestId and profile.person_id = :personId
+                            and profile.session_id = guest.session_id and profile.slide_idx = guest.slide_idx
+                        """)
+                .param("guestId", guestId).param("personId", personId).update();
+        jdbc.sql("update feedback.comprehension_signals set person_id = :personId where person_id = :guestId")
+                .param("guestId", guestId).param("personId", personId).update();
+
+        jdbc.sql("""
+                        delete from interaction.poll_responses guest
+                        using interaction.poll_responses profile
+                        where guest.person_id = :guestId and profile.person_id = :personId
+                            and profile.poll_id = guest.poll_id
+                        """)
+                .param("guestId", guestId).param("personId", personId).update();
+        jdbc.sql("update interaction.poll_responses set person_id = :personId where person_id = :guestId")
+                .param("guestId", guestId).param("personId", personId).update();
+
+        jdbc.sql("""
+                        delete from interaction.activity_responses guest
+                        using interaction.activity_responses profile
+                        where guest.person_id = :guestId and profile.person_id = :personId
+                            and profile.run_id = guest.run_id and profile.question_id = guest.question_id
+                        """)
+                .param("guestId", guestId).param("personId", personId).update();
+        jdbc.sql("update interaction.activity_responses set person_id = :personId where person_id = :guestId")
+                .param("guestId", guestId).param("personId", personId).update();
+        jdbc.sql("update qa.questions set person_id = :personId where person_id = :guestId")
+                .param("guestId", guestId).param("personId", personId).update();
+        jdbc.sql("update analytics.events set actor_person_id = :personId where actor_person_id = :guestId")
+                .param("guestId", guestId).param("personId", personId).update();
+        jdbc.sql("delete from live.web_participant_tokens where session_id = :sessionId and person_id = :guestId")
+                .param("sessionId", sessionId).param("guestId", guestId).update();
+        jdbc.sql("""
+                        delete from live.session_participants
+                        where session_id = :sessionId and person_id = :guestId and channel_type = 'web'
+                        """)
+                .param("sessionId", sessionId).param("guestId", guestId).update();
+    }
+
     /** Регистрирует человека участником сессии; повторный вызов ничего не дублирует. */
     JoinOutcome joinPerson(UUID sessionId, UUID personId, String displayName, StudyGroup group) {
         return jdbc.sql(
@@ -422,7 +501,6 @@ class LiveSessionRepository {
                         set display_name = :displayName, name_submitted_at = now()
                         where session_id = :sessionId and person_id = :personId
                             and channel_type = 'web' and left_at is null and kicked = false
-                            and name_requested_at is not null and name_submitted_at is null
                         returning session_id, person_id, channel_type, display_name,
                                   group_id, group_name_snapshot, joined_at, left_at, kicked,
                                   name_requested_at, name_submitted_at
@@ -481,9 +559,12 @@ class LiveSessionRepository {
     Optional<WebParticipant> findWebParticipant(String tokenHash) {
         return jdbc.sql(
                         """
-                        select t.id, t.session_id, t.person_id, p.display_name, t.identity_level
+                        select t.id, t.session_id, t.person_id,
+                               coalesce(sp.display_name, p.display_name) as display_name, t.identity_level
                         from live.web_participant_tokens t
                         join iam.persons p on p.id = t.person_id
+                        left join live.session_participants sp on sp.session_id = t.session_id
+                            and sp.person_id = t.person_id and sp.channel_type = 'web'
                         where t.token_hash = :tokenHash
                         """)
                 .param("tokenHash", tokenHash)

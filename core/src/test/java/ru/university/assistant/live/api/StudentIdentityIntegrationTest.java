@@ -19,6 +19,61 @@ import org.springframework.http.MediaType;
 /** B-04 / D-01 / D-14: участник лекции — это человек, повторный вход не плодит участников и членов курса. */
 class StudentIdentityIntegrationTest extends LiveFlowTestBase {
     @Test
+    void maxLoginClaimsGuestParticipationWithNameGroupAndAnswers() throws Exception {
+        JsonNode guest = join(null, "{\"displayName\":\"Анна Смирнова\"}");
+        String guestToken = guest.get("participantToken").asText();
+        UUID guestId = jdbc.sql("""
+                        select person_id from live.session_participants
+                        where session_id = :sessionId and display_name = 'Анна Смирнова'
+                        """)
+                .param("sessionId", sessionId)
+                .query(UUID.class).single();
+        act("/api/v1/student/sessions/{joinCode}/signals", null,
+                "{\"participantToken\":\"" + guestToken + "\",\"value\":\"RED\"}", 200);
+        act("/api/v1/student/sessions/{joinCode}/questions", null,
+                "{\"participantToken\":\"" + guestToken + "\",\"text\":\"Что означает этот слайд?\"}", 201);
+
+        String jwt = maxLogin(9201);
+        UUID personId = UUID.fromString(personIdOf(jwt));
+        JsonNode claimed = join(jwt, "{\"participantToken\":\"" + guestToken + "\"}");
+        assertEquals("PROFILE", claimed.get("identityLevel").asText());
+        assertEquals(1L, count("live.session_participants where session_id = '" + sessionId + "'"));
+        assertEquals(0L, count("live.session_participants where person_id = '" + guestId + "'"));
+        assertEquals("Анна Смирнова", jdbc.sql("""
+                        select display_name from live.session_participants
+                        where session_id = :sessionId and person_id = :personId
+                        """)
+                .param("sessionId", sessionId).param("personId", personId)
+                .query(String.class).single());
+        assertEquals("Анна Смирнова", json(get("/api/v1/auth/me")
+                .header("Authorization", "Bearer " + jwt), 200).get("displayName").asText());
+        assertEquals(groupId, jdbc.sql("""
+                        select group_id from live.session_participants
+                        where session_id = :sessionId and person_id = :personId
+                        """)
+                .param("sessionId", sessionId).param("personId", personId)
+                .query(UUID.class).single());
+        assertEquals(1L, count("feedback.comprehension_signals where person_id = '" + personId + "'"));
+        assertEquals(1L, count("qa.questions where person_id = '" + personId + "'"));
+        assertEquals(joinCode, json(get("/api/v1/me/student-active-session")
+                .header("Authorization", "Bearer " + jwt), 200).get("joinCode").asText());
+
+        act("/api/v1/student/sessions/{joinCode}/name", jwt,
+                "{\"lastName\":\"Смирнова\",\"firstName\":\"Анна\"}", 200);
+
+        join(jwt, "{}");
+        assertEquals(1L, count("live.session_participants where session_id = '" + sessionId + "'"));
+        assertEquals("Смирнова Анна", jdbc.sql("""
+                        select display_name from live.session_participants
+                        where session_id = :sessionId and person_id = :personId
+                        """)
+                .param("sessionId", sessionId).param("personId", personId)
+                .query(String.class).single());
+        assertEquals("Смирнова Анна", json(get("/api/v1/auth/me")
+                .header("Authorization", "Bearer " + jwt), 200).get("displayName").asText());
+    }
+
+    @Test
     void returningMaxStudentResumesJoinedLectureWithoutAnotherCode() throws Exception {
         String jwt = maxLogin(9090);
         json(get("/api/v1/me/student-active-session").header("Authorization", "Bearer " + jwt), 204);

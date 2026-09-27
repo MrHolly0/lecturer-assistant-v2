@@ -36,6 +36,7 @@ import { readMaxLinkCode } from "./max/deepLink";
 import { canRedirectToTeacherRemote, isMobileMax, teacherRemotePath } from "./max/navigation";
 import { getLiveSession, getMyActiveSession } from "./api/live-api";
 import { getMyStudentActiveSession } from "./api/student-api";
+import { readStudentResume } from "./studentResume";
 import { MaxLinkCodeScreen } from "../widgets/MaxLinkCodeScreen";
 import { MaxCredentialsScreen } from "../widgets/MaxCredentialsScreen";
 import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
@@ -86,6 +87,7 @@ function MaxNavigationRoot() {
     enabled: studentInMax,
     retry: 1
   });
+  const storedStudentSession = readStudentResume();
   const startTarget =
     user?.role === "STUDENT" && startParam && maxStartParamPattern.test(startParam)
       ? `/s/${encodeURIComponent(startParam.toUpperCase())}`
@@ -161,14 +163,16 @@ function MaxNavigationRoot() {
   if (
     studentInMax &&
     !startTarget &&
-    (location.pathname === "/" || location.pathname === "/login")
+    (location.pathname === "/" || location.pathname === "/login" || location.pathname === "/home")
   ) {
     if (studentActiveSession.isLoading) return <LoadingScreen message="Ищем вашу лекцию…" />;
-    if (studentActiveSession.data) {
-      return (
-        <Navigate to={`/s/${encodeURIComponent(studentActiveSession.data.joinCode)}`} replace />
-      );
+    const joinCode = studentActiveSession.data?.joinCode ?? storedStudentSession?.joinCode;
+    if (joinCode) {
+      return <Navigate to={`/s/${encodeURIComponent(joinCode)}`} replace />;
     }
+  }
+  if (!isMax && !user && storedStudentSession && location.pathname === "/") {
+    return <Navigate to={`/s/${encodeURIComponent(storedStudentSession.joinCode)}`} replace />;
   }
   if (teacherInMax && activeSession.isLoading && canRedirectToTeacherRemote(location.pathname)) {
     return <LoadingScreen message="Ищем активную лекцию…" />;

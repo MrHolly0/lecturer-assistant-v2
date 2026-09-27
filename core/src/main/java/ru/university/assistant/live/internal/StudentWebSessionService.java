@@ -25,6 +25,7 @@ import ru.university.assistant.iam.api.PersonRole;
 import ru.university.assistant.iam.api.UserProfile;
 import ru.university.assistant.live.api.IdentityLevel;
 import ru.university.assistant.live.api.LiveSession;
+import ru.university.assistant.live.api.SessionParticipant;
 import ru.university.assistant.live.api.SessionStatus;
 import ru.university.assistant.live.api.StudentEngagement;
 import ru.university.assistant.live.api.StudentJoinRequest;
@@ -147,6 +148,21 @@ public class StudentWebSessionService {
                     .filter(participant -> participant.sessionId().equals(session.id()))
                     .orElse(null);
             if (existing != null) {
+                if (user != null && existing.identityLevel() == IdentityLevel.EPHEMERAL) {
+                    SessionParticipant guest = sessions.lockGuestParticipation(session.id(), existing.personId())
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Guest session was already claimed"));
+                    requireActive(session.id(), guest.personId());
+                    registerPerson(session, user, guest.groupId());
+                    sessions.claimGuestParticipation(session.id(), guest.personId(), user.id(), guest.displayName());
+                    if (!guest.displayName().startsWith("Гость ")) {
+                        persons.updateStudentDisplayName(user.id(), guest.displayName());
+                    }
+                    publisher.publish("participant.claimed", session);
+                    return issueProfileJoin(session, user);
+                }
+                if (user != null && !existing.personId().equals(user.id())) {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Participant token belongs to another person");
+                }
                 requireActive(session.id(), existing.personId());
                 sessions.touchWebParticipant(existing.id());
                 return new StudentJoinResponse(
@@ -164,13 +180,7 @@ public class StudentWebSessionService {
                         Map.of("courseId", session.courseId(), "sessionId", session.id()), Map.of()));
                 publisher.publish("participant.rejoined", session);
             }
-            sessions.deleteProfileTokens(session.id(), user.id());
-            String token = randomToken();
-            WebParticipant participant = sessions.createWebToken(
-                    UuidV7.generate(), session.id(), user.id(),
-                    StudentTokenHasher.sha256(token), user.displayName(), IdentityLevel.PROFILE);
-            return new StudentJoinResponse(
-                    token, participant.id(), IdentityLevel.PROFILE, snapshots.create(session, user.id(), true));
+            return issueProfileJoin(session, user);
         }
         UserProfile person = persons.createEphemeralStudent(request == null ? null : request.displayName());
         StudyGroup group = selectSessionGroup(session, request == null ? null : request.groupId());
@@ -191,6 +201,16 @@ public class StudentWebSessionService {
                 participant.id(),
                 participant.identityLevel(),
                 snapshots.create(session, person.id(), true));
+    }
+
+    private StudentJoinResponse issueProfileJoin(LiveSession session, AuthenticatedUser user) {
+        sessions.deleteProfileTokens(session.id(), user.id());
+        String token = randomToken();
+        WebParticipant participant = sessions.createWebToken(
+                UuidV7.generate(), session.id(), user.id(),
+                StudentTokenHasher.sha256(token), user.displayName(), IdentityLevel.PROFILE);
+        return new StudentJoinResponse(
+                token, participant.id(), IdentityLevel.PROFILE, snapshots.create(session, user.id(), true));
     }
 
     /** Реальный человек (вход через MAX или по паролю): один участник сессии, студент курса добавляется один раз. */
@@ -315,7 +335,8 @@ public class StudentWebSessionService {
         }
         String name = lastName + " " + firstName;
         sessions.submitParticipantName(current.session().id(), current.participant().personId(), name)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Name was not requested"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Student is not connected"));
+        persons.updateStudentDisplayName(current.participant().personId(), name);
         publisher.publish("participant.name_submitted", current.session());
         return snapshots.create(current.session(), current.participant().personId(), true);
     }
