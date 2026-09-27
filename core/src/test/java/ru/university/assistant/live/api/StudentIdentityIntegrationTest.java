@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -17,6 +18,14 @@ import org.springframework.http.MediaType;
 
 /** B-04 / D-01 / D-14: участник лекции — это человек, повторный вход не плодит участников и членов курса. */
 class StudentIdentityIntegrationTest extends LiveFlowTestBase {
+    @Test
+    void projectorCanReceivePublicUpdatesWithoutLecturerLogin() throws Exception {
+        mockMvc.perform(get("/api/v1/student/sessions/{joinCode}/events/public", joinCode)
+                        .accept(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted());
+    }
+
     @Test
     void lecturerCanRemoveStudentWhoCanExplicitlyRejoin() throws Exception {
         String jwt = maxLogin(505);

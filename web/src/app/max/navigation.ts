@@ -12,6 +12,7 @@ export function teacherRemotePath(courseId: string, sessionId: string): string {
 
 export function canRedirectToTeacherRemote(pathname: string): boolean {
   if (pathname.startsWith("/s/")) return false;
+  if (pathname.startsWith("/projection/")) return false;
   if (pathname.endsWith("/projection")) return false;
   if (pathname.endsWith("/join")) return false;
   if (pathname.endsWith("/summary")) return false;

@@ -34,7 +34,7 @@ import { hideBackButton, showBackButton, subscribeBackButton } from "./max/bridg
 import { useMaxBridge } from "./max/context";
 import { readMaxLinkCode } from "./max/deepLink";
 import { canRedirectToTeacherRemote, isMobileMax, teacherRemotePath } from "./max/navigation";
-import { getMyActiveSession } from "./api/live-api";
+import { getLiveSession, getMyActiveSession } from "./api/live-api";
 import { MaxLinkCodeScreen } from "../widgets/MaxLinkCodeScreen";
 import { MaxCredentialsScreen } from "../widgets/MaxCredentialsScreen";
 import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
@@ -102,6 +102,7 @@ function MaxNavigationRoot() {
     if (!startTarget || location.pathname === startTarget) setStartParamHandled(true);
   }, [isMax, loading, location.pathname, startParamHandled, startTarget, user]);
 
+  if (location.pathname.startsWith("/projection/")) return <Outlet />;
   if (isMax && loading) return <LoadingScreen message="Входим через MAX…" />;
   if (isMax && maxSignedOut) return <MaxSignedOutScreen onLogin={resumeMaxAuth} />;
   if (isMax && maxLinkRequired) {
@@ -264,8 +265,20 @@ function PresenterRoute() {
 }
 
 function ProjectionRoute() {
+  const { joinCode } = useParams();
+  return <ProjectionPage joinCode={joinCode ?? ""} />;
+}
+
+function LegacyProjectionRoute() {
   const { courseId, sessionId } = useParams();
-  return <ProjectionPage courseId={courseId ?? ""} sessionId={sessionId ?? ""} />;
+  const session = useQuery({
+    queryKey: ["live", courseId, sessionId],
+    queryFn: () => getLiveSession(courseId ?? "", sessionId ?? ""),
+    enabled: Boolean(courseId && sessionId)
+  });
+  if (session.isLoading) return <LoadingScreen />;
+  if (!session.data) return <LoadingScreen message="Не удалось открыть проектор" />;
+  return <Navigate to={`/projection/${encodeURIComponent(session.data.joinCode)}`} replace />;
 }
 
 function SessionJoinRoute() {
@@ -304,6 +317,10 @@ const router = createHashRouter([
         )
       },
       {
+        path: "/projection/:joinCode",
+        element: <ProjectionRoute />
+      },
+      {
         path: "/courses/:courseId/sessions/:sessionId/presenter",
         element: (
           <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
@@ -323,7 +340,7 @@ const router = createHashRouter([
         path: "/courses/:courseId/sessions/:sessionId/projection",
         element: (
           <RequireRolePage roles={["ADMIN", "LECTURER", "ASSISTANT"]}>
-            <ProjectionRoute />
+            <LegacyProjectionRoute />
           </RequireRolePage>
         )
       },

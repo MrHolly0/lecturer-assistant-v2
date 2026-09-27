@@ -16,6 +16,22 @@ import ru.university.assistant.live.api.StudentSessionSnapshot;
 
 class StudentSseBroadcasterTest {
     @Test
+    void publicProjectorReceivesOnlyChangedStudentVisibleState() {
+        StudentWebSessionService sessions = mock(StudentWebSessionService.class);
+        StudentSseBroadcaster broadcaster = new StudentSseBroadcaster(sessions);
+        StudentSessionSnapshot first = snapshot(1);
+        StudentSessionSnapshot second = snapshot(2);
+        when(sessions.snapshot("ABC234")).thenReturn(first, first, second);
+        CountingEmitter emitter = new CountingEmitter();
+
+        broadcaster.registerPublic("ABC234", emitter);
+        broadcaster.broadcast();
+        assertEquals(1, emitter.events);
+        broadcaster.broadcast();
+        assertEquals(2, emitter.events);
+    }
+
+    @Test
     void unchangedStateDoesNotResendFullSnapshotToEveryStudent() {
         StudentWebSessionService sessions = mock(StudentWebSessionService.class);
         StudentSseBroadcaster broadcaster = new StudentSseBroadcaster(sessions);

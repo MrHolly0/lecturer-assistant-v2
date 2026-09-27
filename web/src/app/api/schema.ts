@@ -1247,6 +1247,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/student/sessions/{joinCode}/events/public": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read-only public slide and status stream for the projector. */
+    get: operations["streamPublicStudentSession"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/student/sessions/{joinCode}/signals": {
     parameters: {
       query?: never;
@@ -4797,6 +4814,28 @@ export interface operations {
     requestBody?: never;
     responses: {
       /** @description Emits snapshot events filtered for the participant and immediate question-answer events. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/event-stream": string;
+        };
+      };
+    };
+  };
+  streamPublicStudentSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Emits student-visible snapshots without personal student data. */
       200: {
         headers: {
           [name: string]: unknown;

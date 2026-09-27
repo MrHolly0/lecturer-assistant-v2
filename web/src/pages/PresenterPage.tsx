@@ -167,7 +167,6 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     <div className="presenter-shell">
       <PresenterTopbar
         courseId={courseId}
-        sessionId={sessionId}
         session={session}
         drawing={drawing}
         pausePending={pauseMut.isPending}

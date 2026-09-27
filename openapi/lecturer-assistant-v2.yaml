@@ -1542,6 +1542,21 @@ paths:
             text/event-stream:
               schema:
                 type: string
+  /student/sessions/{joinCode}/events/public:
+    get:
+      operationId: streamPublicStudentSession
+      summary: Read-only public slide and status stream for the projector.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+      responses:
+        "200":
+          description: Emits student-visible snapshots without personal student data.
+          content:
+            text/event-stream:
+              schema:
+                type: string
   /student/sessions/{joinCode}/signals:
     post:
       operationId: submitStudentSignal

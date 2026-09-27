@@ -2,6 +2,7 @@ package ru.university.assistant.live.internal;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,6 +48,10 @@ public class StudentSseBroadcaster {
         }
     }
 
+    public void registerPublic(String joinCode, SseEmitter emitter) {
+        register(joinCode, null, emitter);
+    }
+
     @Scheduled(fixedRate = 1000)
     void broadcast() {
         for (Map.Entry<String, Set<Client>> entry : clientsByCode.entrySet()) {
@@ -57,10 +62,15 @@ public class StudentSseBroadcaster {
                 continue;
             }
             Map<UUID, StudentSessionSnapshot> snapshots;
+            StudentSessionSnapshot publicSnapshot;
             try {
-                snapshots = sessions.snapshotsForViewers(code, set.stream()
+                Set<UUID> viewers = set.stream()
                         .map(Client::viewerPersonId)
-                        .collect(Collectors.toSet()));
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+                snapshots = viewers.isEmpty() ? Map.of() : sessions.snapshotsForViewers(code, viewers);
+                publicSnapshot = set.stream().anyMatch(client -> client.viewerPersonId() == null)
+                        ? sessions.snapshot(code) : null;
             } catch (RuntimeException exception) {
                 set.forEach(client -> client.emitter().complete());
                 clientsByCode.remove(code);
@@ -68,13 +78,14 @@ public class StudentSseBroadcaster {
             }
             boolean ended = false;
             for (Client client : set) {
-                StudentSessionSnapshot snapshot = snapshots.get(client.viewerPersonId());
+                StudentSessionSnapshot snapshot = client.viewerPersonId() == null
+                        ? publicSnapshot : snapshots.get(client.viewerPersonId());
                 if (snapshot == null) {
                     client.emitter().complete();
                     remove(code, client);
                     continue;
                 }
-                ended = snapshot.status() == SessionStatus.ENDED || snapshot.status() == SessionStatus.ARCHIVED;
+                ended |= snapshot.status() == SessionStatus.ENDED || snapshot.status() == SessionStatus.ARCHIVED;
                 boolean delivered = sendSnapshot(code, client, snapshot);
                 if (ended && delivered) {
                     client.emitter().complete();
@@ -92,7 +103,8 @@ public class StudentSseBroadcaster {
         Set<Client> clients = clientsByCode.getOrDefault(code, Set.of());
         for (Client client : clients) {
             boolean visible = event.answer().answerVisibility() == QuestionAnswerVisibility.SESSION
-                    || client.viewerPersonId().equals(event.authorPersonId());
+                    || client.viewerPersonId() != null
+                            && client.viewerPersonId().equals(event.authorPersonId());
             if (visible) {
                 send(code, client, "question-answer", event.answer());
             }
@@ -101,7 +113,7 @@ public class StudentSseBroadcaster {
 
     private StudentSessionSnapshot safeSnapshot(String code, UUID viewerPersonId) {
         try {
-            return sessions.snapshotForViewer(code, viewerPersonId);
+            return viewerPersonId == null ? sessions.snapshot(code) : sessions.snapshotForViewer(code, viewerPersonId);
         } catch (RuntimeException exception) {
             return null;
         }

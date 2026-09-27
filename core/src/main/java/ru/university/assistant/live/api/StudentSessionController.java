@@ -94,6 +94,14 @@ class StudentSessionController {
         return emitter;
     }
 
+    @GetMapping(path = "/api/v1/student/sessions/{joinCode}/events/public", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter publicEvents(@PathVariable String joinCode) {
+        studentSessions.snapshot(joinCode);
+        SseEmitter emitter = new SseEmitter(30 * 60 * 1000L);
+        broadcaster.registerPublic(joinCode, emitter);
+        return emitter;
+    }
+
     @PostMapping("/api/v1/student/sessions/{joinCode}/signals")
     public SignalAggregate signal(
             @AuthenticationPrincipal AuthenticatedUser user,

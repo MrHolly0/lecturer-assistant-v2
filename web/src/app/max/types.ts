@@ -36,6 +36,7 @@ export interface MaxWebApp {
   HapticFeedback?: MaxHapticFeedback;
   getViewportSize?: () => Promise<{ height: string; width: string }>;
   ready?: () => void;
+  openLink?: (url: string) => void;
   onEvent?: (event: string, callback: () => void) => void;
   offEvent?: (event: string, callback: () => void) => void;
 }

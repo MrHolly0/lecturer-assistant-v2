@@ -12,8 +12,9 @@ import {
   Wrench
 } from "lucide-react";
 import type { LiveSession } from "../app/api/live-api";
-import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { toast } from "sonner";
+import { getMaxWebApp } from "../app/max/bridge";
 import { useMaxBridge } from "../app/max/context";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { LocalQrCode } from "./LocalQrCode";
@@ -37,7 +38,6 @@ import { SessionGroups } from "./SessionGroups";
 
 interface PresenterTopbarProps {
   courseId: string;
-  sessionId: string;
   session: LiveSession;
   drawing: boolean;
   pausePending: boolean;
@@ -51,7 +51,6 @@ interface PresenterTopbarProps {
 
 export function PresenterTopbar({
   courseId,
-  sessionId,
   session,
   drawing,
   pausePending,
@@ -62,15 +61,26 @@ export function PresenterTopbar({
   onResume,
   onEnd
 }: PresenterTopbarProps) {
-  const navigate = useNavigate();
   const maxEnvironment = useMaxBridge();
   const [connectionOpen, setConnectionOpen] = useState(false);
   const sessionActive = session.status === "LIVE" || session.status === "PAUSED";
   const joinUrl = buildMaxJoinUrl(session.joinCode);
   const openProjection = () => {
-    const path = `/courses/${courseId}/sessions/${sessionId}/projection`;
-    if (maxEnvironment.isMax) navigate(path);
-    else window.open(`/#${path}`, "projection", "width=1280,height=720");
+    const url = `${window.location.origin}/#/projection/${encodeURIComponent(session.joinCode)}`;
+    if (maxEnvironment.isMax && getMaxWebApp()?.openLink) {
+      try {
+        getMaxWebApp()?.openLink?.(url);
+      } catch {
+        toast.error("MAX не открыл внешний браузер. Попробуйте ещё раз.");
+      }
+      return;
+    }
+    const projectionWindow = window.open(url, "lecturer-projection", "popup,width=1280,height=720");
+    if (projectionWindow) projectionWindow.focus();
+    else
+      toast.error(
+        "Браузер заблокировал окно проектора. Разрешите всплывающие окна для этого сайта."
+      );
   };
 
   return (

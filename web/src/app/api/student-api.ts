@@ -56,6 +56,11 @@ export async function getStudentSession(
   return res.json() as Promise<StudentSessionSnapshot>;
 }
 
+export async function getPublicStudentSession(joinCode: string): Promise<StudentSessionSnapshot> {
+  const res = await publicFetch(`/student/sessions/${encodeURIComponent(joinCode)}`);
+  return res.json() as Promise<StudentSessionSnapshot>;
+}
+
 export async function joinStudentSession(
   joinCode: string,
   displayName?: string,
@@ -156,7 +161,9 @@ export function connectStudentSession(
   onSnapshot: (snapshot: StudentSessionSnapshot) => void,
   onStateChange: (state: StudentConnectionState) => void
 ): StudentConnectionControls {
-  const eventUrl = `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events?${new URLSearchParams({ participantToken })}`;
+  const eventUrl = participantToken
+    ? `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events?${new URLSearchParams({ participantToken })}`
+    : `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events/public`;
   let source: EventSource | null = null;
   let reconnectTimer: number | undefined;
   let pollingTimer: number | undefined;
@@ -193,7 +200,9 @@ export function connectStudentSession(
   const pollSnapshot = async () => {
     if (stopped || ended || !navigator.onLine) return;
     try {
-      const snapshot = await getStudentSession(joinCode, participantToken);
+      const snapshot = participantToken
+        ? await getStudentSession(joinCode, participantToken)
+        : await getPublicStudentSession(joinCode);
       acceptSnapshot(snapshot);
       if (!ended && source?.readyState !== EventSource.OPEN) updateState("POLLING");
     } catch {
