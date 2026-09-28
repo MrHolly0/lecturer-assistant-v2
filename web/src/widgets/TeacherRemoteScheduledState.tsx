@@ -1,5 +1,7 @@
 import { Play, Radio } from "lucide-react";
+import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { Button } from "../shared/ui/button";
+import { LocalQrCode } from "./LocalQrCode";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,13 +33,25 @@ export function TeacherRemoteScheduledState({
   onBack,
   onCancel
 }: Props) {
+  const joinUrl = buildMaxJoinUrl(joinCode);
+
   return (
-    <main className="teacher-remote-state">
-      <Radio size={28} aria-hidden="true" />
-      <h1>Ожидание начала</h1>
-      <p className="muted">
-        «{lectureTitle}» уже доступна студентам по коду {joinCode}.
-      </p>
+    <main className="teacher-remote-state teacher-remote-state--scheduled">
+      <div className="teacher-remote-scheduled__heading">
+        <span className="teacher-remote-scheduled__eyebrow">
+          <Radio size={16} aria-hidden="true" /> Ожидание начала
+        </span>
+        <h1>{lectureTitle}</h1>
+        <p className="muted">Студенты могут подключиться до начала показа.</p>
+      </div>
+      <section className="teacher-remote-scheduled__join" aria-label="Подключение студентов">
+        <div className="teacher-remote-scheduled__code">
+          <span>Код занятия</span>
+          <strong>{joinCode}</strong>
+          <p className="muted">Продиктуйте код или покажите QR студентам.</p>
+        </div>
+        {joinUrl && <LocalQrCode value={joinUrl} label="QR для студентов" />}
+      </section>
       <Button type="button" size="lg" disabled={beginPending} onClick={onBegin}>
         <Play size={20} aria-hidden="true" />
         {beginPending ? "Начинаем…" : "Начать показ"}

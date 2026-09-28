@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown } from "lucide-react";
 import type { components } from "../app/api/schema";
 import {
   createAdminInvitation,
@@ -9,8 +10,6 @@ import {
 } from "../app/api/admin-api";
 import { useAuth } from "../app/AuthContext";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { PaginationBar, SearchField } from "../widgets/ListControls";
 import { Button, LinkButton } from "../shared/ui/button";
 
@@ -19,8 +18,8 @@ type UserRole = "ADMIN" | "LECTURER" | "ASSISTANT" | "STUDENT";
 type UserStatus = "ACTIVE" | "DISABLED" | "EPHEMERAL";
 type AdminInviteRole = "ADMIN" | "LECTURER" | "ASSISTANT";
 type Invitation = components["schemas"]["Invitation"];
-type UserTab = "active" | "disabled" | "roles";
 type RoleFilter = UserRole | "ALL";
+type StatusFilter = "ACTIVE" | "DISABLED" | "ALL";
 
 const roleLabels: Record<UserRole, string> = {
   ADMIN: "Администратор",
@@ -40,7 +39,7 @@ export function AdminUsersPage() {
   const { user } = useAuth();
   const [inviteRole, setInviteRole] = useState<AdminInviteRole>("LECTURER");
   const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
-  const [tab, setTab] = useState<UserTab>("active");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ACTIVE");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
   const [query, setQuery] = useState("");
 
@@ -70,39 +69,38 @@ export function AdminUsersPage() {
   const filteredUsers = useMemo(
     () =>
       users.filter((item) => {
-        if (tab === "active" && item.status !== "ACTIVE") return false;
-        if (tab === "disabled" && item.status !== "DISABLED") return false;
-        if (tab === "roles" && roleFilter !== "ALL" && item.role !== roleFilter) return false;
+        if (statusFilter !== "ALL" && item.status !== statusFilter) return false;
+        if (roleFilter !== "ALL" && item.role !== roleFilter) return false;
         return includesQuery(query, item.displayName, item.email);
       }),
-    [query, roleFilter, tab, users]
+    [query, roleFilter, statusFilter, users]
   );
   const paged = usePagedList(filteredUsers, 20);
 
   return (
-    <div className="page">
+    <div className="page admin-users-page">
       <div className="page-header">
         <h1>Пользователи</h1>
       </div>
 
       <section className="section">
         <h2>Создать приглашение</h2>
-        <div className="invite-panel">
+        <div className="invite-panel admin-invite-panel">
           <label className="field">
             <span>Роль</span>
-            <Select
-              value={inviteRole}
-              onValueChange={(value) => setInviteRole(value as AdminInviteRole)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="LECTURER">Лектор</SelectItem>
-                <SelectItem value="ASSISTANT">Ассистент</SelectItem>
-                <SelectItem value="ADMIN">Администратор</SelectItem>
-              </SelectContent>
-            </Select>
+            <span className="admin-select-wrap">
+              <select
+                className="admin-native-select"
+                aria-label="Роль приглашения"
+                value={inviteRole}
+                onChange={(event) => setInviteRole(event.target.value as AdminInviteRole)}
+              >
+                <option value="LECTURER">Лектор</option>
+                <option value="ASSISTANT">Ассистент</option>
+                <option value="ADMIN">Администратор</option>
+              </select>
+              <ChevronDown size={16} aria-hidden="true" />
+            </span>
           </label>
           <Button
             type="button"
@@ -118,7 +116,7 @@ export function AdminUsersPage() {
             <div className="invite-result">
               <code className="invite-code">{lastInvite.code}</code>
               <span className="muted">
-                для роли {lastInvite.role}, до{" "}
+                Для роли {roleLabels[lastInvite.role as UserRole]}, до{" "}
                 {new Date(lastInvite.expiresAt).toLocaleDateString("ru-RU")}
               </span>
               <LinkButton
@@ -134,35 +132,46 @@ export function AdminUsersPage() {
 
       <section className="section">
         <div className="section-heading">
-          <h2>Все пользователи</h2>
+          <h2>Пользователи</h2>
           <span className="muted">{filteredUsers.length} найдено</span>
         </div>
-        <div className="list-toolbar">
-          <Tabs value={tab} onValueChange={(value) => setTab(value as UserTab)}>
-            <TabsList>
-              <TabsTrigger value="active">Активные</TabsTrigger>
-              <TabsTrigger value="disabled">Деактивированные</TabsTrigger>
-              <TabsTrigger value="roles">По ролям</TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <div className="list-toolbar__filters">
-            {tab === "roles" && (
-              <Select
-                value={roleFilter}
-                onValueChange={(value) => setRoleFilter(value as RoleFilter)}
+        <div className="admin-users-filters">
+          <label className="field">
+            <span>Статус</span>
+            <span className="admin-select-wrap">
+              <select
+                className="admin-native-select"
+                aria-label="Статус пользователей"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
               >
-                <SelectTrigger className="table-select">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Все роли</SelectItem>
-                  <SelectItem value="ADMIN">Администратор</SelectItem>
-                  <SelectItem value="LECTURER">Лектор</SelectItem>
-                  <SelectItem value="ASSISTANT">Ассистент</SelectItem>
-                  <SelectItem value="STUDENT">Студент</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
+                <option value="ACTIVE">Активные</option>
+                <option value="DISABLED">Деактивированные</option>
+                <option value="ALL">Все статусы</option>
+              </select>
+              <ChevronDown size={16} aria-hidden="true" />
+            </span>
+          </label>
+          <label className="field">
+            <span>Роль</span>
+            <span className="admin-select-wrap">
+              <select
+                className="admin-native-select"
+                aria-label="Роль пользователей"
+                value={roleFilter}
+                onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
+              >
+                <option value="ALL">Все роли</option>
+                <option value="ADMIN">Администратор</option>
+                <option value="LECTURER">Лектор</option>
+                <option value="ASSISTANT">Ассистент</option>
+                <option value="STUDENT">Студент</option>
+              </select>
+              <ChevronDown size={16} aria-hidden="true" />
+            </span>
+          </label>
+          <div className="admin-users-filters__search">
+            <span>Поиск</span>
             <SearchField value={query} onChange={setQuery} placeholder="Имя или email" />
           </div>
         </div>
@@ -202,7 +211,7 @@ function UsersTable({
   onStatus
 }: UsersTableProps) {
   return (
-    <table className="data-table">
+    <table className="data-table admin-users-table">
       <thead>
         <tr>
           <th>Имя</th>
@@ -214,7 +223,7 @@ function UsersTable({
       </thead>
       <tbody>
         {users.length === 0 && (
-          <tr>
+          <tr className="admin-users-table__empty">
             <td colSpan={5} className="muted">
               Ничего не найдено.
             </td>
@@ -225,32 +234,32 @@ function UsersTable({
           const canToggle = item.status === "ACTIVE" || item.status === "DISABLED";
           return (
             <tr key={item.id}>
-              <td>{item.displayName}</td>
-              <td>{item.email}</td>
-              <td>
-                <Select
-                  value={item.role}
-                  onValueChange={(role) => onRole(item.id, role as UserRole)}
-                  disabled={ownProfile || rolePending}
-                >
-                  <SelectTrigger className="table-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
+              <td data-label="Имя">{item.displayName}</td>
+              <td data-label="Email">{item.email}</td>
+              <td data-label="Роль">
+                <span className="admin-select-wrap table-select">
+                  <select
+                    className="admin-native-select"
+                    aria-label={`Роль ${item.displayName}`}
+                    value={item.role}
+                    onChange={(event) => onRole(item.id, event.target.value as UserRole)}
+                    disabled={ownProfile || rolePending}
+                  >
                     {Object.entries(roleLabels).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
+                      <option key={value} value={value}>
                         {label}
-                      </SelectItem>
+                      </option>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </select>
+                  <ChevronDown size={16} aria-hidden="true" />
+                </span>
               </td>
-              <td>
+              <td data-label="Статус">
                 <span className={`badge badge--${item.status.toLowerCase()}`}>
                   {statusLabels[item.status as UserStatus]}
                 </span>
               </td>
-              <td>
+              <td data-label="Действие">
                 <Button
                   type="button"
                   variant="outline"

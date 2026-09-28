@@ -3205,8 +3205,113 @@ textarea {
   align-items: center;
   color: var(--muted-foreground);
   display: flex;
-  gap: 8px;
-  min-width: min(100%, 320px);
+  min-width: 0;
+  position: relative;
+  width: 100%;
+}
+
+.list-search > svg {
+  left: 12px;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+
+.list-search input {
+  min-height: 40px;
+  padding-left: 38px;
+}
+
+.admin-invite-panel {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 240px) max-content;
+  justify-content: start;
+}
+
+.admin-invite-panel > .ui-button {
+  min-height: 40px;
+}
+
+.admin-invite-panel .invite-result {
+  grid-column: 1 / -1;
+}
+
+.admin-users-page .admin-select-wrap {
+  color: var(--foreground);
+  display: block;
+  font-size: inherit;
+  min-width: 0;
+  position: relative;
+  width: 100%;
+}
+
+.admin-users-page .admin-native-select {
+  appearance: none;
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--foreground) 22%, var(--card));
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  min-height: 40px;
+  padding: 0 36px 0 12px;
+  width: 100%;
+}
+
+.dark .admin-native-select {
+  color-scheme: dark;
+}
+
+.admin-users-page .admin-native-select option {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.admin-users-page .admin-native-select:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--foreground) 48%, var(--card));
+}
+
+.admin-users-page .admin-native-select:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.admin-users-page .admin-native-select:disabled {
+  background: var(--input-background);
+  color: var(--muted-foreground);
+  cursor: not-allowed;
+}
+
+.admin-users-page .admin-select-wrap > svg {
+  color: var(--muted-foreground);
+  pointer-events: none;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.admin-users-filters {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(220px, 1.5fr);
+  margin-bottom: 16px;
+}
+
+.admin-users-filters__search {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-users-filters__search > span {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.admin-users-table td:nth-child(2) {
+  overflow-wrap: anywhere;
 }
 
 .list-footer {
@@ -3259,6 +3364,107 @@ textarea {
 
 .data-table tr:last-child td {
   border-bottom: 0;
+}
+
+@media (max-width: 1199px) {
+  .admin-users-table,
+  .admin-users-table tbody {
+    display: block;
+  }
+
+  .admin-users-table {
+    background: transparent;
+    border: 0;
+    overflow: visible;
+  }
+
+  .admin-users-table thead {
+    display: none;
+  }
+
+  .admin-users-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .admin-users-table tr {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    padding: 16px;
+  }
+
+  .admin-users-table td {
+    align-items: center;
+    border: 0;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    min-width: 0;
+    padding: 0;
+  }
+
+  .admin-users-table td:first-child {
+    font-weight: 600;
+  }
+
+  .admin-users-table td:nth-child(2) {
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+  }
+
+  .admin-users-table td[data-label]:nth-child(n + 3)::before {
+    color: var(--muted-foreground);
+    content: attr(data-label);
+    flex: 0 0 72px;
+    font-size: 0.875rem;
+  }
+
+  .admin-users-table .table-select {
+    min-width: 0;
+    width: min(100%, 220px);
+  }
+
+  .admin-users-table td:last-child .ui-button {
+    min-height: 40px;
+    white-space: normal;
+  }
+
+  .admin-users-table__empty td {
+    color: var(--muted-foreground);
+  }
+}
+
+@media (min-width: 1000px) and (max-width: 1199px) {
+  .admin-users-table tbody {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-invite-panel {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+
+  .admin-invite-panel .invite-result {
+    display: grid;
+    gap: 10px;
+    grid-column: 1;
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .admin-invite-panel .invite-result .ui-button {
+    width: 100%;
+  }
+
+  .admin-users-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 640px) {
@@ -5793,6 +5999,78 @@ html[data-max-mini-app="true"] .student-session-shell {
 .teacher-remote-state h1,
 .teacher-remote-state p {
   margin: 0;
+}
+
+.teacher-remote-state--scheduled {
+  align-content: start;
+  justify-items: stretch;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 620px;
+  min-height: 0;
+  padding: max(20px, var(--app-safe-area-top)) max(16px, var(--app-safe-area-right))
+    max(24px, var(--app-safe-area-bottom)) max(16px, var(--app-safe-area-left));
+  text-align: left;
+}
+
+.teacher-remote-scheduled__heading {
+  display: grid;
+  gap: 8px;
+}
+
+.teacher-remote-scheduled__eyebrow {
+  align-items: center;
+  color: var(--muted-foreground);
+  display: inline-flex;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+
+.teacher-remote-scheduled__heading h1 {
+  font-size: clamp(1.375rem, 5vw, 1.875rem);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.teacher-remote-scheduled__join {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 16px;
+}
+
+.teacher-remote-scheduled__code {
+  display: grid;
+  flex: 1 1 150px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.teacher-remote-scheduled__code > span {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.teacher-remote-scheduled__code strong {
+  font-size: clamp(1.75rem, 7vw, 2.5rem);
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.teacher-remote-scheduled__join .qr-card {
+  border: 1px solid var(--border);
+}
+
+.teacher-remote-state--scheduled > .ui-button {
+  min-height: var(--control-height-touch);
+  width: 100%;
 }
 
 @media (max-width: 380px) {

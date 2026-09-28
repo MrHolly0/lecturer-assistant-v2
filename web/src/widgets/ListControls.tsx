@@ -11,8 +11,9 @@ interface SearchFieldProps {
 export function SearchField({ value, placeholder, onChange }: SearchFieldProps) {
   return (
     <label className="list-search">
-      <Search size={16} />
+      <Search size={16} aria-hidden="true" />
       <Input
+        aria-label={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
