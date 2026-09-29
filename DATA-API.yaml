@@ -13,8 +13,10 @@ api:
   contentType: application/json
   authentication:
     type: bearer
-    tokenFrom: lecturer-login.response.accessToken
+    tokenFrom: lecturer-login.accessToken
 testData:
+  file: deploy/seed/test-data.json
+  presentation: deploy/seed/test-lecture.pptx
   source: "docker compose run --rm seed"
   lecturerEmail: lecturer@lecturer-assistant.test
   lecturerPassword: "${SEED_PASSWORD_LECTURER}"

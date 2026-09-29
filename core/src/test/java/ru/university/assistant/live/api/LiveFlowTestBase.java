@@ -244,9 +244,11 @@ abstract class LiveFlowTestBase {
                             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/"
                                     + "lQ5yYwAAAABJRU5ErkJggg==");
                     String ref = storage.storeBytes(png, "slide-1.png", "image/png").ref();
-                    sink.metadata(1, 1, "RENDERING 0/1", null);
-                    sink.slide(new ConvertedSlide(1, ref, "Slide 1", false), 1, 1);
-                    return new SlideConversionResult(1, 1, false, null, null);
+                    // Смена слайда и таймеры проверяются на колоде минимум из двух слайдов.
+                    sink.metadata(2, 2, "RENDERING 0/2", null);
+                    sink.slide(new ConvertedSlide(1, ref, "Slide 1", false), 2, 2);
+                    sink.slide(new ConvertedSlide(2, ref, "Slide 2", false), 2, 2);
+                    return new SlideConversionResult(2, 2, false, null, null);
                 } catch (java.io.IOException exception) {
                     throw new IllegalStateException(exception);
                 }

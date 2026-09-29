@@ -2,7 +2,7 @@
 
 Пока нет VPS — временный стенд за туннелем Tuna (https://lecturer-assistant.ru.tuna.am): [TUNNEL.md](TUNNEL.md). Ниже — VPS.
 
-Сервер: Linux, 2 vCPU, 4 ГБ RAM, Docker Engine с плагином Compose v2, открыты 80 и 443
+Сервер: Linux, 2 vCPU, 4 ГБ RAM, Docker Engine с плагином Compose ≥ 2.24.4, открыты 80 и 443
 (TCP и UDP для HTTP/3). Домен: A-запись указывает на IP сервера.
 
 ## Первый запуск
@@ -13,7 +13,7 @@ git checkout <ветка сдачи>
 sh deploy/stand/vps-up.sh            # .env, сборка, запуск, проверка, cron раз в час
 ```
 
-`vps-up.sh` вызывает `init-env.sh --vps`: он спросит домен, почту и токен бота (если их
+`vps-up.sh` вызывает `init-env.sh --vps`: он спросит домен, почту, токен и публичное имя бота (если их
 ещё нет в `.env`) и сгенерирует секреты. `.env` создаётся с правами 600. Его содержимое сразу сохранить в менеджер
 паролей: там пароль базы, `JWT_SECRET`, ключ адаптера, секрет вебхука.
 
@@ -24,6 +24,16 @@ Caddy сам выпускает сертификат Let's Encrypt при пер
 Адаптер MAX при старте регистрирует вебхук `https://<домен><MAX_WEBHOOK_PATH>` и удаляет
 прочие подписки бота. Поэтому бот с этим токеном должен быть подключён только к одному
 стенду.
+
+## Первый администратор и тестовый набор
+
+`init-env.sh` не включает установочный endpoint автоматически. На новой установке перед запуском задайте в `.env` случайный `ADMIN_SETUP_TOKEN` длиной не менее 32 символов (`openssl rand -hex 32`). После запуска создайте администратора локально командой `python3 deploy/admin/provision.py` либо создайте тестовый набор:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm seed
+```
+
+Три пароля `SEED_PASSWORD_*` уже сгенерированы `init-env.sh`. После успешного создания администратора удалите `ADMIN_SETUP_TOKEN` из `.env` и примените изменения командой `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate core`. Если используется туннель, во всех командах добавьте `-f docker-compose.tunnel.yml`.
 
 ## После запуска — в кабинете MAX для партнёров
 

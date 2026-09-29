@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "1.0",
+  "course": {
+    "title": "[ТЕСТ] Цифровые образовательные решения"
+  },
+  "deck": {
+    "title": "[ТЕСТ] Лекция 1. Обратная связь на лекции",
+    "file": "test-lecture.pptx"
+  },
+  "lecture": {
+    "title": "[ТЕСТ] Лекция 1. Обратная связь на лекции"
+  },
+  "tag": "тест",
+  "accounts": {
+    "admin": {
+      "email": "admin@lecturer-assistant.test",
+      "displayName": "[ТЕСТ] Администратор",
+      "env": "SEED_PASSWORD_ADMIN"
+    },
+    "lecturer": {
+      "email": "lecturer@lecturer-assistant.test",
+      "displayName": "[ТЕСТ] Преподаватель",
+      "env": "SEED_PASSWORD_LECTURER"
+    },
+    "assistant": {
+      "email": "assistant@lecturer-assistant.test",
+      "displayName": "[ТЕСТ] Ассистент",
+      "env": "SEED_PASSWORD_ASSISTANT"
+    }
+  },
+  "questions": [
+    {
+      "text": "[ТЕСТ] Что видит преподаватель после закрытия быстрого опроса?",
+      "questionType": "CHOICE",
+      "options": [
+        {
+          "text": "Распределение ответов студентов",
+          "correct": true
+        },
+        {
+          "text": "Только число подключившихся",
+          "correct": false
+        },
+        {
+          "text": "Ничего, результаты видят только студенты",
+          "correct": false
+        }
+      ],
+      "tags": [
+        "тест"
+      ]
+    },
+    {
+      "text": "[ТЕСТ] Студент может задать вопрос, не прерывая лекцию.",
+      "questionType": "TRUE_FALSE",
+      "options": [
+        {
+          "text": "Верно",
+          "correct": true
+        },
+        {
+          "text": "Неверно",
+          "correct": false
+        }
+      ],
+      "tags": [
+        "тест"
+      ]
+    }
+  ]
+}

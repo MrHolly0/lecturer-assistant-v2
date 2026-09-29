@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["master", "v2/**"]
+    branches: ["master", "v2/**", "release/**"]
   pull_request:
     branches: ["master"]
 
@@ -39,6 +39,9 @@ jobs:
           npm run lint
           npm run format
           npm run build
+
+      - name: Verify MAX adapter
+        run: node --test adapters/max/*.test.mjs
 
       - name: Validate compose
         run: docker compose config --quiet

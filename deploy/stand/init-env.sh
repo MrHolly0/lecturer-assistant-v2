@@ -57,6 +57,7 @@ ask() {
 
 echo "Проверяю $ENV_FILE:"
 ask MAX_BOT_TOKEN "Токен бота MAX (ввод скрыт)" secret
+ask VITE_MAX_BOT_NAME "Публичное имя вашего MAX-бота (без https://max.ru/)"
 if [ "$MODE" = "--vps" ]; then
   ask SITE_DOMAIN "Домен стенда (A-запись уже указывает на этот сервер)"
   ask ACME_EMAIL "Почта для уведомлений Let's Encrypt"

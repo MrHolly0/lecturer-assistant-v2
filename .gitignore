@@ -28,3 +28,8 @@ web/vite.config.js
 *.bak
 *.sql.gz
 tmp/
+artifacts/
+
+# Локальные журналы ручных smoke-прогонов, не часть пакета сдачи.
+e2e/reports/*-release-smoke/
+__pycache__/

@@ -14,40 +14,15 @@ const baseUrl = (process.env.SEED_BASE_URL ?? "http://web:80").replace(/\/$/, ""
 const api = `${baseUrl}/api/v1`;
 // Адрес для человека: внутри compose скрипт ходит на web:80, а браузер — на порт хоста.
 const publicUrl = (process.env.SEED_PUBLIC_URL || baseUrl).replace(/\/$/, "");
-const deckFile = fileURLToPath(new URL("./test-lecture.pptx", import.meta.url));
 
-const COURSE_TITLE = "[ТЕСТ] Цифровые образовательные решения";
-const DECK_TITLE = "[ТЕСТ] Лекция 1. Обратная связь на лекции";
-const LECTURE_TITLE = "[ТЕСТ] Лекция 1. Обратная связь на лекции";
-const TAG = "тест";
 
-const accounts = {
-  admin: { email: "admin@lecturer-assistant.test", displayName: "[ТЕСТ] Администратор", env: "SEED_PASSWORD_ADMIN" },
-  lecturer: { email: "lecturer@lecturer-assistant.test", displayName: "[ТЕСТ] Преподаватель", env: "SEED_PASSWORD_LECTURER" },
-  assistant: { email: "assistant@lecturer-assistant.test", displayName: "[ТЕСТ] Ассистент", env: "SEED_PASSWORD_ASSISTANT" },
-};
-
-const questions = [
-  {
-    text: "[ТЕСТ] Что видит преподаватель после закрытия быстрого опроса?",
-    questionType: "CHOICE",
-    options: [
-      { text: "Распределение ответов студентов", correct: true },
-      { text: "Только число подключившихся", correct: false },
-      { text: "Ничего, результаты видят только студенты", correct: false },
-    ],
-    tags: [TAG],
-  },
-  {
-    text: "[ТЕСТ] Студент может задать вопрос, не прерывая лекцию.",
-    questionType: "TRUE_FALSE",
-    options: [
-      { text: "Верно", correct: true },
-      { text: "Неверно", correct: false },
-    ],
-    tags: [TAG],
-  },
-];
+const fixture = JSON.parse(await readFile(new URL("./test-data.json", import.meta.url), "utf8"));
+const deckFile = fileURLToPath(new URL(fixture.deck.file, import.meta.url));
+const COURSE_TITLE = fixture.course.title;
+const DECK_TITLE = fixture.deck.title;
+const LECTURE_TITLE = fixture.lecture.title;
+const accounts = fixture.accounts;
+const questions = fixture.questions;
 
 function fail(message) {
   console.error(`\nОШИБКА: ${message}`);
@@ -259,7 +234,7 @@ const createdQuestions = await ensureQuestions(lecturer.token, course.id);
 console.log(`  вопросы-проверки: добавлено ${createdQuestions}, всего тестовых ${questions.length}`);
 
 console.log(`
-Готово. Вход: ${publicUrl}/login
+Готово. Вход: ${publicUrl}/#/login
   администратор  ${accounts.admin.email}      пароль: SEED_PASSWORD_ADMIN из .env
   преподаватель  ${accounts.lecturer.email}   пароль: SEED_PASSWORD_LECTURER из .env
   ассистент      ${accounts.assistant.email}  пароль: SEED_PASSWORD_ASSISTANT из .env`);

@@ -150,7 +150,10 @@ public class StudentWebSessionService {
             if (existing != null) {
                 if (user != null && existing.identityLevel() == IdentityLevel.EPHEMERAL) {
                     SessionParticipant guest = sessions.lockGuestParticipation(session.id(), existing.personId())
-                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Guest session was already claimed"));
+                            .orElseThrow(() -> {
+                                return new ResponseStatusException(
+                                        HttpStatus.CONFLICT, "Guest session was already claimed");
+                            });
                     requireActive(session.id(), guest.personId());
                     registerPerson(session, user, guest.groupId());
                     sessions.claimGuestParticipation(session.id(), guest.personId(), user.id(), guest.displayName());
@@ -161,7 +164,8 @@ public class StudentWebSessionService {
                     return issueProfileJoin(session, user);
                 }
                 if (user != null && !existing.personId().equals(user.id())) {
-                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Participant token belongs to another person");
+                    String reason = "Participant token belongs to another person";
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, reason);
                 }
                 requireActive(session.id(), existing.personId());
                 sessions.touchWebParticipant(existing.id());
