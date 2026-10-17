@@ -165,7 +165,7 @@
   min-height: 36px;
   margin-bottom: 5px;
 }
-.organization-page .org-section-heading h3 {
+.organization-page .org-section-heading h2 {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
@@ -448,7 +448,7 @@
   left: 12px;
   pointer-events: none;
 }
-.org-search input {
+.org-dialog .org-search input:not([type="radio"]):not([type="checkbox"]) {
   padding-left: 38px;
 }
 .org-picker-list {

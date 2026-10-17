@@ -188,34 +188,34 @@ export function OrganizationPage() {
 
   if (organization.isPending) {
     return (
-      <main className="page organization-page">
+      <div className="page organization-page">
         <p className="muted" role="status">
           Загрузка групп…
         </p>
-      </main>
+      </div>
     );
   }
   if (organization.isError) {
     return (
-      <main className="page organization-page">
+      <div className="page organization-page">
         <div className="org-state" role="alert">
           <p>Не удалось загрузить группы и права доступа.</p>
           <Button variant="outline" onClick={() => void organization.refetch()}>
             Попробовать снова
           </Button>
         </div>
-      </main>
+      </div>
     );
   }
   if (invalidUnit) {
     return (
-      <main className="page organization-page">
+      <div className="page organization-page">
         <h1>Группа недоступна</h1>
         <div className="org-state" role="status">
           <p>Эта группа удалена или у вас больше нет к ней доступа.</p>
           <Button onClick={() => navigateTo(null)}>К группам и сотрудникам</Button>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -224,7 +224,7 @@ export function OrganizationPage() {
   const refreshPeople = selected ? roster.refetch : allPeople.refetch;
 
   return (
-    <main className="page organization-page">
+    <div className="page organization-page">
       <header className="org-header">
         <div className="org-header-copy">
           <h1>Сотрудники и группы</h1>
@@ -425,7 +425,7 @@ export function OrganizationPage() {
         {shownFolders.length > 0 && !allDirectory && (
           <section className="org-section" aria-label="Группы">
             <div className="org-section-heading">
-              <h3>Группы</h3>
+              <h2>Группы</h2>
               <span>{shownFolders.length}</span>
             </div>
             <ul className="org-folder-list">
@@ -511,9 +511,9 @@ export function OrganizationPage() {
           (selected ? canViewSelected : administrator) && (
             <section className="org-section org-people-section" aria-label="Сотрудники">
               <div className="org-section-heading org-people-heading">
-                <h3>
+                <h2>
                   {allDirectory ? "Сотрудники" : selected ? "Сотрудники в группе" : "Без группы"}
-                </h3>
+                </h2>
                 {!loadingPeople && !peopleError && <span>{filteredPeople.length}</span>}
               </div>
               {loadingPeople ? (
@@ -682,7 +682,21 @@ export function OrganizationPage() {
                 (() => {
                   const removed = getDescendantIds(deleting.id, units);
                   const nestedGroups = Math.max(removed.size - 1, 0);
-                  return `${nestedGroups > 0 ? `Вместе с ней удалятся ${nestedGroups} вложенных групп. ` : ""}${deleting.totalMembersCount} ${pluralizeRu(deleting.totalMembersCount, "сотрудник", "сотрудника", "сотрудников")} перейдут в список «Без группы». `;
+                  const nestedGroupLabel = `${nestedGroups} ${pluralizeRu(
+                    nestedGroups,
+                    "вложенная группа",
+                    "вложенные группы",
+                    "вложенных групп"
+                  )}`;
+                  const nestedGroupVerb = pluralizeRu(
+                    nestedGroups,
+                    "удалится",
+                    "удалятся",
+                    "удалятся"
+                  );
+                  const memberCount = deleting.totalMembersCount;
+                  const memberVerb = pluralizeRu(memberCount, "перейдёт", "перейдут", "перейдут");
+                  return `${nestedGroups > 0 ? `Вместе с ней ${nestedGroupVerb} ${nestedGroupLabel}. ` : ""}${memberCount} ${pluralizeRu(memberCount, "сотрудник", "сотрудника", "сотрудников")} ${memberVerb} в список «Без группы». `;
                 })()}
               Аккаунты сотрудников, курсы, материалы и история сохранятся. Доступ руководителей
               удалённой ветки будет снят.
@@ -728,7 +742,7 @@ export function OrganizationPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </main>
+    </div>
   );
 }
 
