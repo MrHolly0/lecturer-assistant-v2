@@ -25,6 +25,7 @@ import {
 import { respondToPoll } from "../app/api/interaction-api";
 import { ApiError, userErrorMessage } from "../app/api/errors";
 import { mutationRetryDelay, shouldRetryMutation } from "../app/api/retry";
+import { StudentSnapshotGate } from "../app/api/student-snapshot-gate";
 import { useAuth } from "../app/AuthContext";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 import { StudentConnectionBanner } from "../widgets/StudentConnectionBanner";
@@ -62,7 +63,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const normalizedCode = joinCode.trim().toUpperCase();
-  const resumeToken = useRef(readStudentResume(normalizedCode)?.participantToken ?? "");
+  const scopeForToken = (token: string) =>
+    JSON.stringify([normalizedCode, user?.id ?? "guest", token]);
+  const resumeToken = useRef(
+    readStudentResume(normalizedCode, user?.id ?? null)?.participantToken ?? ""
+  );
   const [participantToken, setParticipantToken] = useState(() =>
     user ? "" : readTabStudentToken(normalizedCode) ?? resumeToken.current
   );
@@ -72,22 +77,25 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [editingName, setEditingName] = useState(false);
+  const questionDraftKey = user
+    ? `student-question-draft:${normalizedCode}:${user.id}`
+    : `student-question-draft:${normalizedCode}`;
+  const questionHistoryKey = user
+    ? `student-question-history:${normalizedCode}:${user.id}`
+    : `student-question-history:${normalizedCode}`;
   const [question, setQuestion] = useState(() => {
     try {
-      return sessionStorage.getItem(`student-question-draft:${normalizedCode}`) ?? "";
+      return sessionStorage.getItem(questionDraftKey) ?? "";
     } catch {
       return "";
     }
   });
-  const questionDraftKey = `student-question-draft:${normalizedCode}`;
-  const questionHistoryKey = `student-question-history:${normalizedCode}`;
   const [snapshotSyncing, setSnapshotSyncing] = useState(false);
   const [lastSignal, setLastSignal] = useState<SignalValue | null>(null);
   const [requestedSlideIdx, setRequestedSlideIdx] = useState<number | null>(null);
-  const [snapshot, setSnapshot] = useState<StudentSessionSnapshot | null>(null);
   const [questions, setQuestions] = useState<StudentQuestion[]>(() => {
     try {
-      const stored = sessionStorage.getItem(`student-question-history:${normalizedCode}`);
+      const stored = sessionStorage.getItem(questionHistoryKey);
       const parsed: unknown = stored ? JSON.parse(stored) : [];
       return Array.isArray(parsed) ? (parsed as StudentQuestion[]) : [];
     } catch {
@@ -99,13 +107,53 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [joinIssue, setJoinIssue] = useState<JoinIssue | null>(null);
+  const scope = scopeForToken(participantToken);
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const gateRef = useRef({ scope, gate: new StudentSnapshotGate<StudentSessionSnapshot>() });
+  if (gateRef.current.scope !== scope) {
+    gateRef.current = { scope, gate: new StudentSnapshotGate<StudentSessionSnapshot>() };
+  }
+  const [snapshotState, setSnapshotState] = useState<{
+    scope: string;
+    snapshot: StudentSessionSnapshot;
+  } | null>(null);
+
+  function commitSnapshot(
+    next: StudentSessionSnapshot,
+    targetScope: string,
+    requestGeneration?: number
+  ) {
+    if (scopeRef.current !== targetScope || gateRef.current.scope !== targetScope) return false;
+    const entry = gateRef.current;
+    const merged = mergeStudentSnapshot(next, entry.gate.current);
+    const accepted =
+      requestGeneration === undefined
+        ? entry.gate.accept(merged)
+        : entry.gate.acceptRequest(merged, requestGeneration);
+    if (!accepted) return false;
+    setSnapshotState({ scope: targetScope, snapshot: merged });
+    setMyVote(merged.myVote ?? null);
+    setLastSyncedAt(new Date());
+    return true;
+  }
+
   const sessionQuery = useQuery({
-    queryKey: ["student-session", normalizedCode, participantToken],
-    queryFn: () => getStudentSession(normalizedCode, participantToken),
+    queryKey: ["student-session", normalizedCode, user?.id ?? "guest", participantToken],
+    queryFn: async () => {
+      const requestScope = scope;
+      const requestEntry = gateRef.current;
+      const requestGeneration = requestEntry.gate.generation;
+      const fresh = await getStudentSession(normalizedCode, participantToken);
+      if (scopeRef.current !== requestScope || gateRef.current !== requestEntry) return fresh;
+      commitSnapshot(fresh, requestScope, requestGeneration);
+      return requestEntry.gate.current ?? fresh;
+    },
     enabled: Boolean(normalizedCode)
   });
   const { refetch } = sessionQuery;
-  const current = snapshot ?? sessionQuery.data ?? null;
+  const current =
+    (snapshotState?.scope === scope ? snapshotState.snapshot : null) ?? sessionQuery.data ?? null;
   const isLive = current?.status === "LIVE";
   const isJoined = Boolean(participantToken) && !current?.kicked;
 
@@ -118,19 +166,34 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         user ? resumeToken.current || undefined : undefined
       ),
     onSuccess: (response) => {
-      storeTabStudentToken(normalizedCode, response.participantToken);
+      if (scopeRef.current !== scope) return;
+      storeTabStudentToken(normalizedCode, response.participantToken, user?.id ?? null);
       resumeToken.current = response.participantToken;
-      storeStudentResume({ joinCode: normalizedCode, participantToken: response.participantToken });
+      storeStudentResume({
+        joinCode: normalizedCode,
+        participantToken: response.participantToken,
+        userId: user?.id
+      });
       if (user) queryClient.setQueryData(["student-active-session"], { joinCode: normalizedCode });
       setParticipantToken(response.participantToken);
-      setSnapshot(response.snapshot);
+      const nextScope = scopeForToken(response.participantToken);
+      const nextEntry = {
+        scope: nextScope,
+        gate: new StudentSnapshotGate<StudentSessionSnapshot>()
+      };
+      nextEntry.gate.accept(response.snapshot);
+      gateRef.current = nextEntry;
+      const accepted = mergeStudentSnapshot(response.snapshot, null);
+      setSnapshotState({ scope: nextScope, snapshot: accepted });
+      setMyVote(accepted.myVote ?? null);
+      setLastSyncedAt(new Date());
       setJoinIssue(null);
       toast.success("Вы подключены к занятию.");
     },
     onError: (error) => {
       if (user && resumeToken.current && error instanceof ApiError && error.status === 403) {
         resumeToken.current = "";
-        clearStudentResume(normalizedCode);
+        clearStudentResume(normalizedCode, user?.id ?? null);
         joinMut.mutate();
         return;
       }
@@ -144,13 +207,13 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     }
   });
   const signalMut = useMutation({
-    mutationFn: (value: SignalValue) =>
-      submitStudentSignal(normalizedCode, participantToken, value, current?.currentSlideIdx ?? 0),
-    onSuccess: (signalAggregate, value) => {
-      setSnapshot((currentSnapshot) =>
-        currentSnapshot ? { ...currentSnapshot, signalAggregate } : currentSnapshot
-      );
-      setLastSignal(value);
+    mutationFn: ({ value, slideIdx }: { value: SignalValue; slideIdx: number }) =>
+      submitStudentSignal(normalizedCode, participantToken, value, slideIdx),
+    onSuccess: (signalAggregate, variables) => {
+      const latest = gateRef.current.gate.current;
+      if (latest?.currentSlideIdx !== variables.slideIdx) return;
+      commitSnapshot({ ...latest, signalAggregate }, scope);
+      setLastSignal(variables.value);
       toast.success("Сигнал отправлен.");
     },
     onError: (error) =>
@@ -172,10 +235,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const pollMut = useMutation({
     mutationFn: ({ pollId, optionIdx }: { pollId: string; optionIdx: number }) =>
       respondToPoll(normalizedCode, pollId, participantToken, optionIdx),
-    onSuccess: (result) => {
+    onSuccess: (result, variables) => {
       const acceptedVote = result.myVote ?? null;
-      setMyVote(acceptedVote);
-      setSnapshot((value) => (value ? { ...value, myVote: acceptedVote } : value));
+      const latest = gateRef.current.gate.current;
+      if (latest?.activePoll?.pollId === variables.pollId) {
+        commitSnapshot({ ...latest, myVote: acceptedVote }, scope);
+      }
       toast.success(result.accepted ? "Ответ принят." : "Ваш первый ответ уже сохранён.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить ответ.")),
@@ -183,10 +248,21 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     retryDelay: mutationRetryDelay
   });
   const nameMut = useMutation({
-    mutationFn: () =>
-      submitStudentName(normalizedCode, participantToken, lastName.trim(), firstName.trim()),
-    onSuccess: (next) => {
-      setSnapshot(next);
+    mutationFn: async () => {
+      const requestScope = scope;
+      const requestEntry = gateRef.current;
+      const requestGeneration = requestEntry.gate.generation;
+      const next = await submitStudentName(
+        normalizedCode,
+        participantToken,
+        lastName.trim(),
+        firstName.trim()
+      );
+      return { next, requestScope, requestEntry, requestGeneration };
+    },
+    onSuccess: ({ next, requestScope, requestEntry, requestGeneration }) => {
+      if (scopeRef.current !== requestScope || gateRef.current !== requestEntry) return;
+      commitSnapshot(next, requestScope, requestGeneration);
       setEditingName(false);
       toast.success("Имя и фамилия отправлены преподавателю.");
     },
@@ -200,13 +276,6 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить слайд в MAX."))
   });
-
-  useEffect(() => {
-    if (!sessionQuery.data) return;
-    setSnapshot(sessionQuery.data);
-    setMyVote(sessionQuery.data.myVote ?? null);
-    setLastSyncedAt(new Date());
-  }, [sessionQuery.data]);
 
   useEffect(() => {
     try {
@@ -227,7 +296,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
 
   useEffect(() => {
     if (current?.status !== "ENDED" && current?.status !== "ARCHIVED") return;
-    clearStudentResume(normalizedCode);
+    clearStudentResume(normalizedCode, user?.id ?? null);
     if (user) void queryClient.invalidateQueries({ queryKey: ["student-active-session"] });
   }, [current?.status, normalizedCode, queryClient, user]);
 
@@ -258,19 +327,15 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       normalizedCode,
       participantToken,
       (next) => {
-        setSnapshot((previous) => ({
-          ...next,
-          myVote:
-            next.myVote ??
-            (previous?.activePoll?.pollId === next.activePoll?.pollId ? previous?.myVote : null)
-        }));
-        setLastSyncedAt(new Date());
+        commitSnapshot(next, scope);
       },
       (state) => {
         setConnectionState(state);
         if (state === "CONNECTED") {
           setSnapshotSyncing(true);
-          void refetch().finally(() => setSnapshotSyncing(false));
+          void refetch().finally(() => {
+            if (scopeRef.current === scope) setSnapshotSyncing(false);
+          });
         }
       }
     );
@@ -279,7 +344,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       reconnectRef.current = () => undefined;
       connection.disconnect();
     };
-  }, [normalizedCode, participantToken, refetch]);
+  }, [normalizedCode, participantToken, refetch, scope]);
 
   const slideLabel = current ? `${current.currentSlideIdx} / ${current.slideCount}` : "";
 
@@ -287,7 +352,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     return <StudentSessionLoading />;
   }
 
-  if (sessionQuery.isError || !current) {
+  if (!current) {
     const notFound = sessionQuery.error instanceof ApiError && sessionQuery.error.status === 404;
     return notFound ? (
       <StudentSessionError />
@@ -326,13 +391,13 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         </div>
       </header>
 
-      {isJoined && (
+      {(isJoined || sessionQuery.isError) && (
         <StudentConnectionBanner
           state={connectionState}
           lastSyncedAt={lastSyncedAt}
           onRetry={() => reconnectRef.current()}
           syncing={snapshotSyncing}
-          error={sessionQuery.isError}
+          error={Boolean(sessionQuery.error)}
         />
       )}
 
@@ -530,9 +595,9 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             isQuestionPending={questionMut.isPending}
             lastSignal={lastSignal}
             question={question}
-            questions={current.myQuestions ?? questions}
+            questions={mergeStudentQuestions(current.myQuestions ?? [], questions)}
             answers={current.questionAnswers ?? []}
-            onSignal={(value) => signalMut.mutate(value)}
+            onSignal={(value) => signalMut.mutate({ value, slideIdx: current.currentSlideIdx })}
             onQuestionChange={setQuestion}
             onQuestionSubmit={() => questionMut.mutate()}
             questionError={questionMut.isError}
@@ -542,5 +607,33 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         </section>
       )}
     </main>
+  );
+}
+
+function mergeStudentSnapshot(
+  next: StudentSessionSnapshot,
+  previous: StudentSessionSnapshot | null
+): StudentSessionSnapshot {
+  const sameSession = previous?.sessionId === next.sessionId;
+  const samePoll = sameSession && previous?.activePoll?.pollId === next.activePoll?.pollId;
+  return {
+    ...next,
+    myVote: next.myVote ?? (samePoll ? previous?.myVote ?? null : null),
+    myQuestions: mergeStudentQuestions(
+      next.myQuestions ?? [],
+      sameSession ? previous?.myQuestions ?? [] : []
+    )
+  };
+}
+
+function mergeStudentQuestions(
+  current: StudentQuestion[],
+  saved: StudentQuestion[]
+): StudentQuestion[] {
+  const questions = new Map<string, StudentQuestion>();
+  for (const question of saved) questions.set(question.id, question);
+  for (const question of current) questions.set(question.id, question);
+  return [...questions.values()].sort(
+    (first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()
   );
 }

@@ -182,7 +182,7 @@ export function TeacherRemoteQuestions({
         </SheetContent>
       </Sheet>
       <Dialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
-        <DialogContent>
+        <DialogContent className="teacher-question-publish-dialog">
           <DialogHeader>
             <DialogTitle>Опубликовать вопрос и ответ?</DialogTitle>
             <DialogDescription>

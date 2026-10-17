@@ -170,22 +170,27 @@ export function OrganizationPage() {
   ]);
   const filteredPeople = useMemo(
     () =>
-      people.filter((person) =>
-        includesQuery(
+      people.filter((person) => {
+        const unit = person.unitId
+          ? units.find((candidate) => candidate.id === person.unitId)
+          : null;
+        const unitPath = unit
+          ? getUnitPath(unit, units)
+              .map((part) => part.name)
+              .join(" ")
+          : person.unitId
+            ? person.unitName ?? ""
+            : "";
+
+        return includesQuery(
           query,
           person.displayName,
           person.email,
           person.unitName,
-          person.unitId
-            ? units.find((unit) => unit.id === person.unitId)?.name ?? ""
-            : "Без группы",
-          person.unitId
-            ? getUnitPath(units.find((unit) => unit.id === person.unitId)!, units)
-                .map((unit) => unit.name)
-                .join(" ")
-            : ""
-        )
-      ),
+          person.unitId ? unit?.name ?? "" : "Без группы",
+          unitPath
+        );
+      }),
     [people, query, units]
   );
   const paged = usePagedList(filteredPeople, 20);

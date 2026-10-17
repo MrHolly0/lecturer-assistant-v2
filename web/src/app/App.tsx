@@ -96,7 +96,7 @@ function MaxNavigationRoot() {
     enabled: studentInMax,
     retry: 1
   });
-  const storedStudentSession = readStudentResume();
+  const storedStudentSession = readStudentResume(undefined, user?.id ?? null);
   const startTarget =
     user?.role === "STUDENT" && startParam && maxStartParamPattern.test(startParam)
       ? `/s/${encodeURIComponent(startParam.toUpperCase())}`
@@ -391,7 +391,14 @@ function SessionJoinRoute() {
 
 function StudentSessionRoute() {
   const { joinCode } = useParams();
-  return <StudentSessionPage joinCode={joinCode ?? ""} />;
+  const { user } = useAuth();
+  const normalizedJoinCode = (joinCode ?? "").trim().toUpperCase();
+  return (
+    <StudentSessionPage
+      key={`${normalizedJoinCode}:${user?.id ?? "guest"}`}
+      joinCode={normalizedJoinCode}
+    />
+  );
 }
 
 function TeacherRemoteRoute() {

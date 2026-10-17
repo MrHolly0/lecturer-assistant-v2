@@ -38,7 +38,10 @@ export function StudentConnectionBanner({
   const Icon = state === "CONNECTED" && !error ? Wifi : CloudOff;
 
   return (
-    <div className={`student-connection student-connection--${state.toLowerCase()}`} role="status">
+    <div
+      className={`student-connection student-connection--${state.toLowerCase()}${error ? " student-connection--error" : ""}`}
+      role="status"
+    >
       <Icon size={18} aria-hidden="true" />
       <div>
         <strong>{message}</strong>

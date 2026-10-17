@@ -1,6 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Check, EyeOff, MessageSquareText } from "lucide-react";
+import { toast } from "sonner";
 import type { SignalValue, StudentQuestion, StudentQuestionAnswer } from "../app/api/student-api";
+import { pluralizeRu } from "../shared/lib/plural";
 import { Button } from "../shared/ui/button";
 import { StudentQuestionAnswers } from "./StudentQuestionAnswers";
 
@@ -28,9 +30,40 @@ interface StudentFeedbackControlsProps {
 
 export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
   const [questionOpen, setQuestionOpen] = useState(false);
+  const [unreadAnswerCount, setUnreadAnswerCount] = useState(0);
+  const [answerAnnouncement, setAnswerAnnouncement] = useState("");
+  const questionsOpenRef = useRef(false);
+  const seenAnswersRef = useRef(
+    new Map(props.answers.map((answer) => [answer.questionId, answer.answerText]))
+  );
   useEffect(() => {
     if (!props.question) setQuestionOpen(false);
   }, [props.question]);
+  useEffect(() => {
+    const newlyReceived: StudentQuestionAnswer[] = [];
+    let updatedCount = 0;
+    for (const answer of props.answers) {
+      const previousText = seenAnswersRef.current.get(answer.questionId);
+      if (previousText === undefined) newlyReceived.push(answer);
+      else if (previousText !== answer.answerText) updatedCount += 1;
+      seenAnswersRef.current.set(answer.questionId, answer.answerText);
+    }
+    if (newlyReceived.length > 0) {
+      if (!questionsOpenRef.current) {
+        setUnreadAnswerCount((count) => count + newlyReceived.length);
+      }
+      const message =
+        newlyReceived.length === 1
+          ? "Получен новый ответ преподавателя. Откройте раздел «Мои вопросы и ответы»."
+          : `Получено ${newlyReceived.length} новых ответов преподавателя. Откройте раздел «Мои вопросы и ответы».`;
+      setAnswerAnnouncement(message);
+      toast.info(message);
+    } else if (updatedCount > 0) {
+      const message = "Преподаватель обновил ответ. Откройте раздел «Мои вопросы и ответы».";
+      setAnswerAnnouncement(message);
+      toast.info(message);
+    }
+  }, [props.answers]);
   function submitQuestion(event: FormEvent) {
     event.preventDefault();
     if (props.question.trim()) props.onQuestionSubmit();
@@ -124,18 +157,40 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
         )}
       </section>
 
-      <details className="student-my-questions">
+      <details
+        className="student-my-questions"
+        onToggle={(event) => {
+          questionsOpenRef.current = event.currentTarget.open;
+          if (event.currentTarget.open) {
+            setUnreadAnswerCount(0);
+            setAnswerAnnouncement("");
+          }
+        }}
+      >
         <summary>
-          Мои вопросы и ответы{" "}
-          <span>
-            {
-              new Set([
-                ...props.questions.map((question) => question.id),
-                ...props.answers.map((answer) => answer.questionId)
-              ]).size
-            }
+          <span className="student-my-questions__label">Мои вопросы и ответы</span>
+          <span className="student-my-questions__summary-meta" aria-live="polite">
+            <span>
+              {props.questions.length}{" "}
+              {pluralizeRu(props.questions.length, "вопрос", "вопроса", "вопросов")}
+            </span>
+            <span>
+              {props.answers.length}{" "}
+              {pluralizeRu(
+                props.answers.length,
+                "ответ преподавателя",
+                "ответа преподавателя",
+                "ответов преподавателя"
+              )}
+            </span>
+            {unreadAnswerCount > 0 && (
+              <span className="student-my-questions__new-count">Новых: {unreadAnswerCount}</span>
+            )}
           </span>
         </summary>
+        <p className="student-my-questions__announcement" role="status" aria-live="polite">
+          {answerAnnouncement}
+        </p>
         <StudentQuestionAnswers answers={props.answers} />
         {props.questions.length > 0 ? (
           <ul className="student-question-list">

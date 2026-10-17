@@ -2288,6 +2288,16 @@ textarea {
   background: color-mix(in srgb, #f59e0b 8%, var(--background));
 }
 
+.student-connection--connected {
+  border-color: color-mix(in srgb, var(--chart-2) 38%, var(--border));
+  background: color-mix(in srgb, var(--chart-2) 7%, var(--background));
+}
+
+.student-connection--error {
+  border-color: color-mix(in srgb, var(--destructive) 45%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 8%, var(--background));
+}
+
 .student-connection > div {
   display: grid;
   gap: 2px;
