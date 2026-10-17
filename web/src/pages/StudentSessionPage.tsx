@@ -155,6 +155,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const current =
     (snapshotState?.scope === scope ? snapshotState.snapshot : null) ?? sessionQuery.data ?? null;
   const isLive = current?.status === "LIVE";
+  const isTerminalSession = current?.status === "ENDED" || current?.status === "ARCHIVED";
   const isJoined = Boolean(participantToken) && !current?.kicked;
 
   const joinMut = useMutation({
@@ -307,10 +308,18 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   }, [current?.groups, selectedGroupId]);
 
   useEffect(() => {
-    if (!user || participantToken || autoJoinRequested.current) return;
+    if (
+      !user ||
+      participantToken ||
+      !current ||
+      current.status === "ENDED" ||
+      current.status === "ARCHIVED" ||
+      autoJoinRequested.current
+    )
+      return;
     autoJoinRequested.current = true;
     joinMut.mutate();
-  }, [joinMut, participantToken, user]);
+  }, [current, joinMut, participantToken, user]);
 
   useEffect(() => {
     setMyVote(current?.myVote ?? null);
@@ -373,7 +382,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           {!current.courseTitle && <span className="muted">Код {current.joinCode}</span>}
           <h1>{current.lectureTitle}</h1>
           <SessionGroups groups={current.groups} compact />
-          {isJoined && !current.nameRequested && !editingName && (
+          {isJoined && !isTerminalSession && !current.nameRequested && !editingName && (
             <button
               type="button"
               className="student-edit-name"
@@ -401,7 +410,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         />
       )}
 
-      {current.kicked && (
+      {current.kicked && !isTerminalSession && (
         <div className="student-session-notice student-session-notice--ended" role="alert">
           <CircleStop size={22} aria-hidden="true" />
           <div>
@@ -414,7 +423,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         </div>
       )}
 
-      {isJoined && (current.nameRequested || editingName) && (
+      {isJoined && !isTerminalSession && (current.nameRequested || editingName) && (
         <form
           className="student-name-request"
           onSubmit={(event) => {
@@ -547,7 +556,34 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         </section>
       )}
 
-      {current.kicked ? null : !isJoined ? (
+      {isTerminalSession ? (
+        <section className="student-action-panel student-action-panel--feedback">
+          {current.activePoll && (
+            <StudentPollCard
+              poll={current.activePoll}
+              myVote={myVote}
+              isLive={false}
+              isPending={false}
+              onAnswer={() => undefined}
+            />
+          )}
+          <StudentFeedbackControls
+            readOnly
+            isLive={false}
+            isSignalPending={false}
+            isQuestionPending={false}
+            lastSignal={null}
+            question=""
+            questions={mergeStudentQuestions(current.myQuestions ?? [], questions)}
+            answers={current.questionAnswers ?? []}
+            onSignal={() => undefined}
+            onQuestionChange={() => undefined}
+            onQuestionSubmit={() => undefined}
+            anonymous={false}
+            onAnonymousChange={() => undefined}
+          />
+        </section>
+      ) : current.kicked ? null : !isJoined ? (
         joinIssue ? (
           <StudentGroupJoinIssue
             issue={joinIssue}
