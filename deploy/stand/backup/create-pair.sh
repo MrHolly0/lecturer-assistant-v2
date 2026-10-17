@@ -23,23 +23,21 @@ blob_root="$(cd "$BLOB_SOURCE" && pwd -P)"
 case "$backup_root/" in "$blob_root/"*) echo "BACKUP_DESTINATION cannot be inside BLOB_SOURCE" >&2; exit 2 ;; esac
 case "$blob_root/" in "$backup_root/"*) echo "BLOB_SOURCE cannot be inside BACKUP_DESTINATION" >&2; exit 2 ;; esac
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+random_suffix="$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+[ -n "$random_suffix" ] || { echo "could not create unique backup lock name" >&2; exit 1; }
 final="$BACKUP_DESTINATION/pair-$stamp"
-tmp="$BACKUP_DESTINATION/.partial-$stamp-$$"
-[ ! -e "$final" ] || { echo "backup pair already exists: $final" >&2; exit 1; }
-mkdir -m 700 "$tmp"
-lock_app="blob-backup-$stamp-$$"
+tmp="$BACKUP_DESTINATION/.partial-$stamp-$$-$random_suffix"
+lock_app="blob-backup-$stamp-$$-$random_suffix"
 sql_lock_app="$(printf '%s' "$lock_app" | sed "s/'/''/g")"
 sql_lock_db="$(printf '%s' "$PGDATABASE" | sed "s/'/''/g")"
 guard_pid=""
+tmp_created=0
 release_guard() {
   if [ -n "$guard_pid" ]; then
-    # End the PostgreSQL session explicitly so the session-level advisory lock is released
-    # before the next blob write can run. Killing the local client alone relies on TCP EOF.
+    # Terminate the exact generated session whether it holds or is still waiting for the lock.
     psql -Xq -v ON_ERROR_STOP=1 -d postgres \
       -c "select pg_terminate_backend(a.pid) from pg_stat_activity a
-          where a.application_name = '$sql_lock_app' and a.datname = '$sql_lock_db'
-            and exists (select 1 from pg_locks l where l.pid = a.pid and l.locktype = 'advisory'
-              and l.classid = 14713 and l.objid = 2525 and l.objsubid = 2 and l.granted)" \
+          where a.application_name = '$sql_lock_app' and a.datname = '$sql_lock_db'" \
       >/dev/null 2>&1 || true
     kill "$guard_pid" 2>/dev/null || true
     wait "$guard_pid" 2>/dev/null || true
@@ -48,10 +46,9 @@ release_guard() {
     attempt=0
     while [ "$attempt" -lt 10 ]; do
       remaining="$(psql -XAtq -v ON_ERROR_STOP=1 -d postgres \
-        -c "select exists(select 1 from pg_stat_activity a join pg_locks l on l.pid = a.pid
-            where a.application_name = '$sql_lock_app' and a.datname = '$sql_lock_db'
-              and l.locktype = 'advisory' and l.classid = 14713 and l.objid = 2525
-              and l.objsubid = 2 and l.granted)" 2>/dev/null)" || remaining=unknown
+        -c "select exists(select 1 from pg_stat_activity a
+            where a.application_name = '$sql_lock_app' and a.datname = '$sql_lock_db')" 2>/dev/null)" \
+        || remaining=unknown
       [ "$remaining" = "f" ] && break
       attempt=$((attempt + 1))
       sleep 0.1
@@ -61,9 +58,16 @@ release_guard() {
 }
 cleanup() {
   release_guard || true
-  rm -rf "$tmp"
+  if [ "$tmp_created" = 1 ]; then rm -rf "$tmp"; fi
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+[ ! -e "$final" ] || { echo "backup pair already exists: $final" >&2; exit 1; }
+[ ! -e "$tmp" ] || { echo "backup temporary directory already exists: $tmp" >&2; exit 1; }
+mkdir -m 700 "$tmp"
+tmp_created=1
 
 # The application takes this transaction advisory lock around every blob write/delete.
 PGAPPNAME="$lock_app" psql -Xq -v ON_ERROR_STOP=1 -d "$PGDATABASE" \
