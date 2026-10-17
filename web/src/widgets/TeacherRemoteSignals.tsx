@@ -1,7 +1,17 @@
 import type { StudentEngagement } from "../app/api/student-api";
 import { pluralizeRu } from "../shared/lib/plural";
 
-export function TeacherRemoteSignals({ engagement }: { engagement?: StudentEngagement }) {
+export function TeacherRemoteSignals({
+  engagement,
+  isError,
+  isLoading,
+  onRetry
+}: {
+  engagement?: StudentEngagement;
+  isError?: boolean;
+  isLoading?: boolean;
+  onRetry?: () => void;
+}) {
   const signals = engagement?.signalAggregate;
   const total = signals?.total ?? 0;
   return (
@@ -12,11 +22,23 @@ export function TeacherRemoteSignals({ engagement }: { engagement?: StudentEngag
           {total} {pluralizeRu(total, "сигнал", "сигнала", "сигналов")}
         </span>
       </div>
-      <div className="teacher-remote-signals">
-        <Signal label="Понятно" value={signals?.green ?? 0} tone="green" />
-        <Signal label="Есть вопрос" value={signals?.yellow ?? 0} tone="yellow" />
-        <Signal label="Не понимаю" value={signals?.red ?? 0} tone="red" />
-      </div>
+      {isError ? (
+        <div className="teacher-remote-data-error" role="status">
+          Не удалось обновить сигналы. {engagement ? "Показаны последние данные." : ""}{" "}
+          <button type="button" onClick={onRetry}>
+            Повторить
+          </button>
+        </div>
+      ) : isLoading ? (
+        <p className="muted">Загружаем сигналы…</p>
+      ) : null}
+      {engagement && (
+        <div className="teacher-remote-signals">
+          <Signal label="Понятно" value={signals?.green ?? 0} tone="green" />
+          <Signal label="Есть вопрос" value={signals?.yellow ?? 0} tone="yellow" />
+          <Signal label="Не понимаю" value={signals?.red ?? 0} tone="red" />
+        </div>
+      )}
     </section>
   );
 }

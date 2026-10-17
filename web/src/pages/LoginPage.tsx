@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ChevronDown, MessageCircle } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { login } from "../app/api/auth-api";
 import { useAuth } from "../app/AuthContext";
@@ -18,7 +18,6 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [browserLoginOpen, setBrowserLoginOpen] = useState(false);
   const maxBotUrl = buildMaxBotUrl();
 
   const loginMut = useMutation({
@@ -43,79 +42,65 @@ export function LoginPage() {
   const pending = loginMut.isPending;
 
   return (
-    <div className="auth-shell">
+    <div className="auth-shell login-page">
       <div className="auth-card">
         <div className="auth-theme-switch">
           <ThemeToggle compact />
         </div>
         <div className="auth-header">
           <BrandMark className="mx-auto h-16 w-16 text-orange-500" />
-          <h1 className="auth-title">Lecturer Assistant</h1>
-          <p className="auth-sub">Рабочее место преподавателя</p>
+          <h1 className="auth-title">Вход в Lecturer Assistant</h1>
+          <p className="auth-sub">Продолжите работу с курсами и занятиями</p>
         </div>
 
-        <div className="auth-max-entry">
+        <form onSubmit={submit} className="auth-form login-page__form">
+          <label className="field">
+            <span>Email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="username"
+              autoFocus
+            />
+          </label>
+          <label className="field">
+            <span>Пароль</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="current-password"
+            />
+          </label>
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <Button type="submit" size="lg" disabled={pending}>
+            {pending ? "Входим…" : "Войти"}
+          </Button>
+        </form>
+
+        <div className="login-page__alternative">
+          <span>Или</span>
           {maxBotUrl ? (
-            <Button asChild size="lg">
+            <Button asChild variant="outline" size="lg">
               <a href={maxBotUrl} target="_blank" rel="noreferrer">
                 <MessageCircle size={19} aria-hidden="true" />
-                Открыть в MAX
+                Войти через MAX
               </a>
             </Button>
           ) : (
             <p className="form-warning">Вход через MAX пока не настроен.</p>
           )}
           <p className="auth-max-entry__hint">
-            Бот откроет мини-приложение и войдёт через ваш аккаунт MAX.
+            В мини-приложении вход выполнится через ваш аккаунт MAX.
           </p>
-        </div>
-
-        <div className="auth-browser-entry">
-          <Button
-            type="button"
-            variant="outline"
-            className="auth-browser-entry__toggle"
-            aria-expanded={browserLoginOpen}
-            onClick={() => setBrowserLoginOpen((value) => !value)}
-          >
-            Войти в браузере
-            <ChevronDown
-              size={17}
-              aria-hidden="true"
-              className={browserLoginOpen ? "auth-browser-entry__chevron--open" : undefined}
-            />
-          </Button>
-
-          {browserLoginOpen && (
-            <div className="auth-browser-entry__form">
-              <form onSubmit={submit} className="auth-form">
-                <label className="field">
-                  <span>Email</span>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoFocus
-                  />
-                </label>
-                <label className="field">
-                  <span>Пароль</span>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={8}
-                  />
-                </label>
-                {error && <p className="form-error">{error}</p>}
-                <Button type="submit" disabled={pending}>
-                  {pending ? "..." : "Войти"}
-                </Button>
-              </form>
-            </div>
-          )}
         </div>
 
         <p className="auth-hint">

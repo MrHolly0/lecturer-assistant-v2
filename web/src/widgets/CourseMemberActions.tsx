@@ -23,7 +23,7 @@ import {
 import { IconButton } from "../shared/ui/button";
 
 type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
-type MemberAction = "owner" | "remove" | null;
+type MemberAction = "owner" | "remove" | "role" | null;
 
 const ROLE_LABELS: Record<CourseRole, string> = {
   LECTURER: "Лектор",
@@ -49,7 +49,9 @@ export function CourseMemberActions({
   onRemove
 }: CourseMemberActionsProps) {
   const [action, setAction] = useState<MemberAction>(null);
+  const [nextRole, setNextRole] = useState<CourseRole | null>(null);
   const remove = action === "remove";
+  const changeRole = action === "role";
   const scheduleAction = (next: Exclude<MemberAction, null>) => {
     window.setTimeout(() => setAction(next), 0);
   };
@@ -74,7 +76,10 @@ export function CourseMemberActions({
           <DropdownMenuRadioGroup
             value={role}
             onValueChange={(value) => {
-              if (value !== role) onRoleChange(value as CourseRole);
+              if (value !== role) {
+                setNextRole(value as CourseRole);
+                scheduleAction("role");
+              }
             }}
           >
             <DropdownMenuRadioItem value="LECTURER">Лектор</DropdownMenuRadioItem>
@@ -94,12 +99,18 @@ export function CourseMemberActions({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {remove ? "Удалить участника?" : "Сделать владельцем курса?"}
+              {remove
+                ? "Удалить участника?"
+                : changeRole
+                  ? "Изменить роль в курсе?"
+                  : "Сделать владельцем курса?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {remove
-                ? `${displayName} потеряет доступ к курсу.`
-                : `${displayName} станет лектором-владельцем курса. Вы останетесь лектором.`}
+                ? `${displayName} потеряет доступ к этому курсу.`
+                : changeRole
+                  ? `${displayName} получит роль «${ROLE_LABELS[nextRole ?? role]}» в этом курсе. Системная роль и другие курсы не изменятся.`
+                  : `${displayName} станет лектором-владельцем курса. Вы останетесь лектором.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -109,10 +120,11 @@ export function CourseMemberActions({
               onClick={() => {
                 setAction(null);
                 if (remove) onRemove();
+                else if (changeRole && nextRole) onRoleChange(nextRole);
                 else onChangeOwner();
               }}
             >
-              {remove ? "Удалить" : "Сделать владельцем"}
+              {remove ? "Удалить из курса" : changeRole ? "Сохранить роль" : "Сделать владельцем"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CirclePause, CircleStop, MessageCircle } from "lucide-react";
+import { CirclePause, CircleStop, Expand, MessageCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -35,7 +35,15 @@ import { SessionGroups } from "../widgets/SessionGroups";
 import { StudentGroupJoinIssue, StudentGroupPicker } from "../widgets/StudentGroupJoin";
 import { StudentSessionError, StudentSessionLoading } from "../widgets/StudentSessionState";
 import { ThemeToggle } from "../widgets/ThemeToggle";
-import { Button } from "../shared/ui/button";
+import { Button, LinkButton } from "../shared/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "../shared/ui/dialog";
 import { joinIssueFromError, type JoinIssue } from "../app/api/studentGroupJoinIssue";
 
 interface StudentSessionPageProps {
@@ -64,11 +72,28 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [editingName, setEditingName] = useState(false);
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(() => {
+    try {
+      return sessionStorage.getItem(`student-question-draft:${normalizedCode}`) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const questionDraftKey = `student-question-draft:${normalizedCode}`;
+  const questionHistoryKey = `student-question-history:${normalizedCode}`;
+  const [snapshotSyncing, setSnapshotSyncing] = useState(false);
   const [lastSignal, setLastSignal] = useState<SignalValue | null>(null);
   const [requestedSlideIdx, setRequestedSlideIdx] = useState<number | null>(null);
   const [snapshot, setSnapshot] = useState<StudentSessionSnapshot | null>(null);
-  const [questions, setQuestions] = useState<StudentQuestion[]>([]);
+  const [questions, setQuestions] = useState<StudentQuestion[]>(() => {
+    try {
+      const stored = sessionStorage.getItem(`student-question-history:${normalizedCode}`);
+      const parsed: unknown = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? (parsed as StudentQuestion[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [myVote, setMyVote] = useState<number | null>(null);
   const [connectionState, setConnectionState] = useState<StudentConnectionState>("CONNECTING");
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
@@ -79,6 +104,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     queryFn: () => getStudentSession(normalizedCode, participantToken),
     enabled: Boolean(normalizedCode)
   });
+  const { refetch } = sessionQuery;
   const current = snapshot ?? sessionQuery.data ?? null;
   const isLive = current?.status === "LIVE";
   const isJoined = Boolean(participantToken) && !current?.kicked;
@@ -179,7 +205,25 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     if (!sessionQuery.data) return;
     setSnapshot(sessionQuery.data);
     setMyVote(sessionQuery.data.myVote ?? null);
+    setLastSyncedAt(new Date());
   }, [sessionQuery.data]);
+
+  useEffect(() => {
+    try {
+      if (question) sessionStorage.setItem(questionDraftKey, question);
+      else sessionStorage.removeItem(questionDraftKey);
+    } catch {
+      // Keep the draft in component state if storage is unavailable.
+    }
+  }, [question, questionDraftKey]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(questionHistoryKey, JSON.stringify(questions));
+    } catch {
+      // The server-backed answers still remain available if browser storage is unavailable.
+    }
+  }, [questions, questionHistoryKey]);
 
   useEffect(() => {
     if (current?.status !== "ENDED" && current?.status !== "ARCHIVED") return;
@@ -222,14 +266,20 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         }));
         setLastSyncedAt(new Date());
       },
-      setConnectionState
+      (state) => {
+        setConnectionState(state);
+        if (state === "CONNECTED") {
+          setSnapshotSyncing(true);
+          void refetch().finally(() => setSnapshotSyncing(false));
+        }
+      }
     );
     reconnectRef.current = connection.reconnect;
     return () => {
       reconnectRef.current = () => undefined;
       connection.disconnect();
     };
-  }, [normalizedCode, participantToken]);
+  }, [normalizedCode, participantToken, refetch]);
 
   const slideLabel = current ? `${current.currentSlideIdx} / ${current.slideCount}` : "";
 
@@ -238,7 +288,16 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   }
 
   if (sessionQuery.isError || !current) {
-    return <StudentSessionError />;
+    const notFound = sessionQuery.error instanceof ApiError && sessionQuery.error.status === 404;
+    return notFound ? (
+      <StudentSessionError />
+    ) : (
+      <StudentSessionError
+        title="Не удалось открыть занятие"
+        description="Проверьте подключение. Черновик вопроса сохранён."
+        onRetry={() => void sessionQuery.refetch()}
+      />
+    );
   }
 
   return (
@@ -272,6 +331,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           state={connectionState}
           lastSyncedAt={lastSyncedAt}
           onRetry={() => reconnectRef.current()}
+          syncing={snapshotSyncing}
+          error={sessionQuery.isError}
         />
       )}
 
@@ -352,6 +413,14 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           <div>
             <strong>Лекция завершена</strong>
             <span>Показ и отправка ответов остановлены.</span>
+            <div className="student-session-ended-actions">
+              {user && (
+                <LinkButton to="/home" variant="outline">
+                  На главную
+                </LinkButton>
+              )}
+              <LinkButton to="/student/join">Другое занятие</LinkButton>
+            </div>
           </div>
         </div>
       )}
@@ -361,6 +430,25 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           <div className="student-slide-meta">
             <span>Слайд {slideLabel}</span>
             {!isLive && <span className="muted">Показ сейчас не идет</span>}
+            {current.currentSlide && (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" aria-label="Увеличить слайд">
+                    <Expand size={16} aria-hidden="true" /> Увеличить слайд
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="student-slide-dialog">
+                  <DialogHeader>
+                    <DialogTitle>Слайд {slideLabel}</DialogTitle>
+                    <DialogDescription>{current.lectureTitle}</DialogDescription>
+                  </DialogHeader>
+                  <img
+                    src={current.currentSlide.imageUrl}
+                    alt={`Увеличенный слайд ${current.currentSlide.idx}`}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
             {user &&
               current.currentSlide &&
               (current.status === "LIVE" || current.status === "PAUSED") && (
@@ -442,11 +530,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             isQuestionPending={questionMut.isPending}
             lastSignal={lastSignal}
             question={question}
-            questions={questions}
+            questions={current.myQuestions ?? questions}
             answers={current.questionAnswers ?? []}
             onSignal={(value) => signalMut.mutate(value)}
             onQuestionChange={setQuestion}
             onQuestionSubmit={() => questionMut.mutate()}
+            questionError={questionMut.isError}
             anonymous={questionAnonymous}
             onAnonymousChange={setQuestionAnonymous}
           />

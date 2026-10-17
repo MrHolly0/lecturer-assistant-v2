@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpenText, Play, Radio, Square } from "lucide-react";
+import { BookOpenText, Play, Radio, RefreshCw, Square } from "lucide-react";
 import { toast } from "sonner";
 import { userErrorMessage } from "../app/api/errors";
 import { listLectures } from "../app/api/content-api";
@@ -57,9 +57,19 @@ export function CourseLectureSpotlight({
           <span className="course-live-card__status">
             <BookOpenText size={15} /> Лекции
           </span>
-          <h2>Не удалось загрузить готовую лекцию</h2>
-          <p>Откройте материалы курса или обновите страницу.</p>
+          <h2>Не удалось проверить состояние занятия</h2>
+          <p>Повторите запрос, прежде чем создавать новое ожидание.</p>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            if (lecturesQuery.isError) void lecturesQuery.refetch();
+            if (activeSessionQuery.isError) void activeSessionQuery.refetch();
+          }}
+        >
+          <RefreshCw size={16} aria-hidden="true" /> Повторить
+        </Button>
         <LinkButton
           variant="outline"
           className="course-live-card__action"
@@ -143,7 +153,7 @@ export function CourseLectureSpotlight({
             onClick={() => setStartOpen(true)}
           >
             <Play size={17} aria-hidden="true" />
-            Запустить занятие
+            Подготовить занятие
           </Button>
         )}
         <LinkButton

@@ -40,10 +40,11 @@ import { getMyStudentActiveSession } from "./api/student-api";
 import { readStudentResume } from "./studentResume";
 import { MaxLinkCodeScreen } from "../widgets/MaxLinkCodeScreen";
 import { MaxCredentialsScreen } from "../widgets/MaxCredentialsScreen";
+import { MaxLinkReviewScreen } from "../widgets/MaxLinkReviewScreen";
 import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
 import { Button } from "../shared/ui/button";
 
-const maxRootPaths = new Set(["/", "/home", "/courses", "/login", "/register"]);
+const maxRootPaths = new Set(["/", "/home", "/student/join", "/courses", "/login", "/register"]);
 const maxStartParamPattern = /^[A-Za-z0-9_-]{1,512}$/;
 
 function MaxNavigationRoot() {
@@ -55,9 +56,15 @@ function MaxNavigationRoot() {
     maxSignedOut,
     maxLinkRequired,
     maxCredentialsRequired,
+    maxLinkPreview,
+    maxLinkPreviewPending,
+    maxLinkCodeInput,
+    maxLinkRegistrationPending,
     loginAndLinkMax,
     registerAndLinkMax,
     submitMaxLinkCode,
+    confirmMaxLink,
+    cancelMaxLinkPreview,
     continueMaxAuth,
     retryMaxAuth,
     resumeMaxAuth,
@@ -67,6 +74,7 @@ function MaxNavigationRoot() {
   } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const publicStudentJoin = location.pathname === "/student/join";
   const [startParamHandled, setStartParamHandled] = useState(false);
   const mobileMax = isMobileMax(maxEnvironment);
   const teacherInMax = Boolean(user && user.role !== "STUDENT" && mobileMax);
@@ -116,8 +124,26 @@ function MaxNavigationRoot() {
     if (!startTarget || location.pathname === startTarget) setStartParamHandled(true);
   }, [isMax, loading, location.pathname, startParamHandled, startTarget, user]);
 
-  if (location.pathname.startsWith("/projection/")) return <Outlet />;
-  if (isMax && loading) return <LoadingScreen message="Входим через MAX…" />;
+  if (location.pathname.startsWith("/projection/") || publicStudentJoin) return <Outlet />;
+  if (isMax && maxLinkPreview) {
+    return (
+      <MaxLinkReviewScreen
+        preview={maxLinkPreview}
+        pending={maxLinkPreviewPending}
+        registrationPending={maxLinkRegistrationPending}
+        error={maxAuthError}
+        onConfirm={() => void confirmMaxLink()}
+        onCancel={cancelMaxLinkPreview}
+      />
+    );
+  }
+  if (isMax && loading) {
+    return (
+      <LoadingScreen
+        message={maxLinkPreviewPending ? "Проверяем аккаунты…" : "Входим через MAX…"}
+      />
+    );
+  }
   if (isMax && maxSignedOut) {
     return (
       <MaxSignedOutScreen
@@ -130,7 +156,7 @@ function MaxNavigationRoot() {
   if (isMax && maxLinkRequired) {
     return (
       <MaxLinkCodeScreen
-        initialCode={readMaxLinkCode(startParam) ?? ""}
+        initialCode={maxLinkCodeInput || readMaxLinkCode(startParam) || ""}
         error={maxAuthError}
         onSubmit={submitMaxLinkCode}
         onContinue={continueMaxAuth}
@@ -145,6 +171,7 @@ function MaxNavigationRoot() {
         onRegister={registerAndLinkMax}
         onStudent={continueMaxAuth}
         onCode={chooseMaxLinkCode}
+        error={maxAuthError}
       />
     );
   }
@@ -253,8 +280,8 @@ function MaxSignedOutScreen({
             Вы вышли из аккаунта
           </h1>
           <p className="auth-hint">
-            Выберите аккаунт для входа. Код или пароль позволят перепривязать MAX к другой учётной
-            записи.
+            Выберите способ входа. Перед сменой аккаунта мы покажем, к чему сейчас подключён MAX, и
+            попросим подтвердить действие.
           </p>
         </div>
         <Button className="max-auth-retry" type="button" onClick={onLogin}>
@@ -396,6 +423,7 @@ const router = createHashRouter([
         path: "/projection/:joinCode",
         element: <ProjectionRoute />
       },
+      { path: "/student/join", element: <StudentHomePage joinOnly /> },
       {
         path: "/courses/:courseId/sessions/:sessionId/presenter",
         element: (

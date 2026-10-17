@@ -1,0 +1,573 @@
+/* Shared live-session UX refinements. Colors inherit the selected app theme. */
+.student-session-shell,
+.teacher-remote-shell {
+  --live-question-signal: #eab308;
+}
+
+.student-session-shell .student-signal-btn--yellow {
+  background: color-mix(in srgb, var(--live-question-signal) 14%, var(--card));
+}
+
+.teacher-remote-shell .teacher-remote-signal--yellow {
+  border-color: color-mix(in srgb, var(--live-question-signal) 58%, var(--border));
+}
+
+.student-session-ended-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.student-session-ended-actions .ui-button {
+  min-height: 44px;
+}
+
+.presenter-sync {
+  align-items: center;
+  color: var(--muted-foreground);
+  display: inline-flex;
+  flex: 0 1 auto;
+  font-size: 0.78rem;
+  gap: 7px;
+  justify-content: flex-end;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.presenter-sync > span:first-child {
+  background: var(--chart-2);
+  border-radius: 50%;
+  flex: 0 0 9px;
+  height: 9px;
+}
+
+.presenter-sync--pending > span:first-child,
+.presenter-sync--connecting > span:first-child,
+.presenter-sync--reconnecting > span:first-child {
+  background: var(--chart-4);
+}
+
+.presenter-sync--error > span:first-child,
+.presenter-sync--offline > span:first-child {
+  background: var(--destructive);
+}
+
+.presenter-sync time {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.presenter-preview-action,
+.presenter-slide-error,
+.presenter-deck-secondary,
+.presenter-popup-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.presenter-preview-action {
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.presenter-slide-error,
+.presenter-action-error {
+  align-items: center;
+  color: var(--destructive);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.presenter-slide-error .ui-button {
+  min-height: 44px;
+}
+
+.presenter-action-error button {
+  background: transparent;
+  border: 0;
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  min-height: 44px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.presenter-slide-strip--all {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  max-height: 240px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.presenter-slide-strip--all .slide-thumb {
+  flex-basis: auto;
+  width: 100%;
+}
+
+.presenter-slide-strip .slide-thumb--preview {
+  outline: 3px solid var(--chart-4);
+  outline-offset: 2px;
+}
+
+.presenter-deck-secondary .ui-button,
+.presenter-preview-action .ui-button,
+.presenter-popup-actions .ui-button {
+  min-height: 44px;
+}
+
+.teacher-remote-connection {
+  min-height: 44px;
+}
+
+.teacher-remote-connection .ui-button {
+  min-height: 44px;
+}
+
+.teacher-remote-live-feedback {
+  display: grid;
+  gap: 14px;
+}
+
+.teacher-remote-tools {
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  display: grid;
+}
+
+.teacher-remote-tools button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 8px 4px;
+  text-align: left;
+}
+
+.teacher-remote-tools button:last-child {
+  border-bottom: 0;
+}
+
+.teacher-remote-tools button::after {
+  color: var(--muted-foreground);
+  content: "Открыть";
+  font-size: 0.82rem;
+}
+
+.teacher-remote-tools button[aria-expanded="true"]::after {
+  content: "Скрыть";
+}
+
+.teacher-remote-expanded {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.teacher-remote-expanded h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.teacher-remote-end {
+  border-color: color-mix(in srgb, var(--destructive) 55%, var(--border));
+  color: var(--destructive);
+  margin-top: 12px;
+  min-height: 48px;
+}
+
+.teacher-question-public-preview {
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+}
+
+.teacher-question-public-preview p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.teacher-remote-data-error {
+  align-items: center;
+  color: var(--destructive);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.teacher-remote-data-error button {
+  background: transparent;
+  border: 0;
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  min-height: 44px;
+  padding: 0 6px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.student-slide-dialog {
+  max-width: min(96vw, 1100px);
+  width: 100%;
+}
+
+.student-slide-dialog > img {
+  background: var(--secondary);
+  display: block;
+  max-height: min(76vh, 760px);
+  object-fit: contain;
+  width: 100%;
+}
+
+.student-question-entry > .ui-button {
+  min-height: 48px;
+  width: 100%;
+}
+
+.student-question-form {
+  border-bottom: 1px solid var(--border);
+  padding: 14px 0;
+}
+
+.student-question-form textarea {
+  box-sizing: border-box;
+  font: inherit;
+  line-height: 1.45;
+  min-height: 104px;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.student-question-form .ui-button {
+  min-height: 48px;
+}
+
+.student-question-error {
+  color: var(--destructive);
+  margin: 0;
+}
+
+.student-my-questions {
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  padding: 4px 0;
+}
+
+.student-my-questions summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 48px;
+}
+
+.student-my-questions summary::-webkit-details-marker {
+  display: none;
+}
+
+.student-my-questions summary span {
+  color: var(--muted-foreground);
+}
+
+.student-poll-option-choice {
+  align-items: flex-start;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  line-height: 1.45;
+  min-height: 52px;
+  padding: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.student-poll-option-choice input {
+  accent-color: var(--primary);
+  flex: 0 0 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  width: 20px;
+}
+
+.student-poll-option-choice:has(input:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.student-poll-option-choice--selected {
+  font-weight: 600;
+}
+
+.student-poll-option-choice--selected {
+  background: color-mix(in srgb, var(--primary) 9%, var(--card));
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.student-poll-options > .ui-button {
+  min-height: 48px;
+}
+
+.projection-code--live {
+  align-items: center;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  max-height: calc(100vh - 40px);
+  max-width: min(90vw, 720px);
+  overflow: auto;
+  padding: clamp(18px, 4vw, 48px);
+  text-align: center;
+}
+
+.projection-code--live > span {
+  font-size: clamp(1.1rem, 3vw, 2rem);
+}
+
+.projection-code--live > strong {
+  font-size: clamp(2.5rem, 10vw, 5.5rem);
+  letter-spacing: 0.1em;
+  line-height: 1;
+}
+
+.projection-code--live .qr-card img {
+  height: min(38vh, 300px);
+  width: min(38vh, 300px);
+}
+
+.projection-shell:has(.projection-code--live) {
+  background: var(--background);
+  padding: 20px;
+}
+
+.presenter-sync button,
+.teacher-remote-tools button,
+.student-my-questions summary,
+.student-poll-option-choice,
+.student-question-entry > button {
+  transition:
+    background-color 150ms ease-out,
+    border-color 150ms ease-out;
+}
+
+.presenter-sync button:focus-visible,
+.teacher-remote-tools button:focus-visible,
+.student-my-questions summary:focus-visible,
+.student-poll-option-choice:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+@media (min-width: 1181px) {
+  .presenter-shell .presenter-topbar {
+    align-items: start;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px 16px;
+  }
+
+  .presenter-shell .presenter-heading {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .presenter-meta {
+    flex-wrap: wrap;
+  }
+
+  .presenter-meta .session-groups {
+    flex: 0 1 auto;
+    max-width: min(100%, 520px);
+  }
+
+  .presenter-shell .presenter-actions {
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .presenter-sync {
+    flex-basis: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .presenter-actions {
+    align-items: stretch;
+  }
+
+  .presenter-sync {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .presenter-side {
+    gap: 4px;
+  }
+}
+
+@media (max-width: 700px) {
+  .teacher-remote-shell.teacher-remote-shell {
+    box-sizing: border-box;
+    max-width: 620px;
+    min-height: var(--app-viewport-height);
+    padding-bottom: calc(112px + var(--app-safe-area-bottom));
+  }
+
+  .teacher-remote-controls {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    bottom: calc(8px + var(--app-safe-area-bottom));
+    box-shadow: 0 8px 28px color-mix(in srgb, var(--foreground) 16%, transparent);
+    left: max(10px, calc((100vw - 620px) / 2 + 14px));
+    padding: 6px;
+    position: fixed;
+    right: max(10px, calc((100vw - 620px) / 2 + 14px));
+    z-index: 30;
+  }
+
+  .teacher-remote-controls .ui-button {
+    min-height: 56px;
+  }
+
+  .teacher-remote-shell:has(input:focus, textarea:focus) .teacher-remote-controls {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(calc(100% + 24px));
+  }
+
+  .teacher-remote-stage {
+    aspect-ratio: 16 / 9;
+  }
+
+  .teacher-remote-shell .teacher-remote-end {
+    align-self: stretch;
+    min-height: 48px;
+    order: 8;
+    width: 100%;
+  }
+
+  .teacher-remote-live-feedback {
+    order: 5;
+  }
+
+  .teacher-remote-tools {
+    order: 6;
+  }
+
+  .teacher-remote-expanded {
+    order: 7;
+  }
+
+  .teacher-remote-shell {
+    gap: 12px;
+  }
+
+  .teacher-remote-stage img {
+    object-fit: contain;
+  }
+
+  .student-session-shell {
+    box-sizing: border-box;
+    gap: 12px;
+    max-width: 620px;
+    min-height: var(--app-viewport-height);
+    padding: max(12px, var(--app-safe-area-top)) max(12px, var(--app-safe-area-right))
+      calc(24px + var(--app-safe-area-bottom)) max(12px, var(--app-safe-area-left));
+  }
+
+  .student-slide-card {
+    padding: 10px;
+  }
+
+  .student-slide-meta {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .student-slide-meta .ui-button {
+    min-height: 44px;
+  }
+
+  .student-signal-grid {
+    gap: 6px;
+  }
+
+  .student-signal-btn {
+    min-height: 72px;
+    padding: 8px 4px;
+  }
+
+  .student-signal-btn span {
+    font-size: 0.72rem;
+  }
+
+  .teacher-remote-connection {
+    flex-wrap: wrap;
+    font-size: 0.72rem;
+    justify-content: flex-end;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 380px) {
+  .teacher-remote-shell {
+    padding-inline: 10px;
+  }
+
+  .teacher-remote-controls .ui-button {
+    font-size: 0.72rem;
+    gap: 2px;
+  }
+
+  .student-session-shell {
+    padding-inline: 10px;
+  }
+
+  .student-signal-btn strong {
+    font-size: 0.8rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .presenter-sync button,
+  .teacher-remote-tools button,
+  .student-my-questions summary,
+  .student-poll-option-choice,
+  .student-question-entry > button {
+    transition: none;
+  }
+}

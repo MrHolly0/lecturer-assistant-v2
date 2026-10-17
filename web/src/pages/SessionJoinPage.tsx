@@ -220,8 +220,8 @@ function JoinTarget({ qr, link, hint }: { qr: string; link: string; hint: string
 function ChannelSoon() {
   return (
     <div className="session-join-soon">
-      <strong>MAX-бот не настроен</strong>
-      <p className="muted">Укажите имя бота в VITE_MAX_BOT_NAME и перезапустите веб-приложение.</p>
+      <strong>Подключение через MAX пока не настроено.</strong>
+      <p className="muted">Обратитесь к администратору.</p>
     </div>
   );
 }

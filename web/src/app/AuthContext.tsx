@@ -4,14 +4,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { components } from "./api/schema";
 import {
+  confirmMaxLink as confirmMaxLinkRequest,
   getCurrentUser,
-  login,
   loginWithMax,
   logout,
+  previewMaxLink,
   refreshAuth,
   registerByInvitation
 } from "./api/auth-api";
-import { createMaxLinkCode } from "./api/max-identity-api";
+import type { MaxLinkPreview } from "./api/auth-api";
 import { ApiError } from "./api/http";
 import { refreshAuthSession } from "./api/refresh";
 import { clearStoredAuth, getStoredAuth } from "./auth";
@@ -28,6 +29,10 @@ interface AuthContextValue {
   maxSignedOut: boolean;
   maxLinkRequired: boolean;
   maxCredentialsRequired: boolean;
+  maxLinkPreview: MaxLinkPreview | null;
+  maxLinkPreviewPending: boolean;
+  maxLinkCodeInput: string;
+  maxLinkRegistrationPending: boolean;
   loginAndLinkMax: (email: string, password: string) => Promise<void>;
   registerAndLinkMax: (
     name: string,
@@ -36,6 +41,8 @@ interface AuthContextValue {
     invitationCode: string
   ) => Promise<void>;
   submitMaxLinkCode: (code: string) => void;
+  confirmMaxLink: () => Promise<void>;
+  cancelMaxLinkPreview: () => void;
   continueMaxAuth: () => void;
   retryMaxAuth: () => void;
   resumeMaxAuth: () => void;
@@ -52,9 +59,15 @@ const AuthContext = createContext<AuthContextValue>({
   maxSignedOut: false,
   maxLinkRequired: false,
   maxCredentialsRequired: false,
+  maxLinkPreview: null,
+  maxLinkPreviewPending: false,
+  maxLinkCodeInput: "",
+  maxLinkRegistrationPending: false,
   loginAndLinkMax: async () => {},
   registerAndLinkMax: async () => {},
   submitMaxLinkCode: () => {},
+  confirmMaxLink: async () => {},
+  cancelMaxLinkPreview: () => {},
   continueMaxAuth: () => {},
   retryMaxAuth: () => {},
   resumeMaxAuth: () => {},
@@ -73,7 +86,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [maxSignedOut, setMaxSignedOut] = useState(() => readMaxSignedOut());
   const [maxLinkRequired, setMaxLinkRequired] = useState(false);
   const [maxCredentialsRequired, setMaxCredentialsRequired] = useState(false);
+  const [maxLinkPreview, setMaxLinkPreview] = useState<MaxLinkPreview | null>(null);
+  const [maxLinkPreviewPending, setMaxLinkPreviewPending] = useState(false);
+  const [pendingRegistration, setPendingRegistration] = useState(false);
   const [requestedMaxLinkCode, setRequestedMaxLinkCode] = useState<string | null>(null);
+  const [maxLinkCodeDraft, setMaxLinkCodeDraft] = useState("");
   const [allowMaxAuthWithoutCode, setAllowMaxAuthWithoutCode] = useState(false);
   const [maxAuthAttempt, setMaxAuthAttempt] = useState(0);
   const [maxAuthChoice, setMaxAuthChoice] = useState<"automatic" | "code" | "credentials">(
@@ -179,15 +196,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setMaxLinkRequired(false);
       setMaxCredentialsRequired(false);
-      loginWithMax(initData, linkCode ?? undefined, startParam ?? undefined)
+      if (linkCode) {
+        setMaxLinkPreview(null);
+        setMaxLinkPreviewPending(true);
+        previewMaxLink({ initData, linkCode })
+          .then((preview) => {
+            if (!active) return;
+            setMaxLinkPreview(preview);
+            setMaxAuthError(null);
+          })
+          .catch((error: unknown) => {
+            if (!active) return;
+            setMaxAuthError(maxAuthErrorMessage(error, true));
+            setMaxLinkRequired(true);
+          })
+          .finally(() => {
+            if (active) {
+              setMaxLinkPreviewPending(false);
+              setLoading(false);
+            }
+          });
+        return cleanup;
+      }
+
+      loginWithMax(initData, undefined, startParam ?? undefined)
         .then(({ user: maxUser }) => {
           if (!active) return;
           setUserState(maxUser);
         })
         .catch((error: unknown) => {
           if (!active) return;
-          setMaxAuthError(maxAuthErrorMessage(error, Boolean(linkCode)));
-          if (linkCode) setMaxLinkRequired(true);
+          setMaxAuthError(maxAuthErrorMessage(error, false));
         })
         .finally(() => {
           if (active) setLoading(false);
@@ -277,6 +316,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMaxSignedOut(false);
     setMaxAuthChoice("automatic");
     setRequestedMaxLinkCode(null);
+    setMaxLinkCodeDraft("");
     setAllowMaxAuthWithoutCode(false);
   }
 
@@ -287,6 +327,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // In-memory state still allows another authentication method.
     }
     setMaxAuthError(null);
+    setMaxLinkCodeDraft("");
     setRequestedMaxLinkCode(null);
     setMaxAuthChoice("code");
     setMaxLinkRequired(true);
@@ -301,6 +342,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // In-memory state still allows another authentication method.
     }
     setMaxAuthError(null);
+    setMaxLinkCodeDraft("");
     setMaxAuthChoice("credentials");
     setMaxLinkRequired(false);
     setMaxCredentialsRequired(true);
@@ -310,8 +352,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function submitMaxLinkCode(code: string) {
     setMaxAuthError(null);
     setLoading(true);
-    setRequestedMaxLinkCode(normalizeLinkCode(code));
+    const normalizedCode = normalizeLinkCode(code);
+    setMaxLinkCodeDraft(normalizedCode);
+    setRequestedMaxLinkCode(normalizedCode);
     setMaxAuthAttempt((attempt) => attempt + 1);
+  }
+
+  async function confirmPendingMaxLink() {
+    if (!initData || !maxLinkPreview) return;
+    setMaxLinkPreviewPending(true);
+    setMaxAuthError(null);
+    try {
+      const { user: linkedUser } = await confirmMaxLinkRequest(
+        initData,
+        maxLinkPreview.confirmationToken
+      );
+      queryClient.clear();
+      setUserState(linkedUser);
+      setMaxLinkPreview(null);
+      setMaxLinkCodeDraft("");
+      setPendingRegistration(false);
+      setMaxLinkRequired(false);
+      setMaxCredentialsRequired(false);
+      setMaxSignedOut(false);
+      setMaxAuthError(null);
+      try {
+        sessionStorage.removeItem(MAX_SIGNED_OUT_KEY);
+      } catch {
+        // In-memory auth state is sufficient for this WebView.
+      }
+    } catch (error) {
+      clearStoredAuth();
+      setMaxLinkPreview(null);
+      setMaxAuthError(maxLinkConfirmErrorMessage(error));
+      if (maxAuthChoice === "code") {
+        setMaxLinkRequired(true);
+        setMaxCredentialsRequired(false);
+      } else {
+        setMaxCredentialsRequired(true);
+        setMaxLinkRequired(false);
+      }
+    } finally {
+      setMaxLinkPreviewPending(false);
+    }
+  }
+
+  function cancelPendingMaxLink() {
+    setMaxLinkPreview(null);
+    clearStoredAuth();
+    setMaxLinkPreviewPending(false);
+    setMaxAuthError(
+      pendingRegistration
+        ? "Учётная запись создана, но MAX не подключён. Можно войти по email и паролю позже."
+        : null
+    );
+    setPendingRegistration(false);
+    if (maxAuthChoice === "code") {
+      setRequestedMaxLinkCode(null);
+      setMaxLinkRequired(true);
+      setMaxCredentialsRequired(false);
+    } else {
+      setMaxCredentialsRequired(true);
+      setMaxLinkRequired(false);
+    }
   }
 
   function continueMaxAuth() {
@@ -320,58 +423,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setMaxAuthChoice("automatic");
     setRequestedMaxLinkCode("");
+    setMaxLinkCodeDraft("");
     setAllowMaxAuthWithoutCode(true);
     setMaxAuthAttempt((attempt) => attempt + 1);
   }
 
-  async function linkAuthenticatedAccount(authenticate: () => Promise<{ user: UserProfile }>) {
+  async function loginAndLinkMax(email: string, password: string) {
     if (!initData)
       throw new Error("MAX не передал данные для входа. Откройте мини-приложение снова.");
-    try {
-      const { user: account } = await authenticate();
-      if (account.role === "STUDENT") {
-        throw new Error("Для студента вход по паролю не нужен. Используйте вход через MAX.");
-      }
-      const { code } = await createMaxLinkCode();
-      const { user: maxUser } = await loginWithMax(initData, code);
-      if (maxUser.id !== account.id) {
-        throw new Error(
-          "Этот профиль MAX уже привязан к другой учётной записи. Обратитесь к администратору."
-        );
-      }
-      queryClient.clear();
-      setUserState(maxUser);
-      setMaxCredentialsRequired(false);
-      setMaxAuthError(null);
-    } catch (error) {
-      clearStoredAuth();
-      throw error;
-    }
+    setMaxAuthError(null);
+    const preview = await previewMaxLink({ initData, email, password });
+    setMaxLinkPreview(preview);
+    setPendingRegistration(false);
+    setMaxCredentialsRequired(false);
+    setMaxLinkRequired(false);
+    setMaxAuthError(null);
   }
 
-  function loginAndLinkMax(email: string, password: string) {
-    return linkAuthenticatedAccount(() => login(email, password));
-  }
-
-  function registerAndLinkMax(
+  async function registerAndLinkMax(
     name: string,
     email: string,
     password: string,
     invitationCode: string
   ) {
-    let registered = false;
-    return linkAuthenticatedAccount(async () => {
-      const auth = await registerByInvitation(name, email, password, invitationCode);
-      registered = true;
-      return auth;
-    }).catch((error: unknown) => {
-      if (registered) {
-        throw new Error(
-          "Аккаунт создан, но MAX не подключился. Переключитесь на вход и попробуйте с новым паролем."
-        );
-      }
+    if (!initData)
+      throw new Error("MAX не передал данные для входа. Откройте мини-приложение снова.");
+    setMaxAuthError(null);
+    setPendingRegistration(false);
+    await registerByInvitation(name, email, password, invitationCode);
+    clearStoredAuth();
+    setMaxAuthError(null);
+    try {
+      const preview = await previewMaxLink({ initData, email, password });
+      setMaxLinkPreview(preview);
+      setPendingRegistration(true);
+      setMaxCredentialsRequired(false);
+      setMaxLinkRequired(false);
+    } catch (error) {
+      clearStoredAuth();
+      setPendingRegistration(false);
+      setMaxAuthError(
+        `Учётная запись создана, но не подключена к MAX. ${maxAuthErrorMessage(error, false)}`
+      );
       throw error;
-    });
+    }
   }
 
   async function signOut() {
@@ -386,10 +481,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setMaxSignedOut(true);
       setMaxAuthError(null);
+      setMaxLinkPreview(null);
+      setPendingRegistration(false);
       setMaxLinkRequired(false);
       setMaxCredentialsRequired(false);
       setMaxAuthChoice("automatic");
       setRequestedMaxLinkCode(null);
+      setMaxLinkCodeDraft("");
       setAllowMaxAuthWithoutCode(false);
     }
     setUserState(null);
@@ -404,9 +502,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         maxSignedOut,
         maxLinkRequired,
         maxCredentialsRequired,
+        maxLinkPreview,
+        maxLinkPreviewPending,
+        maxLinkCodeInput: maxLinkCodeDraft,
+        maxLinkRegistrationPending: pendingRegistration,
         loginAndLinkMax,
         registerAndLinkMax,
         submitMaxLinkCode,
+        confirmMaxLink: confirmPendingMaxLink,
+        cancelMaxLinkPreview: cancelPendingMaxLink,
         continueMaxAuth,
         retryMaxAuth,
         resumeMaxAuth,
@@ -445,4 +549,18 @@ function maxAuthErrorMessage(error: unknown, linking: boolean): string {
     if (error.status === 503) return "Вход через MAX временно недоступен. Попробуйте позже.";
   }
   return "Не удалось войти через MAX. Проверьте подключение и попробуйте ещё раз.";
+}
+
+function maxLinkConfirmErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 400 || error.status === 409) {
+      return "Проверка истекла или данные аккаунтов изменились. Проверьте аккаунт ещё раз перед подтверждением.";
+    }
+    if (error.status === 401) {
+      return "Срок действия входа MAX истёк. Закройте и снова откройте мини-приложение.";
+    }
+    if (error.status === 403) return "Эта учётная запись отключена администратором.";
+    if (error.status === 503) return "Вход через MAX временно недоступен. Попробуйте позже.";
+  }
+  return "Не удалось подтвердить подключение MAX. Проверьте аккаунт ещё раз.";
 }

@@ -57,7 +57,7 @@ export function StartSessionDialog({
   useEffect(() => {
     if (!open || courseQuery.isLoading) return;
     setMode(groups.length === 0 ? "new" : "existing");
-    setGroupIds([]);
+    setGroupIds(groups.length === 1 ? [groups[0].id] : []);
     setGroupName("");
     setNewGroupNames([]);
   }, [courseQuery.isLoading, groups, groupsKey, open]);
@@ -77,7 +77,7 @@ export function StartSessionDialog({
           ? teacherRemotePath(courseId, session.id)
           : `/courses/${courseId}/sessions/${session.id}/join`
       );
-      toast.success("Занятие создано. Покажите студентам код и начните показ.");
+      toast.success("Код занятия создан. Начните показ, когда студенты подключатся.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось запустить занятие."))
   });
@@ -117,10 +117,10 @@ export function StartSessionDialog({
     >
       <DialogContent className="start-session-dialog top-4 translate-y-0">
         <DialogHeader>
-          <DialogTitle>Запустить занятие</DialogTitle>
+          <DialogTitle>Подготовить занятие</DialogTitle>
           <DialogDescription>
-            Выберите одну или несколько групп. Лекция «{lecture?.title ?? ""}» останется доступна
-            для следующих запусков.
+            Выберите состав студентов. Сначала откроется ожидание с кодом, а показ вы начнёте
+            отдельно. Лекция «{lecture?.title ?? ""}» останется доступна для следующих занятий.
           </DialogDescription>
         </DialogHeader>
 
@@ -148,7 +148,7 @@ export function StartSessionDialog({
               <TabsTrigger value="new">Новая группа</TabsTrigger>
             </TabsList>
             <TabsContent value="existing" className="start-session-field">
-              <Label>Группы занятия</Label>
+              <Label>Учебные группы</Label>
               <div className="start-session-group-list" role="group" aria-label="Группы занятия">
                 {groups.map((group) => {
                   const checked = groupIds.includes(group.id);
@@ -245,7 +245,7 @@ export function StartSessionDialog({
           </DialogClose>
           <Button type="button" disabled={!canSubmit || startMutation.isPending} onClick={submit}>
             <Play size={16} aria-hidden="true" />
-            {startMutation.isPending ? "Запускаем…" : "Запустить занятие"}
+            {startMutation.isPending ? "Создаём ожидание…" : "Получить код занятия"}
           </Button>
         </DialogFooter>
       </DialogContent>

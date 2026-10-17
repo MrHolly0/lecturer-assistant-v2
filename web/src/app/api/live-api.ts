@@ -142,6 +142,18 @@ export async function resumeLiveSession(courseId: string, sessionId: string): Pr
   return res.json() as Promise<LiveSession>;
 }
 
+export async function setLiveProjectionCode(
+  courseId: string,
+  sessionId: string,
+  showJoinCode: boolean
+): Promise<LiveSession> {
+  const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/projection`, {
+    method: "PUT",
+    body: JSON.stringify({ showJoinCode })
+  });
+  return res.json() as Promise<LiveSession>;
+}
+
 export async function endLiveSession(courseId: string, sessionId: string): Promise<LiveSession> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/end`, { method: "POST" });
   return res.json() as Promise<LiveSession>;

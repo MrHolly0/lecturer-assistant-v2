@@ -27,6 +27,9 @@ interface LectureListProps {
   onRestore: (lectureId: string) => void;
   onHardDelete: (lectureId: string) => void;
   onAddPresentation: () => void;
+  partialImportWarning?: string;
+  partialReviewAccepted: boolean;
+  onPartialReviewAccepted: (accepted: boolean) => void;
 }
 
 export function LectureList({
@@ -43,7 +46,10 @@ export function LectureList({
   onArchive,
   onRestore,
   onHardDelete,
-  onAddPresentation
+  onAddPresentation,
+  partialImportWarning,
+  partialReviewAccepted,
+  onPartialReviewAccepted
 }: LectureListProps) {
   const activeLectures = lectures.filter((lecture) => !lecture.archived);
   const archivedLectures = lectures.filter((lecture) => lecture.archived);
@@ -77,7 +83,7 @@ export function LectureList({
               : "Создайте лекцию и привяжите презентацию."}
           </p>
         </div>
-        {canManage && activeLectures.length > 0 && (
+        {canManage && decks.length > 0 && (
           <Button type="button" variant="outline" onClick={() => setShowCreate((value) => !value)}>
             <Plus size={16} aria-hidden="true" />
             Новая лекция
@@ -85,30 +91,55 @@ export function LectureList({
         )}
       </div>
       {canManage && showCreate && (
-        <div className="inline-form lecture-create-form">
-          <input
-            value={title}
-            onChange={(event) => onTitleChange(event.target.value)}
-            placeholder="Название лекции"
-          />
-          <Select value={deckId || undefined} onValueChange={onDeckChange}>
-            <SelectTrigger className="inline-select">
-              <SelectValue placeholder="Выберите презентацию" />
-            </SelectTrigger>
-            <SelectContent>
-              {decks.map((deck) => (
-                <SelectItem key={deck.id} value={deck.id}>
-                  {deck.title} v{deck.version}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button type="button" disabled={!title || !deckId || creating} onClick={onCreate}>
-            Создать
-          </Button>
-          <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
-            Отмена
-          </Button>
+        <div className="lecture-create-area">
+          {partialImportWarning && (
+            <div className="form-warning lecture-partial-warning" role="note">
+              <strong>Презентация импортирована частично</strong>
+              <p>{partialImportWarning}</p>
+              <label className="lecture-partial-warning__accept">
+                <input
+                  type="checkbox"
+                  checked={partialReviewAccepted}
+                  onChange={(event) => onPartialReviewAccepted(event.target.checked)}
+                />
+                <span>Я проверил доступные слайды и принимаю эту версию лекции</span>
+              </label>
+            </div>
+          )}
+          <div className="inline-form lecture-create-form">
+            <input
+              value={title}
+              onChange={(event) => onTitleChange(event.target.value)}
+              placeholder="Название лекции"
+            />
+            <Select value={deckId || undefined} onValueChange={onDeckChange}>
+              <SelectTrigger className="inline-select">
+                <SelectValue placeholder="Выберите презентацию" />
+              </SelectTrigger>
+              <SelectContent>
+                {decks.map((deck) => (
+                  <SelectItem key={deck.id} value={deck.id}>
+                    {deck.title} v{deck.version}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              disabled={
+                !title.trim() ||
+                !deckId ||
+                creating ||
+                Boolean(partialImportWarning && !partialReviewAccepted)
+              }
+              onClick={onCreate}
+            >
+              {creating ? "Сохраняем…" : "Сохранить лекцию"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
+              Отмена
+            </Button>
+          </div>
         </div>
       )}
       {tab === "active" && activeLectures.length === 0 ? (

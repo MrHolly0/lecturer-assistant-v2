@@ -43,13 +43,13 @@ export function MaxLinkCodeScreen({
             </h1>
           </div>
           <p className="auth-hint">
-            Введите код со страницы «MAX и вход» в кабинете преподавателя. Если MAX уже привязан к
-            другому аккаунту, связь перейдёт к владельцу кода.
+            Введите код со страницы «MAX и вход». Сначала проверьте оба аккаунта; MAX подключится
+            только после подтверждения.
           </p>
         </div>
         <form className="auth-form" onSubmit={submit}>
           <label className="field">
-            <span>Код привязки</span>
+            <span>Код подключения MAX</span>
             <input
               className="max-link-code-input"
               value={code}
@@ -67,7 +67,7 @@ export function MaxLinkCodeScreen({
             </p>
           )}
           <Button type="submit" disabled={code.length !== 6}>
-            {error ? "Попробовать снова" : "Подключить и войти"}
+            {error ? "Проверить снова" : "Проверить аккаунт"}
           </Button>
         </form>
         <Button variant="ghost" type="button" onClick={onContinue}>

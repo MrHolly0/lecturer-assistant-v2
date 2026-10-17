@@ -4,7 +4,7 @@ import { BarChart3, CalendarClock } from "lucide-react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { getCourse } from "../app/api/courses-api";
 import { listSessionHistory } from "../app/api/live-api";
-import { LinkButton } from "../shared/ui/button";
+import { Button, LinkButton } from "../shared/ui/button";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import { PaginationBar } from "../widgets/ListControls";
 import { CourseLearningAnalytics } from "../widgets/CourseLearningAnalytics";
@@ -36,7 +36,12 @@ export function CourseAnalyticsPage({ courseId }: { courseId: string }) {
   if (courseQuery.isLoading) return <AnalyticsLoading />;
   if (courseQuery.data && !canManage) return <Navigate to={`/courses/${courseId}`} replace />;
   if (courseQuery.isError || !courseQuery.data) {
-    return <AnalyticsError message="Курс не найден или нет доступа." />;
+    return (
+      <AnalyticsError
+        message="Курс не найден или нет доступа."
+        onRetry={courseQuery.isError ? () => void courseQuery.refetch() : undefined}
+      />
+    );
   }
 
   return (
@@ -73,8 +78,11 @@ export function CourseAnalyticsPage({ courseId }: { courseId: string }) {
 
         {historyQuery.isLoading && <p className="muted">Загрузка истории…</p>}
         {historyQuery.isError && (
-          <div className="form-error" role="alert">
+          <div className="analytics-load-error" role="alert">
             Не удалось загрузить историю лекций.
+            <Button type="button" variant="outline" onClick={() => void historyQuery.refetch()}>
+              Повторить
+            </Button>
           </div>
         )}
         {history && history.items.length === 0 && (
@@ -133,10 +141,15 @@ function AnalyticsLoading() {
   );
 }
 
-function AnalyticsError({ message }: { message: string }) {
+function AnalyticsError({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="page">
       <p className="form-error">{message}</p>
+      {onRetry && (
+        <Button type="button" variant="outline" onClick={onRetry}>
+          Повторить
+        </Button>
+      )}
     </div>
   );
 }

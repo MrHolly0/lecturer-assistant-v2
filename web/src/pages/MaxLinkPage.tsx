@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../app/AuthContext";
+import { changePassword } from "../app/api/auth-api";
 import { userErrorMessage } from "../app/api/errors";
 import {
   createMaxLinkCode,
@@ -33,6 +35,10 @@ export function MaxLinkPage() {
   const { signOut } = useAuth();
   const { isMax } = useMaxBridge();
   const [linkCode, setLinkCode] = useState<MaxLinkCode | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordChanged, setPasswordChanged] = useState(false);
   const [now, setNow] = useState(Date.now());
   const status = useQuery({ queryKey: ["identity", "max"], queryFn: getMaxIdentityStatus });
   const unlink = useMutation({
@@ -54,12 +60,33 @@ export function MaxLinkPage() {
     onSuccess: (created) => {
       setLinkCode(created);
       setNow(Date.now());
-    }
+      toast.success("Код подключения создан");
+    },
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось получить код подключения."))
+  });
+  const passwordMut = useMutation({
+    mutationFn: () => changePassword({ currentPassword, newPassword }),
+    onSuccess: () => {
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordChanged(true);
+    },
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось изменить пароль."))
   });
   const expiresAt = linkCode ? Date.parse(linkCode.expiresAt) : 0;
   const remainingSeconds = Math.max(0, Math.ceil((expiresAt - now) / 1000));
   const expired = Boolean(linkCode && remainingSeconds === 0);
   const maxUrl = useMemo(() => buildMaxLinkUrl(linkCode?.code ?? ""), [linkCode?.code]);
+
+  function submitPassword(event: FormEvent) {
+    event.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast.error("Новые пароли не совпадают.");
+      return;
+    }
+    passwordMut.mutate();
+  }
 
   useEffect(() => {
     if (!linkCode || expired) return undefined;
@@ -81,6 +108,20 @@ export function MaxLinkPage() {
         </div>
       </div>
 
+      {status.isLoading && (
+        <p className="muted" role="status">
+          Проверяем подключение MAX…
+        </p>
+      )}
+      {status.isError && (
+        <div className="max-link-load-error" role="alert">
+          <p>Не удалось проверить подключение MAX.</p>
+          <Button type="button" variant="outline" onClick={() => void status.refetch()}>
+            Повторить
+          </Button>
+        </div>
+      )}
+
       <section className="max-link-panel">
         <div className="max-link-copy">
           <h2 className="max-link-copy__heading">
@@ -97,7 +138,7 @@ export function MaxLinkPage() {
               disabled={createCode.isPending}
               onClick={() => createCode.mutate()}
             >
-              Получить код
+              Получить код подключения MAX
             </Button>
           )}
         </div>
@@ -108,7 +149,9 @@ export function MaxLinkPage() {
               {linkCode.code}
             </div>
             <p className="max-link-timer" role="timer">
-              {expired ? "Срок действия кода истёк" : `Осталось ${formatTime(remainingSeconds)}`}
+              {expired
+                ? "Срок действия кода истёк. Получите новый код."
+                : `Осталось ${formatTime(remainingSeconds)}`}
             </p>
             {maxUrl ? (
               <>
@@ -164,6 +207,79 @@ export function MaxLinkPage() {
           </AlertDialog>
         </section>
       )}
+
+      <section className="max-password-panel" aria-labelledby="max-password-title">
+        <h2 id="max-password-title">Пароль для входа по email</h2>
+        <p className="muted">
+          После смены пароля потребуется снова войти на этом устройстве и в MAX.
+        </p>
+        <form className="max-password-form" onSubmit={submitPassword}>
+          <label className="field">
+            <span>Текущий пароль</span>
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Новый пароль</span>
+            <input
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Повторите новый пароль</span>
+            <input
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+            />
+          </label>
+          {confirmPassword && newPassword !== confirmPassword && (
+            <p className="form-error" role="alert">
+              Новые пароли не совпадают.
+            </p>
+          )}
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={passwordMut.isPending || newPassword !== confirmPassword}
+          >
+            {passwordMut.isPending ? "Сохраняем…" : "Сменить пароль"}
+          </Button>
+        </form>
+      </section>
+
+      <AlertDialog open={passwordChanged} onOpenChange={() => undefined}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Пароль изменён</AlertDialogTitle>
+            <AlertDialogDescription>
+              Все активные сессии завершены. Войдите снова с новым паролем.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => {
+                void signOut().finally(() => navigate("/login", { replace: true }));
+              }}
+            >
+              Войти снова
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

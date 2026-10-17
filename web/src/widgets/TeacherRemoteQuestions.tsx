@@ -14,19 +14,34 @@ import { pluralizeRu } from "../shared/lib/plural";
 import { Button } from "../shared/ui/button";
 import { Textarea } from "../shared/ui/textarea";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../shared/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "../shared/ui/dialog";
 
 export function TeacherRemoteQuestions({
   courseId,
   sessionId,
-  questions
+  questions,
+  isLoading = false,
+  loadError = false,
+  onRetry
 }: {
   courseId: string;
   sessionId: string;
   questions: StudentQuestion[];
+  isLoading?: boolean;
+  loadError?: boolean;
+  onRetry?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<StudentQuestion | null>(null);
   const [answerText, setAnswerText] = useState("");
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const openQuestions = questions.filter((question) => question.status === "OPEN");
   const updateMutation = useMutation({
     mutationFn: ({
@@ -56,6 +71,7 @@ export function TeacherRemoteQuestions({
             : current
       );
       setSelected(null);
+      setPublishConfirmOpen(false);
       toast.success(updated.status === "ANSWERED" ? "Ответ отправлен." : "Вопрос скрыт.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось обновить вопрос."))
@@ -71,7 +87,26 @@ export function TeacherRemoteQuestions({
           {openQuestions.length} {pluralizeRu(openQuestions.length, "новый", "новых", "новых")}
         </span>
       </div>
-      {openQuestions.length === 0 ? (
+      {loadError && openQuestions.length > 0 && (
+        <div className="teacher-remote-data-error" role="status">
+          Не удалось обновить список. Показаны последние данные.{" "}
+          <button type="button" onClick={onRetry}>
+            Повторить
+          </button>
+        </div>
+      )}
+      {loadError && openQuestions.length === 0 ? (
+        <div className="teacher-remote-empty teacher-remote-data-error" role="alert">
+          <p>Не удалось загрузить вопросы.</p>
+          <Button type="button" variant="outline" onClick={onRetry}>
+            Повторить
+          </Button>
+        </div>
+      ) : isLoading ? (
+        <div className="teacher-remote-empty">
+          <p>Загружаем вопросы…</p>
+        </div>
+      ) : openQuestions.length === 0 ? (
         <div className="teacher-remote-empty">
           <CheckCircle2 size={22} aria-hidden="true" />
           <p>Новых вопросов пока нет.</p>
@@ -130,9 +165,7 @@ export function TeacherRemoteQuestions({
               <Button
                 type="button"
                 disabled={updateMutation.isPending || !answerText.trim()}
-                onClick={() =>
-                  updateMutation.mutate({ status: "ANSWERED", answerVisibility: "SESSION" })
-                }
+                onClick={() => setPublishConfirmOpen(true)}
               >
                 <Globe2 size={17} aria-hidden="true" /> Показать всем
               </Button>
@@ -148,6 +181,36 @@ export function TeacherRemoteQuestions({
           </div>
         </SheetContent>
       </Sheet>
+      <Dialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Опубликовать вопрос и ответ?</DialogTitle>
+            <DialogDescription>
+              Участники занятия увидят вопрос и этот ответ. Имя автора не будет показано.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="teacher-question-public-preview">
+            <strong>Вопрос</strong>
+            <p>{selected?.text}</p>
+            <strong>Ответ</strong>
+            <p>{answerText}</p>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPublishConfirmOpen(false)}>
+              Вернуться к ответу
+            </Button>
+            <Button
+              type="button"
+              disabled={updateMutation.isPending || !answerText.trim()}
+              onClick={() =>
+                updateMutation.mutate({ status: "ANSWERED", answerVisibility: "SESSION" })
+              }
+            >
+              Опубликовать для участников
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

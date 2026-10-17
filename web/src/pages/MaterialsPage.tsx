@@ -40,6 +40,9 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const [lectureDeckId, setLectureDeckId] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [partialDeckId, setPartialDeckId] = useState("");
+  const [partialWarning, setPartialWarning] = useState("");
+  const [partialReviewAccepted, setPartialReviewAccepted] = useState(false);
   const courseQuery = useQuery({
     queryKey: ["courses", courseId],
     queryFn: () => getCourse(courseId)
@@ -86,6 +89,9 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     setLectureTitle("");
     setUploadOpen(false);
     setViewerOpen(false);
+    setPartialDeckId("");
+    setPartialWarning("");
+    setPartialReviewAccepted(false);
   }, [courseId]);
   useEffect(() => {
     if (!jobQuery.data) return;
@@ -102,9 +108,20 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
       setJob(null);
       setUploadProgress(jobQuery.data.progressPercent);
       if (jobQuery.data.status === "PARTIAL") {
+        setPartialDeckId(jobQuery.data.deckId);
+        setPartialWarning(
+          jobQuery.data.warningMessage ||
+            `${jobQuery.data.processedSlides} из ${jobQuery.data.totalSlides ?? "всех"} слайдов удалось обработать. Проверьте результат перед сохранением лекции.`
+        );
+        setPartialReviewAccepted(false);
         toast.warning(
           jobQuery.data.warningMessage || jobQuery.data.errorMessage || "Импорт завершён частично"
         );
+      } else {
+        setPartialDeckId("");
+        setPartialWarning("");
+        setPartialReviewAccepted(false);
+        toast.success("Импорт завершён. Проверьте презентацию и сохраните лекцию.");
       }
       void qc.invalidateQueries({ queryKey: ["content", courseId, "decks"] });
     }
@@ -156,8 +173,12 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   });
   async function handleFile(file: File) {
     setError(null);
+    setPartialDeckId("");
+    setPartialWarning("");
+    setPartialReviewAccepted(false);
     const cleanTitle = title.trim();
     const effectiveTitle = cleanTitle || titleFromFileName(file.name);
+    setLectureTitle(effectiveTitle);
     if (!cleanTitle) {
       setTitle(effectiveTitle);
       toast.warning(`Название взято из файла: ${effectiveTitle}`);
@@ -187,110 +208,163 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
 
       <CourseSectionNav courseId={courseId} canManage={canManage} />
 
-      <LectureList
-        courseId={courseId}
-        lectures={lectures}
-        decks={activeDecks}
-        canManage={canManage}
-        title={lectureTitle}
-        deckId={lectureDeckId}
-        creating={createLectureMut.isPending}
-        onTitleChange={setLectureTitle}
-        onDeckChange={setLectureDeckId}
-        onCreate={() => createLectureMut.mutate()}
-        onArchive={(lectureId) => deleteLectureMut.mutate(lectureId)}
-        onRestore={(lectureId) => restoreLectureMut.mutate(lectureId)}
-        onHardDelete={(lectureId) => hardDeleteLectureMut.mutate(lectureId)}
-        onAddPresentation={() => setUploadOpen(true)}
-      />
-
-      <section className="materials-workspace" aria-labelledby="materials-workspace-title">
-        <div className="section-heading materials-workspace__heading">
-          <div>
-            <h2 id="materials-workspace-title">Презентации</h2>
-            <p className="muted">Файлы слайдов, версии и заметки преподавателя.</p>
-          </div>
-          {canManage && activeDecks.length > 0 && (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={importing}
-              onClick={() => setUploadOpen((value) => !value)}
-            >
-              {uploadOpen ? (
-                <X size={16} aria-hidden="true" />
-              ) : (
-                <Plus size={16} aria-hidden="true" />
-              )}
-              {uploadOpen ? "Скрыть загрузку" : "Добавить презентацию"}
-            </Button>
-          )}
+      {courseQuery.isError && (
+        <div className="materials-load-error" role="alert">
+          <p>Не удалось загрузить курс и его материалы.</p>
+          <Button type="button" variant="outline" onClick={() => void courseQuery.refetch()}>
+            Повторить
+          </Button>
         </div>
+      )}
 
-        {canManage && (uploadOpen || importing || Boolean(error)) && (
-          <DeckUploadPanel
-            title={title}
-            fileName={fileName}
-            dragOver={dragOver}
-            progress={displayedProgress}
-            importing={importing}
-            error={error}
-            phase={latestJob?.phase}
-            processedSlides={latestJob?.processedSlides}
-            totalSlides={latestJob?.totalSlides}
-            warning={latestJob?.warningMessage}
-            onTitleChange={setTitle}
-            onFile={(file) => void handleFile(file)}
-            onDragOverChange={setDragOver}
-          />
-        )}
-
-        <DeckListPanel
-          decks={decks}
-          selectedDeckId={selectedDeckId}
+      {!courseQuery.isError && !lecturesQuery.isError && !decksQuery.isError && (
+        <LectureList
+          courseId={courseId}
+          lectures={lectures}
+          decks={activeDecks}
           canManage={canManage}
-          archivePending={archiveDeckMut.isPending}
-          restorePending={restoreDeckMut.isPending}
-          hardDeletePending={hardDeleteDeckMut.isPending}
-          onSelect={(deckId) => {
-            setSelectedDeckId(deckId);
-            setLectureDeckId(deckId);
-            setActiveSlide(0);
-            setNotesOpen(false);
-            setViewerOpen(true);
-          }}
-          onArchive={(deckId) => archiveDeckMut.mutate(deckId)}
-          onRestore={(deckId) => restoreDeckMut.mutate(deckId)}
-          onHardDelete={(deckId) => hardDeleteDeckMut.mutate(deckId)}
+          title={lectureTitle}
+          deckId={lectureDeckId}
+          creating={createLectureMut.isPending}
+          onTitleChange={setLectureTitle}
+          onDeckChange={setLectureDeckId}
+          onCreate={() => createLectureMut.mutate()}
+          onArchive={(lectureId) => deleteLectureMut.mutate(lectureId)}
+          onRestore={(lectureId) => restoreLectureMut.mutate(lectureId)}
+          onHardDelete={(lectureId) => hardDeleteLectureMut.mutate(lectureId)}
+          onAddPresentation={() => setUploadOpen(true)}
+          partialImportWarning={lectureDeckId === partialDeckId ? partialWarning : undefined}
+          partialReviewAccepted={partialReviewAccepted}
+          onPartialReviewAccepted={setPartialReviewAccepted}
         />
+      )}
 
-        {selectedDeck && viewerOpen && (
-          <div className="material-viewer-shell">
-            <Button
-              type="button"
-              variant="ghost"
-              className="material-viewer-close"
-              onClick={() => setViewerOpen(false)}
-            >
-              <X size={16} aria-hidden="true" /> Закрыть просмотр
-            </Button>
-            <DeckViewer
-              deck={selectedDeck}
-              activeIndex={activeSlide}
-              notesOpen={notesOpen}
-              savingNote={noteActions.saving}
-              canManage={canManage}
-              editing={slideActions.editing}
-              onSlideChange={setActiveSlide}
-              onNotesOpenChange={setNotesOpen}
-              onSaveNote={(content) => noteActions.save(content).then(() => undefined)}
-              onClearNote={() => noteActions.clear()}
-              onReorderSlide={slideActions.reorderSlide}
-              onDeleteSlide={slideActions.deleteActiveSlide}
-            />
+      {lecturesQuery.isError && !courseQuery.isError && (
+        <div className="materials-load-error" role="alert">
+          <p>Не удалось загрузить готовые лекции. Пустой список пока не подтверждён.</p>
+          <Button type="button" variant="outline" onClick={() => void lecturesQuery.refetch()}>
+            Повторить
+          </Button>
+        </div>
+      )}
+      {decksQuery.isError && !courseQuery.isError && (
+        <div className="materials-load-error" role="alert">
+          <p>Не удалось загрузить презентации. Пустой список пока не подтверждён.</p>
+          <Button type="button" variant="outline" onClick={() => void decksQuery.refetch()}>
+            Повторить
+          </Button>
+        </div>
+      )}
+
+      {!courseQuery.isError && (
+        <section className="materials-workspace" aria-labelledby="materials-workspace-title">
+          <div className="section-heading materials-workspace__heading">
+            <div>
+              <h2 id="materials-workspace-title">Презентации</h2>
+              <p className="muted">Файлы слайдов, версии и заметки преподавателя.</p>
+            </div>
+            {canManage && activeDecks.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={importing}
+                onClick={() => setUploadOpen((value) => !value)}
+              >
+                {uploadOpen ? (
+                  <X size={16} aria-hidden="true" />
+                ) : (
+                  <Plus size={16} aria-hidden="true" />
+                )}
+                {uploadOpen ? "Скрыть загрузку" : "Добавить презентацию"}
+              </Button>
+            )}
           </div>
-        )}
-      </section>
+
+          {canManage && (uploadOpen || importing || Boolean(error)) && (
+            <>
+              <DeckUploadPanel
+                title={title}
+                fileName={fileName}
+                dragOver={dragOver}
+                progress={displayedProgress}
+                importing={importing}
+                error={
+                  error ?? (jobQuery.isError ? "Не удалось проверить состояние импорта." : null)
+                }
+                phase={latestJob?.phase}
+                processedSlides={latestJob?.processedSlides}
+                totalSlides={latestJob?.totalSlides}
+                warning={latestJob?.warningMessage}
+                onTitleChange={setTitle}
+                onFile={(file) => void handleFile(file)}
+                onDragOverChange={setDragOver}
+              />
+              {jobQuery.isError && (
+                <Button type="button" variant="outline" onClick={() => void jobQuery.refetch()}>
+                  Проверить импорт ещё раз
+                </Button>
+              )}
+            </>
+          )}
+
+          {deckQuery.isError && (
+            <div className="materials-load-error" role="alert">
+              <p>Не удалось открыть презентацию и проверить её слайды.</p>
+              <Button type="button" variant="outline" onClick={() => void deckQuery.refetch()}>
+                Повторить
+              </Button>
+            </div>
+          )}
+
+          {!decksQuery.isError && (
+            <DeckListPanel
+              decks={decks}
+              selectedDeckId={selectedDeckId}
+              canManage={canManage}
+              archivePending={archiveDeckMut.isPending}
+              restorePending={restoreDeckMut.isPending}
+              hardDeletePending={hardDeleteDeckMut.isPending}
+              onSelect={(deckId) => {
+                setSelectedDeckId(deckId);
+                setLectureDeckId(deckId);
+                setActiveSlide(0);
+                setNotesOpen(false);
+                setViewerOpen(true);
+              }}
+              onArchive={(deckId) => archiveDeckMut.mutate(deckId)}
+              onRestore={(deckId) => restoreDeckMut.mutate(deckId)}
+              onHardDelete={(deckId) => hardDeleteDeckMut.mutate(deckId)}
+            />
+          )}
+
+          {selectedDeck && viewerOpen && (
+            <div className="material-viewer-shell">
+              <Button
+                type="button"
+                variant="ghost"
+                className="material-viewer-close"
+                onClick={() => setViewerOpen(false)}
+              >
+                <X size={16} aria-hidden="true" /> Закрыть просмотр
+              </Button>
+              <DeckViewer
+                deck={selectedDeck}
+                activeIndex={activeSlide}
+                notesOpen={notesOpen}
+                savingNote={noteActions.saving}
+                canManage={canManage}
+                editing={slideActions.editing}
+                onSlideChange={setActiveSlide}
+                onNotesOpenChange={setNotesOpen}
+                onSaveNote={(content) => noteActions.save(content).then(() => undefined)}
+                onClearNote={() => noteActions.clear()}
+                onReorderSlide={slideActions.reorderSlide}
+                onDeleteSlide={slideActions.deleteActiveSlide}
+              />
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

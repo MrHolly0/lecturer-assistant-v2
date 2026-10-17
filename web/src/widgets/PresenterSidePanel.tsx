@@ -19,6 +19,14 @@ interface PresenterSidePanelProps {
   courseId: string;
   sessionId: string;
   paused: boolean;
+  questionsLoading?: boolean;
+  questionsError?: boolean;
+  onRetryQuestions?: () => void;
+  engagementLoading?: boolean;
+  engagementError?: boolean;
+  onRetryEngagement?: () => void;
+  participantsError?: boolean;
+  onRetryParticipants?: () => void;
 }
 
 export function PresenterSidePanel({
@@ -29,7 +37,15 @@ export function PresenterSidePanel({
   slideElapsed,
   courseId,
   sessionId,
-  paused
+  paused,
+  questionsLoading = false,
+  questionsError = false,
+  onRetryQuestions,
+  engagementLoading = false,
+  engagementError = false,
+  onRetryEngagement,
+  participantsError = false,
+  onRetryParticipants
 }: PresenterSidePanelProps) {
   const activeParticipants = participants.filter((participant) => !participant.leftAt);
   const signals = engagement?.signalAggregate;
@@ -45,8 +61,7 @@ export function PresenterSidePanel({
       {redCount > 0 && (
         <div className="signal-alert">
           <AlertTriangle size={14} />
-          {redCount} {pluralizeRu(redCount, "студент", "студента", "студентов")} не{" "}
-          {redCount === 1 ? "понимает" : "понимают"}
+          {redCount} {pluralizeRu(redCount, "сигнал", "сигнала", "сигналов")} «Не понимаю»
         </div>
       )}
       <section className="live-panel signal-summary signal-summary--primary">
@@ -57,14 +72,41 @@ export function PresenterSidePanel({
             {pluralizeRu(signals?.total ?? 0, "сигнал", "сигнала", "сигналов")}
           </span>
         </div>
-        <SignalRow label="Понятно" value="GREEN" total={signals?.total ?? 0} signals={signals} />
-        <SignalRow
-          label="Есть вопрос"
-          value="YELLOW"
-          total={signals?.total ?? 0}
-          signals={signals}
-        />
-        <SignalRow label="Не понимаю" value="RED" total={signals?.total ?? 0} signals={signals} />
+        {engagement ? (
+          <>
+            <SignalRow
+              label="Понятно"
+              value="GREEN"
+              total={signals?.total ?? 0}
+              signals={signals}
+            />
+            <SignalRow
+              label="Есть вопрос"
+              value="YELLOW"
+              total={signals?.total ?? 0}
+              signals={signals}
+            />
+            <SignalRow
+              label="Не понимаю"
+              value="RED"
+              total={signals?.total ?? 0}
+              signals={signals}
+            />
+          </>
+        ) : (
+          <div className="teacher-remote-data-error" role={engagementError ? "alert" : "status"}>
+            {engagementError
+              ? "Не удалось загрузить понимание."
+              : engagementLoading
+                ? "Загружаем сигналы…"
+                : "Сигналов пока нет."}{" "}
+            {engagementError && (
+              <button type="button" onClick={onRetryEngagement}>
+                Повторить
+              </button>
+            )}
+          </div>
+        )}
       </section>
       <section className="live-poll-panel">
         <div className="section-heading">
@@ -72,8 +114,16 @@ export function PresenterSidePanel({
         </div>
         <PollPanel courseId={courseId} sessionId={sessionId} disabled={paused} />
       </section>
-      <Tabs defaultValue="students" className="live-tabs">
+      <Tabs defaultValue="questions" className="live-tabs">
         <TabsList className="live-tabs__list">
+          <TabsTrigger value="questions">
+            Открытые вопросы
+            {questions.filter((question) => question.status === "OPEN").length > 0 && (
+              <span className="tab-badge tab-badge--alert">
+                {questions.filter((question) => question.status === "OPEN").length}
+              </span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="students">
             Студенты
             {activeParticipants.length > 0 && (
@@ -81,14 +131,17 @@ export function PresenterSidePanel({
             )}
           </TabsTrigger>
           <TabsTrigger value="notes">Заметки</TabsTrigger>
-          <TabsTrigger value="questions">
-            Вопросы
-            {questions.length > 0 && (
-              <span className="tab-badge tab-badge--alert">{questions.length}</span>
-            )}
-          </TabsTrigger>
         </TabsList>
         <TabsContent value="students" className="live-panel">
+          {participantsError && (
+            <div className="teacher-remote-data-error" role="status">
+              Не удалось обновить участников.{" "}
+              {participants.length > 0 ? "Показаны последние данные." : ""}{" "}
+              <button type="button" onClick={onRetryParticipants}>
+                Повторить
+              </button>
+            </div>
+          )}
           <div className="section-heading">
             <h2>Студенты</h2>
             <span className="badge">
@@ -110,7 +163,14 @@ export function PresenterSidePanel({
           <LiveSlideNotesEditor courseId={courseId} deckId={slide.deckId} slide={slide} />
         </TabsContent>
         <TabsContent value="questions" className="live-panel">
-          <TeacherRemoteQuestions courseId={courseId} sessionId={sessionId} questions={questions} />
+          <TeacherRemoteQuestions
+            courseId={courseId}
+            sessionId={sessionId}
+            questions={questions}
+            isLoading={questionsLoading}
+            loadError={questionsError}
+            onRetry={onRetryQuestions}
+          />
         </TabsContent>
       </Tabs>
     </aside>

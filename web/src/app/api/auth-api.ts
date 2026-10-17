@@ -7,6 +7,13 @@ type AuthResponse = components["schemas"]["AuthResponse"];
 export type MaxAuthResponse = components["schemas"]["MaxAuthResponse"];
 type UserProfile = components["schemas"]["UserProfile"];
 type MaxAuthRequest = components["schemas"]["MaxAuthRequest"] & { linkCode?: string };
+type ChangePasswordRequest = components["schemas"]["ChangePasswordRequest"];
+
+export type MaxLinkPreview = components["schemas"]["MaxLinkPreview"];
+
+export type MaxLinkPreviewRequest =
+  | { initData: string; email: string; password: string; linkCode?: never }
+  | { initData: string; linkCode: string; email?: never; password?: never };
 
 export interface MaxLoginResult {
   auth: MaxAuthResponse;
@@ -43,6 +50,45 @@ export async function registerByInvitation(
   const data: AuthResponse = await res.json();
   setStoredAuth({ accessToken: data.accessToken });
   return data;
+}
+
+export async function changePassword(request: ChangePasswordRequest): Promise<void> {
+  await apiFetch("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function previewMaxLink(request: MaxLinkPreviewRequest): Promise<MaxLinkPreview> {
+  const response = await apiFetch("/auth/max/link-preview", {
+    method: "POST",
+    body: JSON.stringify(request),
+    skipAuthorization: true,
+    skipAuthRefresh: true
+  });
+  return response.json() as Promise<MaxLinkPreview>;
+}
+
+export async function confirmMaxLink(
+  initData: string,
+  confirmationToken: string
+): Promise<MaxLoginResult> {
+  clearStoredAuth();
+  try {
+    const response = await apiFetch("/auth/max/link-confirm", {
+      method: "POST",
+      body: JSON.stringify({ initData, confirmationToken }),
+      skipAuthorization: true,
+      skipAuthRefresh: true
+    });
+    const auth = (await response.json()) as MaxAuthResponse;
+    setStoredAuth({ accessToken: auth.accessToken });
+    const user = await getCurrentUser();
+    return { auth, user };
+  } catch (error) {
+    clearStoredAuth();
+    throw error;
+  }
 }
 
 export async function refreshAuth(): Promise<AuthResponse | null> {

@@ -7,6 +7,11 @@ export type OrganizationView = components["schemas"]["OrganizationView"];
 export type UnitKind = "FACULTY" | "DEPARTMENT" | "UNIT";
 export type UnitRole = "MEMBER" | "MANAGER";
 
+export interface MoveOrganizationMembersRequest {
+  personIds: string[];
+  unitId: string | null;
+}
+
 export async function getOrganization(): Promise<OrganizationView> {
   const response = await apiFetch("/organization");
   return response.json() as Promise<OrganizationView>;
@@ -42,5 +47,12 @@ export async function assignOrganizationMember(
   await apiFetch(`/organization/members/${personId}`, {
     method: "PUT",
     body: JSON.stringify({ unitId, unitRole })
+  });
+}
+
+export async function moveOrganizationMembers(body: MoveOrganizationMembersRequest): Promise<void> {
+  await apiFetch("/organization/members/move", {
+    method: "POST",
+    body: JSON.stringify(body)
   });
 }

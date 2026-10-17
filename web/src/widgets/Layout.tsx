@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { BookOpen, Building2, Home, Link2, LogOut, Menu, Shield, UserRound, X } from "lucide-react";
+import { BookOpen, Home, Link2, LogOut, Menu, Shield, UserRound, Users, X } from "lucide-react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthContext";
 import { landingPath } from "../app/routes";
@@ -14,8 +14,8 @@ const navItems = [
   { path: "/courses", icon: BookOpen, label: "Курсы", roles: ["ADMIN", "LECTURER", "ASSISTANT"] },
   {
     path: "/organization",
-    icon: Building2,
-    label: "Сотрудники и группы",
+    icon: Users,
+    label: "Сотрудники",
     roles: ["ADMIN", "LECTURER", "ASSISTANT"]
   },
   {
@@ -24,7 +24,7 @@ const navItems = [
     label: "MAX и вход",
     roles: ["ADMIN", "LECTURER", "ASSISTANT"]
   },
-  { path: "/admin/users", icon: Shield, label: "Пользователи", roles: ["ADMIN"] }
+  { path: "/admin/users", icon: Shield, label: "Учётные записи", roles: ["ADMIN"] }
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -80,14 +80,14 @@ export function Layout({ children }: { children: ReactNode }) {
                       to={item.path}
                       onClick={() => setSidebarOpen(false)}
                       className={({ isActive }) =>
-                        `mb-1 flex min-h-10 items-center gap-3 rounded-md px-3 text-sm transition-colors ${
+                        `mb-1 flex min-h-11 items-center gap-3 rounded-md px-3 text-sm transition-colors ${
                           isActive
                             ? "bg-accent font-semibold text-accent-foreground"
                             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                         }`
                       }
                     >
-                      <Icon className="h-4 w-4" />
+                      <Icon className="h-4 w-4" aria-hidden="true" />
                       <span>{item.label}</span>
                     </NavLink>
                   </TooltipTrigger>

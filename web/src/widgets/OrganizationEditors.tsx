@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, Copy, Search } from "lucide-react";
 import {
   assignOrganizationMember,
+  getOrganizationMembers,
+  moveOrganizationMembers,
   saveOrganizationUnit,
   type OrganizationMember,
   type OrganizationUnit,
@@ -12,6 +14,7 @@ import {
 } from "../app/api/organization-api";
 import { createAdminInvitation } from "../app/api/admin-api";
 import { Button } from "../shared/ui/button";
+import { pluralizeRu } from "../shared/lib/plural";
 import {
   Dialog,
   DialogContent,
@@ -138,6 +141,7 @@ export function OrganizationUnitMoveDialog({
 }) {
   const [parentId, setParentId] = useState(unit.parentId ?? "");
   const [search, setSearch] = useState("");
+  const [managerConfirmed, setManagerConfirmed] = useState(false);
   const descendants = useMemo(() => {
     const found = new Set<string>([unit.id]);
     let changed = true;
@@ -160,6 +164,58 @@ export function OrganizationUnitMoveDialog({
         .toLocaleLowerCase()
         .includes(search.toLocaleLowerCase())
   );
+  const sourceAncestors = getAncestorUnitIds(unit.parentId, units);
+  const targetAncestors = getAncestorUnitIds(parentId || null, units);
+  const sourceOnlyAncestorIds = sourceAncestors.filter((id) => !targetAncestors.includes(id));
+  const targetOnlyAncestorIds = targetAncestors.filter((id) => !sourceAncestors.includes(id));
+  const memberScopeIds = [
+    ...new Set([sourceAncestors[0], targetAncestors[0]].filter((id): id is string => Boolean(id)))
+  ];
+  const managerReview = useQuery({
+    queryKey: ["organization", "members", "unit-move-review", unit.id, ...memberScopeIds],
+    queryFn: async () => {
+      const scopes = await Promise.all(
+        memberScopeIds.map((scopeId) => getOrganizationMembers(scopeId))
+      );
+      return [...new Map(scopes.flat().map((member) => [member.id, member])).values()];
+    },
+    enabled: memberScopeIds.length > 0
+  });
+  const affectedManagers = (managerReview.data ?? []).filter(
+    (member) =>
+      member.unitRole === "MANAGER" &&
+      member.unitId !== null &&
+      (sourceOnlyAncestorIds.includes(member.unitId) ||
+        targetOnlyAncestorIds.includes(member.unitId))
+  );
+  const losingManagers = affectedManagers.filter(
+    (member) => member.unitId !== null && sourceOnlyAncestorIds.includes(member.unitId)
+  );
+  const gainingManagers = affectedManagers.filter(
+    (member) => member.unitId !== null && targetOnlyAncestorIds.includes(member.unitId)
+  );
+  const losingManagerGroups = [
+    ...new Set(
+      losingManagers.flatMap((member) =>
+        member.unitId ? [units.find((candidate) => candidate.id === member.unitId)?.name ?? ""] : []
+      )
+    )
+  ].filter(Boolean);
+  const gainingManagerGroups = [
+    ...new Set(
+      gainingManagers.flatMap((member) =>
+        member.unitId ? [units.find((candidate) => candidate.id === member.unitId)?.name ?? ""] : []
+      )
+    )
+  ].filter(Boolean);
+  const parentChanged = parentId !== (unit.parentId ?? "");
+  const managementChanges = parentChanged && affectedManagers.length > 0;
+  const destinationParent = units.find((candidate) => candidate.id === parentId);
+  const destinationPath = destinationParent
+    ? `${groupPath(destinationParent, units)} › ${unit.name}`
+    : `Верхний уровень › ${unit.name}`;
+  const reviewPending = memberScopeIds.length > 0 && managerReview.isFetching;
+  const reviewError = memberScopeIds.length > 0 && managerReview.isError;
   const mutation = useMutation({
     mutationFn: () =>
       saveOrganizationUnit(unit.id, {
@@ -175,9 +231,27 @@ export function OrganizationUnitMoveDialog({
       title={`Переместить «${unit.name}»`}
       description="Вместе с группой переместятся вложенные группы и сотрудники."
       onClose={() => !mutation.isPending && onClose()}
-      className="org-dialog--picker"
+      className="org-dialog--picker org-unit-move-dialog"
     >
       <div className="org-dialog-body">
+        <div className="org-bulk-move-result org-unit-move-review">
+          <span>Из</span>
+          <strong>{groupPath(unit, units)}</strong>
+          <span>В</span>
+          <strong>{destinationPath}</strong>
+          <span>Состав</span>
+          <strong>
+            {unit.totalMembersCount}{" "}
+            {pluralizeRu(unit.totalMembersCount, "сотрудник", "сотрудника", "сотрудников")} ·{" "}
+            {descendants.size - 1}{" "}
+            {pluralizeRu(
+              descendants.size - 1,
+              "вложенная группа",
+              "вложенные группы",
+              "вложенных групп"
+            )}
+          </strong>
+        </div>
         <label className="org-search">
           <Search size={16} aria-hidden="true" />
           <span className="sr-only">Найти родительскую группу</span>
@@ -194,7 +268,10 @@ export function OrganizationUnitMoveDialog({
               label="Верхний уровень"
               detail="Без родительской группы"
               selected={!parentId}
-              onSelect={() => setParentId("")}
+              onSelect={() => {
+                setParentId("");
+                setManagerConfirmed(false);
+              }}
             />
           )}
           {candidates.map((candidate) => (
@@ -204,11 +281,68 @@ export function OrganizationUnitMoveDialog({
               label={candidate.name}
               detail={groupPath(candidate, units)}
               selected={parentId === candidate.id}
-              onSelect={() => setParentId(candidate.id)}
+              onSelect={() => {
+                setParentId(candidate.id);
+                setManagerConfirmed(false);
+              }}
             />
           ))}
           {candidates.length === 0 && <p className="org-picker-empty">Группы не найдены.</p>}
         </div>
+        {managementChanges && (
+          <>
+            <p className="org-inline-note" role="status">
+              {losingManagers.length > 0 && (
+                <>
+                  У {losingManagers.length}{" "}
+                  {pluralizeRu(
+                    losingManagers.length,
+                    "руководителя",
+                    "руководителей",
+                    "руководителей"
+                  )}{" "}
+                  из {losingManagerGroups.map((name) => "«" + name + "»").join(", ")} область
+                  управления уменьшится.
+                </>
+              )}
+              {gainingManagers.length > 0 && (
+                <>
+                  {losingManagers.length > 0 ? " У " : "У "}
+                  {gainingManagers.length}{" "}
+                  {pluralizeRu(
+                    gainingManagers.length,
+                    "руководителя",
+                    "руководителей",
+                    "руководителей"
+                  )}{" "}
+                  из {gainingManagerGroups.map((name) => "«" + name + "»").join(", ")} область
+                  управления расширится.
+                </>
+              )}
+            </p>
+            <label className="org-manager-consent">
+              <input
+                type="checkbox"
+                checked={managerConfirmed}
+                onChange={(event) => setManagerConfirmed(event.target.checked)}
+              />
+              <span>Подтверждаю изменение области управления при переносе группы.</span>
+            </label>
+          </>
+        )}
+        {reviewPending && (
+          <p className="org-inline-state" role="status">
+            Проверяем изменение области управления…
+          </p>
+        )}
+        {reviewError && (
+          <div className="org-state org-state--inline" role="alert">
+            <p>Не удалось проверить изменение прав руководителей.</p>
+            <Button variant="outline" onClick={() => void managerReview.refetch()}>
+              Попробовать снова
+            </Button>
+          </div>
+        )}
       </div>
       <DialogFooter className="org-dialog-actions">
         <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
@@ -216,7 +350,13 @@ export function OrganizationUnitMoveDialog({
         </Button>
         <Button
           onClick={() => mutation.mutate()}
-          disabled={parentId === (unit.parentId ?? "") || mutation.isPending}
+          disabled={
+            parentId === (unit.parentId ?? "") ||
+            mutation.isPending ||
+            reviewPending ||
+            reviewError ||
+            (managementChanges && !managerConfirmed)
+          }
         >
           {mutation.isPending ? "Перемещение…" : "Переместить"}
         </Button>
@@ -252,6 +392,7 @@ export function OrganizationMemberEditor({
   );
   const [unitRole, setUnitRole] = useState<UnitRole>(member?.unitRole ?? "MEMBER");
   const [search, setSearch] = useState("");
+  const [managerConfirmed, setManagerConfirmed] = useState(false);
   const person = member ?? people.find((item) => item.id === personId);
   const choices = people.filter(
     (item) =>
@@ -284,7 +425,17 @@ export function OrganizationMemberEditor({
           ? "Переместить сотрудника"
           : "Права доступа";
   const targetName = units.find((unit) => unit.id === unitId)?.name ?? "Без группы";
-  const sourceName = person?.unitName ?? "без группы";
+  const sourceUnit = units.find((unit) => unit.id === person?.unitId);
+  const sourceName = sourceUnit ? groupPath(sourceUnit, units) : "Без группы";
+  const targetPath = units.find((unit) => unit.id === unitId);
+  const destinationName = targetPath ? groupPath(targetPath, units) : "Без группы";
+  const managerMoveChangesScope =
+    Boolean(person?.unitRole === "MANAGER") &&
+    (action === "add" || action === "move" || action === "move-root") &&
+    (unitId || null) !== (person?.unitId ?? null);
+  const managementChanges =
+    managerMoveChangesScope ||
+    Boolean(action === "access" && member?.unitRole !== "MANAGER" && unitRole === "MANAGER");
   const requiresChoice = action === "add" || action === "move-root";
   return (
     <DialogShell
@@ -319,6 +470,7 @@ export function OrganizationMemberEditor({
                 aria-pressed={personId === candidate.id}
                 onClick={() => {
                   setPersonId(candidate.id);
+                  setManagerConfirmed(false);
                   setUnitRole(
                     action === "move-root" || !targetUnitId
                       ? "MEMBER"
@@ -336,6 +488,30 @@ export function OrganizationMemberEditor({
             ))}
             {choices.length === 0 && <p className="org-picker-empty">Сотрудники не найдены.</p>}
           </div>
+          {managementChanges && (
+            <label className="org-manager-consent">
+              <input
+                type="checkbox"
+                checked={managerConfirmed}
+                onChange={(event) => setManagerConfirmed(event.target.checked)}
+              />
+              <span>
+                {unitId
+                  ? `Подтверждаю изменение области управления на «${destinationName}» и вложенные группы.`
+                  : "Подтверждаю снятие прав руководителя."}
+              </span>
+            </label>
+          )}
+          {person && person.unitId !== (targetUnitId ?? null) && (
+            <p className="org-dialog-context">
+              {person.displayName}: «{sourceName}» → «{targetName}».{" "}
+              {person.unitRole === "MANAGER" && !unitId
+                ? "Руководство будет снято."
+                : "Доступ «" +
+                  (person.unitRole === "MANAGER" ? "руководитель" : "сотрудник") +
+                  "» сохранится."}
+            </p>
+          )}
         </div>
       ) : (
         <div className="org-dialog-form org-dialog-form--static">
@@ -364,6 +540,7 @@ export function OrganizationMemberEditor({
                     onSelect={() => {
                       setUnitId("");
                       setUnitRole("MEMBER");
+                      setManagerConfirmed(false);
                     }}
                   />
                 )}
@@ -385,6 +562,7 @@ export function OrganizationMemberEditor({
                       onSelect={() => {
                         setUnitId(unit.id);
                         setUnitRole(member?.unitRole ?? "MEMBER");
+                        setManagerConfirmed(false);
                       }}
                     />
                   ))}
@@ -399,7 +577,10 @@ export function OrganizationMemberEditor({
                   type="radio"
                   name="unit-role"
                   checked={unitRole === "MEMBER"}
-                  onChange={() => setUnitRole("MEMBER")}
+                  onChange={() => {
+                    setUnitRole("MEMBER");
+                    setManagerConfirmed(false);
+                  }}
                 />
                 <span>
                   <strong>Сотрудник</strong>
@@ -411,7 +592,10 @@ export function OrganizationMemberEditor({
                   type="radio"
                   name="unit-role"
                   checked={unitRole === "MANAGER"}
-                  onChange={() => setUnitRole("MANAGER")}
+                  onChange={() => {
+                    setUnitRole("MANAGER");
+                    setManagerConfirmed(false);
+                  }}
                   disabled={!administrator}
                 />
                 <span>
@@ -420,21 +604,42 @@ export function OrganizationMemberEditor({
                 </span>
               </label>
               {!administrator && <small>Назначать руководителей может только администратор.</small>}
+              {action === "access" && unitRole === "MANAGER" && member?.unitRole !== "MANAGER" && (
+                <label className="org-manager-consent">
+                  <input
+                    type="checkbox"
+                    checked={managerConfirmed}
+                    onChange={(event) => setManagerConfirmed(event.target.checked)}
+                  />
+                  <span>
+                    Подтверждаю, что сотрудник будет управлять этой группой и всеми вложенными
+                    группами.
+                  </span>
+                </label>
+              )}
             </fieldset>
           )}
-          {action === "move" &&
-            person?.unitRole === "MANAGER" &&
-            unitId !== person.unitId &&
-            (unitId ? (
+          {action === "move" && person?.unitRole === "MANAGER" && unitId !== person.unitId && (
+            <>
               <p className="org-inline-note" role="status">
-                У сотрудника сохранится доступ руководителя. После переноса область его управления
-                будет соответствовать новой группе.
+                {unitId
+                  ? `Область управления изменится на «${destinationName}» и вложенные группы.`
+                  : "При переносе в «Без группы» права руководителя будут сняты."}
               </p>
-            ) : (
-              <p className="org-inline-note" role="status">
-                При переносе в список «Без группы» права руководителя будут сняты.
-              </p>
-            ))}
+              <label className="org-manager-consent">
+                <input
+                  type="checkbox"
+                  checked={managerConfirmed}
+                  onChange={(event) => setManagerConfirmed(event.target.checked)}
+                />
+                <span>
+                  {unitId
+                    ? "Подтверждаю изменение области управления."
+                    : "Подтверждаю снятие прав руководителя."}
+                </span>
+              </label>
+            </>
+          )}
         </div>
       )}
       <DialogFooter className="org-dialog-actions">
@@ -448,6 +653,7 @@ export function OrganizationMemberEditor({
             !personId ||
             !person ||
             (action === "access" && !administrator) ||
+            (managementChanges && !managerConfirmed) ||
             (action === "move" &&
               unitId === (member?.unitId ?? "") &&
               unitRole === (member?.unitRole ?? "MEMBER"))
@@ -464,12 +670,152 @@ export function OrganizationMemberEditor({
                   : "Сохранить доступ"}
         </Button>
       </DialogFooter>
-      {requiresChoice && person && person.unitId !== (targetUnitId ?? null) && (
-        <p className="org-dialog-context">
-          {person.displayName}: «{sourceName}» → «{targetName}». Доступ «
-          {person.unitRole === "MANAGER" ? "руководитель" : "сотрудник"}» сохранится.
-        </p>
-      )}
+    </DialogShell>
+  );
+}
+
+export function OrganizationBulkMemberMoveDialog({
+  members,
+  units,
+  onClose,
+  onSaved
+}: {
+  members: OrganizationMember[];
+  units: OrganizationUnit[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [unitId, setUnitId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [managerConfirmed, setManagerConfirmed] = useState(false);
+  const managerMembers = members.filter((member) => member.unitRole === "MANAGER");
+  const hasMove = unitId !== null && members.some((member) => member.unitId !== (unitId || null));
+  const managerScopeChanges =
+    unitId !== null &&
+    managerMembers.length > 0 &&
+    managerMembers.some((member) => member.unitId !== (unitId || null));
+  const candidates = units.filter((unit) =>
+    `${unit.name} ${groupPath(unit, units)}`
+      .toLocaleLowerCase()
+      .includes(search.toLocaleLowerCase())
+  );
+  const mutation = useMutation({
+    mutationFn: () =>
+      moveOrganizationMembers({
+        personIds: members.map((member) => member.id),
+        unitId: unitId || null
+      }),
+    onSuccess: () => {
+      onSaved();
+      toast.success(
+        `${members.length} ${members.length === 1 ? "сотрудник перемещён" : "сотрудников перемещены"}`
+      );
+    },
+    onError: (error) =>
+      toast.error(userErrorMessage(error, "Не удалось переместить сотрудников. Состав не изменён."))
+  });
+  const destination = units.find((unit) => unit.id === unitId);
+  return (
+    <DialogShell
+      title={`Переместить сотрудников: ${members.length}`}
+      description="Состав будет перемещён одной операцией. Доступ в группе сохранится у каждого сотрудника."
+      onClose={() => !mutation.isPending && onClose()}
+      className="org-dialog--picker org-bulk-move-dialog"
+    >
+      <div className="org-dialog-body">
+        <div className="org-bulk-move-review">
+          <strong>Сотрудники</strong>
+          <ul>
+            {members.map((member) => (
+              <li key={member.id}>
+                <span>{member.displayName}</span>
+                <small>
+                  {member.email} · {member.unitName ?? "Без группы"}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <label className="org-search">
+          <Search size={16} aria-hidden="true" />
+          <span className="sr-only">Найти группу назначения</span>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Найти группу"
+          />
+        </label>
+        <div className="org-picker-list" role="radiogroup" aria-label="Место назначения">
+          <PickerOption
+            name="bulk-member-destination"
+            label="Без группы"
+            detail="Общий список сотрудников"
+            selected={unitId === ""}
+            onSelect={() => {
+              setUnitId("");
+              setManagerConfirmed(false);
+            }}
+          />
+          {candidates.map((unit) => (
+            <PickerOption
+              name="bulk-member-destination"
+              key={unit.id}
+              label={unit.name}
+              detail={groupPath(unit, units)}
+              selected={unitId === unit.id}
+              onSelect={() => {
+                setUnitId(unit.id);
+                setManagerConfirmed(false);
+              }}
+            />
+          ))}
+          {candidates.length === 0 && <p className="org-picker-empty">Группы не найдены.</p>}
+        </div>
+        <div className="org-bulk-move-result">
+          <span>Из</span>
+          <strong>{members.length} выбранных сотрудников</strong>
+          <span>В</span>
+          <strong>
+            {unitId === null
+              ? "Выберите место назначения"
+              : destination
+                ? groupPath(destination, units)
+                : "Без группы"}
+          </strong>
+          <span>Доступ</span>
+          <strong>Сохранится для каждого; в «Без группы» руководство снимается</strong>
+        </div>
+        {managerScopeChanges && (
+          <label className="org-manager-consent">
+            <input
+              type="checkbox"
+              checked={managerConfirmed}
+              onChange={(event) => setManagerConfirmed(event.target.checked)}
+            />
+            <span>
+              Подтверждаю изменение области управления для {managerMembers.length}{" "}
+              {pluralizeRu(managerMembers.length, "руководителя", "руководителей", "руководителей")}
+              {unitId ? " согласно новому месту" : ", руководство будет снято"}.
+            </span>
+          </label>
+        )}
+      </div>
+      <DialogFooter className="org-dialog-actions">
+        <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+          Отмена
+        </Button>
+        <Button
+          onClick={() => mutation.mutate()}
+          disabled={
+            mutation.isPending ||
+            !members.length ||
+            !hasMove ||
+            (managerScopeChanges && !managerConfirmed)
+          }
+        >
+          {mutation.isPending ? "Перемещение…" : `Переместить: ${members.length}`}
+        </Button>
+      </DialogFooter>
     </DialogShell>
   );
 }
@@ -602,4 +948,16 @@ function groupPath(unit: OrganizationUnit, units: OrganizationUnit[]) {
     parent = units.find((candidate) => candidate.id === parent?.parentId);
   }
   return names.join(" › ");
+}
+
+function getAncestorUnitIds(parentId: string | null, units: OrganizationUnit[]) {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  let parent = units.find((candidate) => candidate.id === parentId);
+  while (parent && !seen.has(parent.id)) {
+    seen.add(parent.id);
+    ids.unshift(parent.id);
+    parent = units.find((candidate) => candidate.id === parent?.parentId);
+  }
+  return ids;
 }

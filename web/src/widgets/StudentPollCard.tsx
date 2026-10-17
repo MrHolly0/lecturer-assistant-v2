@@ -1,4 +1,5 @@
 import { CheckCircle2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { StudentActivePoll } from "../app/api/student-api";
 import { Button } from "../shared/ui/button";
 import { PollOptionText } from "./PollOptionText";
@@ -18,6 +19,8 @@ export function StudentPollCard({
   isPending,
   onAnswer
 }: StudentPollCardProps) {
+  const [selectedOptionIdx, setSelectedOptionIdx] = useState<number | null>(null);
+  useEffect(() => setSelectedOptionIdx(null), [poll.pollId]);
   return (
     <div className="student-poll-card">
       <div className="student-poll-heading">
@@ -27,21 +30,30 @@ export function StudentPollCard({
         <h2 className="student-poll-question">{poll.questionText}</h2>
       </div>
       {poll.status === "OPEN" && myVote === null ? (
-        <div className="student-poll-options">
+        <div className="student-poll-options" role="radiogroup" aria-label="Варианты ответа">
           {poll.options.map((option, idx) => (
-            <article key={idx} className="student-poll-option-card">
-              <PollOptionText text={option} />
-              <Button
-                type="button"
-                variant="outline"
-                className="student-poll-option"
+            <label
+              key={idx}
+              className={`student-poll-option-choice${selectedOptionIdx === idx ? " student-poll-option-choice--selected" : ""}`}
+            >
+              <input
+                type="radio"
+                name={`poll-${poll.pollId}`}
+                value={idx}
+                checked={selectedOptionIdx === idx}
                 disabled={isPending || !isLive}
-                onClick={() => onAnswer(idx)}
-              >
-                Выбрать вариант {idx + 1}
-              </Button>
-            </article>
+                onChange={() => setSelectedOptionIdx(idx)}
+              />
+              <PollOptionText text={option} />
+            </label>
           ))}
+          <Button
+            type="button"
+            disabled={selectedOptionIdx === null || isPending || !isLive}
+            onClick={() => selectedOptionIdx !== null && onAnswer(selectedOptionIdx)}
+          >
+            {isPending ? "Отправляем ответ…" : "Отправить ответ"}
+          </Button>
         </div>
       ) : poll.status === "OPEN" ? (
         <div className="student-poll-waiting" role="status">

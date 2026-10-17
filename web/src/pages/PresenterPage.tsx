@@ -1,20 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronsLeft, ChevronsRight } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { ChevronsLeft, ChevronsRight, Images } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
 import { getStudentEngagement } from "../app/api/student-api";
 import {
   changeLiveSessionSlide,
-  connectLiveSession,
   endLiveSession,
-  getLiveSession,
   listSessionParticipants,
   pauseLiveSession,
   resumeLiveSession,
-  saveLiveSessionAnnotations,
-  type LiveSession
+  saveLiveSessionAnnotations
 } from "../app/api/live-api";
 import { precacheDeck } from "../app/offline";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
@@ -23,28 +20,26 @@ import { PresenterSessionSummary } from "../widgets/PresenterSessionSummary";
 import { PresenterTopbar } from "../widgets/PresenterTopbar";
 import { Button } from "../shared/ui/button";
 import { useSessionTimers } from "../app/live/useSessionTimers";
+import { useLiveSession } from "../app/live/useLiveSession";
 
 export function PresenterPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
-  const qc = useQueryClient();
-  const channelRef = useRef<BroadcastChannel | null>(null);
   const slideInFlightRef = useRef(false);
   const slideStripRef = useRef<HTMLDivElement | null>(null);
-  const [localSession, setLocalSession] = useState<LiveSession | null>(null);
   const [drawing, setDrawing] = useState(false);
+  const [previewIdx, setPreviewIdx] = useState<number | null>(null);
+  const [allSlidesOpen, setAllSlidesOpen] = useState(false);
+  const [slideErrorTarget, setSlideErrorTarget] = useState<number | null>(null);
+  const goRef = useRef<(idx: number) => void>(() => undefined);
 
   useEffect(() => {
     if (!drawing || !window.matchMedia("(max-width: 900px)").matches) return;
     window.scrollTo(0, 0);
   }, [drawing]);
 
-  const sessionQuery = useQuery({
-    queryKey: ["live", courseId, sessionId],
-    queryFn: () => getLiveSession(courseId, sessionId)
-  });
-  const session = localSession ?? sessionQuery.data;
+  const live = useLiveSession(courseId, sessionId);
+  const session = live.session;
   const paused = session?.status === "PAUSED";
   const { elapsed, slideElapsed } = useSessionTimers(session);
-  const liveSessionId = session?.id;
   const deckQuery = useQuery({
     queryKey: ["content", courseId, "decks", session?.deckId],
     queryFn: () => getDeck(courseId, session?.deckId ?? ""),
@@ -67,38 +62,6 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     enabled: Boolean(sessionId),
     refetchInterval: 3000
   });
-
-  useEffect(() => {
-    if (sessionQuery.data) setLocalSession(sessionQuery.data);
-  }, [sessionQuery.data]);
-
-  useEffect(() => {
-    if (!liveSessionId) return;
-    const channel = new BroadcastChannel(`session-${liveSessionId}`);
-    channelRef.current = channel;
-    const disconnect = connectLiveSession(liveSessionId, (message) => {
-      setLocalSession(message.session);
-      channel.postMessage(message.session);
-      void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId] });
-      if (message.type.startsWith("interaction.poll")) {
-        void qc.invalidateQueries({ queryKey: ["poll", courseId, sessionId] });
-      }
-      if (message.type.startsWith("participant.")) {
-        void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "participants"] });
-        if (message.type === "participant.joined") toast("Студент подключился", { duration: 2500 });
-      }
-      if (message.type === "qa.question_asked") {
-        void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "engagement"] });
-        toast.warning("Новый вопрос от студента", { duration: 5000 });
-      } else if (message.type === "feedback.signal_submitted") {
-        void qc.invalidateQueries({ queryKey: ["live", courseId, sessionId, "engagement"] });
-      }
-    });
-    return () => {
-      disconnect();
-      channel.close();
-    };
-  }, [courseId, liveSessionId, qc, sessionId]);
 
   useEffect(() => {
     if (imageUrls.length > 0) precacheDeck(imageUrls);
@@ -126,10 +89,11 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   const resumeMut = useMutation({ mutationFn: () => resumeLiveSession(courseId, sessionId) });
   const endMut = useMutation({ mutationFn: () => endLiveSession(courseId, sessionId) });
 
-  function setSession(next: LiveSession) {
-    setLocalSession(next);
-    channelRef.current?.postMessage(next);
-  }
+  const setSession = live.setSession;
+
+  useEffect(() => {
+    setPreviewIdx(null);
+  }, [session?.currentSlideIdx]);
 
   function go(idx: number) {
     if (
@@ -146,8 +110,12 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     const next = { ...session, currentSlideIdx: idx };
     setSession(next);
     slideMut.mutate(idx, {
-      onSuccess: (saved) => setSession(saved),
+      onSuccess: (saved) => {
+        setSlideErrorTarget(null);
+        setSession(saved);
+      },
       onError: () => {
+        setSlideErrorTarget(idx);
         setSession(session);
         toast.error("Не удалось переключить слайд.");
       },
@@ -156,9 +124,40 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       }
     });
   }
+  goRef.current = go;
+
+  useEffect(() => {
+    const handleSlideKeys = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || paused || drawing) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.isContentEditable ||
+        target?.closest("input, textarea, select, [role='dialog'], [data-radix-collection-item]")
+      )
+        return;
+      if (event.key === "ArrowLeft" && session) {
+        event.preventDefault();
+        goRef.current(session.currentSlideIdx - 1);
+      } else if (event.key === "ArrowRight" && session) {
+        event.preventDefault();
+        goRef.current(session.currentSlideIdx + 1);
+      }
+    };
+    window.addEventListener("keydown", handleSlideKeys);
+    return () => window.removeEventListener("keydown", handleSlideKeys);
+  }, [drawing, paused, session]);
 
   if (!session) {
-    return <div className="presenter-shell">Загрузка...</div>;
+    return (
+      <div className="presenter-shell presenter-live-error">
+        <p>{live.syncError ? "Не удалось обновить занятие." : "Подключаемся к занятию…"}</p>
+        {live.syncError && (
+          <Button type="button" onClick={live.refresh}>
+            Повторить
+          </Button>
+        )}
+      </div>
+    );
   }
 
   if (session.status === "SCHEDULED") {
@@ -169,18 +168,34 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
     return <PresenterSessionSummary courseId={courseId} session={session} />;
   }
 
-  if (!deck || !slide) return <div className="presenter-shell">Загрузка...</div>;
+  if (deckQuery.isError) {
+    return (
+      <div className="presenter-shell presenter-live-error">
+        <p>Не удалось загрузить слайды.</p>
+        <Button type="button" onClick={() => void deckQuery.refetch()}>
+          Повторить
+        </Button>
+      </div>
+    );
+  }
+  if (!deck || !slide) return <div className="presenter-shell">Загружаем слайды…</div>;
 
   return (
     <div className={`presenter-shell${drawing ? " presenter-shell--drawing" : ""}`}>
       <PresenterTopbar
         courseId={courseId}
         session={session}
+        connection={live.connection}
+        syncedAt={live.syncedAt}
+        syncing={live.syncing}
+        syncError={live.syncError}
+        onRefresh={() => void live.refresh()}
         drawing={drawing}
         pausePending={pauseMut.isPending}
         resumePending={resumeMut.isPending}
         endPending={endMut.isPending}
         onDrawingChange={setDrawing}
+        onSessionChange={setSession}
         onPause={() =>
           pauseMut.mutate(undefined, {
             onSuccess: (saved) => setSession(saved),
@@ -213,7 +228,13 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
                 if (paused) return;
                 const next = { ...session, annotations };
                 setSession(next);
-                annotationMut.mutate(annotations, { onSuccess: (saved) => setSession(saved) });
+                annotationMut.mutate(annotations, {
+                  onSuccess: (saved) => setSession(saved),
+                  onError: () => {
+                    setSession(session);
+                    toast.error("Не удалось сохранить рисунок. Повторите действие.");
+                  }
+                });
               }}
             />
             {paused && <div className="presenter-pause-banner">Показ приостановлен</div>}
@@ -228,7 +249,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
               Назад
             </Button>
             <span>
-              {session.currentSlideIdx} / {deck.slides.length}
+              Слайд {session.currentSlideIdx} из {deck.slides.length}
             </span>
             <Button
               type="button"
@@ -240,28 +261,57 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
               Далее
             </Button>
           </div>
+          {slideErrorTarget !== null && (
+            <div className="presenter-slide-error" role="alert">
+              <span>Слайд не изменён в эфире.</span>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={slideMut.isPending}
+                onClick={() => go(slideErrorTarget)}
+              >
+                Повторить
+              </Button>
+            </div>
+          )}
+          {previewIdx !== null && previewIdx !== session.currentSlideIdx && (
+            <div className="presenter-preview-action">
+              <span>Предпросмотр слайда {previewIdx}. Показ аудитории не изменён.</span>
+              <Button
+                type="button"
+                disabled={paused || slideMut.isPending}
+                onClick={() => go(previewIdx)}
+              >
+                Показать выбранный слайд
+              </Button>
+            </div>
+          )}
           <div className="presenter-strip-controls">
             <Button
               type="button"
               variant="outline"
-              aria-label="Перейти к первому слайду"
-              title="Перейти к первому слайду"
+              aria-label="Прокрутить миниатюры к началу"
+              title="Прокрутить миниатюры к началу"
               onClick={() => {
                 slideStripRef.current?.scrollTo({ left: 0, behavior: "smooth" });
-                go(1);
               }}
             >
               <ChevronsLeft size={18} aria-hidden="true" />
             </Button>
-            <div className="presenter-slide-strip" ref={slideStripRef} aria-label="Слайды лекции">
+            <div
+              className={`presenter-slide-strip${allSlidesOpen ? " presenter-slide-strip--all" : ""}`}
+              ref={slideStripRef}
+              aria-label="Предпросмотр слайдов лекции"
+            >
               {deck.slides.map((item, index) => (
                 <button
                   key={item.id}
                   type="button"
                   disabled={paused || slideMut.isPending}
-                  className={`slide-thumb ${item.idx === session.currentSlideIdx ? "slide-thumb--active" : ""}`}
-                  onClick={() => go(item.idx)}
-                  title={`Перейти к слайду ${item.idx}`}
+                  className={`slide-thumb ${item.idx === session.currentSlideIdx ? "slide-thumb--active" : ""} ${item.idx === previewIdx ? "slide-thumb--preview" : ""}`}
+                  onClick={() => setPreviewIdx(item.idx)}
+                  aria-pressed={item.idx === previewIdx}
+                  title={`Предпросмотр слайда ${item.idx}`}
                 >
                   <img src={slideImageUrl(item)} alt={`Слайд ${item.idx}`} />
                   <span className="slide-thumb__number">{index + 1}</span>
@@ -271,17 +321,36 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
             <Button
               type="button"
               variant="outline"
-              aria-label="Перейти к последнему слайду"
-              title="Перейти к последнему слайду"
+              aria-label="Прокрутить миниатюры к концу"
+              title="Прокрутить миниатюры к концу"
               onClick={() => {
                 slideStripRef.current?.scrollTo({
                   left: slideStripRef.current.scrollWidth,
                   behavior: "smooth"
                 });
-                go(deck.slides.length);
               }}
             >
               <ChevronsRight size={18} aria-hidden="true" />
+            </Button>
+          </div>
+          <div className="presenter-deck-secondary">
+            <Button
+              type="button"
+              variant="outline"
+              aria-expanded={allSlidesOpen}
+              onClick={() => setAllSlidesOpen((open) => !open)}
+            >
+              <Images size={17} aria-hidden="true" />{" "}
+              {allSlidesOpen ? "Свернуть слайды" : "Все слайды"}
+            </Button>
+            <Button
+              type="button"
+              variant={drawing ? "default" : "outline"}
+              disabled={paused}
+              aria-pressed={drawing}
+              onClick={() => setDrawing(!drawing)}
+            >
+              Рисовать
             </Button>
           </div>
         </section>
@@ -294,6 +363,14 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
           courseId={courseId}
           sessionId={sessionId}
           paused={paused}
+          questionsLoading={engagementQuery.isLoading}
+          questionsError={engagementQuery.isError}
+          onRetryQuestions={() => void engagementQuery.refetch()}
+          engagementLoading={engagementQuery.isLoading}
+          engagementError={engagementQuery.isError}
+          onRetryEngagement={() => void engagementQuery.refetch()}
+          participantsError={participantsQuery.isError}
+          onRetryParticipants={() => void participantsQuery.refetch()}
         />
       </main>
     </div>

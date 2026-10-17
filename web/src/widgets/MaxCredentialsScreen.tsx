@@ -13,13 +13,15 @@ interface MaxCredentialsScreenProps {
   ) => Promise<void>;
   onStudent: () => void;
   onCode: () => void;
+  error: string | null;
 }
 
 export function MaxCredentialsScreen({
   onLogin,
   onRegister,
   onStudent,
-  onCode
+  onCode,
+  error: externalError
 }: MaxCredentialsScreenProps) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
@@ -57,8 +59,8 @@ export function MaxCredentialsScreen({
           </h1>
           <p className="auth-hint">
             {mode === "login"
-              ? "Войдите по паролю. MAX будет привязан к этому аккаунту вместо прежнего."
-              : "Введите приглашение администратора и задайте пароль. MAX подключится сразу после регистрации."}
+              ? "После проверки пароля вы увидите текущий и выбранный аккаунты и подтвердите привязку MAX."
+              : "После регистрации проверьте аккаунты и подтвердите привязку MAX. Если отменить, учётная запись останется созданной без подключения MAX."}
           </p>
         </header>
         <form className="auth-form" onSubmit={submit}>
@@ -106,17 +108,22 @@ export function MaxCredentialsScreen({
               required
             />
           </label>
-          {error && (
+          {(error ?? externalError) && (
             <p className="form-error" role="alert">
-              {error}
+              {error ?? externalError}
+            </p>
+          )}
+          {error && externalError && externalError !== error && (
+            <p className="form-warning" role="status">
+              {externalError}
             </p>
           )}
           <Button type="submit" disabled={pending}>
             {pending
-              ? "Подключаем MAX…"
+              ? "Проверяем аккаунт…"
               : mode === "login"
-                ? "Войти и подключить MAX"
-                : "Зарегистрироваться и войти"}
+                ? "Проверить аккаунт"
+                : "Создать аккаунт и проверить"}
           </Button>
         </form>
         <div className="max-credentials__other">

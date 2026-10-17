@@ -11,6 +11,7 @@ import { LocalQrCode } from "../widgets/LocalQrCode";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { SessionGroups } from "../widgets/SessionGroups";
+import { Button } from "../shared/ui/button";
 
 /** Экран показа использует только доступное студентам состояние лекции. */
 export function ProjectionPage({ joinCode }: { joinCode: string }) {
@@ -22,8 +23,10 @@ export function ProjectionPage({ joinCode }: { joinCode: string }) {
     enabled: Boolean(code),
     retry: 1
   });
+  const { refetch } = sessionQuery;
   const session = liveSnapshot ?? sessionQuery.data;
   const joinUrl = useMemo(() => buildMaxJoinUrl(code), [code]);
+  const showJoinCode = Boolean(session?.showJoinCode);
 
   useEffect(() => {
     setLiveSnapshot(null);
@@ -31,6 +34,18 @@ export function ProjectionPage({ joinCode }: { joinCode: string }) {
     const connection = connectStudentSession(code, "", setLiveSnapshot, () => undefined);
     return () => connection.disconnect();
   }, [code]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") void refetch();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [refetch]);
 
   useEffect(() => {
     if (session?.status !== "ENDED" && session?.status !== "ARCHIVED") return;
@@ -44,6 +59,9 @@ export function ProjectionPage({ joinCode }: { joinCode: string }) {
       <main className="projection-shell projection-fallback">
         <h1>Не удалось открыть проектор</h1>
         <p>Проверьте ссылку и подключение к сети.</p>
+        <Button type="button" onClick={() => void sessionQuery.refetch()}>
+          Повторить
+        </Button>
       </main>
     );
   }
@@ -62,13 +80,37 @@ export function ProjectionPage({ joinCode }: { joinCode: string }) {
 
   return (
     <main className="projection-shell">
-      <img src={session.currentSlide.imageUrl} alt={`Слайд ${session.currentSlideIdx}`} />
-      <DrawingOverlay
-        slideIdx={session.currentSlideIdx}
-        annotations={session.annotations as LiveAnnotations}
-        active={false}
-        onChange={() => undefined}
-      />
+      {showJoinCode ? (
+        <section
+          className="projection-code projection-code--live"
+          aria-label="Код подключения к занятию"
+        >
+          <span>Подключитесь к занятию</span>
+          <strong>{session.joinCode}</strong>
+          <SessionGroups groups={session.groups} compact />
+          {joinUrl ? (
+            <div className="projection-qr-lockup">
+              <div className="projection-brand">
+                <BrandMark />
+                <span>Lecturer Assistant</span>
+              </div>
+              <LocalQrCode value={joinUrl} label="Открыть лекцию в MAX" />
+            </div>
+          ) : (
+            <small>MAX-бот не настроен</small>
+          )}
+        </section>
+      ) : (
+        <>
+          <img src={session.currentSlide.imageUrl} alt={`Слайд ${session.currentSlideIdx}`} />
+          <DrawingOverlay
+            slideIdx={session.currentSlideIdx}
+            annotations={session.annotations as LiveAnnotations}
+            active={false}
+            onChange={() => undefined}
+          />
+        </>
+      )}
       {session.status === "PAUSED" && (
         <div className="projection-pause-banner" role="status">
           <CirclePause size={24} aria-hidden="true" />

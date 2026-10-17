@@ -46,6 +46,7 @@ import {
 } from "../shared/ui/alert-dialog";
 import { PaginationBar } from "../widgets/ListControls";
 import {
+  OrganizationBulkMemberMoveDialog,
   OrganizationInvitationDialog,
   OrganizationMemberEditor,
   OrganizationUnitEditor,
@@ -71,9 +72,13 @@ export function OrganizationPage() {
   const [params, setParams] = useSearchParams();
   const legacyUnassigned = params.get("unit") === "unassigned";
   const selectedId = legacyUnassigned ? null : params.get("unit");
-  const allDirectory = params.get("view") === "all" || legacyUnassigned;
+  const view = params.get("view") === "groups" || Boolean(selectedId) ? "groups" : "staff";
+  const allDirectory = view === "staff";
   const noGroupOnly = legacyUnassigned || params.get("filter") === "unassigned";
+  const [groupFilter, setGroupFilter] = useState("");
   const [query, setQuery] = useState("");
+  const [selectedPeople, setSelectedPeople] = useState<string[]>([]);
+  const [movingPeople, setMovingPeople] = useState<OrganizationMember[] | null>(null);
   const [unitDraft, setUnitDraft] = useState<UnitDraft | null>(null);
   const [movingUnit, setMovingUnit] = useState<OrganizationUnit | null>(null);
   const [memberDialog, setMemberDialog] = useState<MemberDialog | null>(null);
@@ -82,7 +87,7 @@ export function OrganizationPage() {
   const [removing, setRemoving] = useState<OrganizationMember | null>(null);
   useEffect(() => {
     if (legacyUnassigned) {
-      setParams({ view: "all", filter: "unassigned" }, { replace: true });
+      setParams({ view: "staff", filter: "unassigned" }, { replace: true });
     }
   }, [legacyUnassigned, setParams]);
 
@@ -104,8 +109,22 @@ export function OrganizationPage() {
     enabled: Boolean(organization.data) && administrator
   });
 
+  useEffect(() => {
+    if (organization.data && !administrator && allDirectory) {
+      const firstManageableRoot = units.find(
+        (unit) => unit.canViewMembers && !units.some((parent) => parent.id === unit.parentId)
+      );
+      if (firstManageableRoot)
+        setParams({ view: "groups", unit: firstManageableRoot.id }, { replace: true });
+    }
+  }, [administrator, allDirectory, organization.data, setParams, units]);
+
+  useEffect(() => {
+    setSelectedPeople([]);
+  }, [groupFilter, noGroupOnly, query, selectedId, view]);
+
   const breadcrumbs = selected ? getUnitPath(selected, units) : [];
-  const title = selected?.name ?? (allDirectory ? "Все сотрудники" : "Сотрудники и группы");
+  const title = selected?.name ?? (allDirectory ? "Сотрудники" : "Группы сотрудников");
   const groupChildren = useMemo(
     () => units.filter((unit) => unit.parentId === (selected?.id ?? null)),
     [selected?.id, units]
@@ -131,23 +150,65 @@ export function OrganizationPage() {
     const peopleSource = selected ? roster.data ?? [] : allPeople.data ?? [];
     if (selected) return peopleSource.filter((person) => person.unitId === selected.id);
     if (allDirectory) {
-      return peopleSource.filter((person) => !noGroupOnly || person.unitId === null);
+      return peopleSource.filter((person) => {
+        if (noGroupOnly && person.unitId !== null) return false;
+        if (groupFilter && person.unitId !== groupFilter) return false;
+        return true;
+      });
     }
     if (query.trim() && administrator) return peopleSource;
     return peopleSource.filter((person) => person.unitId === null);
-  }, [administrator, allDirectory, allPeople.data, noGroupOnly, query, roster.data, selected]);
+  }, [
+    administrator,
+    allDirectory,
+    allPeople.data,
+    groupFilter,
+    noGroupOnly,
+    query,
+    roster.data,
+    selected
+  ]);
   const filteredPeople = useMemo(
     () =>
       people.filter((person) =>
-        includesQuery(query, person.displayName, person.email, person.unitName)
+        includesQuery(
+          query,
+          person.displayName,
+          person.email,
+          person.unitName,
+          person.unitId
+            ? units.find((unit) => unit.id === person.unitId)?.name ?? ""
+            : "Без группы",
+          person.unitId
+            ? getUnitPath(units.find((unit) => unit.id === person.unitId)!, units)
+                .map((unit) => unit.name)
+                .join(" ")
+            : ""
+        )
       ),
-    [people, query]
+    [people, query, units]
   );
   const paged = usePagedList(filteredPeople, 20);
+  const selectedMembers = (allPeople.data ?? []).filter((person) =>
+    selectedPeople.includes(person.id)
+  );
+  const pagePeople = paged.pageItems;
+  const allPageSelected =
+    pagePeople.length > 0 && pagePeople.every((person) => selectedPeople.includes(person.id));
 
-  function navigateTo(id: string | null, view: "root" | "all" = "root") {
-    setParams(id ? { unit: id } : view === "all" ? { view: "all" } : {});
+  function togglePageSelection(checked: boolean) {
+    const pageIds = new Set(pagePeople.map((person) => person.id));
+    setSelectedPeople((current) => {
+      const retained = current.filter((id) => !pageIds.has(id));
+      return checked ? [...retained, ...pagePeople.map((person) => person.id)] : retained;
+    });
+  }
+
+  function navigateTo(id: string | null, nextView: "groups" | "staff" = "groups") {
+    setParams(id ? { view: "groups", unit: id } : { view: nextView });
     setQuery("");
+    setGroupFilter("");
+    setSelectedPeople([]);
     paged.setPage(1);
   }
 
@@ -227,11 +288,12 @@ export function OrganizationPage() {
     <div className="page organization-page">
       <header className="org-header">
         <div className="org-header-copy">
-          <h1>Сотрудники и группы</h1>
+          <h1>Сотрудники</h1>
+          <p className="org-page-description">Общий список и группы сотрудников</p>
           {selected && (
-            <nav className="org-breadcrumbs" aria-label="Путь группы">
-              <button type="button" onClick={() => navigateTo(null)}>
-                Сотрудники и группы
+            <nav className="org-breadcrumbs org-breadcrumbs--desktop" aria-label="Путь группы">
+              <button type="button" onClick={() => navigateTo(null, "groups")}>
+                Группы сотрудников
               </button>
               {breadcrumbs.map((unit, index) => (
                 <span className="org-breadcrumb-part" key={unit.id}>
@@ -247,25 +309,82 @@ export function OrganizationPage() {
               ))}
             </nav>
           )}
+          {selected && (
+            <nav className="org-breadcrumbs org-breadcrumbs--mobile" aria-label="Путь группы">
+              {breadcrumbs.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => navigateTo(breadcrumbs[breadcrumbs.length - 2].id)}
+                >
+                  {breadcrumbs[breadcrumbs.length - 2].name}
+                </button>
+              ) : (
+                <button type="button" onClick={() => navigateTo(null, "groups")}>
+                  Группы сотрудников
+                </button>
+              )}
+              <ChevronRight size={14} aria-hidden="true" />
+              <span aria-current="page">{selected.name}</span>
+              {breadcrumbs.length > 2 && (
+                <details className="org-mobile-full-path">
+                  <summary>Весь путь</summary>
+                  <div className="org-mobile-full-path__items">
+                    <button type="button" onClick={() => navigateTo(null, "groups")}>
+                      Группы сотрудников
+                    </button>
+                    {breadcrumbs.map((unit, index) => (
+                      <span className="org-breadcrumb-part" key={unit.id}>
+                        <ChevronRight size={14} aria-hidden="true" />
+                        {index === breadcrumbs.length - 1 ? (
+                          <span aria-current="page">{unit.name}</span>
+                        ) : (
+                          <button type="button" onClick={() => navigateTo(unit.id)}>
+                            {unit.name}
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </nav>
+          )}
         </div>
         <div className="org-header-links">
-          {allDirectory ? (
-            <Button variant="ghost" onClick={() => navigateTo(null)}>
-              <ArrowLeft size={17} />К группам
+          {administrator && (
+            <Button onClick={() => setInviting(true)}>
+              <Plus size={17} aria-hidden="true" />
+              Пригласить сотрудника
             </Button>
-          ) : (
-            administrator && (
-              <Button variant="ghost" onClick={() => navigateTo(null, "all")}>
-                <Users size={17} />
-                Все сотрудники
-              </Button>
-            )
           )}
         </div>
       </header>
 
+      {administrator && (
+        <nav className="org-mode-switch" aria-label="Режим раздела">
+          <button
+            type="button"
+            aria-pressed={allDirectory}
+            className={allDirectory ? "is-active" : ""}
+            onClick={() => navigateTo(null, "staff")}
+          >
+            <Users size={17} aria-hidden="true" /> Сотрудники
+          </button>
+          <button
+            type="button"
+            aria-pressed={!allDirectory}
+            className={!allDirectory ? "is-active" : ""}
+            onClick={() => navigateTo(null, "groups")}
+          >
+            <Folder size={17} aria-hidden="true" /> Группы сотрудников
+          </button>
+        </nav>
+      )}
+
       <section className="org-browser" aria-label={title}>
-        {!selected && allDirectory && <h2 className="org-view-title">Все сотрудники</h2>}
+        {!selected && allDirectory && (
+          <h2 className="org-view-title">Все сотрудники организации</h2>
+        )}
         {selected && (
           <div className="org-view-heading">
             <div className="org-view-title-wrap">
@@ -276,6 +395,7 @@ export function OrganizationPage() {
                 aria-label="Назад к родительской группе"
               >
                 <ArrowLeft size={18} />
+                Назад
               </Button>
               <h2 className="org-view-title">{selected.name}</h2>
             </div>
@@ -323,7 +443,7 @@ export function OrganizationPage() {
           <label className="org-main-search">
             <Search size={17} aria-hidden="true" />
             <span className="sr-only">
-              Поиск {selected || allDirectory ? "сотрудников и групп" : "групп и сотрудников"}
+              Поиск {selected || allDirectory ? "сотрудников" : "групп и сотрудников"}
             </span>
             <input
               value={query}
@@ -360,23 +480,13 @@ export function OrganizationPage() {
                 </DropdownMenuItem>
                 {selected
                   ? administrator && (
-                      <>
-                        <DropdownMenuItem onSelect={openAdd}>
-                          <Users size={16} />
-                          Добавить из списка
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setInviting(true)}>
-                          <Plus size={16} />
-                          Пригласить сотрудника
-                        </DropdownMenuItem>
-                      </>
+                      <DropdownMenuItem onSelect={openAdd}>
+                        <Users size={16} />
+                        Добавить из списка
+                      </DropdownMenuItem>
                     )
                   : administrator && (
                       <>
-                        <DropdownMenuItem onSelect={() => setInviting(true)}>
-                          <Plus size={16} />
-                          Пригласить сотрудника
-                        </DropdownMenuItem>
                         {allPeople.data?.some((person) => person.unitId !== null) && (
                           <DropdownMenuItem
                             onSelect={() => setMemberDialog({ action: "move-root", member: null })}
@@ -390,27 +500,67 @@ export function OrganizationPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          {administrator && allDirectory && (
-            <Button onClick={() => setInviting(true)}>
-              <Plus size={17} />
-              Пригласить
-            </Button>
-          )}
         </div>
 
         {allDirectory && administrator && (
-          <label className="org-filter-check">
-            <input
-              type="checkbox"
-              checked={noGroupOnly}
-              onChange={(event) =>
-                setParams(
-                  event.target.checked ? { view: "all", filter: "unassigned" } : { view: "all" }
-                )
-              }
-            />
-            Без группы
-          </label>
+          <div className="org-directory-filters">
+            <label>
+              <span>Группа</span>
+              <select
+                value={noGroupOnly ? "__unassigned__" : groupFilter}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setGroupFilter(value === "__unassigned__" ? "" : value);
+                  setParams(
+                    value === "__unassigned__"
+                      ? { view: "staff", filter: "unassigned" }
+                      : { view: "staff" }
+                  );
+                }}
+              >
+                <option value="">Все группы</option>
+                <option value="__unassigned__">Без группы</option>
+                {units.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {getUnitPath(unit, units)
+                      .map((part) => part.name)
+                      .join(" › ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+
+        {allDirectory && administrator && (
+          <div className="org-selection-tools">
+            <Button variant="ghost" onClick={() => togglePageSelection(!allPageSelected)}>
+              {allPageSelected
+                ? "Снять выбор со страницы"
+                : `Выбрать страницу: ${pagePeople.length}`}
+            </Button>
+            {filteredPeople.length > pagePeople.length && (
+              <Button
+                variant="ghost"
+                onClick={() => setSelectedPeople(filteredPeople.map((person) => person.id))}
+              >
+                Выбрать всех найденных: {filteredPeople.length}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {allDirectory && administrator && selectedPeople.length > 0 && (
+          <div className="org-bulk-bar" aria-live="polite">
+            <strong>Выбрано: {selectedPeople.length}</strong>
+            <Button onClick={() => setMovingPeople(selectedMembers)}>
+              <ArrowRightLeft size={16} aria-hidden="true" />
+              Переместить
+            </Button>
+            <Button variant="outline" onClick={() => setSelectedPeople([])}>
+              Снять выбор
+            </Button>
+          </div>
         )}
 
         {!selected && !allDirectory && query.trim() && (
@@ -430,9 +580,13 @@ export function OrganizationPage() {
             </div>
             <ul className="org-folder-list">
               {shownFolders.map((unit) => {
-                const childrenCount = units.filter(
-                  (candidate) => candidate.parentId === unit.id
-                ).length;
+                const children = units.filter((candidate) => candidate.parentId === unit.id);
+                const childrenCount = children.length;
+                const nestedPeopleCount = children.reduce(
+                  (total, child) => total + child.totalMembersCount,
+                  0
+                );
+                const directPeopleCount = Math.max(unit.totalMembersCount - nestedPeopleCount, 0);
                 return (
                   <li key={unit.id}>
                     <button
@@ -452,21 +606,26 @@ export function OrganizationPage() {
                         )}
                       </span>
                       <span className="org-folder-counts">
-                        {unit.totalMembersCount > 0 && (
+                        {directPeopleCount > 0 && (
                           <small>
-                            {unit.totalMembersCount}{" "}
+                            В этой группе: {directPeopleCount}{" "}
                             {pluralizeRu(
-                              unit.totalMembersCount,
+                              directPeopleCount,
                               "сотрудник",
                               "сотрудника",
                               "сотрудников"
                             )}
                           </small>
                         )}
-                        {childrenCount > 0 && (
+                        {nestedPeopleCount > 0 && (
                           <small>
-                            {childrenCount}{" "}
-                            {pluralizeRu(childrenCount, "группа", "группы", "групп")}
+                            С вложенными: {unit.totalMembersCount}{" "}
+                            {pluralizeRu(
+                              unit.totalMembersCount,
+                              "сотрудник",
+                              "сотрудника",
+                              "сотрудников"
+                            )}
                           </small>
                         )}
                         {unit.totalMembersCount === 0 && childrenCount === 0 && (
@@ -547,74 +706,105 @@ export function OrganizationPage() {
                 </div>
               ) : (
                 <>
-                  <ul className="org-member-list">
-                    {paged.pageItems.map((person) => (
-                      <li key={person.id}>
-                        <div className="org-member-main">
-                          <strong>{person.displayName}</strong>
-                          <span>{person.email}</span>
-                        </div>
-                        <div className="org-member-meta">
-                          <span>
-                            {roleLabels[person.role]}
-                            {person.status === "DISABLED" ? " · отключён" : ""}
-                          </span>
-                          {person.unitRole === "MANAGER" && (
-                            <span className="org-access-badge">
-                              <ShieldCheck size={13} aria-hidden="true" />
-                              Руководитель
+                  <ul
+                    className={`org-member-list${allDirectory && administrator ? " org-member-list--selectable" : ""}`}
+                  >
+                    {paged.pageItems.map((person) => {
+                      const group = units.find((unit) => unit.id === person.unitId);
+                      return (
+                        <li key={person.id} className="org-member-row">
+                          {allDirectory && administrator && (
+                            <label className="org-member-select">
+                              <input
+                                type="checkbox"
+                                checked={selectedPeople.includes(person.id)}
+                                onChange={(event) =>
+                                  setSelectedPeople((current) =>
+                                    event.target.checked
+                                      ? [...current, person.id]
+                                      : current.filter((id) => id !== person.id)
+                                  )
+                                }
+                              />
+                              <span className="sr-only">Выбрать {person.displayName}</span>
+                            </label>
+                          )}
+                          <div className="org-member-main">
+                            <strong>{person.displayName}</strong>
+                            <span>{person.email}</span>
+                          </div>
+                          <div className="org-member-meta">
+                            <span>
+                              Системная роль: {roleLabels[person.role]}
+                              {person.status === "DISABLED" ? " · отключён" : ""}
                             </span>
-                          )}
-                          {!selected && person.unitId && person.unitName ? (
-                            <button
-                              type="button"
-                              className="org-member-location"
-                              onClick={() => navigateTo(person.unitId)}
-                            >
-                              {person.unitName}
-                            </button>
-                          ) : (
-                            !selected && <span className="org-member-location">Без группы</span>
-                          )}
-                        </div>
-                        {getPersonCanEdit(person, selected, administrator, user?.id) && (
-                          <DropdownMenu modal={false}>
-                            <DropdownMenuTrigger asChild>
-                              <IconButton label={`Действия с сотрудником ${person.displayName}`}>
-                                <MoreHorizontal size={19} />
-                              </IconButton>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onSelect={() => setMemberDialog({ action: "move", member: person })}
+                            {person.unitRole === "MANAGER" && person.unitId && (
+                              <span className="org-access-badge">
+                                <ShieldCheck size={13} aria-hidden="true" />
+                                Руководитель
+                              </span>
+                            )}
+                            {!selected &&
+                              (group ? (
+                                <button
+                                  type="button"
+                                  className="org-member-location"
+                                  onClick={() => navigateTo(group.id)}
+                                >
+                                  Группа:{" "}
+                                  {getUnitPath(group, units)
+                                    .map((unit) => unit.name)
+                                    .join(" › ")}
+                                </button>
+                              ) : (
+                                <span className="org-member-location">Без группы</span>
+                              ))}
+                          </div>
+                          {getPersonCanEdit(person, selected, administrator, user?.id) && (
+                            <div className="org-member-actions">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setMemberDialog({ action: "move", member: person })}
                               >
-                                <ArrowRightLeft size={16} />
-                                Переместить сотрудника
-                              </DropdownMenuItem>
+                                <ArrowRightLeft size={15} aria-hidden="true" />
+                                Переместить
+                              </Button>
                               {administrator && person.unitId && (
-                                <DropdownMenuItem
-                                  onSelect={() =>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() =>
                                     setMemberDialog({ action: "access", member: person })
                                   }
                                 >
-                                  <ShieldCheck size={16} />
-                                  Изменить права доступа
-                                </DropdownMenuItem>
+                                  Доступ:{" "}
+                                  {person.unitRole === "MANAGER" ? "Руководитель" : "Сотрудник"}
+                                </Button>
                               )}
                               {person.unitId && (
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onSelect={() => setRemoving(person)}
-                                >
-                                  <Trash2 size={16} />
-                                  Убрать из группы
-                                </DropdownMenuItem>
+                                <DropdownMenu modal={false}>
+                                  <DropdownMenuTrigger asChild>
+                                    <IconButton label={`Другие действия для ${person.displayName}`}>
+                                      <MoreHorizontal size={19} />
+                                    </IconButton>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      className="text-destructive"
+                                      onSelect={() => setRemoving(person)}
+                                    >
+                                      <Trash2 size={16} />
+                                      Убрать из группы
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </li>
-                    ))}
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                   <PaginationBar {...paged} onPageChange={paged.setPage} />
                 </>
@@ -662,6 +852,18 @@ export function OrganizationPage() {
           onClose={() => setMemberDialog(null)}
           onSaved={() => {
             setMemberDialog(null);
+            refreshOrganization();
+          }}
+        />
+      )}
+      {movingPeople && (
+        <OrganizationBulkMemberMoveDialog
+          members={movingPeople}
+          units={units}
+          onClose={() => setMovingPeople(null)}
+          onSaved={() => {
+            setMovingPeople(null);
+            setSelectedPeople([]);
             refreshOrganization();
           }}
         />

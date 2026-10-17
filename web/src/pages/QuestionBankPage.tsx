@@ -56,8 +56,16 @@ export function QuestionBankPage({ courseId }: Props) {
         </div>
       </div>
       <CourseSectionNav courseId={courseId} canManage={courseQuery.data?.canManage} />
+      {courseQuery.isError && (
+        <div className="qbank-load-error" role="alert">
+          <p>Не удалось загрузить курс и проверить доступ к банку вопросов.</p>
+          <Button type="button" variant="outline" onClick={() => void courseQuery.refetch()}>
+            Повторить
+          </Button>
+        </div>
+      )}
       <div className="qbank-toolbar">
-        {questions.length > 0 && (
+        {!courseQuery.isError && questions.length > 0 && (
           <div className="qbank-filters">
             <Select
               value={tagFilter ?? "__all__"}
@@ -78,7 +86,7 @@ export function QuestionBankPage({ courseId }: Props) {
             </Select>
           </div>
         )}
-        {questions.length > 0 && (
+        {!courseQuery.isError && courseQuery.data?.canManage && (
           <Button onClick={() => setCreating(true)}>
             <Plus size={14} />
             Новый вопрос
@@ -86,68 +94,86 @@ export function QuestionBankPage({ courseId }: Props) {
         )}
       </div>
 
-      {questionsQuery.isLoading && <p className="muted">Загрузка…</p>}
+      {questionsQuery.isLoading && !courseQuery.isError && (
+        <p className="muted" role="status">
+          Загрузка вопросов…
+        </p>
+      )}
+      {questionsQuery.isError && !courseQuery.isError && (
+        <div className="qbank-load-error" role="alert">
+          <p>Не удалось загрузить банк вопросов. Ваши изменения не потеряны.</p>
+          <Button type="button" variant="outline" onClick={() => void questionsQuery.refetch()}>
+            Повторить
+          </Button>
+        </div>
+      )}
 
-      <ul className="qbank-list">
-        {questions.map((q) => (
-          <li key={q.id} className="qbank-item">
-            <div className="qbank-item-meta">
-              <span className="qbank-type-badge">
-                {QUESTION_TYPES.find((t) => t.value === q.questionType)?.label ?? q.questionType}
-              </span>
-              {q.tags.map((tag) => (
-                <Badge key={tag} variant="secondary">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-            <p className="qbank-item-text">{q.text}</p>
-            <div className="qbank-item-options">
-              {q.options.map((opt, idx) => (
-                <span
-                  key={idx}
-                  className={`qbank-option${opt.correct ? " qbank-option--correct" : ""}`}
-                >
-                  {opt.text}
+      {!questionsQuery.isError && !courseQuery.isError && (
+        <ul className="qbank-list">
+          {questions.map((q) => (
+            <li key={q.id} className="qbank-item">
+              <div className="qbank-item-meta">
+                <span className="qbank-type-badge">
+                  {QUESTION_TYPES.find((t) => t.value === q.questionType)?.label ?? q.questionType}
                 </span>
-              ))}
-            </div>
-            <div className="qbank-item-actions">
-              <IconButton onClick={() => setEditing(q)} label="Редактировать вопрос">
-                <Pencil size={16} />
-              </IconButton>
-              <ConfirmActionButton
-                title="Архивировать вопрос?"
-                description="Вопрос исчезнет из активного банка."
-                confirmLabel="Архивировать"
-                variant="ghost"
-                size="icon"
-                label="Архивировать вопрос"
-                disabled={archiveMut.isPending}
-                onConfirm={() => archiveMut.mutate(q.id)}
-              >
-                <Trash2 size={16} />
-              </ConfirmActionButton>
-            </div>
-          </li>
-        ))}
-        {!questionsQuery.isLoading && questions.length === 0 && (
-          <li className="qbank-empty">
-            <span className="qbank-empty__icon" aria-hidden="true">
-              <ListChecks size={28} />
-            </span>
-            <div>
-              <strong>Соберите первую проверку</strong>
-              <p className="muted">
-                Готовый вопрос можно запустить из боковой панели во время лекции.
-              </p>
-            </div>
-            <Button onClick={() => setCreating(true)}>
-              <Plus size={16} aria-hidden="true" /> Создать вопрос
-            </Button>
-          </li>
-        )}
-      </ul>
+                {q.tags.map((tag) => (
+                  <Badge key={tag} variant="secondary">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+              <p className="qbank-item-text">{q.text}</p>
+              <div className="qbank-item-options">
+                {q.options.map((opt, idx) => (
+                  <span
+                    key={idx}
+                    className={`qbank-option${opt.correct ? " qbank-option--correct" : ""}`}
+                  >
+                    {opt.text}
+                  </span>
+                ))}
+              </div>
+              {courseQuery.data?.canManage && (
+                <div className="qbank-item-actions">
+                  <IconButton onClick={() => setEditing(q)} label="Редактировать вопрос">
+                    <Pencil size={16} />
+                  </IconButton>
+                  <ConfirmActionButton
+                    title="Архивировать вопрос?"
+                    description="Вопрос исчезнет из активного банка."
+                    confirmLabel="Архивировать"
+                    variant="ghost"
+                    size="icon"
+                    label="Архивировать вопрос"
+                    disabled={archiveMut.isPending}
+                    onConfirm={() => archiveMut.mutate(q.id)}
+                  >
+                    <Trash2 size={16} />
+                  </ConfirmActionButton>
+                </div>
+              )}
+            </li>
+          ))}
+          {!questionsQuery.isLoading && questions.length === 0 && (
+            <li className="qbank-empty">
+              <span className="qbank-empty__icon" aria-hidden="true">
+                <ListChecks size={28} />
+              </span>
+              <div>
+                <strong>Соберите первую проверку</strong>
+                <p className="muted">
+                  Готовый вопрос можно запустить из боковой панели во время лекции.
+                </p>
+              </div>
+              {courseQuery.data?.canManage && (
+                <Button onClick={() => setCreating(true)}>
+                  <Plus size={16} aria-hidden="true" /> Создать вопрос
+                </Button>
+              )}
+            </li>
+          )}
+        </ul>
+      )}
 
       <QuestionDialog
         courseId={courseId}

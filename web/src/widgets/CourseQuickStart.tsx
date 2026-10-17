@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Play } from "lucide-react";
+import { Play, RefreshCw } from "lucide-react";
 import { listLectures } from "../app/api/content-api";
 import { getCourse } from "../app/api/courses-api";
 import { Button } from "../shared/ui/button";
@@ -60,8 +60,18 @@ export function CourseQuickStart({ courseId, blocked }: { courseId: string; bloc
       {(!visible || accessQuery.isLoading || lecturesQuery.isLoading) && (
         <span className="course-quick-start__state">Загрузка лекций…</span>
       )}
-      {lecturesQuery.isError && (
-        <span className="course-quick-start__state">Лекции недоступны</span>
+      {(accessQuery.isError || lecturesQuery.isError) && (
+        <Button
+          type="button"
+          variant="outline"
+          className="course-quick-start__retry"
+          onClick={() => {
+            if (accessQuery.isError) void accessQuery.refetch();
+            if (lecturesQuery.isError) void lecturesQuery.refetch();
+          }}
+        >
+          <RefreshCw size={15} aria-hidden="true" /> Повторить загрузку
+        </Button>
       )}
       {visible && !lecturesQuery.isLoading && !lecturesQuery.isError && lectures.length === 0 && (
         <span className="course-quick-start__state">Нет готовых лекций</span>
@@ -90,11 +100,11 @@ export function CourseQuickStart({ courseId, blocked }: { courseId: string; bloc
         <Button
           type="button"
           disabled={blocked || !lectureId}
-          title={blocked ? "Сначала завершите текущее занятие" : "Запустить занятие"}
+          title={blocked ? "Сначала завершите текущее занятие" : "Подготовить занятие"}
           onClick={() => setStartOpen(true)}
         >
           <Play size={15} aria-hidden="true" />
-          Запустить
+          Подготовить занятие
         </Button>
       )}
       <StartSessionDialog

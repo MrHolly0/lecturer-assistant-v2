@@ -45,7 +45,8 @@ export function CoursePage({ courseId }: { courseId: string }) {
   const {
     data: course,
     isLoading,
-    isError
+    isError,
+    refetch
   } = useQuery({
     queryKey: ["courses", courseId],
     queryFn: () => getCourse(courseId)
@@ -115,7 +116,21 @@ export function CoursePage({ courseId }: { courseId: string }) {
   if (isError || !course)
     return (
       <div className="page">
-        <p className="form-error">Курс не найден или нет доступа.</p>
+        <div className="courses-list-error" role="alert">
+          <p>
+            {isError
+              ? "Не удалось загрузить курс. Проверьте соединение и повторите запрос."
+              : "Курс не найден или нет доступа."}
+          </p>
+          {isError && (
+            <Button variant="outline" onClick={() => void refetch()}>
+              Повторить
+            </Button>
+          )}
+          <LinkButton to="/courses" variant="ghost">
+            К курсам
+          </LinkButton>
+        </div>
       </div>
     );
 

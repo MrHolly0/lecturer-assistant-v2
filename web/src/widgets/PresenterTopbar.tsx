@@ -2,17 +2,20 @@ import {
   ArrowLeft,
   ChevronDown,
   Monitor,
-  Moon,
   Pause,
   PenLine,
   Play,
   QrCode,
   Square,
-  Sun,
   Wrench
 } from "lucide-react";
-import type { LiveSession } from "../app/api/live-api";
+import {
+  setLiveProjectionCode,
+  type LiveConnectionState,
+  type LiveSession
+} from "../app/api/live-api";
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getMaxWebApp } from "../app/max/bridge";
 import { useMaxBridge } from "../app/max/context";
@@ -43,7 +46,13 @@ interface PresenterTopbarProps {
   pausePending: boolean;
   resumePending: boolean;
   endPending: boolean;
+  connection: LiveConnectionState;
+  syncedAt: Date | null;
+  syncing: boolean;
+  syncError: boolean;
+  onRefresh: () => void;
   onDrawingChange: (active: boolean) => void;
+  onSessionChange: (session: LiveSession) => void;
   onPause: () => void;
   onResume: () => void;
   onEnd: () => void;
@@ -56,14 +65,22 @@ export function PresenterTopbar({
   pausePending,
   resumePending,
   endPending,
+  connection,
+  syncedAt,
+  syncing,
+  syncError,
+  onRefresh,
   onDrawingChange,
+  onSessionChange,
   onPause,
   onResume,
   onEnd
 }: PresenterTopbarProps) {
   const maxEnvironment = useMaxBridge();
   const [connectionOpen, setConnectionOpen] = useState(false);
+  const [projectionBlocked, setProjectionBlocked] = useState(false);
   const sessionActive = session.status === "LIVE" || session.status === "PAUSED";
+  const showJoinCode = session.showJoinCode;
   const joinUrl = buildMaxJoinUrl(session.joinCode);
   const openProjection = () => {
     const url = `${window.location.origin}/#/projection/${encodeURIComponent(session.joinCode)}`;
@@ -76,12 +93,25 @@ export function PresenterTopbar({
       return;
     }
     const projectionWindow = window.open(url, "lecturer-projection", "popup,width=1280,height=720");
-    if (projectionWindow) projectionWindow.focus();
-    else
-      toast.error(
-        "Браузер заблокировал окно проектора. Разрешите всплывающие окна для этого сайта."
-      );
+    if (projectionWindow) {
+      projectionWindow.focus();
+      setProjectionBlocked(false);
+    } else setProjectionBlocked(true);
   };
+  const projectionCodeMutation = useMutation({
+    mutationFn: (show: boolean) => setLiveProjectionCode(courseId, session.id, show),
+    onSuccess: onSessionChange,
+    onError: () => toast.error("Не удалось обновить код на проекторе. Повторите попытку.")
+  });
+  const connectionLabel = syncError
+    ? "Снимок не обновлён"
+    : syncing
+      ? connection === "connected"
+        ? "Связь есть, сверяем занятие"
+        : "Сверяем занятие"
+      : connection === "connected"
+        ? "Данные обновлены"
+        : "Нет связи с сервером";
 
   return (
     <header className="presenter-topbar">
@@ -101,7 +131,7 @@ export function PresenterTopbar({
             {session.status === "PAUSED" && (
               <span className="badge presenter-status presenter-status--paused">Пауза</span>
             )}
-            <span className="live-code">Код: {session.joinCode}</span>
+            <span className="live-code">Код занятия: {session.joinCode}</span>
             <SessionGroups groups={session.groups} compact />
           </div>
         </div>
@@ -121,14 +151,62 @@ export function PresenterTopbar({
       <div className="presenter-actions">
         {sessionActive && (
           <>
+            <span
+              className={`presenter-sync presenter-sync--${syncError ? "error" : syncing ? "pending" : connection}`}
+              role="status"
+            >
+              <span aria-hidden="true" />
+              {connectionLabel}
+              {!syncing && syncedAt && (
+                <time dateTime={syncedAt.toISOString()}>
+                  {" "}
+                  ·{" "}
+                  {syncedAt.toLocaleTimeString("ru-RU", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit"
+                  })}
+                </time>
+              )}
+              {syncError && (
+                <button type="button" onClick={onRefresh}>
+                  Повторить
+                </button>
+              )}
+            </span>
             <Button
               className="presenter-connect"
               type="button"
               onClick={() => setConnectionOpen(true)}
             >
               <QrCode size={16} />
-              Подключить студентов
+              Код занятия
             </Button>
+
+            <Button
+              className="presenter-projector"
+              type="button"
+              variant="outline"
+              onClick={openProjection}
+            >
+              <Monitor size={16} aria-hidden="true" /> Проектор
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={projectionCodeMutation.isPending}
+              onClick={() => projectionCodeMutation.mutate(!showJoinCode)}
+            >
+              {showJoinCode ? "Вернуться к слайду на проекторе" : "Показать код на проекторе"}
+            </Button>
+            {projectionCodeMutation.isError && (
+              <span className="presenter-action-error" role="alert">
+                Не удалось обновить код.{" "}
+                <button type="button" onClick={() => projectionCodeMutation.mutate(!showJoinCode)}>
+                  Повторить
+                </button>
+              </span>
+            )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -150,7 +228,6 @@ export function PresenterTopbar({
                     )
                   }
                 >
-                  {maxEnvironment.theme === "dark" ? <Sun /> : <Moon />}
                   {maxEnvironment.theme === "dark" ? "Светлая тема" : "Тёмная тема"}
                 </DropdownMenuItem>
                 <DropdownMenuCheckboxItem
@@ -226,6 +303,30 @@ export function PresenterTopbar({
               Ссылка MAX не настроена. Студенты могут ввести код в приложении.
             </p>
           )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={projectionBlocked} onOpenChange={setProjectionBlocked}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Окно проектора заблокировано</DialogTitle>
+            <DialogDescription>
+              Разрешите всплывающие окна для сайта и повторите. Проектор можно открыть отдельной
+              вкладкой.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="presenter-popup-actions">
+            <Button type="button" onClick={openProjection}>
+              Повторить открытие
+            </Button>
+            <a
+              className="ui-button ui-button--outline"
+              href={`${window.location.origin}/#/projection/${encodeURIComponent(session.joinCode)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Открыть во вкладке
+            </a>
+          </div>
         </DialogContent>
       </Dialog>
     </header>

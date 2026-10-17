@@ -1,13 +1,13 @@
-import type { FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Check, EyeOff, MessageSquareText } from "lucide-react";
 import type { SignalValue, StudentQuestion, StudentQuestionAnswer } from "../app/api/student-api";
 import { Button } from "../shared/ui/button";
 import { StudentQuestionAnswers } from "./StudentQuestionAnswers";
 
-const SIGNALS: Array<{ value: SignalValue; label: string; helper: string }> = [
-  { value: "GREEN", label: "Понятно", helper: "идём дальше" },
-  { value: "YELLOW", label: "Есть вопрос", helper: "нужно медленнее" },
-  { value: "RED", label: "Не понимаю", helper: "нужна остановка" }
+const SIGNALS: Array<{ value: SignalValue; label: string }> = [
+  { value: "GREEN", label: "Понятно" },
+  { value: "YELLOW", label: "Есть вопрос" },
+  { value: "RED", label: "Не понимаю" }
 ];
 
 interface StudentFeedbackControlsProps {
@@ -22,10 +22,15 @@ interface StudentFeedbackControlsProps {
   onSignal: (value: SignalValue) => void;
   onQuestionChange: (value: string) => void;
   onQuestionSubmit: () => void;
+  questionError?: boolean;
   onAnonymousChange: (value: boolean) => void;
 }
 
 export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
+  const [questionOpen, setQuestionOpen] = useState(false);
+  useEffect(() => {
+    if (!props.question) setQuestionOpen(false);
+  }, [props.question]);
   function submitQuestion(event: FormEvent) {
     event.preventDefault();
     if (props.question.trim()) props.onQuestionSubmit();
@@ -56,61 +61,96 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
               {props.lastSignal === item.value && <Check size={16} aria-hidden="true" />}
               {item.label}
             </strong>
-            <span>{item.helper}</span>
+            <span>{props.lastSignal === item.value ? "Сигнал отправлен" : "Отправить сигнал"}</span>
           </button>
         ))}
       </div>
 
-      <form onSubmit={submitQuestion} className="student-question-form">
-        <label htmlFor="student-question">Вопрос</label>
-        <p id="question-audience-hint" className="question-privacy-hint">
-          {props.anonymous
-            ? "Имя скрыто от сотрудников и участников занятия. Аккаунт используется для доставки личного ответа."
-            : "Это не анонимный вопрос. Сотрудники с доступом к занятию увидят ваше имя."}{" "}
-          Преподаватель может ответить лично или показать вопрос и ответ всей аудитории без имени
-          автора.
-        </p>
-        <textarea
-          id="student-question"
-          value={props.question}
-          onChange={(event) => props.onQuestionChange(event.target.value)}
-          placeholder="Напишите вопрос преподавателю"
-          maxLength={1000}
-          rows={3}
-          aria-describedby="question-audience-hint"
-        />
-        <label className="question-anonymous-option">
-          <input
-            type="checkbox"
-            checked={props.anonymous}
-            onChange={(event) => props.onAnonymousChange(event.target.checked)}
-            disabled={props.isQuestionPending}
-          />
-          <EyeOff size={17} aria-hidden="true" />
-          Спросить анонимно
-        </label>
+      <section className="student-question-entry">
         <Button
-          type="submit"
-          disabled={!props.isLive || props.isQuestionPending || !props.question.trim()}
+          type="button"
+          variant="outline"
+          aria-expanded={questionOpen}
+          onClick={() => setQuestionOpen((open) => !open)}
         >
-          <MessageSquareText size={16} />
-          {props.anonymous ? "Отправить анонимно" : "Отправить с именем"}
+          <MessageSquareText size={17} aria-hidden="true" />{" "}
+          {questionOpen ? "Скрыть форму вопроса" : "Задать вопрос"}
         </Button>
-      </form>
+        {questionOpen && (
+          <form onSubmit={submitQuestion} className="student-question-form">
+            <label htmlFor="student-question">Ваш вопрос</label>
+            <p id="question-audience-hint" className="question-privacy-hint">
+              {props.anonymous
+                ? "Сотрудники и участники занятия не увидят ваше имя. Аккаунт используется для доставки личного ответа. Преподаватель может опубликовать вопрос и ответ для участников занятия без имени автора."
+                : "Вопрос и ваше имя увидят сотрудники с доступом к занятию. Преподаватель может опубликовать вопрос и ответ для участников занятия без имени автора."}
+            </p>
+            <textarea
+              id="student-question"
+              value={props.question}
+              onChange={(event) => props.onQuestionChange(event.target.value)}
+              placeholder="Напишите вопрос преподавателю"
+              maxLength={1000}
+              rows={3}
+              aria-describedby="question-audience-hint"
+            />
+            <label className="question-anonymous-option">
+              <input
+                type="checkbox"
+                checked={props.anonymous}
+                onChange={(event) => props.onAnonymousChange(event.target.checked)}
+                disabled={props.isQuestionPending}
+              />
+              <EyeOff size={17} aria-hidden="true" />
+              Спросить анонимно
+            </label>
+            <Button
+              type="submit"
+              disabled={!props.isLive || props.isQuestionPending || !props.question.trim()}
+            >
+              <MessageSquareText size={16} aria-hidden="true" />
+              {props.isQuestionPending
+                ? "Отправляем вопрос…"
+                : props.anonymous
+                  ? "Отправить анонимно"
+                  : "Отправить с именем"}
+            </Button>
+            {props.questionError && (
+              <p className="student-question-error" role="alert">
+                Не удалось отправить вопрос. Черновик сохранён. Проверьте связь и нажмите
+                «Отправить» ещё раз.
+              </p>
+            )}
+          </form>
+        )}
+      </section>
 
-      <StudentQuestionAnswers answers={props.answers} />
-
-      {props.questions.length > 0 && (
-        <ul className="student-question-list">
-          {props.questions.map((item) => (
-            <li key={item.id}>
-              <span>{item.text}</span>
-              {item.anonymous && <small>Анонимно</small>}
-              <small>{new Date(item.createdAt).toLocaleTimeString("ru-RU")}</small>
-            </li>
-          ))}
-        </ul>
-      )}
+      <details className="student-my-questions">
+        <summary>
+          Мои вопросы и ответы{" "}
+          <span>
+            {
+              new Set([
+                ...props.questions.map((question) => question.id),
+                ...props.answers.map((answer) => answer.questionId)
+              ]).size
+            }
+          </span>
+        </summary>
+        <StudentQuestionAnswers answers={props.answers} />
+        {props.questions.length > 0 ? (
+          <ul className="student-question-list">
+            {props.questions.map((item) => (
+              <li key={item.id}>
+                <span>{item.text}</span>
+                {item.anonymous && <small>Анонимно</small>}
+                <small>{new Date(item.createdAt).toLocaleTimeString("ru-RU")}</small>
+              </li>
+            ))}
+          </ul>
+        ) : props.answers.length === 0 ? (
+          <p className="muted">Отправленные вопросы и ответы преподавателя появятся здесь.</p>
+        ) : null}
+      </details>
     </>
   );
 }

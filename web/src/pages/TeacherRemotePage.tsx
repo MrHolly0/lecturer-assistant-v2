@@ -19,14 +19,10 @@ import { userErrorMessage } from "../app/api/errors";
 import {
   beginLiveSession,
   changeLiveSessionSlide,
-  connectLiveSession,
   endLiveSession,
-  getLiveSession,
   listSessionParticipants,
   pauseLiveSession,
-  resumeLiveSession,
-  type LiveConnectionState,
-  type LiveSession
+  resumeLiveSession
 } from "../app/api/live-api";
 import { formatSessionTime, useSessionTimers } from "../app/live/useSessionTimers";
 import { getStudentEngagement } from "../app/api/student-api";
@@ -49,7 +45,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "../shared/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { PollPanel } from "../widgets/PollPanel";
 import { SessionGroups } from "../widgets/SessionGroups";
 import { TeacherRemoteConnection } from "../widgets/TeacherRemoteConnection";
@@ -59,6 +54,7 @@ import { TeacherRemoteSignals } from "../widgets/TeacherRemoteSignals";
 import { LiveSlideNotesEditor } from "../widgets/LiveSlideNotesEditor";
 import { ThemeToggle } from "../widgets/ThemeToggle";
 import { SessionParticipantList } from "../widgets/SessionParticipantList";
+import { useLiveSession } from "../app/live/useLiveSession";
 
 export function TeacherRemotePage({
   courseId,
@@ -71,15 +67,10 @@ export function TeacherRemotePage({
   const { signOut } = useAuth();
   const queryClient = useQueryClient();
   const slideInFlightRef = useRef(false);
-  const [sessionOverride, setSessionOverride] = useState<LiveSession | null>(null);
-  const [connection, setConnection] = useState<LiveConnectionState>("connecting");
-  const sessionQuery = useQuery({
-    queryKey: ["live", courseId, sessionId],
-    queryFn: () => getLiveSession(courseId, sessionId),
-    refetchInterval: 3000,
-    retry: 1
-  });
-  const session = sessionOverride ?? sessionQuery.data;
+  const [remoteSection, setRemoteSection] = useState<"poll" | "students" | "notes" | "">("");
+  const live = useLiveSession(courseId, sessionId);
+  const session = live.session;
+  const setSession = live.setSession;
   const deckQuery = useQuery({
     queryKey: ["content", courseId, "decks", session?.deckId],
     queryFn: () => getDeck(courseId, session?.deckId ?? ""),
@@ -102,43 +93,14 @@ export function TeacherRemotePage({
   const { elapsed, slideElapsed } = useSessionTimers(session);
 
   useEffect(() => {
-    if (sessionQuery.data) setSessionOverride(sessionQuery.data);
-  }, [sessionQuery.data]);
-
-  useEffect(() => {
     if (session?.status !== "ENDED" && session?.status !== "ARCHIVED") return;
     queryClient.setQueryData(["active-session"], null);
     void queryClient.invalidateQueries({ queryKey: ["active-session"] });
   }, [queryClient, session?.status]);
 
-  useEffect(() => {
-    if (!session?.id) return;
-    const disconnect = connectLiveSession(
-      session.id,
-      (message) => {
-        setSessionOverride(message.session);
-        if (message.type.startsWith("feedback.") || message.type.startsWith("qa.")) {
-          void queryClient.invalidateQueries({
-            queryKey: ["live", courseId, sessionId, "engagement"]
-          });
-        }
-        if (message.type.startsWith("poll.") || message.type.startsWith("interaction.poll")) {
-          void queryClient.invalidateQueries({ queryKey: ["poll", courseId, sessionId] });
-        }
-        if (message.type.startsWith("participant.")) {
-          void queryClient.invalidateQueries({
-            queryKey: ["live", courseId, sessionId, "participants"]
-          });
-        }
-      },
-      setConnection
-    );
-    return disconnect;
-  }, [courseId, queryClient, session?.id, sessionId]);
-
   const slideMutation = useMutation({
     mutationFn: (slideIdx: number) => changeLiveSessionSlide(courseId, sessionId, slideIdx),
-    onSuccess: setSessionOverride,
+    onSuccess: setSession,
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось переключить слайд.")),
     onSettled: () => {
       slideInFlightRef.current = false;
@@ -158,19 +120,19 @@ export function TeacherRemotePage({
   };
   const pauseMutation = useMutation({
     mutationFn: () => pauseLiveSession(courseId, sessionId),
-    onSuccess: setSessionOverride,
+    onSuccess: setSession,
     onError: (error) =>
       toast.error(userErrorMessage(error, "Не удалось поставить лекцию на паузу."))
   });
   const resumeMutation = useMutation({
     mutationFn: () => resumeLiveSession(courseId, sessionId),
-    onSuccess: setSessionOverride,
+    onSuccess: setSession,
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось продолжить лекцию."))
   });
   const beginMutation = useMutation({
     mutationFn: () => beginLiveSession(courseId, sessionId),
     onSuccess: (started) => {
-      setSessionOverride(started);
+      setSession(started);
       void queryClient.invalidateQueries({ queryKey: ["active-session"] });
       toast.success("Показ начался.");
     },
@@ -196,13 +158,13 @@ export function TeacherRemotePage({
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось завершить лекцию."))
   });
 
-  if (sessionQuery.isLoading) {
+  if (live.isLoading) {
     return <RemoteState title="Подключаем пульт…" />;
   }
   if (!session) {
     return (
       <RemoteState title="Не удалось открыть пульт" description="Проверьте связь и повторите.">
-        <Button type="button" variant="outline" onClick={() => sessionQuery.refetch()}>
+        <Button type="button" variant="outline" onClick={() => void live.refresh()}>
           <RefreshCw size={18} aria-hidden="true" /> Повторить
         </Button>
       </RemoteState>
@@ -242,7 +204,7 @@ export function TeacherRemotePage({
   const actionPending =
     slideMutation.isPending || pauseMutation.isPending || resumeMutation.isPending;
   const questions = engagementQuery.data?.questions ?? [];
-  const openQuestionCount = questions.filter((question) => question.status === "OPEN").length;
+  const openQuestions = questions.filter((question) => question.status === "OPEN");
 
   return (
     <main className="teacher-remote-shell">
@@ -255,7 +217,13 @@ export function TeacherRemotePage({
           <SessionGroups groups={session.groups} compact />
         </div>
         <div className="teacher-remote-header__actions">
-          <TeacherRemoteConnection state={connection} />
+          <TeacherRemoteConnection
+            state={live.connection}
+            syncing={live.syncing}
+            syncedAt={live.syncedAt}
+            syncError={live.syncError}
+            onRetry={live.refresh}
+          />
           <ThemeToggle compact />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -281,7 +249,14 @@ export function TeacherRemotePage({
       </header>
 
       <section className="teacher-remote-stage" aria-label={`Слайд ${currentSlideIdx}`}>
-        {slide ? (
+        {deckQuery.isError ? (
+          <div className="teacher-remote-stage__empty">
+            <span>Не удалось загрузить слайд.</span>
+            <Button type="button" variant="outline" onClick={() => void deckQuery.refetch()}>
+              Повторить
+            </Button>
+          </div>
+        ) : slide ? (
           <img src={slideImageUrl(slide)} alt={`Слайд ${currentSlideIdx}`} />
         ) : (
           <div className="teacher-remote-stage__empty">Загружаем слайд…</div>
@@ -353,39 +328,78 @@ export function TeacherRemotePage({
         </AlertDialogContent>
       </AlertDialog>
 
-      <Tabs defaultValue="control" className="teacher-remote-tabs">
-        <TabsList className="teacher-remote-tabs__list">
-          <TabsTrigger value="control">Сводка</TabsTrigger>
-          <TabsTrigger value="poll">Проверка</TabsTrigger>
-          <TabsTrigger value="questions">
-            Вопросы{" "}
-            {openQuestionCount > 0 && <span className="tab-badge">{openQuestionCount}</span>}
-          </TabsTrigger>
-          <TabsTrigger value="notes">Заметки</TabsTrigger>
-          <TabsTrigger value="students">Студенты</TabsTrigger>
-        </TabsList>
-        <TabsContent value="control">
-          <TeacherRemoteSignals engagement={engagementQuery.data} />
-        </TabsContent>
-        <TabsContent value="poll" className="teacher-remote-poll">
+      <section className="teacher-remote-live-feedback" aria-label="Обратная связь по слайду">
+        <TeacherRemoteSignals
+          engagement={engagementQuery.data}
+          isError={engagementQuery.isError}
+          isLoading={engagementQuery.isLoading}
+          onRetry={() => void engagementQuery.refetch()}
+        />
+        <TeacherRemoteQuestions
+          courseId={courseId}
+          sessionId={sessionId}
+          questions={openQuestions}
+          isLoading={engagementQuery.isLoading}
+          loadError={engagementQuery.isError}
+          onRetry={() => void engagementQuery.refetch()}
+        />
+      </section>
+
+      <nav className="teacher-remote-tools" aria-label="Другие инструменты занятия">
+        <button
+          type="button"
+          aria-expanded={remoteSection === "poll"}
+          onClick={() => setRemoteSection(remoteSection === "poll" ? "" : "poll")}
+        >
+          Проверка
+        </button>
+        <button
+          type="button"
+          aria-expanded={remoteSection === "students"}
+          onClick={() => setRemoteSection(remoteSection === "students" ? "" : "students")}
+        >
+          Участники ·{" "}
+          {participantsQuery.data?.filter((participant) => !participant.leftAt).length ?? 0}
+        </button>
+        <button
+          type="button"
+          aria-expanded={remoteSection === "notes"}
+          onClick={() => setRemoteSection(remoteSection === "notes" ? "" : "notes")}
+        >
+          Заметки к слайду
+        </button>
+      </nav>
+      {remoteSection === "poll" && (
+        <section className="teacher-remote-expanded">
+          <h2>Проверка</h2>
           <PollPanel courseId={courseId} sessionId={sessionId} disabled={paused} />
-        </TabsContent>
-        <TabsContent value="questions">
-          <TeacherRemoteQuestions courseId={courseId} sessionId={sessionId} questions={questions} />
-        </TabsContent>
-        <TabsContent value="notes" className="teacher-remote-notes">
-          {slide && (
-            <LiveSlideNotesEditor courseId={courseId} deckId={slide.deckId} slide={slide} />
+        </section>
+      )}
+      {remoteSection === "notes" && slide && (
+        <section className="teacher-remote-expanded">
+          <h2>Заметки к слайду {slide.idx}</h2>
+          <LiveSlideNotesEditor courseId={courseId} deckId={slide.deckId} slide={slide} />
+        </section>
+      )}
+      {remoteSection === "students" && (
+        <section className="teacher-remote-expanded">
+          <h2>Участники</h2>
+          {participantsQuery.isError && (
+            <div className="teacher-remote-data-error" role="status">
+              Не удалось обновить участников.{" "}
+              {participantsQuery.data ? "Показаны последние данные." : ""}{" "}
+              <button type="button" onClick={() => void participantsQuery.refetch()}>
+                Повторить
+              </button>
+            </div>
           )}
-        </TabsContent>
-        <TabsContent value="students" className="teacher-remote-students">
           <SessionParticipantList
             courseId={courseId}
             sessionId={sessionId}
             participants={participantsQuery.data ?? []}
           />
-        </TabsContent>
-      </Tabs>
+        </section>
+      )}
     </main>
   );
 }

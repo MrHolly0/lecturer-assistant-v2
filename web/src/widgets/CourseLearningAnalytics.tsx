@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { PaginationBar } from "./ListControls";
 import { LearningMetricsView } from "./LearningMetricsView";
+import { Button } from "../shared/ui/button";
 
 const PAGE_SIZE = 20;
 type SortMode = "name" | "errors" | "red";
@@ -86,8 +87,11 @@ export function CourseLearningAnalytics({
 
       {groupsQuery.isLoading && <p className="muted">Загрузка учебной аналитики…</p>}
       {groupsQuery.isError && (
-        <div className="form-error" role="alert">
-          Не удалось загрузить учебную аналитику.
+        <div className="analytics-load-error" role="alert">
+          <p>Не удалось загрузить состав учебных групп.</p>
+          <Button type="button" variant="outline" onClick={() => void groupsQuery.refetch()}>
+            Повторить
+          </Button>
         </div>
       )}
 
@@ -97,9 +101,9 @@ export function CourseLearningAnalytics({
             <div className="learning-group-row learning-group-row--header" aria-hidden="true">
               <span>Группа</span>
               <span>Состав</span>
-              <span>Посещения</span>
-              <span>Не понимаю</span>
-              <span>Верно</span>
+              <span>Посещения занятий</span>
+              <span>Сигналы «Не понимаю»</span>
+              <span>Верные ответы</span>
             </div>
             <GroupRow title="Весь курс" metrics={groupsQuery.data.overall} onOpen={setDetail} />
             {groups.map((group) => (
@@ -119,7 +123,7 @@ export function CourseLearningAnalytics({
             )}
             {hasObservedData(groupsQuery.data.unidentified) && (
               <GroupRow
-                title="Неидентифицированные"
+                title="Участники без привязанного профиля"
                 metrics={groupsQuery.data.unidentified}
                 onOpen={setDetail}
               />
@@ -166,11 +170,14 @@ export function CourseLearningAnalytics({
           </div>
           {studentsQuery.isLoading && <p className="muted">Загрузка студентов…</p>}
           {studentsQuery.isError && (
-            <div className="form-error" role="alert">
-              Не удалось загрузить студентов.
+            <div className="analytics-load-error" role="alert">
+              <p>Не удалось загрузить аналитику студентов.</p>
+              <Button type="button" variant="outline" onClick={() => void studentsQuery.refetch()}>
+                Повторить
+              </Button>
             </div>
           )}
-          {studentsQuery.data?.items.length === 0 && (
+          {studentsQuery.data?.items.length === 0 && !studentsQuery.isError && (
             <p className="analytics-empty">В выбранной группе студентов нет.</p>
           )}
           <ul className="student-analytics__list">
@@ -189,11 +196,11 @@ export function CourseLearningAnalytics({
                     <small>{student.groups.map((g) => g.name).join(", ") || "Без группы"}</small>
                   </span>
                   <MetricLabel
-                    label="Посещения"
+                    label="Посещения занятий"
                     value={String(student.metrics.sessionAttendances)}
                   />
-                  <MetricLabel label="Верно" value={gradedLabel(student.metrics)} />
-                  <MetricLabel label="Не понимаю" value={signalLabel(student.metrics)} />
+                  <MetricLabel label="Верные ответы" value={gradedLabel(student.metrics)} />
+                  <MetricLabel label="Сигналы «Не понимаю»" value={signalLabel(student.metrics)} />
                   <MetricLabel label="Вопросы" value={String(student.metrics.questionsAsked)} />
                 </button>
               </li>
@@ -222,7 +229,16 @@ export function CourseLearningAnalytics({
               </button>
               {detailQuery.isLoading && <p className="muted">Загрузка карточки…</p>}
               {detailQuery.isError && (
-                <p className="form-error">Не удалось загрузить карточку студента.</p>
+                <div className="analytics-load-error" role="alert">
+                  <p>Не удалось загрузить карточку студента.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void detailQuery.refetch()}
+                  >
+                    Повторить
+                  </Button>
+                </div>
               )}
               {detailQuery.data && (
                 <>
@@ -256,9 +272,9 @@ function GroupRow({
     >
       <strong>{title}</strong>
       <span data-label="Состав">{metrics.memberCount}</span>
-      <span data-label="Посещения">{metrics.sessionAttendances}</span>
-      <span data-label="Не понимаю">{signalLabel(metrics)}</span>
-      <span data-label="Верно">{gradedLabel(metrics)}</span>
+      <span data-label="Посещения занятий">{metrics.sessionAttendances}</span>
+      <span data-label="Сигналы «Не понимаю»">{signalLabel(metrics)}</span>
+      <span data-label="Верные ответы">{gradedLabel(metrics)}</span>
     </button>
   );
 }

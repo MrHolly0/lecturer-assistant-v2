@@ -64,7 +64,9 @@ export function CoursesPage() {
       void qc.invalidateQueries({ queryKey: ["courses"] });
       setTitle("");
       setShowCreate(false);
-    }
+      toast.success("Курс создан");
+    },
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось создать курс."))
   });
 
   const onCourseError = (error: unknown) => toast.error(userErrorMessage(error));
@@ -113,13 +115,27 @@ export function CoursesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Курсы</h1>
+        <div>
+          <h1>Курсы</h1>
+          <p className="muted">Готовые лекции и учебные группы</p>
+        </div>
         {canCreateCourse && !showCreate && (
           <Button onClick={() => setShowCreate(true)}>
             <Plus aria-hidden="true" /> Создать курс
           </Button>
         )}
       </div>
+
+      {activeSession.isError && (
+        <div className="courses-session-error" role="alert">
+          <span>
+            Не удалось проверить активное занятие. Повторите запрос, прежде чем готовить новое.
+          </span>
+          <Button type="button" variant="outline" onClick={() => void activeSession.refetch()}>
+            Повторить
+          </Button>
+        </div>
+      )}
 
       {currentSession && (
         <MaxActiveSessionBanner
@@ -148,11 +164,30 @@ export function CoursesPage() {
         </form>
       )}
 
-      {isLoading && <p className="muted">Загрузка...</p>}
-      {isError && <p className="form-error">Не удалось загрузить курсы.</p>}
+      {isLoading && (
+        <p className="muted" role="status">
+          Загрузка курсов…
+        </p>
+      )}
+      {isError && (
+        <div className="courses-list-error" role="alert">
+          <p>Не удалось загрузить курсы. Проверьте соединение и повторите запрос.</p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void qc.invalidateQueries({ queryKey: ["courses"] })}
+          >
+            Повторить
+          </Button>
+        </div>
+      )}
 
       {!isLoading && !isError && courses.length === 0 && (
-        <p className="muted">Нет курсов. Создайте первый.</p>
+        <div className="courses-empty">
+          <strong>Курсов пока нет</strong>
+          <p className="muted">Создайте курс, чтобы добавить лекции и состав студентов.</p>
+          {canCreateCourse && <Button onClick={() => setShowCreate(true)}>Создать курс</Button>}
+        </div>
       )}
 
       {!isLoading && !isError && courses.length > 0 && (showTabs || showSearch) && (
@@ -184,7 +219,9 @@ export function CoursesPage() {
                 <div className="course-card__actions">
                   <CourseQuickStart
                     courseId={course.id}
-                    blocked={activeSession.isLoading || Boolean(currentSession)}
+                    blocked={
+                      activeSession.isLoading || activeSession.isError || Boolean(currentSession)
+                    }
                   />
                   {canCreateCourse && (
                     <ConfirmActionButton
