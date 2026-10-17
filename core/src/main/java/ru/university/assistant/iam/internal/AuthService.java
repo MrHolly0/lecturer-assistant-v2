@@ -234,7 +234,7 @@ public class AuthService implements EphemeralPersonApi {
     public UserProfile createEphemeralStudent(String displayName) {
         UUID personId = UuidV7.generate();
         String cleanName = displayName == null || displayName.trim().length() < 2
-                ? "Гость " + personId.toString().substring(0, 8)
+                ? "Гость " + personId.toString().substring(28)
                 : displayName.trim();
         return persons.createWithStatus(
                         personId,

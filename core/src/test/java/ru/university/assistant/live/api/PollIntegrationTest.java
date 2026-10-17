@@ -150,6 +150,53 @@ class PollIntegrationTest extends LiveFlowTestBase {
     }
 
     @Test
+    void endingSessionClosesOpenPollAndPreservesItsResult() throws Exception {
+        String token = join(null, "{\"displayName\":\"Аня\"}").get("participantToken").asText();
+        UUID pollId = startPoll(sessionId);
+        respond(joinCode, pollId, token, null, 1);
+        json(put("/api/v1/courses/{c}/sessions/{s}/polls/{p}/correct-option", courseId, sessionId, pollId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"correctOptionIdx\":2}"), 200);
+
+        json(post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+
+        JsonNode snapshot = snapshot(joinCode, token, null);
+        JsonNode poll = snapshot.get("activePoll");
+        assertEquals("ENDED", snapshot.get("status").asText());
+        assertEquals("CLOSED", poll.get("status").asText());
+        assertEquals(2, poll.get("correctOptionIdx").asInt());
+        assertEquals("[0,1,0]", poll.get("votes").toString());
+        assertEquals(1, snapshot.get("myVote").asInt());
+
+        JsonNode summary = json(get("/api/v1/courses/{c}/sessions/{s}/summary", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        assertEquals("[0,1,0]", summary.at("/pollResults/0/votes").toString());
+        assertEquals(1, summary.at("/pollResults/0/totalResponses").asInt());
+
+        respondExpecting(joinCode, pollId, token, null, 0, 409);
+        assertEquals(1L, count("interaction.poll_responses"));
+        assertEquals(1L, count("analytics.events where verb = 'interaction.poll_closed'"));
+
+        json(post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 409);
+        assertEquals(1L, count("analytics.events where verb = 'interaction.poll_closed'"));
+    }
+
+    @Test
+    void pausingSessionLeavesOpenPollOpen() throws Exception {
+        UUID pollId = startPoll(sessionId);
+
+        json(post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+
+        assertEquals("OPEN", jdbc.sql("select status from interaction.quick_polls where id = :id")
+                .param("id", pollId).query(String.class).single());
+        assertEquals(0L, count("analytics.events where verb = 'interaction.poll_closed'"));
+    }
+
+    @Test
     void pollOfAnotherSessionIsNotFound() throws Exception {
         JsonNode other = startAnotherSession();
         UUID foreignPoll = startPoll(UUID.fromString(other.get("id").asText()));

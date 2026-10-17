@@ -97,12 +97,20 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        registration.interceptors(new ChannelInterceptor() {
+        registration.interceptors(inboundAuthorizationInterceptor());
+    }
+
+    ChannelInterceptor inboundAuthorizationInterceptor() {
+        return new ChannelInterceptor() {
             @Override
             public Message<?> preSend(Message<?> message, MessageChannel channel) {
                 StompHeaderAccessor h = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
                 if (h == null || h.getCommand() == null) return message;
                 String sessionId = h.getSessionId();
+                if (h.getCommand() == StompCommand.DISCONNECT) {
+                    if (sessionId != null) authorizations.remove(sessionId);
+                    return message;
+                }
                 if (sessionId == null) throw denied();
                 if (h.getCommand() == StompCommand.CONNECT) {
                     String token = accessToken(h);
@@ -121,15 +129,13 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
                     courseAccess.requireManage(user, sessions.courseId(id));
                     authorization.subscriptions.add(id);
                     authorization.checkedAt = 0;
-                } else if (h.getCommand() == StompCommand.DISCONNECT) {
-                    authorizations.remove(sessionId);
                 } else if (h.getCommand() != StompCommand.UNSUBSCRIBE
                         && h.getCommand() != StompCommand.ACK && h.getCommand() != StompCommand.NACK) {
                     throw denied();
                 }
                 return message;
             }
-        });
+        };
     }
 
     @Override

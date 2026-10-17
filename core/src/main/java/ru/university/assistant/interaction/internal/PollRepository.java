@@ -68,6 +68,19 @@ class PollRepository {
                 .optional();
     }
 
+    List<QuickPoll> findAllOpenForSession(UUID sessionId) {
+        return jdbc.sql("""
+                        select id, session_id, source_question_id, question_text, options, status,
+                               correct_option_idx, created_at, closed_at
+                        from interaction.quick_polls
+                        where session_id = :sessionId and status = 'OPEN'
+                        order by created_at, id
+                        """)
+                .param("sessionId", sessionId)
+                .query(this::map)
+                .list();
+    }
+
     /** Открытый опрос важнее закрытого; если открытого нет, берётся последний закрытый. */
     Optional<QuickPoll> findLatestForSession(UUID sessionId) {
         return jdbc.sql("""

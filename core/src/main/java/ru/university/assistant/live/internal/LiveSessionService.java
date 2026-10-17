@@ -13,6 +13,7 @@ import ru.university.assistant.analytics.api.DomainEvent;
 import ru.university.assistant.analytics.api.EventBus;
 import ru.university.assistant.channel.api.ChannelFanoutApi;
 import ru.university.assistant.iam.api.AuthenticatedUser;
+import ru.university.assistant.interaction.api.SessionPollLifecycleApi;
 import ru.university.assistant.live.api.ChangeSlideRequest;
 import ru.university.assistant.live.api.JoinSessionRequest;
 import ru.university.assistant.live.api.LiveSession;
@@ -36,6 +37,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
     private final EventBus events;
     private final LiveSessionPublisher publisher;
     private final ChannelFanoutApi channelFanout;
+    private final SessionPollLifecycleApi sessionPollLifecycle;
 
     LiveSessionService(
             CourseAccessApi courseAccess,
@@ -43,13 +45,15 @@ public class LiveSessionService implements LiveSessionAccessApi {
             LiveSessionRepository sessions,
             EventBus events,
             LiveSessionPublisher publisher,
-            ChannelFanoutApi channelFanout) {
+            ChannelFanoutApi channelFanout,
+            SessionPollLifecycleApi sessionPollLifecycle) {
         this.courseAccess = courseAccess;
         this.memberships = memberships;
         this.sessions = sessions;
         this.events = events;
         this.publisher = publisher;
         this.channelFanout = channelFanout;
+        this.sessionPollLifecycle = sessionPollLifecycle;
     }
 
     @Transactional
@@ -228,6 +232,9 @@ public class LiveSessionService implements LiveSessionAccessApi {
         sessions.lock(sessionId);
         LiveSession current = session(courseId, sessionId);
         ensureTransition(current.status(), target);
+        if (target == SessionStatus.ENDED) {
+            sessionPollLifecycle.closeOpenForSession(courseId, sessionId, user.id());
+        }
         LiveSession after = sessions.updateStatus(courseId, sessionId, target);
         String verb = switch (target) {
             case PAUSED -> "session.paused";

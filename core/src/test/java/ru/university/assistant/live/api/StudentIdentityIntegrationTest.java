@@ -248,6 +248,12 @@ class StudentIdentityIntegrationTest extends LiveFlowTestBase {
         join(null, null);
 
         assertEquals(3L, count("iam.persons where status = 'EPHEMERAL' and display_name like 'Гость %'"));
+        assertEquals(3, jdbc.sql("""
+                        select count(distinct display_name)::int
+                        from iam.persons
+                        where status = 'EPHEMERAL' and display_name like 'Гость %'
+                        """)
+                .query(Integer.class).single());
     }
 
     @Test
