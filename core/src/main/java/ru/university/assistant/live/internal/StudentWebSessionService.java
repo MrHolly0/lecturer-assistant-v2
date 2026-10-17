@@ -280,7 +280,8 @@ public class StudentWebSessionService {
                 current.participant().personId(),
                 current.participant().displayName(),
                 "web",
-                request.text());
+                request.text(),
+                request.anonymous());
         touch(current.participant());
         publisher.publish("qa.question_asked", current.session());
         return question;

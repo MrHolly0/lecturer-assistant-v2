@@ -30,14 +30,15 @@ class QuestionService implements QuestionApi {
 
     @Override
     @Transactional
-    public StudentQuestion ask(UUID sessionId, UUID personId, String displayName, String channelType, String text) {
+    public StudentQuestion ask(
+            UUID sessionId, UUID personId, String displayName, String channelType, String text, boolean anonymous) {
         StudentQuestion question = repository.create(UuidV7.generate(), sessionId, personId,
-                displayName, channelType, text.trim());
+                displayName, channelType, text.trim(), anonymous);
         events.publish(new DomainEvent(
                 "qa.question",
                 question.id(),
                 "qa.question_asked",
-                personId,
+                anonymous ? null : personId,
                 Map.of("sessionId", sessionId),
                 Map.of("channelType", channelType)));
         return question;

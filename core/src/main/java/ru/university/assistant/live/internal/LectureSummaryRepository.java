@@ -127,7 +127,7 @@ class LectureSummaryRepository {
     List<StudentQuestion> unansweredQuestions(UUID sessionId) {
         return jdbc.sql("""
                         select id, session_id, display_name, channel_type, text, status, created_at,
-                               answer_text, answered_at, answer_visibility
+                               answer_text, answered_at, answer_visibility, anonymous
                         from qa.questions
                         where session_id = :sessionId and status = 'OPEN'
                         order by created_at asc
@@ -226,7 +226,7 @@ class LectureSummaryRepository {
         return new StudentQuestion(
                 rs.getObject("id", UUID.class),
                 rs.getObject("session_id", UUID.class),
-                rs.getString("display_name"),
+                rs.getBoolean("anonymous") ? "Анонимный вопрос" : rs.getString("display_name"),
                 rs.getString("channel_type"),
                 rs.getString("text"),
                 QuestionStatus.valueOf(rs.getString("status")),
@@ -235,7 +235,8 @@ class LectureSummaryRepository {
                 rs.getTimestamp("answered_at") == null ? null : rs.getTimestamp("answered_at").toInstant(),
                 rs.getString("answer_visibility") == null
                         ? null
-                        : QuestionAnswerVisibility.valueOf(rs.getString("answer_visibility")));
+                        : QuestionAnswerVisibility.valueOf(rs.getString("answer_visibility")),
+                rs.getBoolean("anonymous"));
     }
 
     private List<String> options(String json) {

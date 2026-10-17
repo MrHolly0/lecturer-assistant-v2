@@ -21,6 +21,7 @@ import { PresenterPage } from "../pages/PresenterPage";
 import { ProjectionPage } from "../pages/ProjectionPage";
 import { SessionJoinPage } from "../pages/SessionJoinPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
+import { OrganizationPage } from "../pages/OrganizationPage";
 import { StudentHomePage } from "../pages/StudentHomePage";
 import { StudentSessionPage } from "../pages/StudentSessionPage";
 import { MaxLinkPage } from "../pages/MaxLinkPage";
@@ -448,6 +449,7 @@ const router = createHashRouter([
             element: <RequireRole roles={["ADMIN", "LECTURER", "ASSISTANT"]} />,
             children: [
               { path: "/courses", element: <CoursesPage /> },
+              { path: "/organization", element: <OrganizationPage /> },
               { path: "/courses/:courseId", element: <CourseRoute /> },
               { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
               { path: "/courses/:courseId/questions", element: <QuestionBankRoute /> },

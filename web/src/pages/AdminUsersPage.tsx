@@ -81,6 +81,9 @@ export function AdminUsersPage() {
     <div className="page admin-users-page">
       <div className="page-header">
         <h1>Пользователи</h1>
+        <LinkButton to="/organization" variant="outline">
+          Факультеты и кафедры
+        </LinkButton>
       </div>
 
       <section className="section">

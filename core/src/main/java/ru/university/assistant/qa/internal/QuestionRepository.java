@@ -21,20 +21,23 @@ class QuestionRepository {
     }
 
     StudentQuestion create(
-            UUID id, UUID sessionId, UUID personId, String displayName, String channelType, String text) {
+            UUID id, UUID sessionId, UUID personId, String displayName,
+            String channelType, String text, boolean anonymous) {
         return jdbc.sql(
                         """
-                        insert into qa.questions (id, session_id, person_id, display_name, channel_type, text, status)
-                        values (:id, :sessionId, :personId, :displayName, :channelType, :text, 'OPEN')
+                        insert into qa.questions
+                            (id, session_id, person_id, display_name, channel_type, text, status, anonymous)
+                        values (:id, :sessionId, :personId, :displayName, :channelType, :text, 'OPEN', :anonymous)
                         returning id, session_id, display_name, channel_type, text, status, created_at,
-                                  answer_text, answered_at, answer_visibility
+                                  answer_text, answered_at, answer_visibility, anonymous
                         """)
                 .param("id", id)
                 .param("sessionId", sessionId)
                 .param("personId", personId)
-                .param("displayName", displayName)
+                .param("displayName", anonymous ? "Анонимный вопрос" : displayName)
                 .param("channelType", channelType)
                 .param("text", text)
+                .param("anonymous", anonymous)
                 .query(this::mapQuestion)
                 .single();
     }
@@ -43,7 +46,7 @@ class QuestionRepository {
         return jdbc.sql(
                         """
                         select id, session_id, display_name, channel_type, text, status, created_at,
-                               answer_text, answered_at, answer_visibility
+                               answer_text, answered_at, answer_visibility, anonymous
                         from qa.questions
                         where session_id = :sessionId and status = 'OPEN'
                         order by created_at desc
@@ -58,7 +61,7 @@ class QuestionRepository {
         return jdbc.sql(
                         """
                         select id, session_id, display_name, channel_type, text, status, created_at,
-                               answer_text, answered_at, answer_visibility
+                               answer_text, answered_at, answer_visibility, anonymous
                         from qa.questions
                         where session_id = :sessionId and id = :questionId
                         """)
@@ -80,7 +83,7 @@ class QuestionRepository {
                             answer_visibility = :answerVisibility, answered_at = now()
                         where session_id = :sessionId and id = :questionId and status = 'OPEN'
                         returning id, session_id, display_name, channel_type, text, status, created_at,
-                                  answer_text, answered_at, answer_visibility
+                                  answer_text, answered_at, answer_visibility, anonymous
                         """)
                 .param("sessionId", sessionId)
                 .param("questionId", questionId)
@@ -124,7 +127,7 @@ class QuestionRepository {
         return new StudentQuestion(
                 rs.getObject("id", UUID.class),
                 rs.getObject("session_id", UUID.class),
-                rs.getString("display_name"),
+                rs.getBoolean("anonymous") ? "Анонимный вопрос" : rs.getString("display_name"),
                 rs.getString("channel_type"),
                 rs.getString("text"),
                 QuestionStatus.valueOf(rs.getString("status")),
@@ -133,6 +136,7 @@ class QuestionRepository {
                 rs.getTimestamp("answered_at") == null ? null : rs.getTimestamp("answered_at").toInstant(),
                 rs.getString("answer_visibility") == null
                         ? null
-                        : QuestionAnswerVisibility.valueOf(rs.getString("answer_visibility")));
+                        : QuestionAnswerVisibility.valueOf(rs.getString("answer_visibility")),
+                rs.getBoolean("anonymous"));
     }
 }

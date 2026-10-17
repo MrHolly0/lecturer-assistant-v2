@@ -2180,6 +2180,152 @@ paths:
       responses:
         "202":
           description: Inbound event accepted.
+  /organization:
+    get:
+      tags:
+        - Organization
+      summary: Staff organization tree with effective permissions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationView'
+        '403':
+          description: Outside the staff member’s organizational scope or forbidden permission change
+        '404':
+          description: Organization unit or staff member not found
+  /organization/members:
+    get:
+      tags:
+        - Organization
+      summary: Staff in a unit subtree; administrator sees all staff without unitId
+      parameters:
+        - name: unitId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrganizationMember'
+        '403':
+          description: Outside the staff member’s organizational scope or forbidden permission change
+        '404':
+          description: Organization unit or staff member not found
+  /organization/units:
+    post:
+      tags:
+        - Organization
+      summary: Create a group at the root or under a group within the caller’s scope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveUnitRequest'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationUnit'
+        '400':
+          description: Invalid parent or hierarchy
+        '403':
+          description: Outside the staff member’s organizational scope or forbidden permission change
+        '404':
+          description: Organization unit or staff member not found
+        '409':
+          description: Duplicate sibling name
+  /organization/units/{unitId}:
+    put:
+      tags:
+        - Organization
+      summary: Rename or move a group; moving includes its full subtree
+      parameters:
+        - name: unitId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveUnitRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationUnit'
+        '400':
+          description: Invalid hierarchy
+        '403':
+          description: Outside the staff member’s organizational scope or forbidden permission change
+        '404':
+          description: Organization unit or staff member not found
+        '409':
+          description: Duplicate name
+    delete:
+      tags:
+        - Organization
+      summary: Delete a unit subtree, preserving accounts, courses and history
+      parameters:
+        - name: unitId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Unit subtree and memberships removed; accounts remain
+        '403':
+          description: Outside the staff member’s organizational scope or forbidden permission change
+        '404':
+          description: Organization unit or staff member not found
+  /organization/members/{personId}:
+    put:
+      tags:
+        - Organization
+      summary: Assign, move or remove a staff member; only administrator grants MANAGER
+      parameters:
+        - name: personId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignStaffRequest'
+      responses:
+        '204':
+          description: Membership updated; no system role or course permission changes
+        '400':
+          description: Student is not a staff member
+        '403':
+          description: Outside the staff member’s organizational scope or forbidden permission change
+        '404':
+          description: Organization unit or staff member not found
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2304,6 +2450,130 @@ components:
         type: string
         enum: [telegram, vk, web, echo]
   schemas:
+    UnitKind:
+      type: string
+      enum:
+        - UNIT
+        - FACULTY
+        - DEPARTMENT
+    UnitRole:
+      type: string
+      enum:
+        - MEMBER
+        - MANAGER
+    OrganizationUnit:
+      type: object
+      required:
+        - id
+        - parentId
+        - name
+        - kind
+        - directMembersCount
+        - totalMembersCount
+        - canManage
+        - canViewMembers
+      properties:
+        id:
+          type: string
+          format: uuid
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        kind:
+          $ref: '#/components/schemas/UnitKind'
+        directMembersCount:
+          type: integer
+        totalMembersCount:
+          type: integer
+        canManage:
+          type: boolean
+        canViewMembers:
+          type: boolean
+    OrganizationView:
+      type: object
+      required:
+        - units
+        - administrator
+      properties:
+        units:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationUnit'
+        administrator:
+          type: boolean
+    OrganizationMember:
+      type: object
+      required:
+        - id
+        - displayName
+        - email
+        - role
+        - status
+        - unitId
+        - unitName
+        - unitRole
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum:
+            - ADMIN
+            - LECTURER
+            - ASSISTANT
+            - STUDENT
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - DISABLED
+            - EPHEMERAL
+        unitId:
+          type: string
+          format: uuid
+          nullable: true
+        unitName:
+          type: string
+          nullable: true
+        unitRole:
+          allOf:
+            - $ref: '#/components/schemas/UnitRole'
+          nullable: true
+    SaveUnitRequest:
+      type: object
+      required:
+        - name
+        - kind
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        kind:
+          $ref: '#/components/schemas/UnitKind'
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+    AssignStaffRequest:
+      type: object
+      required:
+        - unitRole
+      properties:
+        unitId:
+          type: string
+          format: uuid
+          nullable: true
+        unitRole:
+          $ref: '#/components/schemas/UnitRole'
     ActiveSessionSummary:
       type: object
       required: [sessionId, courseId, joinCode, lectureTitle, groups, currentSlideIdx, status]
@@ -2471,6 +2741,10 @@ components:
           type: integer
           minimum: 1
           default: 168
+        organizationUnitId:
+          type: string
+          format: uuid
+          nullable: true
     CreateCourseInvitationRequest:
       type: object
       required: [role]
@@ -2503,6 +2777,10 @@ components:
         groupId:
           type: string
           format: uuid
+        organizationUnitId:
+          type: string
+          format: uuid
+          nullable: true
         expiresAt:
           type: string
           format: date-time
@@ -3712,6 +3990,10 @@ components:
       type: object
       required: [text]
       properties:
+        anonymous:
+          type: boolean
+          default: false
+          description: Hide the author from teaching staff; retain server-side routing for private answers.
         participantToken:
           type: string
         text:
@@ -3720,8 +4002,11 @@ components:
           maxLength: 2000
     StudentQuestion:
       type: object
-      required: [id, sessionId, displayName, channelType, text, status, createdAt]
+      required: [id, sessionId, displayName, channelType, text, status, createdAt, anonymous]
       properties:
+        anonymous:
+          type: boolean
+          description: When true, displayName is a nonidentifying label in all staff responses.
         id:
           type: string
           format: uuid

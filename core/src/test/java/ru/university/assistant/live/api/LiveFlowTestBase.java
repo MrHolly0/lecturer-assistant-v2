@@ -99,7 +99,8 @@ abstract class LiveFlowTestBase {
                             content.attachments, live.lectures, content.slide_notes, content.slides,
                             content.slide_decks, content.import_jobs, iam.channel_identities,
                             iam.identity_link_codes, iam.refresh_tokens, iam.invitations, iam.course_bans,
-                            org.group_members, org.study_groups, org.course_members, org.courses, iam.persons
+                            org.group_members, org.study_groups, org.course_members, org.courses,
+                            org.staff_memberships, org.units, iam.persons
                         restart identity cascade
                         """)
                 .update();

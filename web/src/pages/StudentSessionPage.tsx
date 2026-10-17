@@ -132,8 +132,10 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     retry: shouldRetryMutation,
     retryDelay: mutationRetryDelay
   });
+  const [questionAnonymous, setQuestionAnonymous] = useState(false);
   const questionMut = useMutation({
-    mutationFn: () => askStudentQuestion(normalizedCode, participantToken, question.trim()),
+    mutationFn: () =>
+      askStudentQuestion(normalizedCode, participantToken, question.trim(), questionAnonymous),
     onSuccess: (created) => {
       setQuestions((items) => [created, ...items]);
       setQuestion("");
@@ -445,6 +447,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             onSignal={(value) => signalMut.mutate(value)}
             onQuestionChange={setQuestion}
             onQuestionSubmit={() => questionMut.mutate()}
+            anonymous={questionAnonymous}
+            onAnonymousChange={setQuestionAnonymous}
           />
         </section>
       )}

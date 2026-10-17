@@ -1687,10 +1687,390 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/organization": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Staff organization tree with effective permissions */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["OrganizationView"];
+          };
+        };
+        /** @description Outside the staff member’s organizational scope or forbidden permission change */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Organization unit or staff member not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/organization/members": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Staff in a unit and its departments; administrator sees all staff without unitId */
+    get: {
+      parameters: {
+        query?: {
+          unitId?: string;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["OrganizationMember"][];
+          };
+        };
+        /** @description Outside the staff member’s organizational scope or forbidden permission change */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Organization unit or staff member not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/organization/units": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create a faculty or a department within the caller’s scope */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["SaveUnitRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["OrganizationUnit"];
+          };
+        };
+        /** @description Invalid parent or kind */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Outside the staff member’s organizational scope or forbidden permission change */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Organization unit or staff member not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Duplicate sibling name */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/organization/units/{unitId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Rename or move a department; moving includes all memberships */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          unitId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["SaveUnitRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["OrganizationUnit"];
+          };
+        };
+        /** @description Invalid hierarchy */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Outside the staff member’s organizational scope or forbidden permission change */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Organization unit or staff member not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Duplicate name */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+      };
+    };
+    post?: never;
+    /** Delete a unit subtree, preserving accounts, courses and history */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          unitId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Unit subtree and memberships removed; accounts remain */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Outside the staff member’s organizational scope or forbidden permission change */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Organization unit or staff member not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/organization/members/{personId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Assign, move or remove a staff member; only administrator grants MANAGER */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          personId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["AssignStaffRequest"];
+        };
+      };
+      responses: {
+        /** @description Membership updated; no system role or course permission changes */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Student is not a staff member */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Outside the staff member’s organizational scope or forbidden permission change */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Organization unit or staff member not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** @enum {string} */
+    UnitKind: "UNIT" | "FACULTY" | "DEPARTMENT";
+    /** @enum {string} */
+    UnitRole: "MEMBER" | "MANAGER";
+    OrganizationUnit: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      parentId: string | null;
+      name: string;
+      kind: components["schemas"]["UnitKind"];
+      directMembersCount: number;
+      totalMembersCount: number;
+      canManage: boolean;
+      canViewMembers: boolean;
+    };
+    OrganizationView: {
+      units: components["schemas"]["OrganizationUnit"][];
+      administrator: boolean;
+    };
+    OrganizationMember: {
+      /** Format: uuid */
+      id: string;
+      displayName: string;
+      email: string;
+      /** @enum {string} */
+      role: "ADMIN" | "LECTURER" | "ASSISTANT" | "STUDENT";
+      /** @enum {string} */
+      status: "ACTIVE" | "DISABLED" | "EPHEMERAL";
+      /** Format: uuid */
+      unitId: string | null;
+      unitName: string | null;
+      unitRole: components["schemas"]["UnitRole"] | null;
+    };
+    SaveUnitRequest: {
+      name: string;
+      kind: components["schemas"]["UnitKind"];
+      /** Format: uuid */
+      parentId?: string | null;
+    };
+    AssignStaffRequest: {
+      /** Format: uuid */
+      unitId?: string | null;
+      unitRole: components["schemas"]["UnitRole"];
+    };
     ActiveSessionSummary: {
       /** Format: uuid */
       sessionId: string;
@@ -1781,6 +2161,8 @@ export interface components {
       role: "ADMIN" | "LECTURER" | "ASSISTANT";
       /** @default 168 */
       ttlHours: number;
+      /** Format: uuid */
+      organizationUnitId?: string | null;
     };
     CreateCourseInvitationRequest: {
       /** @enum {string} */
@@ -1800,6 +2182,8 @@ export interface components {
       courseId?: string;
       /** Format: uuid */
       groupId?: string;
+      /** Format: uuid */
+      organizationUnitId?: string | null;
       /** Format: date-time */
       expiresAt: string;
     };
@@ -2399,10 +2783,17 @@ export interface components {
       slideIdx?: number;
     };
     StudentQuestionRequest: {
+      /**
+       * @description Hide the author from teaching staff; retain server-side routing for private answers.
+       * @default false
+       */
+      anonymous: boolean;
       participantToken?: string;
       text: string;
     };
     StudentQuestion: {
+      /** @description When true, displayName is a nonidentifying label in all staff responses. */
+      anonymous: boolean;
       /** Format: uuid */
       id: string;
       /** Format: uuid */

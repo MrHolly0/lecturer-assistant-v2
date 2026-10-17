@@ -13,4 +13,5 @@ public record StudentQuestion(
         Instant createdAt,
         String answerText,
         Instant answeredAt,
-        QuestionAnswerVisibility answerVisibility) {}
+        QuestionAnswerVisibility answerVisibility,
+        boolean anonymous) {}

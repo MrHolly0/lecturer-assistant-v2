@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { BookOpen, Home, Link2, LogOut, Menu, Shield, UserRound, X } from "lucide-react";
+import { BookOpen, Building2, Home, Link2, LogOut, Menu, Shield, UserRound, X } from "lucide-react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthContext";
 import { landingPath } from "../app/routes";
@@ -12,6 +12,12 @@ import { ThemeToggle } from "./ThemeToggle";
 const navItems = [
   { path: "/home", icon: Home, label: "Главная", roles: ["STUDENT"] },
   { path: "/courses", icon: BookOpen, label: "Курсы", roles: ["ADMIN", "LECTURER", "ASSISTANT"] },
+  {
+    path: "/organization",
+    icon: Building2,
+    label: "Сотрудники и группы",
+    roles: ["ADMIN", "LECTURER", "ASSISTANT"]
+  },
   {
     path: "/settings/max",
     icon: Link2,

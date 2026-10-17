@@ -3,6 +3,7 @@ package ru.university.assistant.iam.internal;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.university.assistant.iam.api.InvitationApi;
@@ -25,6 +26,13 @@ public class InvitationService implements InvitationApi {
     @Transactional
     public InvitationResponse createInvitation(
             PersonRole role, UUID courseId, UUID groupId, UUID createdBy, Integer ttlHours) {
+        return createInvitation(role, courseId, groupId, null, createdBy, ttlHours);
+    }
+
+    @Override
+    @Transactional
+    public InvitationResponse createInvitation(
+            PersonRole role, UUID courseId, UUID groupId, UUID organizationUnitId, UUID createdBy, Integer ttlHours) {
         int ttl = ttlHours == null ? 168 : ttlHours;
         return invitations.create(
                 UuidV7.generate(),
@@ -32,8 +40,14 @@ public class InvitationService implements InvitationApi {
                 role,
                 courseId,
                 groupId,
+                organizationUnitId,
                 createdBy,
                 clock.instant().plus(Duration.ofHours(ttl)))
                 .toResponse();
+    }
+
+    @Override
+    public Optional<UUID> organizationUnit(UUID invitationId) {
+        return invitations.organizationUnit(invitationId);
     }
 }

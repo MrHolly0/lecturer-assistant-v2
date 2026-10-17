@@ -1,5 +1,6 @@
 @import "./styles/tailwind.css";
 @import "./styles/theme.css";
+@import "./styles/organization.css";
 
 html,
 body,

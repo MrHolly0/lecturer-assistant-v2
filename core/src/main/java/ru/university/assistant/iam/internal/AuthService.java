@@ -33,6 +33,7 @@ import ru.university.assistant.iam.api.UserProfile;
 import ru.university.assistant.iam.internal.security.JwtService;
 import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.CourseRole;
+import ru.university.assistant.org.api.StaffMembershipApi;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
@@ -47,6 +48,7 @@ public class AuthService implements EphemeralPersonApi {
     private final InvitationApi invitationApi;
     private final RefreshTokenRepository refreshTokens;
     private final CourseMembershipApi courseMemberships;
+    private final StaffMembershipApi staffMemberships;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final EventBus events;
@@ -65,7 +67,8 @@ public class AuthService implements EphemeralPersonApi {
             JwtService jwtService,
             EventBus events,
             Clock clock,
-            @Value("${app.security.refresh-token-days}") long refreshTokenDays) {
+            @Value("${app.security.refresh-token-days}") long refreshTokenDays,
+            StaffMembershipApi staffMemberships) {
         this.persons = persons;
         this.identities = identities;
         this.maxInitData = maxInitData;
@@ -73,6 +76,7 @@ public class AuthService implements EphemeralPersonApi {
         this.invitationApi = invitationApi;
         this.refreshTokens = refreshTokens;
         this.courseMemberships = courseMemberships;
+        this.staffMemberships = staffMemberships;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.events = events;
@@ -100,7 +104,12 @@ public class AuthService implements EphemeralPersonApi {
             courseMemberships.addMemberFromInvitation(
                     invitation.courseId(), invitation.groupId(), person.id(), toCourseRole(invitation.role()));
         }
-        invitations.markUsed(invitation.id());
+        if (invitation.organizationUnitId() != null) {
+            staffMemberships.addInvitedStaff(person.id(), invitation.id());
+        }
+        if (!invitations.markUsed(invitation.id())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid invitation");
+        }
         return issueTokens(person);
     }
 
@@ -278,7 +287,11 @@ public class AuthService implements EphemeralPersonApi {
         if (actor.id().equals(personId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot change your own role");
         }
-        return persons.updateRole(personId, request.role()).toProfile();
+        UserProfile updated = persons.updateRole(personId, request.role()).toProfile();
+        if (request.role() == PersonRole.STUDENT) {
+            staffMemberships.removeStaffMembershipIfStudent(personId);
+        }
+        return updated;
     }
 
     @Transactional
@@ -298,7 +311,9 @@ public class AuthService implements EphemeralPersonApi {
         if (request.role() == PersonRole.STUDENT) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Student invitations are course-scoped");
         }
-        return invitationApi.createInvitation(request.role(), null, null, createdBy.id(), request.ttlHours());
+        staffMemberships.validateInvitationTarget(request.organizationUnitId());
+        return invitationApi.createInvitation(
+                request.role(), null, null, request.organizationUnitId(), createdBy.id(), request.ttlHours());
     }
 
     private PersonRecord createPerson(RegisterRequest request, PersonRole role) {

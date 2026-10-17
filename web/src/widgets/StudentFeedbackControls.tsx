@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { Check, MessageSquareText } from "lucide-react";
+import { Check, EyeOff, MessageSquareText } from "lucide-react";
 import type { SignalValue, StudentQuestion, StudentQuestionAnswer } from "../app/api/student-api";
 import { Button } from "../shared/ui/button";
 import { StudentQuestionAnswers } from "./StudentQuestionAnswers";
@@ -16,11 +16,13 @@ interface StudentFeedbackControlsProps {
   isQuestionPending: boolean;
   lastSignal: SignalValue | null;
   question: string;
+  anonymous: boolean;
   questions: StudentQuestion[];
   answers: StudentQuestionAnswer[];
   onSignal: (value: SignalValue) => void;
   onQuestionChange: (value: string) => void;
   onQuestionSubmit: () => void;
+  onAnonymousChange: (value: boolean) => void;
 }
 
 export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
@@ -61,6 +63,13 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
 
       <form onSubmit={submitQuestion} className="student-question-form">
         <label htmlFor="student-question">Вопрос</label>
+        <p id="question-audience-hint" className="question-privacy-hint">
+          {props.anonymous
+            ? "Имя скрыто от сотрудников и участников занятия. Аккаунт используется для доставки личного ответа."
+            : "Это не анонимный вопрос. Сотрудники с доступом к занятию увидят ваше имя."}{" "}
+          Преподаватель может ответить лично или показать вопрос и ответ всей аудитории без имени
+          автора.
+        </p>
         <textarea
           id="student-question"
           value={props.question}
@@ -68,13 +77,24 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
           placeholder="Напишите вопрос преподавателю"
           maxLength={1000}
           rows={3}
+          aria-describedby="question-audience-hint"
         />
+        <label className="question-anonymous-option">
+          <input
+            type="checkbox"
+            checked={props.anonymous}
+            onChange={(event) => props.onAnonymousChange(event.target.checked)}
+            disabled={props.isQuestionPending}
+          />
+          <EyeOff size={17} aria-hidden="true" />
+          Спросить анонимно
+        </label>
         <Button
           type="submit"
           disabled={!props.isLive || props.isQuestionPending || !props.question.trim()}
         >
           <MessageSquareText size={16} />
-          Отправить
+          {props.anonymous ? "Отправить анонимно" : "Отправить с именем"}
         </Button>
       </form>
 
@@ -85,6 +105,7 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
           {props.questions.map((item) => (
             <li key={item.id}>
               <span>{item.text}</span>
+              {item.anonymous && <small>Анонимно</small>}
               <small>{new Date(item.createdAt).toLocaleTimeString("ru-RU")}</small>
             </li>
           ))}

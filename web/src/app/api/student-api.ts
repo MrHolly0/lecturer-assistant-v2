@@ -147,12 +147,15 @@ export async function updateStudentQuestion(
 export async function askStudentQuestion(
   joinCode: string,
   participantToken: string,
-  text: string
+  text: string,
+  anonymous = false
 ): Promise<StudentQuestion> {
   const authenticated = Boolean(getStoredAuth());
   const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/questions`, {
     method: "POST",
-    body: JSON.stringify(authenticated ? { text } : { participantToken, text })
+    body: JSON.stringify(
+      authenticated ? { text, anonymous } : { participantToken, text, anonymous }
+    )
   });
   return res.json() as Promise<StudentQuestion>;
 }

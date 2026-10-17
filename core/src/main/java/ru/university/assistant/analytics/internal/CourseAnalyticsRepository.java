@@ -301,6 +301,9 @@ class CourseAnalyticsRepository {
 
     private long[] questions(UUID courseId, Scope scope, UUID groupId) {
         String predicate = scope.predicate().formatted("q", "q");
+        if (scope.personIds() != null) {
+            predicate += " and not q.anonymous";
+        }
         String groupPredicate = groupParticipantPredicate("s", "q", groupId);
         JdbcClient.StatementSpec query = jdbc.sql("""
                         select count(*) as questions,

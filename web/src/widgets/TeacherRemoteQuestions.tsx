@@ -114,6 +114,10 @@ export function TeacherRemoteQuestions({
               />
             </label>
             <div className="teacher-question-sheet__actions">
+              <p className="question-privacy-hint">
+                Личный ответ увидит только автор. При ответе всем аудитория увидит вопрос и ответ
+                без имени автора.
+              </p>
               <Button
                 type="button"
                 disabled={updateMutation.isPending || !answerText.trim()}
