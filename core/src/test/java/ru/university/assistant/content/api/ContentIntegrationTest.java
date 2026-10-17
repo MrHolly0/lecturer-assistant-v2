@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -19,8 +20,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +45,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.university.assistant.content.internal.BlobStorage;
+import ru.university.assistant.content.internal.ContentImportRecovery;
 import ru.university.assistant.content.internal.ConvertedSlide;
 import ru.university.assistant.content.internal.SlideConversionResult;
 import ru.university.assistant.content.internal.SlideConversionClient;
@@ -52,6 +59,8 @@ class ContentIntegrationTest {
     private static final String ADMIN_SETUP_TOKEN = "integration-admin-setup-token-with-enough-length";
     private static final Path BLOB_ROOT =
             Path.of(System.getProperty("java.io.tmpdir"), "lecturer-assistant-v2-test-blobs-" + UUID.randomUUID());
+    private static volatile CountDownLatch converterReadyForBackup = new CountDownLatch(0);
+    private static volatile CountDownLatch allowConverterBlobWrite = new CountDownLatch(0);
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -64,6 +73,12 @@ class ContentIntegrationTest {
 
     @Autowired
     JdbcClient jdbc;
+
+    @Autowired
+    DataSource dataSource;
+
+    @Autowired
+    ContentImportRecovery importRecovery;
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry registry) {
@@ -171,6 +186,117 @@ class ContentIntegrationTest {
                 .andExpect(jsonPath("$.title").value("Partial Deck"))
                 .andExpect(jsonPath("$.slides", hasSize(1)))
                 .andExpect(jsonPath("$.slides[0].textExtract", containsString("Слайд 2: ошибка рендера")));
+    }
+
+    @Test
+    void converterFailureBeforeFirstSlideIsFailed() throws Exception {
+        String adminToken = bootstrapAdmin();
+        String lecturerToken = register(
+                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        UUID courseId = createCourse(lecturerToken, "Algorithms");
+        byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
+
+        JsonNode job = startImport(lecturerToken, courseId, "Broken Deck", "failed-report.pdf", pdf);
+        JsonNode failed = waitForJobStatus(lecturerToken, courseId, job.get("id").asText(), "FAILED");
+
+        assertEquals(0, failed.get("processedSlides").asInt());
+        assertTrue(failed.get("errorMessage").asText().contains("Конвертер не смог открыть файл"));
+        assertTrue(failed.get("deckId").isTextual());
+
+        JsonNode retry = json(post("/api/v1/courses/{courseId}/import-jobs/{jobId}/retry",
+                        courseId, job.get("id").asText())
+                .header("Authorization", bearer(lecturerToken)), 202);
+        assertNotEquals(job.get("id").asText(), retry.get("id").asText());
+        waitForJobStatus(lecturerToken, courseId, retry.get("id").asText(), "FAILED");
+        assertNotEquals(failed.get("deckId").asText(),
+                getImportJob(lecturerToken, courseId, retry.get("id").asText()).get("deckId").asText());
+    }
+
+    @Test
+    void importBlobWritesWaitForConsistentBackupAndResumeAfterItCompletes() throws Exception {
+        String adminToken = bootstrapAdmin();
+        String lecturerToken = register(
+                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        UUID courseId = createCourse(lecturerToken, "Algorithms");
+        byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
+        converterReadyForBackup = new CountDownLatch(1);
+        allowConverterBlobWrite = new CountDownLatch(1);
+
+        try {
+            JsonNode job = startImport(lecturerToken, courseId, "Backup overlap", "backup-overlap.pdf", pdf);
+            assertTrue(converterReadyForBackup.await(10, TimeUnit.SECONDS), "Importer should reach conversion");
+
+            try (Connection backupConnection = dataSource.getConnection()) {
+                try (PreparedStatement lock = backupConnection.prepareStatement(
+                        "select pg_advisory_lock(14713, 2525)")) {
+                    lock.execute();
+                }
+                allowConverterBlobWrite.countDown();
+                assertTrue(waitForBackupLockWaiter(), "Import blob write should wait while the backup holds its lock");
+
+                try (PreparedStatement unlock = backupConnection.prepareStatement(
+                        "select pg_advisory_unlock(14713, 2525)")) {
+                    unlock.execute();
+                }
+            }
+
+            JsonNode completed = waitForCompletedJob(lecturerToken, courseId, job.get("id").asText());
+            assertEquals(2, completed.get("processedSlides").asInt());
+        } finally {
+            allowConverterBlobWrite.countDown();
+            converterReadyForBackup = new CountDownLatch(0);
+            allowConverterBlobWrite = new CountDownLatch(0);
+        }
+    }
+
+    private boolean waitForBackupLockWaiter() throws InterruptedException {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            Integer waitingLocks = jdbc.sql(
+                            "select count(*) from pg_locks where locktype = 'advisory' and not granted")
+                    .query(Integer.class)
+                    .single();
+            if (waitingLocks > 0) {
+                return true;
+            }
+            Thread.sleep(50);
+        }
+        return false;
+    }
+
+    @Test
+    void restartRecoveryMarksInterruptedJobsFailedOrPartial() throws Exception {
+        String adminToken = bootstrapAdmin();
+        String lecturerToken = register(
+                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        UUID courseId = createCourse(lecturerToken, "Algorithms");
+        UUID pendingId = UUID.randomUUID();
+        UUID runningId = UUID.randomUUID();
+        insertInterruptedJob(pendingId, courseId, "PENDING", 0);
+        insertInterruptedJob(runningId, courseId, "RUNNING", 2);
+
+        importRecovery.recoverInterruptedJobs();
+
+        JsonNode failed = getImportJob(lecturerToken, courseId, pendingId.toString());
+        JsonNode partial = getImportJob(lecturerToken, courseId, runningId.toString());
+        assertEquals("FAILED", failed.get("status").asText());
+        assertEquals("PARTIAL", partial.get("status").asText());
+        assertEquals("INTERRUPTED_RESTART", partial.get("phase").asText());
+        assertTrue(failed.get("errorMessage").asText().contains("можно повторить"));
+    }
+
+    private void insertInterruptedJob(UUID jobId, UUID courseId, String state, int processed) {
+        jdbc.sql("""
+                        insert into content.import_jobs
+                            (id, course_id, status, progress, source_file_ref, source_filename,
+                             source_content_type, source_size_bytes, import_title, processed_slides)
+                        values (:id, :courseId, :status, 10, 'interrupted/source.pdf', 'source.pdf',
+                            'application/pdf', 100, 'Interrupted', :processed)
+                        """)
+                .param("id", jobId)
+                .param("courseId", courseId)
+                .param("status", state)
+                .param("processed", processed)
+                .update();
     }
 
     @Test
@@ -639,6 +765,27 @@ class ContentIntegrationTest {
         throw new AssertionError("Import job did not reach " + expectedStatus + ": " + job);
     }
 
+    private JsonNode getImportJob(String token, UUID courseId, String jobId) throws Exception {
+        String response = mockMvc.perform(get("/api/v1/courses/{courseId}/import-jobs/{jobId}", courseId, jobId)
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(response);
+    }
+
+    private JsonNode json(
+            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, int status)
+            throws Exception {
+        String response = mockMvc.perform(request)
+                .andExpect(status().is(status))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(response);
+    }
+
     private String bootstrapAdmin() throws Exception {
         String response = mockMvc.perform(post("/api/v1/auth/bootstrap-admin")
                         .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
@@ -764,9 +911,19 @@ class ContentIntegrationTest {
                 public SlideConversionResult convert(
                         StoredBlob source, String outputPrefix, UUID jobId, SlideConversionSink sink) {
                     try {
+                        if (source.filename().contains("backup-overlap")) {
+                            converterReadyForBackup.countDown();
+                            if (!allowConverterBlobWrite.await(10, TimeUnit.SECONDS)) {
+                                throw new IllegalStateException("Backup overlap test was not released");
+                            }
+                        }
                         byte[] png = java.util.Base64.getDecoder().decode(
                                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/"
                                         + "lQ5yYwAAAABJRU5ErkJggg==");
+                        if (source.filename().contains("failed-report")) {
+                            return new SlideConversionResult(0, 0, false, null,
+                                    "Конвертер не смог открыть файл");
+                        }
                         String first = storage.storeBytes(png, "slide-1.png", "image/png").ref();
                         if (source.filename().contains("partial")) {
                             sink.metadata(3, 3, "RENDERING 0/3", "Импортировано 1 из 3");
@@ -779,6 +936,9 @@ class ContentIntegrationTest {
                         sink.slide(new ConvertedSlide(1, first, "V1 golden: " + source.filename(), false), 1, 2);
                         sink.slide(new ConvertedSlide(2, second, "Second rendered slide", false), 2, 2);
                         return new SlideConversionResult(2, 2, false, null, null);
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException("Backup overlap test interrupted", exception);
                     } catch (java.io.IOException exception) {
                         throw new IllegalStateException(exception);
                     }

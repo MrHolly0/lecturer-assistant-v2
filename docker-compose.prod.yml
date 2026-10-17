@@ -53,8 +53,7 @@ services:
       web:
         condition: service_healthy
 
-  # Ежедневная резервная копия базы: pg_dump в deploy/stand/backups на сервере, хранится
-  # 14 дней. Первая копия — через 5 минут после старта, когда core уже прогнал миграции.
+  # Ежедневная согласованная пара DB+blob в отдельном host mount.
   db-backup:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -64,23 +63,41 @@ services:
       PGUSER: ${POSTGRES_USER:-lecturer}
       PGPASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_LOCK_WAIT_SECONDS: ${BACKUP_LOCK_WAIT_SECONDS:-1800}
+      BACKUP_DESTINATION: /backup-destination
+      BACKUP_SOURCE_PROJECT: ${BACKUP_SOURCE_PROJECT:-lecturer-assistant}
+      APP_VERSION: ${APP_VERSION:-0.0.1-SNAPSHOT}
+      APP_GIT_SHA: ${APP_GIT_SHA:-unknown}
+      BLOB_SOURCE: /blob-source
     volumes:
-      - ./deploy/stand/backups:/backups
+      - ${BACKUP_DESTINATION:?задайте BACKUP_DESTINATION на независимое хранилище}:/backup-destination
+      - blob-data:/blob-source:ro
+      - ./deploy/stand/backup/create-pair.sh:/usr/local/bin/create-pair.sh:ro
+      - ./deploy/stand/backup/verify-pair.sh:/usr/local/bin/verify-pair.sh:ro
+      - ./deploy/stand/backup/check-latest-pair.sh:/usr/local/bin/check-latest-pair.sh:ro
+      - ./deploy/stand/backup/restore-pair.sh:/usr/local/bin/restore-pair.sh:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         sleep 300
         while true; do
-          f=/backups/$${PGDATABASE}-$$(date +%Y%m%d-%H%M%S).dump
-          if pg_dump -Fc -f "$$f.tmp" && mv "$$f.tmp" "$$f"; then
-            echo "backup ok: $$f ($$(du -h "$$f" | cut -f1))"
+          if /usr/local/bin/create-pair.sh; then
+            echo "backup pair ok"
+            sleep 86400
           else
-            rm -f "$$f.tmp"; echo "backup FAILED"
+            echo "backup pair FAILED"
+            sleep 900
           fi
-          find /backups -name '*.dump' -mtime +$${BACKUP_KEEP_DAYS} -delete
-          sleep 86400
         done
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/local/bin/check-latest-pair.sh"]
+      interval: 15m
+      timeout: 2m
+      retries: 2
+      start_period: 10m
     depends_on:
+      core:
+        condition: service_healthy
       postgres:
         condition: service_healthy
 

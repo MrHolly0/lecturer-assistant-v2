@@ -48,15 +48,20 @@ class StudentSessionSnapshotService {
         SnapshotData data = load(session);
         LiveSessionRepository.ParticipationState state = viewerPersonId == null ? null
                 : sessions.participationState(session.id(), viewerPersonId).orElse(null);
-        return personalize(data, viewerPersonId, includeMyVote, state);
+        return personalize(data, viewerPersonId, includeMyVote, state,
+                viewerPersonId == null ? List.of()
+                        : questions.personalQuestions(session.id(), Set.of(viewerPersonId))
+                                .getOrDefault(viewerPersonId, List.of()));
     }
 
     Map<UUID, StudentSessionSnapshot> createForViewers(LiveSession session, Set<UUID> viewerPersonIds) {
         SnapshotData data = load(session);
         Map<UUID, LiveSessionRepository.ParticipationState> states =
                 sessions.participationStates(session.id(), viewerPersonIds);
+        var personal = questions.personalQuestions(session.id(), viewerPersonIds);
         return viewerPersonIds.stream().collect(Collectors.toMap(
-                Function.identity(), viewer -> personalize(data, viewer, false, states.get(viewer))));
+                Function.identity(), viewer -> personalize(data, viewer, false, states.get(viewer),
+                        personal.getOrDefault(viewer, List.of()))));
     }
 
     private SnapshotData load(LiveSession session) {
@@ -87,13 +92,14 @@ class StudentSessionSnapshotService {
                 null,
                 visibleAnswers(answers, null),
                 false,
-                false);
+                false, session.version(), session.showJoinCode(), List.of());
         return new SnapshotData(shared, answers);
     }
 
     private StudentSessionSnapshot personalize(
             SnapshotData data, UUID viewerPersonId, boolean includeMyVote,
-            LiveSessionRepository.ParticipationState state) {
+            LiveSessionRepository.ParticipationState state,
+            List<ru.university.assistant.qa.api.StudentQuestion> personalQuestions) {
         StudentSessionSnapshot shared = data.shared();
         boolean kicked = state != null && state.kicked();
         Integer myVote = !kicked && includeMyVote && viewerPersonId != null && shared.activePoll() != null
@@ -116,7 +122,8 @@ class StudentSessionSnapshotService {
                 myVote,
                 kicked ? List.of() : visibleAnswers(data.answers(), viewerPersonId),
                 kicked,
-                state != null && state.active() && state.nameRequested());
+                state != null && state.active() && state.nameRequested(),
+                shared.version(), shared.showJoinCode(), kicked ? List.of() : personalQuestions);
     }
 
     private List<StudentQuestionAnswer> visibleAnswers(

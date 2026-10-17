@@ -38,7 +38,7 @@ class ContentImportCommitTest {
                 0, null, 0, null, "deck.pdf", null, null, null, null);
         StoredBlob source = new StoredBlob("test/source", "deck.pdf", "application/pdf", 9);
         when(storage.store(any(), any(), any(), anyLong())).thenReturn(source);
-        when(repository.createJob(any(UUID.class), eq(courseId), eq(source))).thenReturn(job);
+        when(repository.createJob(any(UUID.class), eq(courseId), eq(source), eq("Load deck"))).thenReturn(job);
         MockMultipartFile file = new MockMultipartFile("file", "deck.pdf", "application/pdf",
                 "%PDF-test".getBytes(StandardCharsets.US_ASCII));
         AuthenticatedUser teacher = new AuthenticatedUser(

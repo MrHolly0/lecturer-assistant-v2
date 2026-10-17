@@ -3,18 +3,28 @@ package ru.university.assistant.iam.api;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.Cookie;
+import java.sql.Connection;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +56,9 @@ class AuthOrgIntegrationTest {
 
     @Autowired
     JdbcClient jdbc;
+
+    @Autowired
+    DataSource dataSource;
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry registry) {
@@ -323,6 +336,158 @@ class AuthOrgIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void accountStatusRoleAndPasswordChangesRevokeExistingAccessAndRefreshTokens() throws Exception {
+        String admin = bootstrapAdmin();
+        AuthResult disabled = registeredStaff(admin, "Disabled", "disabled@example.test");
+        AuthResult demoted = registeredStaff(admin, "Demoted", "demoted@example.test");
+        AuthResult passwordChanged = registeredStaff(admin, "Password", "password@example.test");
+
+        updateStatus(admin, disabled, "DISABLED");
+        updateRole(admin, demoted, "STUDENT");
+        mockMvc.perform(post("/api/v1/auth/change-password")
+                        .header("Authorization", bearer(passwordChanged.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"password-123\",\"newPassword\":\"password-456\"}"))
+                .andExpect(status().isNoContent());
+
+        assertRevoked(disabled);
+        assertRevoked(demoted);
+        assertRevoked(passwordChanged);
+    }
+
+    @Test
+    void concurrentRefreshRotationAllowsExactlyOneConsumer() throws Exception {
+        String admin = bootstrapAdmin();
+        AuthResult user = registeredStaff(admin, "Refresh", "refresh-race@example.test");
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<Integer> first = submitRefresh(executor, ready, start, user.refreshToken());
+            Future<Integer> second = submitRefresh(executor, ready, start, user.refreshToken());
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
+            start.countDown();
+            int a = first.get(10, TimeUnit.SECONDS);
+            int b = second.get(10, TimeUnit.SECONDS);
+            assertTrue((a == 200 && b == 401) || (a == 401 && b == 200));
+        }
+        String personId = user.user().get("id").asText();
+        assertEquals(1, jdbc.sql("select count(*) from iam.refresh_tokens "
+                        + "where person_id = :personId and revoked_at is null")
+                .param("personId", UUID.fromString(personId))
+                .query(Long.class).single());
+        assertEquals(1, jdbc.sql("select count(*) from iam.refresh_tokens "
+                        + "where person_id = :personId and revoked_at is not null")
+                .param("personId", UUID.fromString(personId))
+                .query(Long.class).single());
+    }
+
+    @Test
+    void adminRoleChangeQueuedBeforeRefreshRevokesRotationBeforeItCanIssueANewCookie() throws Exception {
+        String admin = bootstrapAdmin();
+        AuthResult target = registeredStaff(admin, "Credential race", "credential-race@example.test");
+        UUID personId = UUID.fromString(target.user().get("id").asText());
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2);
+                Connection lockConnection = dataSource.getConnection()) {
+            lockConnection.setAutoCommit(false);
+            try (var statement = lockConnection.prepareStatement(
+                    "select id from iam.persons where id = ? for no key update")) {
+                statement.setObject(1, personId);
+                try (var result = statement.executeQuery()) {
+                    assertTrue(result.next());
+                }
+            }
+
+            Future<Integer> roleChange = executor.submit(() -> mockMvc.perform(
+                            put("/api/v1/admin/users/{id}/role", personId)
+                                    .header("Authorization", bearer(admin))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("{\"role\":\"STUDENT\"}"))
+                    .andReturn().getResponse().getStatus());
+            awaitLockWaiter("%update iam.persons%role%", 1);
+
+            CountDownLatch refreshStart = new CountDownLatch(1);
+            Future<Integer> refresh = submitRefresh(
+                    executor, new CountDownLatch(0), refreshStart, target.refreshToken());
+            refreshStart.countDown();
+            awaitLockWaiter("%for no key update%", 1);
+
+            lockConnection.commit();
+            assertEquals(200, roleChange.get(10, TimeUnit.SECONDS));
+            assertEquals(401, refresh.get(10, TimeUnit.SECONDS));
+        }
+
+        assertEquals(0L, jdbc.sql("select count(*) from iam.refresh_tokens "
+                        + "where person_id = :personId and revoked_at is null")
+                .param("personId", personId).query(Long.class).single());
+    }
+
+    private void awaitLockWaiter(String queryPattern, int minimum) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(6);
+        while (System.nanoTime() < deadline) {
+            long waiters = jdbc.sql("""
+                            select count(*) from pg_stat_activity
+                            where datname = current_database()
+                              and wait_event_type = 'Lock'
+                              and lower(query) like lower(:queryPattern)
+                            """)
+                    .param("queryPattern", queryPattern)
+                    .query(Long.class).single();
+            if (waiters >= minimum) return;
+            Thread.sleep(15);
+        }
+        throw new AssertionError("Timed out waiting for PostgreSQL lock waiter matching " + queryPattern);
+    }
+
+    private AuthResult registeredStaff(String adminToken, String name, String email) throws Exception {
+        String invite = createAdminInvitation(adminToken, "LECTURER");
+        var response = mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(("{\"invitationCode\":\"%s\",\"displayName\":\"%s\",\"email\":\"%s\","
+                                + "\"password\":\"password-123\"}")
+                                .formatted(invite, name, email)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse();
+        JsonNode body = objectMapper.readTree(response.getContentAsString());
+        String cookie = response.getHeader(HttpHeaders.SET_COOKIE);
+        String refreshToken = cookie.substring("la_refresh=".length(), cookie.indexOf(';'));
+        return new AuthResult(body.get("accessToken").asText(), body.get("user"), refreshToken);
+    }
+
+    private void updateStatus(String admin, AuthResult user, String status) throws Exception {
+        mockMvc.perform(put("/api/v1/admin/users/{id}/status", user.user().get("id").asText())
+                        .header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"" + status + "\"}"))
+                .andExpect(status().isOk());
+    }
+
+    private void updateRole(String admin, AuthResult user, String role) throws Exception {
+        mockMvc.perform(put("/api/v1/admin/users/{id}/role", user.user().get("id").asText())
+                        .header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"" + role + "\"}"))
+                .andExpect(status().isOk());
+    }
+
+    private void assertRevoked(AuthResult user) throws Exception {
+        mockMvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(user.accessToken())))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("la_refresh", user.refreshToken())))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private Future<Integer> submitRefresh(
+            ExecutorService executor, CountDownLatch ready, CountDownLatch start, String refreshToken) {
+        return executor.submit(() -> {
+            ready.countDown();
+            if (!start.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("Refresh start timed out");
+            return mockMvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("la_refresh", refreshToken)))
+                    .andReturn().getResponse().getStatus();
+        });
+    }
+
     private String bootstrapAdmin() throws Exception {
         String body = """
                 {"displayName":"Admin","email":"admin@example.test","password":"password-123"}
@@ -462,5 +627,7 @@ class AuthOrgIntegrationTest {
         return "Bearer " + token;
     }
 
-    private record AuthResult(String accessToken, JsonNode user) {}
+    private record AuthResult(String accessToken, JsonNode user, String refreshToken) {
+        private AuthResult(String accessToken, JsonNode user) { this(accessToken, user, null); }
+    }
 }

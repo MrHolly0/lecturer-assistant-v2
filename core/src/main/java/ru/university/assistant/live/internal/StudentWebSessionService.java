@@ -115,6 +115,7 @@ public class StudentWebSessionService {
     public StudentSessionSnapshot snapshot(String joinCode, AuthenticatedUser user, String participantToken) {
         LiveSession session = sessionByCode(joinCode);
         UUID viewer = viewerId(session, user, participantToken);
+        if (viewer != null) courseAccess.requireParticipation(session.courseId(), viewer);
         return snapshots.create(session, viewer, true);
     }
 
@@ -125,7 +126,14 @@ public class StudentWebSessionService {
 
     Map<UUID, StudentSessionSnapshot> snapshotsForViewers(String joinCode, Set<UUID> viewerPersonIds) {
         LiveSession session = sessionByCode(joinCode);
-        return snapshots.createForViewers(session, viewerPersonIds);
+        return snapshots.createForViewers(
+                session, courseAccess.allowedParticipants(session.courseId(), viewerPersonIds));
+    }
+
+    public boolean canReceive(String joinCode, UUID personId) {
+        if (personId == null) return true;
+        LiveSession session = sessionByCode(joinCode);
+        return courseAccess.allowedParticipants(session.courseId(), Set.of(personId)).contains(personId);
     }
 
     private UUID viewerId(LiveSession session, AuthenticatedUser user, String participantToken) {
@@ -133,7 +141,7 @@ public class StudentWebSessionService {
             return sessions.findWebParticipant(StudentTokenHasher.sha256(participantToken))
                     .filter(participant -> participant.sessionId().equals(session.id()))
                     .map(WebParticipant::personId)
-                    .orElse(null);
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Подключение устарело"));
         }
         return user == null ? null : user.id();
     }
@@ -141,12 +149,18 @@ public class StudentWebSessionService {
     @Transactional
     public StudentJoinResponse join(String joinCode, StudentJoinRequest request, AuthenticatedUser user) {
         LiveSession session = sessionByCode(joinCode);
+        sessions.lock(session.id());
+        session = sessions.findById(session.id()).orElseThrow();
         ensureJoinable(session);
         String presented = request == null ? null : request.participantToken();
         if (presented != null && !presented.isBlank()) {
+            UUID joiningSessionId = session.id();
             WebParticipant existing = sessions.findWebParticipant(StudentTokenHasher.sha256(presented))
-                    .filter(participant -> participant.sessionId().equals(session.id()))
+                    .filter(participant -> participant.sessionId().equals(joiningSessionId))
                     .orElse(null);
+            if (existing == null) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid participant token; join again");
+            }
             if (existing != null) {
                 if (user != null && existing.identityLevel() == IdentityLevel.EPHEMERAL) {
                     SessionParticipant guest = sessions.lockGuestParticipation(session.id(), existing.personId())
@@ -219,6 +233,7 @@ public class StudentWebSessionService {
 
     /** Реальный человек (вход через MAX или по паролю): один участник сессии, студент курса добавляется один раз. */
     private void registerPerson(LiveSession session, AuthenticatedUser user, UUID requestedGroupId) {
+        courseAccess.requireParticipation(session.courseId(), user.id());
         StudyGroup group;
         if (user.role() == PersonRole.STUDENT) {
             group = memberships.ensureStudentMemberInSessionGroups(
@@ -362,6 +377,7 @@ public class StudentWebSessionService {
     }
 
     private void requireActive(UUID sessionId, UUID personId) {
+        courseAccess.requireParticipation(sessions.findById(sessionId).orElseThrow().courseId(), personId);
         if (sessions.participationState(sessionId, personId).filter(LiveSessionRepository.ParticipationState::active)
                 .isEmpty()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Вас удалили из этой лекции");
@@ -370,6 +386,10 @@ public class StudentWebSessionService {
 
     private ParticipantSession participantSession(String joinCode, String participantToken, AuthenticatedUser user) {
         LiveSession session = sessionByCode(joinCode);
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+            sessions.lock(session.id());
+            session = sessions.findById(session.id()).orElseThrow();
+        }
         if (participantToken == null || participantToken.isBlank()) {
             if (user == null) {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Participant token or login is required");

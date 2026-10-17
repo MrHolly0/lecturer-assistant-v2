@@ -16,6 +16,9 @@ fi
 
 sh deploy/stand/init-env.sh --vps
 DOMAIN="$(sed -n 's/^SITE_DOMAIN=//p' .env | tail -1)"
+APP_GIT_SHA="$(git rev-parse HEAD)"
+APP_VERSION="$APP_GIT_SHA"
+export APP_GIT_SHA APP_VERSION
 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait
 

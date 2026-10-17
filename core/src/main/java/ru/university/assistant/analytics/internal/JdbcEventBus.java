@@ -38,14 +38,6 @@ class JdbcEventBus implements EventBus {
                 .param("context", json(event.context()))
                 .param("payload", json(event.payload()))
                 .update();
-        jdbc.sql(
-                        """
-                        insert into analytics.outbox (id, event_id, status)
-                        values (:id, :eventId, 'PENDING')
-                        """)
-                .param("id", UuidV7.generate())
-                .param("eventId", eventId)
-                .update();
         return eventId;
     }
 

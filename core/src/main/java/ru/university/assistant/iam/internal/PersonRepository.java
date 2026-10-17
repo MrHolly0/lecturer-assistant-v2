@@ -26,6 +26,11 @@ class PersonRepository {
         jdbc.sql("select pg_advisory_xact_lock(4282026)").query((resultSet, rowNumber) -> 0).single();
     }
 
+    long countActiveAdmins() {
+        return jdbc.sql("select count(*) from iam.persons where role = 'ADMIN' and status = 'ACTIVE'")
+                .query(Long.class).single();
+    }
+
     long countAdmins() {
         return jdbc.sql("select count(*) from iam.persons where role = 'ADMIN'")
                 .query(Long.class)
@@ -100,6 +105,15 @@ class PersonRepository {
                 .optional();
     }
 
+    PersonRecord lock(UUID id) {
+        return jdbc.sql("""
+                select id, display_name, email, password_hash, role, status
+                from iam.persons where id = :id for no key update
+                """).param("id", id).query(this::mapPerson).optional().orElseThrow(() ->
+                new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.UNAUTHORIZED, "Account not found"));
+    }
+
     List<PersonRecord> list() {
         return jdbc.sql(
                         """
@@ -115,7 +129,7 @@ class PersonRepository {
         jdbc.sql(
                         """
                         update iam.persons
-                        set password_hash = :passwordHash, updated_at = now()
+                        set password_hash = :passwordHash, auth_version = auth_version + 1, updated_at = now()
                         where id = :personId
                         """)
                 .param("personId", personId)
@@ -127,7 +141,7 @@ class PersonRepository {
         return jdbc.sql(
                         """
                         update iam.persons
-                        set role = :role, updated_at = now()
+                        set role = :role, auth_version = auth_version + 1, updated_at = now()
                         where id = :personId
                         returning id, display_name, email, password_hash, role, status
                         """)
@@ -141,7 +155,7 @@ class PersonRepository {
         return jdbc.sql(
                         """
                         update iam.persons
-                        set status = :status, updated_at = now()
+                        set status = :status, auth_version = auth_version + 1, updated_at = now()
                         where id = :personId
                         returning id, display_name, email, password_hash, role, status
                         """)

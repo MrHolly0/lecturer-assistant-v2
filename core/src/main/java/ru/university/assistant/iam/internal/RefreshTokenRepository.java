@@ -28,16 +28,28 @@ class RefreshTokenRepository {
                 .update();
     }
 
-    Optional<UUID> findUsablePersonId(String tokenHash) {
+    Optional<UUID> ownerOfUsable(String tokenHash) {
+        return jdbc.sql("""
+                select person_id from iam.refresh_tokens
+                where token_hash = :hash and revoked_at is null and expires_at > now()
+                """).param("hash", tokenHash).query(UUID.class).optional();
+    }
+
+    Optional<UUID> consume(String tokenHash) {
         return jdbc.sql(
                         """
-                        select person_id
-                        from iam.refresh_tokens
+                        update iam.refresh_tokens set revoked_at = now()
                         where token_hash = :tokenHash and revoked_at is null and expires_at > now()
+                        returning person_id
                         """)
                 .param("tokenHash", tokenHash)
                 .query(UUID.class)
                 .optional();
+    }
+
+    void revokeForPerson(UUID personId) {
+        jdbc.sql("update iam.refresh_tokens set revoked_at = now() where person_id = :personId and revoked_at is null")
+                .param("personId", personId).update();
     }
 
     void revoke(String tokenHash) {

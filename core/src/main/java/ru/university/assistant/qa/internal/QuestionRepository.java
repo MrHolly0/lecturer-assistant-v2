@@ -123,6 +123,23 @@ class QuestionRepository {
                 .list();
     }
 
+    java.util.Map<UUID, List<StudentQuestion>> personalQuestions(UUID sessionId, java.util.Set<UUID> personIds) {
+        if (personIds.isEmpty()) return java.util.Map.of();
+        java.util.Map<UUID, List<StudentQuestion>> result = new java.util.HashMap<>();
+        jdbc.sql("""
+                        select person_id, id, session_id, display_name, channel_type, text, status, created_at,
+                               answer_text, answered_at, answer_visibility, anonymous
+                        from qa.questions where session_id = :sessionId and person_id in (:ids)
+                        order by created_at, id
+                        """).param("sessionId", sessionId).param("ids", personIds)
+                .query((rs, row) -> {
+                    UUID author = rs.getObject("person_id", UUID.class);
+                    result.computeIfAbsent(author, key -> new java.util.ArrayList<>()).add(mapQuestion(rs, row));
+                    return author;
+                }).list();
+        return result;
+    }
+
     private StudentQuestion mapQuestion(ResultSet rs, int rowNumber) throws SQLException {
         return new StudentQuestion(
                 rs.getObject("id", UUID.class),

@@ -92,6 +92,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/auth/max/link-preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Review a MAX account link without changing identities or creating a session. */
+    post: operations["previewMaxLink"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/auth/max/link-confirm": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Consume a reviewed account link once and issue a session. */
+    post: operations["confirmMaxLink"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/auth/refresh": {
     parameters: {
       query?: never;
@@ -586,6 +620,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/bans/{personId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove a course ban without changing existing membership or session history. */
+    delete: operations["unbanCourseMember"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/analytics/groups": {
     parameters: {
       query?: never;
@@ -669,6 +720,23 @@ export interface paths {
     get: operations["getImportJob"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/import-jobs/{jobId}/retry": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Retry a failed or partial slide import using a new job and deck. */
+    post: operations["retryImportJob"];
     delete?: never;
     options?: never;
     head?: never;
@@ -957,6 +1025,23 @@ export interface paths {
     /** Read current live session state. */
     get: operations["getLiveSession"];
     put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/projection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Show or hide the join code on the shared projector during a running session. */
+    put: operations["setSessionProjection"];
     post?: never;
     delete?: never;
     options?: never;
@@ -1744,7 +1829,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Staff in a unit and its departments; administrator sees all staff without unitId */
+    /** Staff in a unit subtree; administrator sees all staff without unitId */
     get: {
       parameters: {
         query?: {
@@ -1789,6 +1874,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/organization/members/move": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Atomically move staff while preserving each group role; moving to root removes the group manager role. */
+    post: operations["moveStaffMembers"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/organization/units": {
     parameters: {
       query?: never;
@@ -1798,7 +1900,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Create a faculty or a department within the caller’s scope */
+    /** Create a group at the root or under a group within the caller’s scope */
     post: {
       parameters: {
         query?: never;
@@ -1821,7 +1923,7 @@ export interface paths {
             "application/json": components["schemas"]["OrganizationUnit"];
           };
         };
-        /** @description Invalid parent or kind */
+        /** @description Invalid parent or hierarchy */
         400: {
           headers: {
             [name: string]: unknown;
@@ -1865,7 +1967,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** Rename or move a department; moving includes all memberships */
+    /** Rename or move a group; moving includes its full subtree */
     put: {
       parameters: {
         query?: never;
@@ -2117,12 +2219,34 @@ export interface components {
     MaxAuthRequest: {
       /** @description Raw window.WebApp.initData string, never initDataUnsafe. */
       initData: string;
-      /** @description Optional one-time code from POST /identity/max/link-codes. When supplied, it moves an existing MAX binding to the code owner's account. Repeat logins need no code. */
+      /**
+       * @deprecated
+       * @description Rejected with 409. Use link-preview then link-confirm for explicit account review.
+       */
       linkCode?: string;
       /** @description Optional MAX start_param used only to attribute the miniapp.opened pilot event. */
       startParam?: string;
       /** @description Authenticate an existing MAX identity without creating a student account. */
       existingOnly?: boolean;
+    };
+    /** @description Send either email and password, or linkCode. No identity or session is changed by preview. */
+    MaxLinkPreviewRequest: {
+      initData: string;
+      email?: string;
+      password?: string;
+      linkCode?: string;
+    };
+    MaxLinkConfirmRequest: {
+      initData: string;
+      confirmationToken: string;
+    };
+    MaxLinkPreview: {
+      confirmationToken: string;
+      /** Format: date-time */
+      expiresAt: string;
+      currentAccount: components["schemas"]["UserProfile"] | null;
+      targetAccount: components["schemas"]["UserProfile"];
+      alreadyLinked: boolean;
     };
     MaxAuthResponse: {
       accessToken: string;
@@ -2528,6 +2652,12 @@ export interface components {
        * @description Time on the current slide visit, excluding pauses.
        */
       currentSlideDurationSeconds: number;
+      /**
+       * Format: int64
+       * @description Monotonically increasing committed session revision.
+       */
+      version: number;
+      showJoinCode: boolean;
     };
     SessionParticipant: {
       /** Format: uuid */
@@ -2747,6 +2877,14 @@ export interface components {
       kicked: boolean;
       /** @description Teacher requested a self-reported first and last name. */
       nameRequested: boolean;
+      /**
+       * Format: int64
+       * @description Monotonically increasing committed session revision.
+       */
+      version: number;
+      showJoinCode: boolean;
+      /** @description Persisted questions authored by this identified participant; empty for public readers. */
+      myQuestions: components["schemas"]["StudentQuestion"][];
     };
     StudentNameRequest: {
       participantToken?: string;
@@ -2945,6 +3083,8 @@ export interface components {
       keyboard: components["schemas"]["OutboundButton"][][];
       replyMode: components["schemas"]["ReplyMode"];
       threadKey: string;
+      /** Format: uuid */
+      attemptToken: string;
     };
     OutboxBatch: {
       messages: components["schemas"]["OutboundMessage"][];
@@ -2954,6 +3094,8 @@ export interface components {
     DeliveryReport: {
       /** Format: uuid */
       messageId: string;
+      /** Format: uuid */
+      attemptToken: string;
       status: components["schemas"]["DeliveryStatus"];
       adapterMessageId?: string;
       errorMessage?: string;
@@ -3181,7 +3323,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description linkCode was already used. */
+      /** @description Link code requires explicit review via link-preview and link-confirm. */
       409: {
         headers: {
           [name: string]: unknown;
@@ -3197,6 +3339,119 @@ export interface operations {
       };
       /** @description MAX login is not configured on the server (no bot token). */
       503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  previewMaxLink: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["MaxLinkPreviewRequest"];
+      };
+    };
+    responses: {
+      /** @description Short-lived review bound to the signed MAX user and current account versions. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MaxLinkPreview"];
+        };
+      };
+      /** @description Provide either credentials or a valid unused link code. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid signed initData or credentials. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Target account is disabled. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Code used or target account linked to another MAX identity. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Request rate exceeded. */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  confirmMaxLink: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["MaxLinkConfirmRequest"];
+      };
+    };
+    responses: {
+      /** @description Confirmed MAX account session; history stays with each original person. */
+      200: {
+        headers: {
+          /** @description httpOnly refresh token cookie scoped to /api/v1/auth. */
+          "Set-Cookie"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MaxAuthResponse"];
+        };
+      };
+      /** @description Invalid signed MAX initData. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Account disabled. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Review expired, already consumed or identity/account permissions changed; review again. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Request rate exceeded. */
+      429: {
         headers: {
           [name: string]: unknown;
         };
@@ -4038,6 +4293,34 @@ export interface operations {
       };
     };
   };
+  unbanCourseMember: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        personId: components["parameters"]["PersonId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Ban removed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course management required. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   getCourseGroupAnalytics: {
     parameters: {
       query?: never;
@@ -4224,6 +4507,36 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ImportJob"];
         };
+      };
+    };
+  };
+  retryImportJob: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        jobId: components["parameters"]["JobId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Retry job accepted. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ImportJob"];
+        };
+      };
+      /** @description Job is not retryable or its source file is unavailable. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -4784,6 +5097,42 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["LiveSession"];
         };
+      };
+    };
+  };
+  setSessionProjection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          showJoinCode: boolean;
+        };
+      };
+    };
+    responses: {
+      /** @description Updated authoritative session snapshot. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LiveSession"];
+        };
+      };
+      /** @description Session is not running. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -6235,6 +6584,46 @@ export interface operations {
     responses: {
       /** @description Inbound event accepted. */
       202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  moveStaffMembers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          personIds: string[];
+          /** Format: uuid */
+          unitId?: string | null;
+        };
+      };
+    };
+    responses: {
+      /** @description All staff moved, or none if any source or destination is forbidden. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller cannot manage every source and destination. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown staff account or group. */
+      404: {
         headers: {
           [name: string]: unknown;
         };

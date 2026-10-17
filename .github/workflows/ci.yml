@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: ["master", "v2/**", "release/**"]
+    branches: ["master", "v2/**", "release/**", "feature/**"]
+  workflow_dispatch:
   pull_request:
     branches: ["master"]
 
@@ -36,12 +37,21 @@ jobs:
         run: |
           npm ci
           npm run gen:api
+          git diff --exit-code -- src/app/api/schema.ts
           npm run lint
           npm run format
           npm run build
 
       - name: Verify MAX adapter
         run: node --test adapters/max/*.test.mjs
+
+      - name: Check optional adapter syntax
+        run: |
+          node --check adapters/telegram/telegram-adapter.mjs
+          node --check adapters/echo/echo-adapter.mjs
+
+      - name: Check backup scripts
+        run: sh -n deploy/stand/backup/*.sh
 
       - name: Validate compose
         run: docker compose config --quiet

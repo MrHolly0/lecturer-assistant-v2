@@ -5,7 +5,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.UUID;
+import javax.sql.DataSource;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
@@ -14,14 +18,17 @@ class HttpSlideConversionClient implements SlideConversionClient {
     private final BlobStorage blobStorage;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final DataSource dataSource;
 
     HttpSlideConversionClient(
             BlobStorage blobStorage,
             ContentProperties properties,
             RestClient.Builder builder,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            DataSource dataSource) {
         this.blobStorage = blobStorage;
         this.objectMapper = objectMapper;
+        this.dataSource = dataSource;
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(properties.converterConnectTimeout());
         requestFactory.setReadTimeout(properties.converterReadTimeout());
@@ -31,7 +38,7 @@ class HttpSlideConversionClient implements SlideConversionClient {
     @Override
     public SlideConversionResult convert(
             StoredBlob source, String outputPrefix, UUID jobId, SlideConversionSink sink) {
-        return restClient.post()
+        return withBlobSnapshotLock(() -> restClient.post()
                 .uri("/convert")
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_NDJSON, MediaType.APPLICATION_JSON)
@@ -50,7 +57,35 @@ class HttpSlideConversionClient implements SlideConversionClient {
                     } catch (IOException exception) {
                         throw new IllegalStateException("Converter stream failed", exception);
                     }
-                });
+                }));
+    }
+
+    private <T> T withBlobSnapshotLock(java.util.function.Supplier<T> operation) {
+        try (Connection connection = dataSource.getConnection()) {
+            try (PreparedStatement lock = connection.prepareStatement("select pg_advisory_lock(14713, 2525)")) {
+                lock.execute();
+            }
+            RuntimeException operationFailure = null;
+            try {
+                return operation.get();
+            } catch (RuntimeException exception) {
+                operationFailure = exception;
+                throw exception;
+            } finally {
+                try (PreparedStatement unlock =
+                        connection.prepareStatement("select pg_advisory_unlock(14713, 2525)")) {
+                    unlock.execute();
+                } catch (SQLException exception) {
+                    if (operationFailure != null) {
+                        operationFailure.addSuppressed(exception);
+                    } else {
+                        throw new IllegalStateException("Cannot release blob snapshot lock", exception);
+                    }
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Cannot acquire blob snapshot lock", exception);
+        }
     }
 
     private SlideConversionResult readEvents(BufferedReader reader, SlideConversionSink sink) throws IOException {

@@ -31,22 +31,23 @@ class IdentityRepository {
                 .update();
     }
 
-    Optional<UUID> findUsablePersonIdByCode(String code) {
+    Optional<UUID> consumeLinkCode(String code) {
         return jdbc.sql(
                         """
-                        select person_id
-                        from iam.identity_link_codes
+                        update iam.identity_link_codes set used_at = now()
                         where code = :code and used_at is null and expires_at > now()
+                        returning person_id
                         """)
                 .param("code", code)
                 .query(UUID.class)
                 .optional();
     }
 
-    void markLinkCodeUsed(String code) {
-        jdbc.sql("update iam.identity_link_codes set used_at = now() where code = :code")
-                .param("code", code)
-                .update();
+    void revokeLinkCodes(UUID personId) {
+        for (String table : java.util.List.of("iam.identity_link_codes", "iam.max_link_codes")) {
+            jdbc.sql("update " + table + " set used_at = now() where person_id = :id and used_at is null")
+                    .param("id", personId).update();
+        }
     }
 
     void createMaxLinkCode(UUID id, UUID personId, String code, Instant expiresAt) {
@@ -146,6 +147,13 @@ class IdentityRepository {
                 .param("personId", personId)
                 .param("channelType", channelType)
                 .update();
+    }
+
+    Optional<ChannelIdentityResponse> findForPerson(UUID personId, String channelType) {
+        return jdbc.sql("""
+                select id, person_id, channel_type, external_id, display_hint, linked_at
+                from iam.channel_identities where person_id = :personId and channel_type = :channelType
+                """).param("personId", personId).param("channelType", channelType).query(this::mapIdentity).optional();
     }
 
     Optional<ChannelIdentityResponse> findByExternalId(String channelType, String externalId) {

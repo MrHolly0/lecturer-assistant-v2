@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.client.RestClient;
+import javax.sql.DataSource;
 
 @Configuration
 @EnableConfigurationProperties(ContentProperties.class)
@@ -23,8 +24,9 @@ class ContentConfiguration {
             BlobStorage blobStorage,
             ContentProperties properties,
             RestClient.Builder builder,
-            ObjectMapper objectMapper) {
-        return new HttpSlideConversionClient(blobStorage, properties, builder, objectMapper);
+            ObjectMapper objectMapper,
+            DataSource dataSource) {
+        return new HttpSlideConversionClient(blobStorage, properties, builder, objectMapper, dataSource);
     }
 
     @Bean

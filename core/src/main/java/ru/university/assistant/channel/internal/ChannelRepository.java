@@ -78,6 +78,7 @@ class ChannelRepository {
     }
 
     List<OutboundMessage> claim(String channelType, int limit, int lockSeconds) {
+        UUID attemptToken = ru.university.assistant.shared.api.UuidV7.generate();
         return jdbc.sql(
                         """
                         with claimed as (
@@ -102,18 +103,21 @@ class ChannelRepository {
                             set status = 'IN_FLIGHT',
                                 attempts = attempts + 1,
                                 locked_until = now() + (:lockSeconds * interval '1 second'),
+                                claim_token = :attemptToken,
                                 updated_at = now()
                             where o.id in (select id from claimed)
-                            returning id, channel_identity_id, priority, content, keyboard, reply_mode, thread_key
+                            returning id, channel_identity_id, priority, content, keyboard, reply_mode,
+                                thread_key, claim_token
                         )
                         select u.id, u.channel_identity_id, ci.external_id, u.priority, u.content, u.keyboard,
-                            u.reply_mode, u.thread_key
+                            u.reply_mode, u.thread_key, u.claim_token
                         from updated u
                         join iam.channel_identities ci on ci.id = u.channel_identity_id
                         """)
                 .param("channelType", channelType)
                 .param("limit", limit)
                 .param("lockSeconds", lockSeconds)
+                .param("attemptToken", attemptToken)
                 .query(this::mapMessage)
                 .list();
     }
@@ -137,9 +141,11 @@ class ChannelRepository {
         jdbc.sql(
                         """
                         insert into channel.delivery_reports (
-                            id, outbox_id, channel_type, status, adapter_message_id, error_message, latency_ms
+                            id, outbox_id, channel_type, status, adapter_message_id, error_message,
+                            latency_ms, attempt_token
                         )
-                        values (:id, :outboxId, :channelType, :status, :adapterMessageId, :errorMessage, :latencyMs)
+                        values (:id, :outboxId, :channelType, :status, :adapterMessageId, :errorMessage,
+                            :latencyMs, :attemptToken)
                         """)
                 .param("id", ru.university.assistant.shared.api.UuidV7.generate())
                 .param("outboxId", report.messageId())
@@ -148,11 +154,12 @@ class ChannelRepository {
                 .param("adapterMessageId", report.adapterMessageId())
                 .param("errorMessage", report.errorMessage())
                 .param("latencyMs", report.latencyMs())
+                .param("attemptToken", report.attemptToken())
                 .update();
         if (report.status() == DeliveryStatus.DELIVERED) {
-            markDelivered(report);
+            markDelivered(channelType, report);
         } else {
-            markFailed(report);
+            markFailed(channelType, report);
         }
     }
 
@@ -182,33 +189,41 @@ class ChannelRepository {
                 .optional();
     }
 
-    private void markDelivered(DeliveryReport report) {
+    private void markDelivered(String channelType, DeliveryReport report) {
         jdbc.sql(
                         """
                         update channel.outbox
                         set status = 'DELIVERED',
                             adapter_message_id = :adapterMessageId,
                             delivered_at = now(),
+                            locked_until = null,
                             updated_at = now()
-                        where id = :id
+                        where id = :id and channel_type = :channelType
+                            and status = 'IN_FLIGHT' and claim_token = :attemptToken
                         """)
                 .param("id", report.messageId())
+                .param("channelType", channelType)
                 .param("adapterMessageId", report.adapterMessageId())
+                .param("attemptToken", report.attemptToken())
                 .update();
     }
 
-    private void markFailed(DeliveryReport report) {
+    private void markFailed(String channelType, DeliveryReport report) {
         jdbc.sql(
                         """
                         update channel.outbox
                         set status = case when attempts >= max_attempts then 'DLQ' else 'QUEUED' end,
-                            next_attempt_at = now() + (power(2, attempts) * interval '1 second'),
+                            next_attempt_at = now() + (least(power(2, attempts), 3600) * interval '1 second'),
                             last_error = :error,
+                            locked_until = null,
                             updated_at = now()
-                        where id = :id
+                        where id = :id and channel_type = :channelType
+                            and status = 'IN_FLIGHT' and claim_token = :attemptToken
                         """)
                 .param("id", report.messageId())
+                .param("channelType", channelType)
                 .param("error", report.errorMessage())
+                .param("attemptToken", report.attemptToken())
                 .update();
     }
 
@@ -221,7 +236,8 @@ class ChannelRepository {
                 readContent(rs.getString("content")),
                 readKeyboard(rs.getString("keyboard")),
                 ReplyMode.valueOf(rs.getString("reply_mode")),
-                rs.getString("thread_key"));
+                rs.getString("thread_key"),
+                rs.getObject("claim_token", UUID.class));
     }
 
     private OutboundContent readContent(String json) {

@@ -8,4 +8,14 @@ public record DeliveryReport(
         @NotNull DeliveryStatus status,
         String adapterMessageId,
         String errorMessage,
-        Integer latencyMs) {}
+        Integer latencyMs,
+        @NotNull UUID attemptToken) {
+    public DeliveryReport(
+            UUID messageId,
+            DeliveryStatus status,
+            String adapterMessageId,
+            String errorMessage,
+            Integer latencyMs) {
+        this(messageId, status, adapterMessageId, errorMessage, latencyMs, null);
+    }
+}

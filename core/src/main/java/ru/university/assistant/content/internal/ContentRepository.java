@@ -27,11 +27,15 @@ class ContentRepository {
     }
 
     ImportJob createJob(UUID id, UUID courseId, StoredBlob source) {
+        return createJob(id, courseId, source, "");
+    }
+
+    ImportJob createJob(UUID id, UUID courseId, StoredBlob source, String title) {
         return jdbc.sql(
                         """
                         insert into content.import_jobs (id, course_id, status, progress, source_file_ref,
-                            source_filename, source_content_type, source_size_bytes)
-                        values (:id, :courseId, 'PENDING', 0, :ref, :filename, :contentType, :sizeBytes)
+                            source_filename, source_content_type, source_size_bytes, import_title)
+                        values (:id, :courseId, 'PENDING', 0, :ref, :filename, :contentType, :sizeBytes, :title)
                         returning id, course_id, deck_id, status, progress, source_filename, error_message,
                             phase, processed_slides, total_slides, warning_message, created_at, updated_at
                         """)
@@ -41,8 +45,75 @@ class ContentRepository {
                 .param("filename", source.filename())
                 .param("contentType", source.contentType())
                 .param("sizeBytes", source.sizeBytes())
+                .param("title", title)
                 .query(this::mapJob)
                 .single();
+    }
+
+    Optional<ImportRetrySource> lockRetrySource(UUID courseId, UUID jobId) {
+        return jdbc.sql("""
+                        select id, status, progress, processed_slides, import_title,
+                            source_file_ref, source_filename, source_content_type, source_size_bytes
+                        from content.import_jobs
+                        where course_id = :courseId and id = :jobId
+                        for update
+                        """)
+                .param("courseId", courseId)
+                .param("jobId", jobId)
+                .query((rs, row) -> new ImportRetrySource(
+                        rs.getObject("id", UUID.class),
+                        ImportJobStatus.valueOf(rs.getString("status")),
+                        rs.getInt("progress"),
+                        rs.getInt("processed_slides"),
+                        rs.getString("import_title"),
+                        new StoredBlob(rs.getString("source_file_ref"), rs.getString("source_filename"),
+                                rs.getString("source_content_type"), rs.getLong("source_size_bytes"))))
+                .optional();
+    }
+
+    boolean hasActiveRetry(UUID jobId) {
+        return jdbc.sql("""
+                        select exists(
+                            select 1 from content.import_jobs
+                            where retry_of_job_id = :jobId and status in ('PENDING', 'RUNNING'))
+                        """)
+                .param("jobId", jobId)
+                .query(Boolean.class)
+                .single();
+    }
+
+    ImportJob createRetryJob(UUID id, UUID courseId, ImportRetrySource source) {
+        return jdbc.sql("""
+                        insert into content.import_jobs (id, course_id, status, progress, source_file_ref,
+                            source_filename, source_content_type, source_size_bytes, import_title, retry_of_job_id)
+                        values (:id, :courseId, 'PENDING', 0, :ref, :filename, :contentType, :sizeBytes,
+                            :title, :retryOf)
+                        returning id, course_id, deck_id, status, progress, source_filename, error_message,
+                            phase, processed_slides, total_slides, warning_message, created_at, updated_at
+                        """)
+                .param("id", id)
+                .param("courseId", courseId)
+                .param("ref", source.source().ref())
+                .param("filename", source.source().filename())
+                .param("contentType", source.source().contentType())
+                .param("sizeBytes", source.source().sizeBytes())
+                .param("title", source.title())
+                .param("retryOf", source.id())
+                .query(this::mapJob)
+                .single();
+    }
+
+    int failInterruptedJobs() {
+        return jdbc.sql("""
+                        update content.import_jobs
+                        set status = case when processed_slides > 0 then 'PARTIAL' else 'FAILED' end,
+                            progress = case when processed_slides > 0 then least(progress, 99) else 100 end,
+                            phase = 'INTERRUPTED_RESTART',
+                            error_message = 'Импорт прерван перезапуском. Его можно повторить.',
+                            updated_at = now()
+                        where status in ('PENDING', 'RUNNING')
+                        """)
+                .update();
     }
 
     Optional<ImportJob> findJob(UUID courseId, UUID jobId) {
@@ -659,6 +730,9 @@ class ContentRepository {
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));
     }
+
+    record ImportRetrySource(UUID id, ImportJobStatus status, int progress, int processedSlides,
+            String title, StoredBlob source) {}
 
     private DeckRecord mapDeckRecord(ResultSet rs, int rowNumber) throws SQLException {
         return new DeckRecord(rs.getObject("id", UUID.class), rs.getObject("course_id", UUID.class),

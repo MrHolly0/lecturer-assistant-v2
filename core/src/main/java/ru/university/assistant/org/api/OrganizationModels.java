@@ -28,5 +28,9 @@ public final class OrganizationModels {
     public record SaveUnitRequest(
             @NotBlank @Size(max = 120) String name, @NotNull UnitKind kind, UUID parentId) {}
 
+    public record MoveStaffRequest(
+            @jakarta.validation.constraints.NotEmpty @jakarta.validation.constraints.Size(max = 200)
+            java.util.List<@NotNull UUID> personIds, UUID unitId) {}
+
     public record AssignStaffRequest(UUID unitId, @NotNull UnitRole unitRole) {}
 }

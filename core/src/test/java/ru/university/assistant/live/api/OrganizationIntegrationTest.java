@@ -9,11 +9,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 
@@ -194,6 +195,58 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
         assertEquals(0, count("org.staff_memberships where person_id = '" + personId + "'"));
         assertEquals(0, findUnit(json(get("/api/v1/organization").header("Authorization", "Bearer " + adminToken), 200)
                 .get("units"), unit).get("totalMembersCount").asInt());
+    }
+
+    @Test
+    void bulkMovePreservesEachStaffRoleAndNullDestinationClearsMembership() throws Exception {
+        String source = create(adminToken, "Исходный отдел", "UNIT", null, 201).get("id").asText();
+        String destination = create(adminToken, "Новый отдел", "UNIT", null, 201).get("id").asText();
+        String managerToken = createStaff("bulk-manager@example.test");
+        String memberToken = createStaff("bulk-member@example.test");
+        String manager = personIdOf(managerToken);
+        String member = personIdOf(memberToken);
+        assign(adminToken, manager, source, "MANAGER", 204);
+        assign(adminToken, member, source, "MEMBER", 204);
+
+        moveMembers(List.of(manager, member), destination, 204);
+        JsonNode moved = members(adminToken, destination, 200);
+        assertEquals("MANAGER", findMember(moved, manager).get("unitRole").asText());
+        assertEquals("MEMBER", findMember(moved, member).get("unitRole").asText());
+
+        moveMembers(List.of(manager, member), null, 204);
+        assertEquals(0, members(adminToken, destination, 200).size());
+        assertTrue(members(adminToken, null, 200).findValues("id").stream()
+                .anyMatch(id -> id.asText().equals(manager)));
+        assertTrue(members(adminToken, null, 200).findValues("id").stream()
+                .anyMatch(id -> id.asText().equals(member)));
+        assertEquals(0, count("org.staff_memberships where person_id in ('" + manager + "','" + member + "')"));
+    }
+
+    @Test
+    void bulkMoveRollsBackEarlierUpdatesWhenOnePersonCannotBeMoved() throws Exception {
+        String source = create(adminToken, "Atomic source", "UNIT", null, 201).get("id").asText();
+        String destination = create(adminToken, "Atomic target", "UNIT", null, 201).get("id").asText();
+        String staffToken = createStaff("atomic-staff@example.test");
+        String staff = personIdOf(staffToken);
+        assign(adminToken, staff, source, "MANAGER", 204);
+        String student = personIdOf(maxLogin(98601));
+        assertTrue(staff.compareTo(student) < 0, "UUIDv7 test setup should sort staff before later student");
+
+        moveMembers(List.of(staff, student), destination, 400);
+
+        assertEquals(source, members(adminToken, source, 200).get(0).get("unitId").asText());
+        assertEquals(0, members(adminToken, destination, 200).size());
+        assertEquals("MANAGER", members(adminToken, source, 200).get(0).get("unitRole").asText());
+    }
+
+    private void moveMembers(List<String> personIds, String unitId, int expected) throws Exception {
+        var body = objectMapper.createObjectNode();
+        body.putPOJO("personIds", personIds);
+        if (unitId == null) body.putNull("unitId"); else body.put("unitId", unitId);
+        json(post("/api/v1/organization/members/move")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body)), expected);
     }
 
     @Test

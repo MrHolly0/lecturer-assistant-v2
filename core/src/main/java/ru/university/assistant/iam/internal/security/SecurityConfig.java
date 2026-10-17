@@ -32,6 +32,11 @@ class SecurityConfig {
             throws Exception {
         return http.csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) -> {
+                    response.setStatus(401);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write("{\"error\":\"Authentication required\"}");
+                }))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(HttpMethod.GET, "/api/v1/system/info")
@@ -48,6 +53,8 @@ class SecurityConfig {
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/max",
+                                "/api/v1/auth/max/link-preview",
+                                "/api/v1/auth/max/link-confirm",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/identity/link")
                         .permitAll()

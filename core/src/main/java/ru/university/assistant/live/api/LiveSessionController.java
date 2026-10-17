@@ -94,6 +94,15 @@ public class LiveSessionController {
         return liveSessions.join(user, courseId, request);
     }
 
+    public record ProjectionRequest(boolean showJoinCode) {}
+
+    @PutMapping("/sessions/{sessionId}/projection")
+    public LiveSession projection(@AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId, @PathVariable UUID sessionId,
+            @RequestBody ProjectionRequest request) {
+        return liveSessions.setProjection(user, courseId, sessionId, request.showJoinCode());
+    }
+
     @PutMapping("/sessions/{sessionId}/slide")
     public LiveSession changeSlide(
             @AuthenticationPrincipal AuthenticatedUser user,

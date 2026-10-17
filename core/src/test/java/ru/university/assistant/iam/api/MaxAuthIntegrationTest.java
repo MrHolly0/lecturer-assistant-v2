@@ -367,6 +367,87 @@ class MaxAuthIntegrationTest {
         assertEquals(1L, count("iam.persons"));
     }
 
+    @Test
+    void previewWithCredentialsDoesNotChangeIdentityOrIssueSession() throws Exception {
+        String formerId = login(signed(801, Instant.now()), 200).get("personId").asText();
+        registerLecturer();
+        long tokens = count("iam.refresh_tokens");
+        JsonNode review = preview(signed(801, Instant.now()),
+                Map.of("email", "lecturer@example.test", "password", "password-123"), 200);
+        assertEquals(formerId, review.get("currentAccount").get("id").asText());
+        assertEquals("LECTURER", review.get("targetAccount").get("role").asText());
+        assertEquals(false, review.get("alreadyLinked").asBoolean());
+        assertEquals(tokens, count("iam.refresh_tokens"));
+        assertEquals(formerId, login(signed(801, Instant.now()), 200).get("personId").asText());
+        JsonNode confirmed = confirm(signed(801, Instant.now()), review.get("confirmationToken").asText(), 200);
+        assertEquals(review.get("targetAccount").get("id").asText(), confirmed.get("personId").asText());
+        confirm(signed(801, Instant.now()), review.get("confirmationToken").asText(), 409);
+    }
+
+    @Test
+    void confirmationIsBoundToSignedMaxIdAndAccountVersion() throws Exception {
+        registerLecturer();
+        JsonNode review = preview(signed(802, Instant.now()),
+                Map.of("email", "lecturer@example.test", "password", "password-123"), 200);
+        String token = review.get("confirmationToken").asText();
+        confirm(signed(803, Instant.now()), token, 409);
+        jdbc.sql("update iam.persons set auth_version = auth_version + 1 "
+                + "where email = 'lecturer@example.test'").update();
+        confirm(signed(802, Instant.now()), token, 409);
+        assertEquals(0L, count("iam.channel_identities"));
+    }
+
+    @Test
+    void confirmationRejectsIdentityDriftAndExpiry() throws Exception {
+        String lecturerToken = registerLecturer();
+        String init = signed(804, Instant.now());
+        JsonNode review = preview(init, Map.of("email", "lecturer@example.test", "password", "password-123"), 200);
+        login(init, 200); // A new current identity after review requires another review.
+        confirm(init, review.get("confirmationToken").asText(), 409);
+        JsonNode next = preview(init, Map.of("linkCode", requestMaxLinkCode(lecturerToken)), 200);
+        jdbc.sql("update iam.max_link_confirmations set expires_at = now() - interval '1 second'").update();
+        confirm(init, next.get("confirmationToken").asText(), 409);
+        assertEquals("STUDENT", login(init, 200).get("role").asText());
+    }
+
+    @Test
+    void parallelConfirmationsConsumeOnce() throws Exception {
+        registerLecturer();
+        String init = signed(805, Instant.now());
+        String token = preview(init, Map.of("email", "lecturer@example.test", "password", "password-123"), 200)
+                .get("confirmationToken").asText();
+        try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+            List<Callable<Integer>> calls = List.of(
+                    () -> confirmationStatus(init, token), () -> confirmationStatus(init, token));
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> result : pool.invokeAll(calls)) statuses.add(result.get());
+            statuses.sort(Integer::compareTo);
+            assertEquals(List.of(200, 409), statuses);
+        }
+        assertEquals(1L, count("iam.channel_identities"));
+    }
+
+    @Test
+    void legacyMaxLinkingCannotBypassReviewOrSignature() throws Exception {
+        String lecturerToken = registerLecturer();
+        String code = requestMaxLinkCode(lecturerToken);
+        json(post("/api/v1/auth/max").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                        "initData", signed(806, Instant.now()), "linkCode", code))), 409);
+        JsonNode legacy = json(post("/api/v1/identity/link-codes")
+                .header("Authorization", "Bearer " + lecturerToken), 201);
+        json(post("/api/v1/identity/link").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                        "channelType", "max", "externalId", "806", "code", legacy.get("code").asText()))), 400);
+        assertEquals(0L, count("iam.channel_identities"));
+    }
+
+    private int confirmationStatus(String init, String token) throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/max/link-confirm").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("initData", init, "confirmationToken", token))))
+                .andReturn().getResponse().getStatus();
+    }
+
     private String registerLecturer() throws Exception {
         String adminToken = json(post("/api/v1/auth/bootstrap-admin")
                         .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
@@ -423,11 +504,31 @@ class MaxAuthIntegrationTest {
         if (linkCode != null) {
             body.put("linkCode", linkCode);
         }
+        if (linkCode != null) {
+            JsonNode review = json(post("/api/v1/auth/max/link-preview")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(body)), expectedStatus == 200 ? 200 : expectedStatus);
+            if (expectedStatus != 200) return review;
+            return confirm(initData, review.get("confirmationToken").asText(), 200);
+        }
         return json(post("/api/v1/auth/max")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)),
-                        expectedStatus);
+                        .content(objectMapper.writeValueAsString(body)), expectedStatus);
     }
+
+    private JsonNode confirm(String initData, String token, int status) throws Exception {
+        return json(post("/api/v1/auth/max/link-confirm").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                        "initData", initData, "confirmationToken", token))), status);
+    }
+
+    private JsonNode preview(String initData, Map<String, String> proof, int status) throws Exception {
+        Map<String, String> body = new LinkedHashMap<>(proof);
+        body.put("initData", initData);
+        return json(post("/api/v1/auth/max/link-preview").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body)), status);
+    }
+
 
     private JsonNode json(org.springframework.test.web.servlet.RequestBuilder request, int expectedStatus)
             throws Exception {

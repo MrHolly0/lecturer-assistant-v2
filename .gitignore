@@ -29,6 +29,7 @@ web/vite.config.js
 *.sql.gz
 tmp/
 artifacts/
+output/
 
 # Локальные журналы ручных smoke-прогонов, не часть пакета сдачи.
 e2e/reports/*-release-smoke/

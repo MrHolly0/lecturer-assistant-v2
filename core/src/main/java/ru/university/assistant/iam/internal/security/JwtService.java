@@ -15,6 +15,8 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.university.assistant.iam.api.AuthenticatedUser;
+import ru.university.assistant.iam.api.AccountStateApi;
+import ru.university.assistant.iam.api.PersonStatus;
 import ru.university.assistant.iam.api.PersonRole;
 import ru.university.assistant.iam.api.TokenAuthenticationApi;
 
@@ -29,13 +31,16 @@ public class JwtService implements TokenAuthenticationApi {
     private final Clock clock;
     private final byte[] secret;
     private final Duration accessTtl;
+    private final AccountStateApi accounts;
 
     JwtService(
             ObjectMapper objectMapper,
             Clock clock,
             @Value("${app.security.jwt-secret}") String secret,
             @Value("${app.security.access-token-minutes}") long accessTokenMinutes,
-            @Value("${app.security.require-strong-secret:false}") boolean requireStrongSecret) {
+            @Value("${app.security.require-strong-secret:false}") boolean requireStrongSecret,
+            AccountStateApi accounts) {
+        this.accounts = accounts;
         this.objectMapper = objectMapper;
         this.clock = clock;
         validateSecret(secret, requireStrongSecret);
@@ -58,6 +63,8 @@ public class JwtService implements TokenAuthenticationApi {
     }
 
     public String issue(AuthenticatedUser user) {
+        AccountStateApi.State account = accounts.find(user.id()).orElseThrow();
+        if (account.status() != PersonStatus.ACTIVE) throw new IllegalStateException("Account is disabled");
         Instant expiresAt = clock.instant().plus(accessTtl);
         Map<String, Object> header = Map.of("alg", "HS256", "typ", "JWT");
         Map<String, Object> payload = Map.of(
@@ -65,6 +72,7 @@ public class JwtService implements TokenAuthenticationApi {
                 "name", user.displayName(),
                 "email", user.email(),
                 "role", user.role().name(),
+                "ver", account.version(),
                 "exp", expiresAt.getEpochSecond());
 
         String unsigned = encode(header) + "." + encode(payload);
@@ -85,14 +93,16 @@ public class JwtService implements TokenAuthenticationApi {
         try {
             Map<String, Object> payload = objectMapper.readValue(DECODER.decode(parts[1]), MAP_TYPE);
             long expiresAt = ((Number) payload.get("exp")).longValue();
-            if (Instant.ofEpochSecond(expiresAt).isBefore(clock.instant())) {
+            if (!Instant.ofEpochSecond(expiresAt).isAfter(clock.instant())) {
                 return Optional.empty();
             }
-            return Optional.of(new AuthenticatedUser(
-                    UUID.fromString((String) payload.get("sub")),
-                    (String) payload.get("name"),
-                    (String) payload.get("email"),
-                    PersonRole.valueOf((String) payload.get("role"))));
+            UUID personId = UUID.fromString((String) payload.get("sub"));
+            long version = ((Number) payload.get("ver")).longValue();
+            return accounts.find(personId)
+                    .filter(account -> account.status() == PersonStatus.ACTIVE && account.version() == version)
+                    .filter(account -> account.role() == PersonRole.valueOf((String) payload.get("role")))
+                    .map(account -> new AuthenticatedUser(
+                            account.id(), account.displayName(), account.email(), account.role()));
         } catch (RuntimeException | java.io.IOException exception) {
             return Optional.empty();
         }

@@ -11,6 +11,10 @@ services:
   core:
     ports: !reset []
 
+  db-backup:
+    environment:
+      BACKUP_SOURCE_PROJECT: lecturer-stand
+
   caddy:
     environment:
       SITE_ADDRESS: ":80"

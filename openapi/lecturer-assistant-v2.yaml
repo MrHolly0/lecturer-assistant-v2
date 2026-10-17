@@ -151,11 +151,72 @@ paths:
         "404":
           description: MAX identity has no account when existingOnly is true.
         "409":
-          description: linkCode was already used.
+          description: Link code requires explicit review via link-preview and link-confirm.
         "429":
           description: Too many requests from this client (B-13 rate limit).
         "503":
           description: MAX login is not configured on the server (no bot token).
+  /auth/max/link-preview:
+    post:
+      operationId: previewMaxLink
+      summary: Review a MAX account link without changing identities or creating a session.
+      security: []
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaxLinkPreviewRequest"
+      responses:
+        "200":
+          description: Short-lived review bound to the signed MAX user and current account versions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaxLinkPreview"
+        "400":
+          description: Provide either credentials or a valid unused link code.
+        "401":
+          description: Invalid signed initData or credentials.
+        "403":
+          description: Target account is disabled.
+        "409":
+          description: Code used or target account linked to another MAX identity.
+        "429":
+          description: Request rate exceeded.
+  /auth/max/link-confirm:
+    post:
+      operationId: confirmMaxLink
+      summary: Consume a reviewed account link once and issue a session.
+      security: []
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaxLinkConfirmRequest"
+      responses:
+        "200":
+          description: Confirmed MAX account session; history stays with each original person.
+          headers:
+            Set-Cookie:
+              description: httpOnly refresh token cookie scoped to /api/v1/auth.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaxAuthResponse"
+        "401":
+          description: Invalid signed MAX initData.
+        "403":
+          description: Account disabled.
+        "409":
+          description: Review expired, already consumed or identity/account permissions changed; review again.
+        "429":
+          description: Request rate exceeded.
   /auth/refresh:
     post:
       operationId: refresh
@@ -688,6 +749,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CourseBan"
+  /courses/{courseId}/bans/{personId}:
+    delete:
+      operationId: unbanCourseMember
+      tags: [courses]
+      summary: Remove a course ban without changing existing membership or session history.
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/PersonId"
+      responses:
+        "204":
+          description: Ban removed.
+        "403":
+          description: Course management required.
   /courses/{courseId}/analytics/groups:
     get:
       operationId: getCourseGroupAnalytics
@@ -828,6 +902,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ImportJob"
+  /courses/{courseId}/import-jobs/{jobId}/retry:
+    post:
+      operationId: retryImportJob
+      summary: Retry a failed or partial slide import using a new job and deck.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "202":
+          description: Retry job accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportJob"
+        "409":
+          description: Job is not retryable or its source file is unavailable.
   /courses/{courseId}/decks/{deckId}:
     get:
       operationId: getSlideDeck
@@ -1208,6 +1299,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveSession"
+  /courses/{courseId}/sessions/{sessionId}/projection:
+    put:
+      operationId: setSessionProjection
+      tags: [live]
+      summary: Show or hide the join code on the shared projector during a running session.
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [showJoinCode]
+              properties:
+                showJoinCode:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated authoritative session snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSession"
+        "409":
+          description: Session is not running.
   /courses/{courseId}/sessions/{sessionId}/participants:
     get:
       operationId: listSessionParticipants
@@ -2129,8 +2247,8 @@ paths:
           schema:
             type: integer
             minimum: 1
-            maximum: 100
-            default: 100
+            maximum: 10
+            default: 10
       security:
         - internalApiKey: []
       responses:
@@ -2221,6 +2339,37 @@ paths:
           description: Outside the staff member’s organizational scope or forbidden permission change
         '404':
           description: Organization unit or staff member not found
+  /organization/members/move:
+    post:
+      operationId: moveStaffMembers
+      tags: [Organization]
+      summary: Atomically move staff while preserving each group role; moving to root removes the group manager role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [personIds]
+              properties:
+                personIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items:
+                    type: string
+                    format: uuid
+                unitId:
+                  type: string
+                  format: uuid
+                  nullable: true
+      responses:
+        "204":
+          description: All staff moved, or none if any source or destination is forbidden.
+        "403":
+          description: Caller cannot manage every source and destination.
+        "404":
+          description: Unknown staff account or group.
   /organization/units:
     post:
       tags:
@@ -2669,9 +2818,8 @@ components:
         linkCode:
           type: string
           maxLength: 32
-          description: >
-            Optional one-time code from POST /identity/max/link-codes. When supplied, it moves
-            an existing MAX binding to the code owner's account. Repeat logins need no code.
+          deprecated: true
+          description: Rejected with 409. Use link-preview then link-confirm for explicit account review.
         startParam:
           type: string
           maxLength: 64
@@ -2680,6 +2828,51 @@ components:
         existingOnly:
           type: boolean
           description: Authenticate an existing MAX identity without creating a student account.
+    MaxLinkPreviewRequest:
+      type: object
+      required: [initData]
+      description: Send either email and password, or linkCode. No identity or session is changed by preview.
+      properties:
+        initData:
+          type: string
+          maxLength: 8192
+        email:
+          type: string
+          maxLength: 254
+        password:
+          type: string
+          maxLength: 200
+          writeOnly: true
+        linkCode:
+          type: string
+          maxLength: 32
+    MaxLinkConfirmRequest:
+      type: object
+      required: [initData, confirmationToken]
+      properties:
+        initData:
+          type: string
+          maxLength: 8192
+        confirmationToken:
+          type: string
+          maxLength: 128
+    MaxLinkPreview:
+      type: object
+      required: [confirmationToken, expiresAt, currentAccount, targetAccount, alreadyLinked]
+      properties:
+        confirmationToken:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        currentAccount:
+          allOf:
+            - $ref: "#/components/schemas/UserProfile"
+          nullable: true
+        targetAccount:
+          $ref: "#/components/schemas/UserProfile"
+        alreadyLinked:
+          type: boolean
     MaxAuthResponse:
       type: object
       required: [accessToken, expiresIn, role, personId, displayName]
@@ -3401,6 +3594,8 @@ components:
         - timingCalculatedAt
         - activeDurationSeconds
         - currentSlideDurationSeconds
+        - version
+        - showJoinCode
       properties:
         id:
           type: string
@@ -3452,6 +3647,13 @@ components:
           format: int64
           minimum: 0
           description: Time on the current slide visit, excluding pauses.
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Monotonically increasing committed session revision.
+        showJoinCode:
+          type: boolean
     SessionParticipant:
       type: object
       required: [sessionId, personId, channelType, displayName, joinedAt, kicked]
@@ -3863,6 +4065,9 @@ components:
         - questionAnswers
         - kicked
         - nameRequested
+        - version
+        - showJoinCode
+        - myQuestions
       properties:
         sessionId:
           type: string
@@ -3914,6 +4119,18 @@ components:
         nameRequested:
           type: boolean
           description: Teacher requested a self-reported first and last name.
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Monotonically increasing committed session revision.
+        showJoinCode:
+          type: boolean
+        myQuestions:
+          type: array
+          description: Persisted questions authored by this identified participant; empty for public readers.
+          items:
+            $ref: "#/components/schemas/StudentQuestion"
     StudentNameRequest:
       type: object
       required: [lastName, firstName]
@@ -4337,7 +4554,7 @@ components:
           type: string
     OutboundMessage:
       type: object
-      required: [id, channelIdentityId, externalUserId, priority, content, keyboard, replyMode, threadKey]
+      required: [id, channelIdentityId, externalUserId, priority, content, keyboard, replyMode, threadKey, attemptToken]
       properties:
         id:
           type: string
@@ -4361,6 +4578,9 @@ components:
           $ref: "#/components/schemas/ReplyMode"
         threadKey:
           type: string
+        attemptToken:
+          type: string
+          format: uuid
     OutboxBatch:
       type: object
       required: [messages]
@@ -4374,9 +4594,12 @@ components:
       enum: [DELIVERED, FAILED]
     DeliveryReport:
       type: object
-      required: [messageId, status]
+      required: [messageId, status, attemptToken]
       properties:
         messageId:
+          type: string
+          format: uuid
+        attemptToken:
           type: string
           format: uuid
         status:

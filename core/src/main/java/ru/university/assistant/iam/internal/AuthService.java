@@ -11,6 +11,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.context.ApplicationEventPublisher;
+import ru.university.assistant.iam.api.AccountAccessRevoked;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +44,7 @@ public class AuthService implements EphemeralPersonApi {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final PersonRepository persons;
+    private final ApplicationEventPublisher applicationEvents;
     private final IdentityRepository identities;
     private final MaxInitDataValidator maxInitData;
     private final InvitationRepository invitations;
@@ -68,8 +71,9 @@ public class AuthService implements EphemeralPersonApi {
             EventBus events,
             Clock clock,
             @Value("${app.security.refresh-token-days}") long refreshTokenDays,
-            StaffMembershipApi staffMemberships) {
+            StaffMembershipApi staffMemberships, ApplicationEventPublisher applicationEvents) {
         this.persons = persons;
+        this.applicationEvents = applicationEvents;
         this.identities = identities;
         this.maxInitData = maxInitData;
         this.invitations = invitations;
@@ -118,6 +122,7 @@ public class AuthService implements EphemeralPersonApi {
         PersonRecord person = persons
                 .findByEmail(request.email())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
+        person = persons.lock(person.id());
         ensureActive(person);
         if (!passwordEncoder.matches(request.password(), person.passwordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
@@ -128,7 +133,7 @@ public class AuthService implements EphemeralPersonApi {
     /**
      * Вход по initData мини-приложения MAX. Личность определяется только подписанным user.id:
      * повторный вход находит того же человека и берёт его роль. Явно предъявленный
-     * одноразовый код переносит привязку на выбранный профиль после проверки кода.
+     * код привязки требует отдельного preview/confirm с явным подтверждением.
      */
     @Transactional
     public AuthTokens loginWithMax(String initData, String linkCode, String startParam, boolean existingOnly) {
@@ -141,6 +146,9 @@ public class AuthService implements EphemeralPersonApi {
         } catch (InvalidInitDataException exception) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid MAX initData");
         }
+        if (linkCode != null && !linkCode.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Review the account before linking MAX");
+        }
         String externalId = Long.toString(data.userId());
         identities.lockExternalId(MAX_CHANNEL, externalId);
         Optional<PersonRecord> existingPerson = identities
@@ -149,9 +157,7 @@ public class AuthService implements EphemeralPersonApi {
         if (existingOnly && existingPerson.isEmpty() && (linkCode == null || linkCode.isBlank())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "MAX account is not linked");
         }
-        PersonRecord person = linkCode != null && !linkCode.isBlank()
-                ? linkMaxAccountByCode(linkCode, data, externalId, existingPerson)
-                : existingPerson.orElseGet(() -> createMaxStudent(data, externalId));
+        PersonRecord person = existingPerson.orElseGet(() -> createMaxStudent(data, externalId));
         String normalizedStartParam = startParam == null ? "" : startParam.trim().toUpperCase();
         Map<String, Object> context = normalizedStartParam.isEmpty()
                 ? Map.of()
@@ -164,33 +170,6 @@ public class AuthService implements EphemeralPersonApi {
                 context,
                 Map.of("platform", "MAX")));
         return issueTokens(person);
-    }
-
-    private PersonRecord linkMaxAccountByCode(
-            String linkCode, MaxInitData data, String externalId, Optional<PersonRecord> existingPerson) {
-        String code = linkCode.trim().toUpperCase();
-        UUID personId = identities.tryConsumeMaxLinkCode(code).orElseThrow(() -> {
-            boolean alreadyUsed = identities.findMaxLinkCodeUsedAt(code).isPresent();
-            return alreadyUsed
-                    ? new ResponseStatusException(HttpStatus.CONFLICT, "Link code already used")
-                    : new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired link code");
-        });
-        PersonRecord person = persons
-                .findById(personId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid link code"));
-        ensureActive(person);
-        if (existingPerson.isEmpty() || !existingPerson.get().id().equals(personId)) {
-            identities.lockPersonChannel(personId, MAX_CHANNEL);
-            if (identities.existsForPerson(personId, MAX_CHANNEL)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Target account already linked to MAX");
-            }
-            if (existingPerson.isPresent()) {
-                identities.moveMaxIdentity(externalId, personId, data.username());
-            } else {
-                identities.createIdentity(UuidV7.generate(), personId, MAX_CHANNEL, externalId, data.username());
-            }
-        }
-        return person;
     }
 
     private PersonRecord createMaxStudent(MaxInitData data, String externalId) {
@@ -218,13 +197,13 @@ public class AuthService implements EphemeralPersonApi {
     @Transactional
     public AuthTokens refresh(String refreshToken) {
         String hash = TokenHasher.sha256(refreshToken);
-        UUID personId = refreshTokens
-                .findUsablePersonId(hash)
+        UUID personId = refreshTokens.ownerOfUsable(hash)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
-        refreshTokens.revoke(hash);
-        PersonRecord person = persons
-                .findById(personId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
+        // All authentication mutations take person -> credential locks in this order.
+        // A concurrent password/role change cannot leave a newly rotated cookie unrevoked.
+        PersonRecord person = persons.lock(personId);
+        refreshTokens.consume(hash).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token"));
         ensureActive(person);
         return issueTokens(person);
     }
@@ -236,13 +215,12 @@ public class AuthService implements EphemeralPersonApi {
 
     @Transactional
     public void changePassword(AuthenticatedUser user, ChangePasswordRequest request) {
-        PersonRecord person = persons
-                .findById(user.id())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        PersonRecord person = persons.lock(user.id());
         if (!passwordEncoder.matches(request.currentPassword(), person.passwordHash())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is invalid");
         }
         persons.updatePassword(user.id(), passwordEncoder.encode(request.newPassword()));
+        revokeAccount(user.id());
     }
 
     public UserProfile currentUser(AuthenticatedUser user) {
@@ -287,7 +265,11 @@ public class AuthService implements EphemeralPersonApi {
         if (actor.id().equals(personId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot change your own role");
         }
+        PersonRecord current = lockAccountAdministration(actor, personId);
+        if (current.role() == request.role()) return current.toProfile();
+        protectLastAdmin(current, request.role(), current.status());
         UserProfile updated = persons.updateRole(personId, request.role()).toProfile();
+        revokeAccount(personId);
         if (request.role() == PersonRole.STUDENT) {
             staffMemberships.removeStaffMembershipIfStudent(personId);
         }
@@ -303,7 +285,36 @@ public class AuthService implements EphemeralPersonApi {
         if (request.status() == PersonStatus.EPHEMERAL) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "EPHEMERAL status is system-managed");
         }
-        return persons.updateStatus(personId, request.status()).toProfile();
+        PersonRecord current = lockAccountAdministration(actor, personId);
+        if (current.status() == request.status()) return current.toProfile();
+        protectLastAdmin(current, current.role(), request.status());
+        UserProfile updated = persons.updateStatus(personId, request.status()).toProfile();
+        revokeAccount(personId);
+        return updated;
+    }
+
+    private PersonRecord lockAccountAdministration(AuthenticatedUser actor, UUID personId) {
+        persons.lockAdminBootstrap();
+        PersonRecord administrator = persons.findById(actor.id()).orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Administrator access required"));
+        if (administrator.role() != PersonRole.ADMIN || administrator.status() != PersonStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Administrator access required");
+        }
+        return persons.findById(personId).orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+    }
+
+    private void protectLastAdmin(PersonRecord current, PersonRole role, PersonStatus status) {
+        if (current.role() == PersonRole.ADMIN && current.status() == PersonStatus.ACTIVE
+                && (role != PersonRole.ADMIN || status != PersonStatus.ACTIVE) && persons.countActiveAdmins() <= 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The last active administrator must remain");
+        }
+    }
+
+    private void revokeAccount(UUID personId) {
+        identities.revokeLinkCodes(personId);
+        refreshTokens.revokeForPerson(personId);
+        applicationEvents.publishEvent(new AccountAccessRevoked(personId));
     }
 
     @Transactional
@@ -325,7 +336,8 @@ public class AuthService implements EphemeralPersonApi {
                 role);
     }
 
-    private AuthTokens issueTokens(PersonRecord person) {
+    AuthTokens issueTokens(PersonRecord person) {
+        person = persons.lock(person.id());
         ensureActive(person);
         AuthenticatedUser user = new AuthenticatedUser(
                 person.id(), person.displayName(), person.email(), person.role());

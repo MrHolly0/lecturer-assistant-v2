@@ -50,6 +50,12 @@ class QuestionService implements QuestionApi {
     }
 
     @Override
+    public java.util.Map<UUID, List<StudentQuestion>> personalQuestions(
+            UUID sessionId, java.util.Set<UUID> personIds) {
+        return repository.personalQuestions(sessionId, personIds);
+    }
+
+    @Override
     public List<QuestionAnswerAudience> answeredQuestions(UUID sessionId) {
         return repository.answeredQuestions(sessionId);
     }

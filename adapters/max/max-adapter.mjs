@@ -15,6 +15,7 @@ import {
   extractUserId,
   openAppButton,
   parseStartCommand,
+  retry429,
   renderKeyboard,
   timingSafeEqualStrings,
   webhookPathFor,
@@ -50,6 +51,7 @@ if (webhookUrl && !webhookSecret) {
 async function core(path, options = {}) {
   const response = await fetch(`${coreUrl}${path}`, {
     ...options,
+    signal: options.signal ?? AbortSignal.timeout(12_000),
     headers: {
       "Content-Type": "application/json",
       "X-Internal-Api-Key": apiKey,
@@ -96,24 +98,18 @@ async function maxApi(path, { method = "GET", query, body } = {}) {
       url.searchParams.set(key, String(value));
     }
   }
-  await sleep(reserveSlot());
-  const response = await fetch(url, {
-    method,
-    // MAX_API_NOTES.md §1.1: заголовок `Authorization: <token>` без префикса Bearer.
-    headers: { Authorization: botToken, ...(body ? { "Content-Type": "application/json" } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (response.status === 429) {
-    // ТРЕБУЕТ ПРОВЕРКИ: формат ответа при превышении лимита в справке не описан (нет
-    // подтверждённого Retry-After). Разовый защитный повтор с задержкой по умолчанию.
-    const retryAfterHeader = response.headers.get("retry-after");
-    const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : 1000;
-    await sleep(Number.isFinite(retryAfterMs) ? retryAfterMs : 1000);
-    return maxApi(path, { method, query, body });
-  }
+  const response = await retry429(async () => {
+    await sleep(reserveSlot());
+    return fetch(url, {
+      method,
+      headers: { Authorization: botToken, ...(body ? { "Content-Type": "application/json" } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(12_000),
+    });
+  }, sleep);
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`MAX API ${method} ${path} -> ${response.status}: ${text}`);
+    throw new Error("MAX API " + method + " " + path + " -> " + response.status + ": " + text);
   }
   return text ? JSON.parse(text) : undefined;
 }
@@ -240,36 +236,36 @@ async function runLongPolling() {
 // ---------- отправка из outbox core (сигналы/сводки будущих задач B-06…B-08) ----------
 
 async function pollCoreOutbox() {
-  const batch = await core(`/internal/v1/channels/${channelType}/outbox?wait=1s&limit=100`);
-  const reports = [];
+  const batch = await core(`/internal/v1/channels/${channelType}/outbox?wait=1s&limit=2`);
   for (const message of batch.messages ?? []) {
     const started = Date.now();
+    let report;
     try {
       const result = await sendMessage(
           message.externalUserId,
           message.content.type === "IMAGE" ? message.content.caption ?? "Слайд лекции" : message.content.text ?? "",
           renderKeyboard(message.keyboard),
           message.content.type === "IMAGE" ? message.content.ref : undefined);
-      reports.push({
+      report = {
         messageId: message.id,
         status: "DELIVERED",
+        attemptToken: message.attemptToken,
         // ТРЕБУЕТ ПРОВЕРКИ: точное имя поля идентификатора сообщения (mid/id) не подтверждено.
         adapterMessageId: String(result?.message?.mid ?? result?.message?.id ?? ""),
         latencyMs: Date.now() - started,
-      });
+      };
     } catch (error) {
-      reports.push({
+      report = {
         messageId: message.id,
         status: "FAILED",
+        attemptToken: message.attemptToken,
         errorMessage: error.message,
         latencyMs: Date.now() - started,
-      });
+      };
     }
-  }
-  if (reports.length > 0) {
     await core(`/internal/v1/channels/${channelType}/delivery-reports`, {
       method: "POST",
-      body: JSON.stringify({ reports }),
+      body: JSON.stringify({ reports: [report] }),
     });
   }
 }

@@ -61,6 +61,15 @@ public class ContentController {
         return contentService.getImportJob(user, courseId, jobId);
     }
 
+    @PostMapping("/import-jobs/{jobId}/retry")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ImportJob retryImportJob(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID jobId) {
+        return contentService.retryDeckImport(user, courseId, jobId);
+    }
+
     @GetMapping("/decks/{deckId}")
     public SlideDeckDetails deck(
             @AuthenticationPrincipal AuthenticatedUser user,

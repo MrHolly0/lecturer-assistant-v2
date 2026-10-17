@@ -87,7 +87,9 @@ public class PollService implements QuickPollApi {
 
     @Transactional
     public PollResult setCorrectOption(UUID courseId, UUID sessionId, UUID pollId, Integer correctOptionIdx) {
+        liveSessions.lockSession(sessionId);
         liveSessions.requireSessionInCourse(courseId, sessionId);
+        polls.lock(pollId);
         QuickPoll poll = pollInSession(sessionId, pollId);
         if (poll.status() != PollStatus.OPEN) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Poll already closed");
@@ -116,7 +118,9 @@ public class PollService implements QuickPollApi {
     @Transactional
     public PollResult close(
             UUID courseId, UUID sessionId, UUID pollId, UUID closedBy, ClosePollRequest request) {
+        liveSessions.lockSession(sessionId);
         liveSessions.requireSessionInCourse(courseId, sessionId);
+        polls.lock(pollId);
         QuickPoll poll = pollInSession(sessionId, pollId);
         if (poll.status() == PollStatus.CLOSED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Poll already closed");
@@ -151,7 +155,8 @@ public class PollService implements QuickPollApi {
     @Transactional
     @Override
     public PollVote respond(UUID sessionId, UUID pollId, UUID personId, int optionIdx) {
-        requireLive(liveSessions.requireSession(sessionId));
+        requireLive(liveSessions.lockSession(sessionId));
+        polls.lock(pollId);
         QuickPoll poll = polls.findById(pollId)
                 .filter(found -> found.sessionId().equals(sessionId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Poll not found"));
@@ -203,7 +208,8 @@ public class PollService implements QuickPollApi {
     }
 
     private LiveSession prepareStart(UUID courseId, UUID sessionId) {
-        LiveSession session = liveSessions.requireSessionInCourse(courseId, sessionId);
+        LiveSession session = liveSessions.lockSession(sessionId);
+        liveSessions.requireSessionInCourse(courseId, sessionId);
         requireLive(session);
         polls.findOpenForSession(sessionId).ifPresent(existing -> {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A poll is already open for this session");

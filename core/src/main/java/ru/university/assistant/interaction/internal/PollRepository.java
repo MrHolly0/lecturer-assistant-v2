@@ -119,6 +119,13 @@ class PollRepository {
                 .optional();
     }
 
+    void lock(UUID pollId) {
+        jdbc.sql("select id from interaction.quick_polls where id = :id for update")
+                .param("id", pollId).query(UUID.class).optional().orElseThrow(
+                        () -> new org.springframework.web.server.ResponseStatusException(
+                                org.springframework.http.HttpStatus.NOT_FOUND, "Poll not found"));
+    }
+
     Optional<QuickPoll> findById(UUID pollId) {
         return jdbc.sql("""
                         select id, session_id, source_question_id, question_text, options, status,

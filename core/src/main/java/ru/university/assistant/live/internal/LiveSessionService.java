@@ -192,6 +192,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
     public LiveSession changeSlide(
             AuthenticatedUser user, UUID courseId, UUID sessionId, ChangeSlideRequest request) {
         courseAccess.requireManage(user, courseId);
+        sessions.lock(sessionId);
         LiveSession before = session(courseId, sessionId);
         ensureLive(before);
         if (request.slideIdx() < 1 || request.slideIdx() > sessions.deckSlideCount(before.deckId())) {
@@ -212,6 +213,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
     public LiveSession saveAnnotations(
             AuthenticatedUser user, UUID courseId, UUID sessionId, SaveAnnotationsRequest request) {
         courseAccess.requireManage(user, courseId);
+        sessions.lock(sessionId);
         LiveSession current = session(courseId, sessionId);
         ensureLive(current);
         LiveSession after = sessions.updateAnnotations(courseId, sessionId, request.annotations());
@@ -223,6 +225,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
     @Transactional
     public LiveSession transition(AuthenticatedUser user, UUID courseId, UUID sessionId, SessionStatus target) {
         courseAccess.requireManage(user, courseId);
+        sessions.lock(sessionId);
         LiveSession current = session(courseId, sessionId);
         ensureTransition(current.status(), target);
         LiveSession after = sessions.updateStatus(courseId, sessionId, target);
@@ -238,9 +241,27 @@ public class LiveSessionService implements LiveSessionAccessApi {
         return after;
     }
 
+    @Transactional
+    public LiveSession setProjection(AuthenticatedUser user, UUID courseId, UUID sessionId, boolean showJoinCode) {
+        courseAccess.requireManage(user, courseId);
+        sessions.lock(sessionId);
+        LiveSession current = session(courseId, sessionId);
+        ensureRunning(current);
+        LiveSession updated = sessions.projection(courseId, sessionId, showJoinCode);
+        publisher.publish("session.projection_changed", updated);
+        return updated;
+    }
+
     private LiveSession session(UUID courseId, UUID sessionId) {
         return sessions.findByCourse(courseId, sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+    }
+
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public LiveSession lockSession(UUID sessionId) {
+        sessions.lock(sessionId);
+        return requireSession(sessionId);
     }
 
     @Override
@@ -255,7 +276,9 @@ public class LiveSessionService implements LiveSessionAccessApi {
     }
 
     @Override
+    @Transactional
     public void publishSessionUpdate(UUID sessionId, String type) {
+        sessions.touchVersion(sessionId);
         publisher.publish(type, requireSession(sessionId));
     }
 

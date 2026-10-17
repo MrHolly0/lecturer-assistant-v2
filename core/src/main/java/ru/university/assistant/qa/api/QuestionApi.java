@@ -11,6 +11,8 @@ public interface QuestionApi {
 
     List<QuestionAnswerAudience> answeredQuestions(UUID sessionId);
 
+    java.util.Map<UUID, List<StudentQuestion>> personalQuestions(UUID sessionId, java.util.Set<UUID> personIds);
+
     ResolvedQuestion resolve(
             UUID sessionId,
             UUID questionId,

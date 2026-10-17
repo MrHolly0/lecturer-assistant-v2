@@ -65,6 +65,32 @@ class LiveSessionRepository {
         return findById(sessionId).orElseThrow();
     }
 
+    UUID courseId(UUID sessionId) {
+        return jdbc.sql("select l.course_id from live.sessions s join live.lectures l on l.id = s.lecture_id "
+                        + "where s.id = :id")
+                .param("id", sessionId).query(UUID.class).optional().orElseThrow(
+                () -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Session not found"));
+    }
+
+    void lock(UUID sessionId) {
+        jdbc.sql("select id from live.sessions where id = :id for update")
+                .param("id", sessionId).query(UUID.class).optional().orElseThrow(
+                () -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND, "Session not found"));
+    }
+
+    void touchVersion(UUID sessionId) {
+        jdbc.sql("update live.sessions set version = version + 1 where id = :id")
+                .param("id", sessionId).update();
+    }
+
+    LiveSession projection(UUID courseId, UUID sessionId, boolean showJoinCode) {
+        jdbc.sql("update live.sessions set show_join_code = :show, version = version + 1 where id = :id")
+                .param("show", showJoinCode).param("id", sessionId).update();
+        return findByCourse(courseId, sessionId).orElseThrow();
+    }
+
     Optional<LiveSession> findById(UUID sessionId) {
         return jdbc.sql(
                         """
@@ -75,7 +101,8 @@ class LiveSessionRepository {
                                       from live.session_groups sg
                                       where sg.session_id = s.id), '[]'::jsonb)::text as groups,
                             s.status,
-                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
+                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at,
+                            s.version, s.show_join_code
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
                         where s.id = :sessionId
@@ -96,7 +123,8 @@ class LiveSessionRepository {
                                       from live.session_groups sg
                                       where sg.session_id = s.id), '[]'::jsonb)::text as groups,
                             s.status,
-                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
+                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at,
+                            s.version, s.show_join_code
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
                         where l.course_id = :courseId and s.id = :sessionId
@@ -118,7 +146,8 @@ class LiveSessionRepository {
                                       from live.session_groups sg
                                       where sg.session_id = s.id), '[]'::jsonb)::text as groups,
                             s.status,
-                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
+                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at,
+                            s.version, s.show_join_code
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
                         where l.course_id = :courseId and s.join_code = :joinCode
@@ -140,7 +169,8 @@ class LiveSessionRepository {
                                       from live.session_groups sg
                                       where sg.session_id = s.id), '[]'::jsonb)::text as groups,
                             s.status,
-                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
+                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at,
+                            s.version, s.show_join_code
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
                         where s.join_code = :joinCode
@@ -162,7 +192,8 @@ class LiveSessionRepository {
                                       from live.session_groups sg
                                       where sg.session_id = s.id), '[]'::jsonb)::text as groups,
                             s.status,
-                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at
+                            s.join_code, s.current_slide_idx, s.annotations, s.started_at, s.ended_at,
+                            s.version, s.show_join_code
                         from live.sessions s
                         join live.lectures l on l.id = s.lecture_id
                         where s.created_by = :personId and s.status in ('SCHEDULED', 'LIVE', 'PAUSED')
@@ -229,7 +260,7 @@ class LiveSessionRepository {
         return jdbc.sql(
                         """
                         update live.sessions
-                        set status = 'LIVE', started_at = now(), updated_at = now()
+                        set status = 'LIVE', version = version + 1, started_at = now(), updated_at = now()
                         where id = :sessionId and status = 'SCHEDULED'
                             and lecture_id in (select id from live.lectures where course_id = :courseId)
                         """)
@@ -242,7 +273,7 @@ class LiveSessionRepository {
         jdbc.sql(
                         """
                         update live.sessions
-                        set current_slide_idx = :slideIdx, updated_at = now()
+                        set current_slide_idx = :slideIdx, version = version + 1, updated_at = now()
                         where id = :sessionId
                             and lecture_id in (select id from live.lectures where course_id = :courseId)
                         """)
@@ -265,7 +296,7 @@ class LiveSessionRepository {
         jdbc.sql(
                         """
                         update live.sessions
-                        set annotations = cast(:annotations as jsonb), updated_at = now()
+                        set annotations = cast(:annotations as jsonb), version = version + 1, updated_at = now()
                         where id = :sessionId
                             and lecture_id in (select id from live.lectures where course_id = :courseId)
                         """)
@@ -280,7 +311,7 @@ class LiveSessionRepository {
         jdbc.sql(
                         """
                         update live.sessions
-                        set status = :status,
+                        set status = :status, version = version + 1,
                             ended_at = case when :status = 'ENDED' then now() else ended_at end,
                             updated_at = now()
                         where id = :sessionId
@@ -544,8 +575,9 @@ class LiveSessionRepository {
         jdbc.sql(
                         """
                         insert into live.web_participant_tokens
-                            (id, session_id, person_id, token_hash, identity_level)
-                        values (:id, :sessionId, :personId, :tokenHash, :level)
+                            (id, session_id, person_id, token_hash, identity_level, auth_version)
+                        select :id, :sessionId, id, :tokenHash, :level, auth_version
+                        from iam.persons where id = :personId and status in ('ACTIVE', 'EPHEMERAL')
                         """)
                 .param("id", id)
                 .param("sessionId", sessionId)
@@ -565,7 +597,8 @@ class LiveSessionRepository {
                         join iam.persons p on p.id = t.person_id
                         left join live.session_participants sp on sp.session_id = t.session_id
                             and sp.person_id = t.person_id and sp.channel_type = 'web'
-                        where t.token_hash = :tokenHash
+                        where t.token_hash = :tokenHash and p.status in ('ACTIVE', 'EPHEMERAL')
+                          and p.auth_version = t.auth_version
                         """)
                 .param("tokenHash", tokenHash)
                 .query(this::mapWebParticipant)
@@ -609,7 +642,7 @@ class LiveSessionRepository {
                 rs.getTimestamp("ended_at") == null ? null : rs.getTimestamp("ended_at").toInstant(),
                 Instant.EPOCH,
                 0,
-                0);
+                0, rs.getLong("version"), rs.getBoolean("show_join_code"));
     }
 
     private LiveSession withTiming(LiveSession session) {
@@ -642,7 +675,7 @@ class LiveSessionRepository {
                 session.endedAt(),
                 calculatedAt,
                 activeSeconds,
-                slideSeconds);
+                slideSeconds, session.version(), session.showJoinCode());
     }
 
     private List<TimingEvent> timingEvents(UUID sessionId) {

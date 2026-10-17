@@ -51,6 +51,9 @@ public class IdentityService implements ChannelIdentityApi {
         if (user.role() == PersonRole.STUDENT) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only staff can unlink a MAX account");
         }
+        var identity = identities.findForPerson(user.id(), "max");
+        identity.ifPresent(value -> identities.lockExternalId("max", value.externalId()));
+        identities.lockPersonChannel(user.id(), "max");
         identities.deleteForPerson(user.id(), "max");
     }
 
@@ -64,16 +67,14 @@ public class IdentityService implements ChannelIdentityApi {
         if (!channelType.equals("telegram")
                 && !channelType.equals("vk")
                 && !channelType.equals("web")
-                && !channelType.equals("echo")
-                && !channelType.equals("max")) {
+                && !channelType.equals("echo")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported channel type");
         }
         var personId = identities
-                .findUsablePersonIdByCode(request.code())
+                .consumeLinkCode(request.code())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid link code"));
         ChannelIdentityResponse identity = identities.createIdentity(
                 UuidV7.generate(), personId, channelType, request.externalId(), request.displayHint());
-        identities.markLinkCodeUsed(request.code());
         return identity;
     }
 

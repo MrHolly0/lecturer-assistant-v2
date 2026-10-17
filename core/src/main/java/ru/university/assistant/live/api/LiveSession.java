@@ -20,4 +20,26 @@ public record LiveSession(
         Instant endedAt,
         Instant timingCalculatedAt,
         long activeDurationSeconds,
-        long currentSlideDurationSeconds) {}
+        long currentSlideDurationSeconds,
+        long version,
+        boolean showJoinCode) {
+    public LiveSession(UUID id,
+            UUID courseId,
+            UUID lectureId,
+            UUID deckId,
+            String lectureTitle,
+            List<SessionGroup> groups,
+            SessionStatus status,
+            String joinCode,
+            int currentSlideIdx,
+            Map<String, Object> annotations,
+            Instant startedAt,
+            Instant endedAt,
+            Instant timingCalculatedAt,
+            long activeDurationSeconds,
+            long currentSlideDurationSeconds) {
+        this(id, courseId, lectureId, deckId, lectureTitle, groups, status, joinCode, currentSlideIdx,
+                annotations, startedAt, endedAt, timingCalculatedAt, activeDurationSeconds,
+                currentSlideDurationSeconds, 0, false);
+    }
+}

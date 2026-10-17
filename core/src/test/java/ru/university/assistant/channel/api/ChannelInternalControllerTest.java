@@ -30,7 +30,7 @@ class ChannelInternalControllerTest {
 
         assertEquals("echo", channels.channelType);
         assertEquals(Duration.ofSeconds(1), channels.wait);
-        assertEquals(100, channels.limit);
+        assertEquals(10, channels.limit);
     }
 
     @Test

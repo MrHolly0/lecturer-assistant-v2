@@ -46,7 +46,7 @@ public class ChannelInternalController {
             @RequestParam(defaultValue = "25s") String wait,
             @RequestParam(defaultValue = "100") int limit) {
         requireKey(key);
-        return channels.poll(channelType, parseWait(wait), Math.min(Math.max(limit, 1), 100));
+        return channels.poll(channelType, parseWait(wait), Math.min(Math.max(limit, 1), 10));
     }
 
     @PostMapping("/delivery-reports")
@@ -76,9 +76,14 @@ public class ChannelInternalController {
     }
 
     private Duration parseWait(String value) {
-        if (value.endsWith("s")) {
-            return Duration.ofSeconds(Long.parseLong(value.substring(0, value.length() - 1)));
+        try {
+            Duration parsed = value.endsWith("s")
+                    ? Duration.ofSeconds(Long.parseLong(value.substring(0, value.length() - 1)))
+                    : Duration.parse(value);
+            return parsed.isNegative() ? Duration.ZERO : parsed.compareTo(Duration.ofSeconds(25)) > 0
+                    ? Duration.ofSeconds(25) : parsed;
+        } catch (RuntimeException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid outbox wait", exception);
         }
-        return Duration.parse(value);
     }
 }

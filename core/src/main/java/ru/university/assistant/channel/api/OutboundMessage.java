@@ -11,4 +11,17 @@ public record OutboundMessage(
         OutboundContent content,
         List<List<OutboundButton>> keyboard,
         ReplyMode replyMode,
-        String threadKey) {}
+        String threadKey,
+        UUID attemptToken) {
+    public OutboundMessage(
+            UUID id,
+            UUID channelIdentityId,
+            String externalUserId,
+            OutboundPriority priority,
+            OutboundContent content,
+            List<List<OutboundButton>> keyboard,
+            ReplyMode replyMode,
+            String threadKey) {
+        this(id, channelIdentityId, externalUserId, priority, content, keyboard, replyMode, threadKey, null);
+    }
+}

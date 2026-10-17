@@ -5,6 +5,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import ru.university.assistant.content.api.ImportJobStatus;
 import ru.university.assistant.shared.api.UuidV7;
@@ -61,8 +63,12 @@ class SlideImportWorker {
                 }
             });
             warning.set(firstNonBlank(warning.get(), result.warningMessage()));
-            ImportJobStatus finalStatus = result.partial() ? ImportJobStatus.PARTIAL : ImportJobStatus.COMPLETED;
-            int finalProgress = result.partial() ? progress(result.renderedSlides(), result.totalSlides()) : 100;
+            boolean hasError = result.errorMessage() != null && !result.errorMessage().isBlank();
+            ImportJobStatus finalStatus = hasError
+                    ? (result.renderedSlides() > 0 ? ImportJobStatus.PARTIAL : ImportJobStatus.FAILED)
+                    : result.partial() ? ImportJobStatus.PARTIAL : ImportJobStatus.COMPLETED;
+            int finalProgress = finalStatus == ImportJobStatus.COMPLETED
+                    ? 100 : progress(result.renderedSlides(), result.totalSlides());
             mark(jobId, finalStatus, finalProgress, finalStatus.name(), result.renderedSlides(), result.totalSlides(),
                     result.errorMessage(), warning.get(), deckId);
         } catch (RuntimeException exception) {
@@ -71,6 +77,12 @@ class SlideImportWorker {
                     status.name(), processed.get(), total.get() == 0 ? null : total.get(),
                     userMessage(exception), warning.get(), deckId);
         }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markRejected(UUID jobId, String message) {
+        repository.markJob(jobId, ImportJobStatus.FAILED, 100, "QUEUE_FULL", 0, null,
+                message, null, null);
     }
 
     private UUID createOrReuseDeck(UUID jobId, UUID courseId, String title, StoredBlob source) {

@@ -89,3 +89,15 @@ export function createRateLimiter(rps, now = () => Date.now()) {
     return Math.max(0, dueAt - current);
   };
 }
+
+export async function retry429(request, sleep, { maxAttempts = 3, maxDelayMs = 1500, fallbackDelayMs = 500 } = {}) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const response = await request();
+    if (response.status !== 429 || attempt === maxAttempts - 1) return response;
+    const header = response.headers?.get?.("retry-after");
+    const requestedDelay = header === null || header === undefined ? fallbackDelayMs : Number(header) * 1000;
+    const delay = Math.min(maxDelayMs, Math.max(0, Number.isFinite(requestedDelay) ? requestedDelay : fallbackDelayMs));
+    await sleep(delay);
+  }
+  throw new Error("Retry budget exhausted");
+}

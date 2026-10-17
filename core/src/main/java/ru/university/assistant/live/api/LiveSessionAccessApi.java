@@ -10,6 +10,8 @@ public interface LiveSessionAccessApi {
     /** 404, если сессии с таким id нет. */
     LiveSession requireSession(UUID sessionId);
 
+    LiveSession lockSession(UUID sessionId);
+
     /** 404, если сессии с таким id в этом курсе нет. */
     LiveSession requireSessionInCourse(UUID courseId, UUID sessionId);
 

@@ -16,6 +16,6 @@ class JwtServiceTest {
                         Clock.systemUTC(),
                         "phase-1-local-development-secret-change-me",
                         15,
-                        true));
+                        true, null));
     }
 }

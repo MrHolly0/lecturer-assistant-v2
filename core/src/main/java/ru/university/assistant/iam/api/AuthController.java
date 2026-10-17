@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ru.university.assistant.iam.internal.AuthService;
+import ru.university.assistant.iam.internal.MaxLinkService;
 import ru.university.assistant.iam.internal.AuthTokens;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -28,16 +29,18 @@ public class AuthController {
     private static final String REFRESH_COOKIE = "la_refresh";
 
     private final AuthService authService;
+    private final MaxLinkService maxLinks;
     private final Duration refreshTtl;
     private final boolean refreshCookieSecure;
     private final String adminSetupToken;
 
     AuthController(
-            AuthService authService,
+            AuthService authService, MaxLinkService maxLinks,
             @Value("${app.security.refresh-token-days}") long refreshTokenDays,
             @Value("${app.security.refresh-cookie-secure:true}") boolean refreshCookieSecure,
             @Value("${app.security.admin-setup-token:}") String adminSetupToken) {
         this.authService = authService;
+        this.maxLinks = maxLinks;
         this.refreshTtl = Duration.ofDays(refreshTokenDays);
         this.refreshCookieSecure = refreshCookieSecure;
         this.adminSetupToken = adminSetupToken;
@@ -72,6 +75,19 @@ public class AuthController {
     public ResponseEntity<MaxAuthResponse> loginWithMax(@Valid @RequestBody MaxAuthRequest request) {
         AuthTokens tokens = authService.loginWithMax(
                 request.initData(), request.linkCode(), request.startParam(), request.existingOnly());
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshCookie(tokens.refreshToken()).toString())
+                .body(tokens.toMaxResponse());
+    }
+
+    @PostMapping("/max/link-preview")
+    public MaxLinkPreview previewMaxLink(@Valid @RequestBody MaxLinkPreviewRequest request) {
+        return maxLinks.preview(request);
+    }
+
+    @PostMapping("/max/link-confirm")
+    public ResponseEntity<MaxAuthResponse> confirmMaxLink(@Valid @RequestBody MaxLinkConfirmRequest request) {
+        AuthTokens tokens = maxLinks.confirm(request);
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshCookie(tokens.refreshToken()).toString())
                 .body(tokens.toMaxResponse());

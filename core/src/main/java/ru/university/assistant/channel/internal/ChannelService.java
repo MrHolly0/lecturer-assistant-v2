@@ -25,7 +25,7 @@ import ru.university.assistant.shared.api.UuidV7;
 
 @Service
 public class ChannelService implements ChannelInternalApi, ChannelFanoutApi {
-    private static final Duration LOCK_TTL = Duration.ofSeconds(60);
+    private static final Duration LOCK_TTL = Duration.ofMinutes(3);
     private static final String HELP_TEXT = """
             Команды:
             /join КОД — подключиться к live-сессии

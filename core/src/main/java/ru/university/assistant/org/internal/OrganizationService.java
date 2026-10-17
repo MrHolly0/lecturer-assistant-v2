@@ -137,6 +137,18 @@ public class OrganizationService implements StaffMembershipApi {
         repository.assign(personId, request.unitId(), request.unitRole());
     }
 
+    @Transactional
+    public void moveMembers(
+            AuthenticatedUser user, ru.university.assistant.org.api.OrganizationModels.MoveStaffRequest request) {
+        requireStaff(user);
+        repository.lockStructure();
+        for (UUID personId : request.personIds().stream().distinct().sorted().toList()) {
+            UnitRole access = repository.membership(personId).map(membership -> membership.role())
+                    .orElse(UnitRole.MEMBER);
+            assign(user, personId, new AssignStaffRequest(request.unitId(), access));
+        }
+    }
+
     private void requireMemberChange(
             AuthenticatedUser user, UUID personId, PersonRole role, AssignStaffRequest request) {
         var previous = repository.membership(personId).orElse(null);

@@ -63,6 +63,14 @@ public class OrganizationController {
         organization.delete(user, unitId);
     }
 
+    @PostMapping("/members/move")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void moveMembers(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody OrganizationModels.MoveStaffRequest request) {
+        organization.moveMembers(user, request);
+    }
+
     @PutMapping("/members/{personId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void assign(

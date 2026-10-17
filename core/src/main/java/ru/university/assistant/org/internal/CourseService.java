@@ -2,6 +2,8 @@ package ru.university.assistant.org.internal;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Set;
+import ru.university.assistant.iam.api.AccountStateApi;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,9 +32,11 @@ import ru.university.assistant.shared.api.UuidV7;
 public class CourseService implements CourseMembershipApi, CourseAccessApi {
     private final CourseRepository courses;
     private final InvitationApi invitations;
+    private final AccountStateApi accounts;
 
-    CourseService(CourseRepository courses, InvitationApi invitations) {
+    CourseService(CourseRepository courses, InvitationApi invitations, AccountStateApi accounts) {
         this.courses = courses;
+        this.accounts = accounts;
         this.invitations = invitations;
     }
 
@@ -203,7 +207,17 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     @Transactional
     public CourseBan ban(AuthenticatedUser user, UUID courseId, BanCourseMemberRequest request) {
         requireManage(user, courseId);
+        Course course = courses.findById(courseId).orElseThrow();
+        if (request.personId().equals(user.id()) || request.personId().equals(course.ownerPersonId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot ban yourself or the course owner");
+        }
         return courses.ban(courseId, request.personId(), request.reason(), user.id());
+    }
+
+    @Transactional
+    public void unban(AuthenticatedUser user, UUID courseId, UUID personId) {
+        requireManage(user, courseId);
+        courses.unban(courseId, personId);
     }
 
     public List<CourseBan> listBans(AuthenticatedUser user, UUID courseId) {
@@ -214,6 +228,7 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     @Override
     @Transactional
     public void ensureStudentMember(UUID courseId, UUID personId) {
+        requireNotBanned(courseId, personId);
         courses.addMemberIfAbsent(courseId, personId, CourseRole.STUDENT);
     }
 
@@ -239,6 +254,7 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
         if (allowedGroups.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Session has no study groups");
         }
+        requireNotBanned(courseId, personId);
         courses.addMemberIfAbsent(courseId, personId, CourseRole.STUDENT);
         CourseRole role = courses.lockMemberRole(courseId, personId);
         if (role != CourseRole.STUDENT) {
@@ -259,6 +275,7 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     @Override
     @Transactional
     public void addMemberFromInvitation(UUID courseId, UUID groupId, UUID personId, CourseRole role) {
+        requireNotBanned(courseId, personId);
         courses.addMember(courseId, personId, role);
         if (groupId != null) {
             courses.addGroupMember(groupId, personId);
@@ -275,7 +292,27 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
         ensureManage(user, courseId);
     }
 
+    @Override
+    public void requireParticipation(UUID courseId, UUID personId) {
+        if (!allowedParticipants(courseId, Set.of(personId)).contains(personId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Нет доступа к этому занятию");
+        }
+    }
+
+    @Override
+    public Set<UUID> allowedParticipants(UUID courseId, Set<UUID> personIds) {
+        Set<UUID> enabled = accounts.enabledPeople(personIds);
+        return courses.participatingPeople(courseId, enabled);
+    }
+
+    private void requireNotBanned(UUID courseId, UUID personId) {
+        if (courses.isBanned(courseId, personId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Доступ к курсу закрыт преподавателем");
+        }
+    }
+
     private Course visibleCourse(AuthenticatedUser user, UUID courseId) {
+        requireNotBanned(courseId, user.id());
         Course course = courses.findById(courseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
         if (user.role() == PersonRole.ADMIN || courses.findMemberRole(courseId, user.id()).isPresent()) {
@@ -285,6 +322,7 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     }
 
     private void ensureManage(AuthenticatedUser user, UUID courseId) {
+        requireNotBanned(courseId, user.id());
         if (user.role() == PersonRole.ADMIN) {
             return;
         }

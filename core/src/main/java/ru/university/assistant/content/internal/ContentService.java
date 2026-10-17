@@ -3,11 +3,13 @@ package ru.university.assistant.content.internal;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -17,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.content.api.Attachment;
 import ru.university.assistant.content.api.CreateLectureRequest;
 import ru.university.assistant.content.api.ImportJob;
+import ru.university.assistant.content.api.ImportJobStatus;
 import ru.university.assistant.content.api.Lecture;
 import ru.university.assistant.content.api.LectureDetails;
 import ru.university.assistant.content.api.SaveSlideNoteRequest;
@@ -66,17 +69,34 @@ public class ContentService implements StudentDeckApi {
             validateMagic(file.getOriginalFilename(), readHeader(file), file.getSize());
             StoredBlob source = blobStorage.store(
                     file.getInputStream(), file.getOriginalFilename(), file.getContentType(), file.getSize());
-            ImportJob job = repository.createJob(UuidV7.generate(), courseId, source);
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    worker.process(job.id(), courseId, cleanTitle);
-                }
-            });
+            ImportJob job = repository.createJob(UuidV7.generate(), courseId, source, cleanTitle);
+            dispatchAfterCommit(job.id(), courseId, cleanTitle);
             return job;
         } catch (IOException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot store uploaded file", exception);
         }
+    }
+
+    @Transactional
+    public ImportJob retryDeckImport(AuthenticatedUser user, UUID courseId, UUID jobId) {
+        courseAccess.requireManage(user, courseId);
+        ContentRepository.ImportRetrySource source = repository.lockRetrySource(courseId, jobId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Import job not found"));
+        if (source.status() != ImportJobStatus.FAILED && source.status() != ImportJobStatus.PARTIAL) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only failed or partial imports can be retried");
+        }
+        if (repository.hasActiveRetry(jobId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Import already has an active retry");
+        }
+        if (!Files.isRegularFile(blobStorage.resource(source.source().ref(), source.source().contentType()).path())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Import source file is no longer available");
+        }
+        String title = source.title() == null || source.title().isBlank()
+                ? filenameWithoutExtension(source.source().filename())
+                : source.title();
+        ImportJob retry = repository.createRetryJob(UuidV7.generate(), courseId, source);
+        dispatchAfterCommit(retry.id(), courseId, title);
+        return retry;
     }
 
     public ImportJob getImportJob(AuthenticatedUser user, UUID courseId, UUID jobId) {
@@ -303,6 +323,19 @@ public class ContentService implements StudentDeckApi {
             @Override
             public void afterCommit() {
                 delete.run();
+            }
+        });
+    }
+
+    private void dispatchAfterCommit(UUID jobId, UUID courseId, String title) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    worker.process(jobId, courseId, title);
+                } catch (TaskRejectedException exception) {
+                    worker.markRejected(jobId, "Очередь импорта переполнена. Повторите задание позже.");
+                }
             }
         });
     }

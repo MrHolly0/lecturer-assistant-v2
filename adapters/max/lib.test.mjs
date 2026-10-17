@@ -9,6 +9,7 @@ import {
   openAppButton,
   parseStartCommand,
   renderKeyboard,
+  retry429,
   timingSafeEqualStrings,
   webhookPathFor,
 } from "./lib.mjs";
@@ -115,4 +116,38 @@ test("createRateLimiter spaces slots at least 1000/rps ms apart", () => {
   now = 250; // время ушло вперёд само по себе
   assert.equal(reserveSlot(), 0); // слот уже наступил, ждать не нужно
   assert.equal(reserveSlot(), 100); // а следующий — ровно через 100 мс от предыдущего
+});
+
+test("retry429 has a bounded attempt count and clamps Retry-After", async () => {
+  let requests = 0;
+  const delays = [];
+  const response = await retry429(
+    async () => {
+      requests += 1;
+      return requests < 3
+        ? { status: 429, headers: { get: () => "60" } }
+        : { status: 200 };
+    },
+    async (delay) => delays.push(delay),
+  );
+  assert.equal(response.status, 200);
+  assert.equal(requests, 3);
+  assert.deepEqual(delays, [1500, 1500]);
+});
+
+test("retry429 returns the final rate-limit response after its retry budget", async () => {
+  let requests = 0;
+  let delays = 0;
+  const response = await retry429(
+    async () => {
+      requests += 1;
+      return { status: 429, headers: { get: () => null } };
+    },
+    async () => {
+      delays += 1;
+    },
+  );
+  assert.equal(response.status, 429);
+  assert.equal(requests, 3);
+  assert.equal(delays, 2);
 });

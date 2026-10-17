@@ -15,6 +15,7 @@ const chatNextAt = new Map();
 async function core(path, options = {}) {
   const response = await fetch(`${coreUrl}${path}`, {
     ...options,
+    signal: options.signal ?? AbortSignal.timeout(12_000),
     headers: {
       "Content-Type": "application/json",
       "X-Internal-Api-Key": apiKey,
@@ -30,16 +31,23 @@ async function core(path, options = {}) {
   return response.json();
 }
 
-async function telegram(method, payload) {
+async function telegram(method, payload, deadline = Date.now() + 20_000, attempt = 0) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error("Telegram delivery deadline exceeded");
   const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(Math.max(1, remaining)),
   });
   const body = await response.json();
   if (response.status === 429 && body.parameters?.retry_after) {
-    await sleep(body.parameters.retry_after * 1000);
-    return telegram(method, payload);
+    const delay = body.parameters.retry_after * 1000;
+    if (attempt >= 2 || delay >= deadline - Date.now()) {
+      throw new Error("Telegram retry budget exceeded");
+    }
+    await sleep(delay);
+    return telegram(method, payload, deadline, attempt + 1);
   }
   if (!body.ok) {
     throw new Error(body.description ?? `telegram ${response.status}`);
@@ -61,7 +69,7 @@ async function registerCapabilities() {
 }
 
 async function pollTelegramUpdates() {
-  const updates = await telegram("getUpdates", { timeout: 25, offset });
+  const updates = await telegram("getUpdates", { timeout: 25, offset }, Date.now() + 40_000);
   for (const update of updates) {
     offset = update.update_id + 1;
     const message = update.message;
@@ -89,7 +97,7 @@ async function sendInbound(externalUserId, text, from, kind = undefined) {
 }
 
 async function pollCoreOutbox() {
-  const batch = await core(`/internal/v1/channels/${channelType}/outbox?wait=1s&limit=100`);
+  const batch = await core(`/internal/v1/channels/${channelType}/outbox?wait=1s&limit=1`);
   const reports = [];
   for (const message of batch.messages ?? []) {
     const started = Date.now();
@@ -97,6 +105,7 @@ async function pollCoreOutbox() {
       const result = await deliver(message);
       reports.push({
         messageId: message.id,
+        attemptToken: message.attemptToken,
         status: "DELIVERED",
         adapterMessageId: String(result.message_id),
         latencyMs: Date.now() - started,
@@ -104,6 +113,7 @@ async function pollCoreOutbox() {
     } catch (error) {
       reports.push({
         messageId: message.id,
+        attemptToken: message.attemptToken,
         status: "FAILED",
         errorMessage: error.message,
         latencyMs: Date.now() - started,

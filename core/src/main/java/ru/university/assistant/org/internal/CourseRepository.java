@@ -3,6 +3,8 @@ package ru.university.assistant.org.internal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -77,11 +79,28 @@ class CourseRepository {
                         from org.courses c
                         join org.course_members cm on cm.course_id = c.id
                         where cm.person_id = :personId
+                          and not exists(select 1 from iam.course_bans b
+                              where b.course_id = c.id and b.person_id = :personId)
                         order by c.created_at desc
                         """)
                 .param("personId", personId)
                 .query(this::mapCourse)
                 .list();
+    }
+
+    boolean isBanned(UUID courseId, UUID personId) {
+        return jdbc.sql("select exists(select 1 from iam.course_bans where course_id = :c and person_id = :p)")
+                .param("c", courseId).param("p", personId).query(Boolean.class).single();
+    }
+
+    Set<UUID> participatingPeople(UUID courseId, Set<UUID> personIds) {
+        if (personIds.isEmpty()) return Set.of();
+        return new HashSet<>(jdbc.sql("""
+                        select p.id from iam.persons p
+                        where p.id in (:ids)
+                          and not exists(select 1 from iam.course_bans b
+                              where b.course_id = :course and b.person_id = p.id)
+                        """).param("course", courseId).param("ids", personIds).query(UUID.class).list());
     }
 
     void addMember(UUID courseId, UUID personId, CourseRole role) {
@@ -319,6 +338,11 @@ class CourseRepository {
                 .param("groupId", groupId)
                 .param("personId", personId)
                 .update() > 0;
+    }
+
+    void unban(UUID courseId, UUID personId) {
+        jdbc.sql("delete from iam.course_bans where course_id = :c and person_id = :p")
+                .param("c", courseId).param("p", personId).update();
     }
 
     CourseBan ban(UUID courseId, UUID personId, String reason, UUID bannedBy) {

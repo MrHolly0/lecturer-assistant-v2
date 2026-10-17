@@ -160,6 +160,13 @@ public class CourseController {
         return courseService.listBans(user, courseId);
     }
 
+    @DeleteMapping("/{courseId}/bans/{personId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unban(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID courseId,
+            @PathVariable UUID personId) {
+        courseService.unban(user, courseId, personId);
+    }
+
     @PostMapping("/{courseId}/bans")
     @ResponseStatus(HttpStatus.CREATED)
     public CourseBan ban(

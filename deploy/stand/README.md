@@ -47,7 +47,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm seed
 | API | `https://<домен>/api/v1/...` |
 | Вебхук MAX | `https://<домен><MAX_WEBHOOK_PATH>` — путь случайный, в `.env` |
 | Проверка доступности | `https://<домен>/health` → `{"status":"UP"}` |
-| Резервные копии базы | `deploy/stand/backups/*.dump`, раз в сутки, хранятся 14 дней |
+| Резервные копии | пары `pair-<UTC stamp>` в `BACKUP_DESTINATION`, ежедневно, retention `BACKUP_KEEP_DAYS` |
 
 Наружу открыты только 80 и 443. Postgres и core слушают 127.0.0.1 сервера.
 
@@ -70,87 +70,81 @@ sh deploy/stand/vps-up.sh
 Для оповещений нужен внешний монитор (например, UptimeRobot) на `https://<домен>/health`
 с интервалом 5 минут и уведомлением на почту дежурного.
 
-## Проверка копии в отдельной базе
+## Пара резервной копии и проверка свежести
 
-Сначала нужно доказать, что dump читается и схема восстанавливается. Рабочую базу
-для этой проверки не останавливают и не изменяют:
+Сервис `db-backup` создаёт одну директорию `pair-<UTC stamp>` с `database.dump`,
+`blob-data.tar.gz` и `manifest.properties`. В manifest записаны SHA-256 файлов, версия
+приложения, git SHA, версия Flyway, версия формата и имя исходного compose-проекта.
+Перед публикацией пары проверяются `pg_restore --list`, целостность tar и контрольные суммы.
+Сервис берёт общий PostgreSQL advisory lock с blob storage на время создания пары, чтобы
+в этот период не менялись файлы презентаций/слайдов. `BACKUP_DESTINATION` монтируется read-write;
+разместите его на отдельном диске или заранее смонтированном независимом storage, задайте
+доступ на запись контейнеру и включите внешний монитор его доступности.
 
-```bash
-# Имя тестовой БД должно быть новым; файл выбирается по точному имени.
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db-backup \
-  createdb lecturer_assistant_restore_verify
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db-backup \
-  pg_restore --exit-on-error --single-transaction --no-owner --no-privileges \
-  -d lecturer_assistant_restore_verify /backups/<файл>.dump
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db-backup \
-  psql -v ON_ERROR_STOP=1 -d lecturer_assistant_restore_verify \
-  -c 'select count(*), max(installed_rank) from shared.flyway_schema_history;'
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db-backup \
-  dropdb lecturer_assistant_restore_verify
+После `.env` setup проверьте:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps db-backup
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=30 db-backup
 ```
 
-Перед `createdb` убедитесь, что БД с таким именем нет. Для приёмки сравнивают только
-агрегатные счётчики, а не сами персональные данные.
+Состояние `healthy` подтверждает наличие пары не старше 26 часов и успешную повторную
+проверку её hashes/архивов. Полная проверка выбранной пары:
 
-## Аварийное восстановление рабочей базы
-
-Эта операция разрушительна для текущего состояния БД: её выполняют только после выбора
-проверенного dump и фиксации окна недоступности.
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml stop core
+```sh
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db-backup \
-  sh -ceu 'pg_restore --clean --if-exists --exit-on-error --single-transaction \
-    --no-owner --no-privileges -d "$PGDATABASE" "/backups/$1"' sh '<файл>.dump'
-docker compose -f docker-compose.yml -f docker-compose.prod.yml start core
+  /usr/local/bin/verify-pair.sh /backup-destination/pair-<UTC stamp>
 ```
 
-`pg_dump` сохраняет только PostgreSQL. Файлы презентаций и PNG лежат в `blob-data`; для полного
-восстановления нужна отдельная копия этого тома, согласованная по времени с dump БД.
+Каталог назначения не коммитят. Внешний backup transport/storage должен иметь собственную
+аутентификацию, шифрование и retention; каталог на том же диске, что и контейнеры, не считается
+независимой копией.
 
-## Согласованная копия БД и `blob-data`
+## Restore drill в отдельном compose-проекте
 
-Чтобы БД и файлы относились к одному состоянию, на короткое окно останавливают компоненты,
-которые могут писать данные. `postgres`, `db-backup`, `web` и Caddy продолжают работать.
-Обработчик `trap` обязателен: он запускает компоненты обратно даже при ошибке копирования.
+Каждый релиз проверяйте на синтетической паре с тестовой презентацией/PNG и известной тестовой
+учётной записью. Не используйте production restore для drill. Команды ниже создают отдельную
+PostgreSQL, named volume и compose-сеть с новым project name. Сначала убедитесь, что такой project
+name и volume ещё не существуют. Файл env храните в `/tmp`, не добавляйте его в репозиторий.
 
-```bash
-stamp='<UTC, например 20260925T105839Z>'
-compose=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
+```sh
+restore_project=restore-drill-$(date -u +%Y%m%d%H%M%S)
+restore_env="$(mktemp)"
+chmod 600 "$restore_env"
+cat > "$restore_env" <<'ENV'
+POSTGRES_DB=postgres
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=restore-drill-only
+POSTGRES_PORT=55439
+DB_URL=jdbc:postgresql://postgres:5432/restore_target
+DB_USERNAME=postgres
+DB_PASSWORD=restore-drill-only
+CORE_PORT=18089
+WEB_PORT=18090
+ENV
 
-restart_writers() {
-  "${compose[@]}" start converter core max-adapter >/dev/null 2>&1 || true
-}
-trap restart_writers EXIT INT TERM
-"${compose[@]}" stop max-adapter core converter
-
-"${compose[@]}" exec -T db-backup sh -ceu '
-  tmp="/backups/lecturer_assistant-quiesced-$1.dump.tmp"
-  pg_dump -Fc -f "$tmp"
-  mv "$tmp" "/backups/lecturer_assistant-quiesced-$1.dump"
-' sh "$stamp"
-
-# Точное имя тома сначала получают через docker inspect core-контейнера.
-docker run --rm \
-  -v '<compose-project>_blob-data:/source:ro' \
-  -v "$PWD/deploy/stand/backups:/backups" \
-  postgres:16-alpine sh -ceu '
-    tar -C /source -czf "/backups/blob-data-$1.tar.gz.tmp" .
-    mv "/backups/blob-data-$1.tar.gz.tmp" "/backups/blob-data-$1.tar.gz"
-  ' sh "$stamp"
-
-restart_writers
-trap - EXIT INT TERM
+docker compose -p "$restore_project" --env-file "$restore_env" -f docker-compose.yml up -d postgres
+blob_volume="${restore_project}_blob-data"
+docker volume create "$blob_volume"
+docker run --rm -v "$blob_volume:/target" alpine:3.20 \
+  sh -c 'printf "%s" "$1" > /target/.restore-target-id' sh "$restore_project"
+docker run --rm --network "${restore_project}_default" \
+  -e PGHOST=postgres -e PGUSER=postgres -e PGPASSWORD=restore-drill-only -e PGDATABASE=postgres \
+  -v "$BACKUP_DESTINATION/pair-<UTC stamp>:/pair:ro" \
+  -v "$blob_volume:/target" -v "$PWD/deploy/stand/backup:/backup-scripts:ro" \
+  postgres:16-alpine sh -ceu 'createdb -h "$PGHOST" -U "$PGUSER" restore_target && \
+    /backup-scripts/restore-pair.sh /pair restore_target /target "$1"' sh "$restore_project"
+docker compose -p "$restore_project" --env-file "$restore_env" -f docker-compose.yml up -d --build core
 ```
 
-После запуска компонентов проверяют `/health`, SHA-256 обоих файлов и читаемость архива без
-печати списка файлов:
+`restore-pair.sh` verifies manifest hashes and file formats, requires the explicit target marker,
+refuses a database equal to `PGDATABASE`, and accepts only an existing empty target database and
+empty blob volume. It never drops or cleans a database or overwrites files. The restore target uses
+a separate Compose project and its own `restore-drill_blob-data` volume. Open a known synthetic
+lecture and fetch one slide image through the restored core before recording the drill as passed.
+Compare aggregate counts and the manifest SHA/version with the selected pair. On failure, remove
+only the isolated `restore_project` after confirming its name and volumes belong to this drill.
 
-```bash
-sha256sum deploy/stand/backups/*-$stamp.*
-docker run --rm -v "$PWD/deploy/stand/backups:/backups:ro" postgres:16-alpine \
-  tar -tzf "/backups/blob-data-$stamp.tar.gz" >/dev/null
-```
-
-Dump дополнительно восстанавливают в отдельную БД по процедуре выше. Оба файла должны храниться
-и переноситься как одна пара; каталог `deploy/stand/backups` не коммитят.
+`restore-pair.sh` intentionally restores into a new empty target. For a real recovery, stop writers,
+create a separately named recovery Compose project, restore and verify it first, then cut over using
+a reviewed deployment procedure. Do not point this script at an existing project or volume.

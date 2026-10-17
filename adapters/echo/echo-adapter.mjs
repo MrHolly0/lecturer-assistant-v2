@@ -51,7 +51,7 @@ async function inbound(externalUserId, text) {
 }
 
 async function pollOnce() {
-  const batch = await request(`/internal/v1/channels/${channelType}/outbox?wait=1s&limit=100`);
+  const batch = await request(`/internal/v1/channels/${channelType}/outbox?wait=1s&limit=10`);
   const messages = batch.messages ?? [];
   for (const message of messages) {
     output.write(`[${message.externalUserId}] ${message.content.text ?? message.content.ref ?? ""}\n`);
@@ -62,6 +62,7 @@ async function pollOnce() {
       body: JSON.stringify({
         reports: messages.map((message) => ({
           messageId: message.id,
+          attemptToken: message.attemptToken,
           status: "DELIVERED",
           adapterMessageId: `echo:${message.id}`,
           latencyMs: 0,

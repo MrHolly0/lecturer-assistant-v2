@@ -25,4 +25,29 @@ public record StudentSessionSnapshot(
         Integer myVote,
         List<StudentQuestionAnswer> questionAnswers,
         boolean kicked,
-        boolean nameRequested) {}
+        boolean nameRequested,
+        long version,
+        boolean showJoinCode,
+        List<ru.university.assistant.qa.api.StudentQuestion> myQuestions) {
+    public StudentSessionSnapshot(UUID sessionId,
+            UUID courseId,
+            String courseTitle,
+            String lectureTitle,
+            List<SessionGroup> groups,
+            SessionStatus status,
+            String joinCode,
+            int currentSlideIdx,
+            int slideCount,
+            StudentSlide currentSlide,
+            Map<String, Object> annotations,
+            SignalAggregate signalAggregate,
+            ActivePollView activePoll,
+            Integer myVote,
+            List<StudentQuestionAnswer> questionAnswers,
+            boolean kicked,
+            boolean nameRequested) {
+        this(sessionId, courseId, courseTitle, lectureTitle, groups, status, joinCode, currentSlideIdx,
+                slideCount, currentSlide, annotations, signalAggregate, activePoll, myVote,
+                questionAnswers, kicked, nameRequested, 0, false, List.of());
+    }
+}

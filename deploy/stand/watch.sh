@@ -72,14 +72,24 @@ if ! out="$(sh deploy/stand/check.sh "$DOMAIN" 2>&1)"; then
   fi
 fi
 
-# Свежесть резервной копии базы (создаётся раз в сутки, первая — через 5 минут после старта).
-newest="$(ls -t deploy/stand/backups/*.dump 2>/dev/null | head -1)"
-if [ -z "$newest" ]; then
-  [ -z "$problem" ] && note "копий базы пока нет (первая создаётся через 5 минут после старта)"
+# Свежесть полной пары DB+blob в независимо смонтированном каталоге.
+backup_destination="$(sed -n 's/^BACKUP_DESTINATION=//p' .env | tail -1)"
+newest_manifest=""
+if [ -n "$backup_destination" ]; then
+  for manifest in "$backup_destination"/pair-*/manifest.properties; do
+    [ -f "$manifest" ] || continue
+    [ -z "$newest_manifest" ] && newest_manifest="$manifest" && continue
+    current="$(stat -c %Y "$manifest" 2>/dev/null || stat -f %m "$manifest")"
+    newest="$(stat -c %Y "$newest_manifest" 2>/dev/null || stat -f %m "$newest_manifest")"
+    [ "$current" -gt "$newest" ] && newest_manifest="$manifest"
+  done
+fi
+if [ -z "$newest_manifest" ]; then
+  [ -z "$problem" ] && note "полной пары DB+blob пока нет или BACKUP_DESTINATION не настроен"
 else
-  age=$(( $(date +%s) - $(stat -f %m "$newest" 2>/dev/null || stat -c %Y "$newest") ))
+  age=$(( $(date +%s) - $(stat -c %Y "$newest_manifest" 2>/dev/null || stat -f %m "$newest_manifest") ))
   if [ "$age" -gt 93600 ]; then
-    problem="${problem:+$problem; }последняя копия базы старше 26 часов ($newest)"
+    problem="${problem:+$problem; }последняя полная пара резервной копии старше 26 часов ($newest_manifest)"
   fi
 fi
 
