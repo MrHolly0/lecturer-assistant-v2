@@ -76,6 +76,7 @@ function MaxNavigationRoot() {
   const location = useLocation();
   const navigate = useNavigate();
   const publicStudentJoin = location.pathname === "/student/join";
+  const publicStudentSession = location.pathname.startsWith("/s/");
   const [startParamHandled, setStartParamHandled] = useState(false);
   const mobileMax = isMobileMax(maxEnvironment);
   const teacherInMax = Boolean(user && user.role !== "STUDENT" && mobileMax);
@@ -126,6 +127,9 @@ function MaxNavigationRoot() {
   }, [isMax, loading, location.pathname, startParamHandled, startTarget, user]);
 
   if (location.pathname.startsWith("/projection/") || publicStudentJoin) return <Outlet />;
+  // A lecture code opens the public participant flow even if MAX account login failed.
+  // Wait for a pending login so a known profile is not accidentally joined as a guest.
+  if (publicStudentSession && !loading) return <Outlet />;
   if (isMax && maxLinkPreview) {
     return (
       <MaxLinkReviewScreen
@@ -170,7 +174,6 @@ function MaxNavigationRoot() {
       <MaxCredentialsScreen
         onLogin={loginAndLinkMax}
         onRegister={registerAndLinkMax}
-        onStudent={continueMaxAuth}
         onCode={chooseMaxLinkCode}
         error={maxAuthError}
       />
@@ -220,9 +223,11 @@ function MaxNavigationRoot() {
 
 function LoadingScreen({ message = "Загрузка…" }: { message?: string }) {
   return (
-    <div className="auth-shell" aria-busy="true" aria-live="polite">
-      <div className="max-auth-status muted">{message}</div>
-    </div>
+    <AuthPageFrame>
+      <div className="max-auth-status muted" role="status" aria-live="polite">
+        {message}
+      </div>
+    </AuthPageFrame>
   );
 }
 
@@ -253,7 +258,7 @@ function MaxAuthScreen({
           Попробовать снова
         </Button>
         <Button type="button" variant="outline" onClick={onCode}>
-          Войти по коду
+          Подключить аккаунт по коду
         </Button>
         <Button type="button" variant="ghost" onClick={onCredentials}>
           Войти по email и паролю
@@ -289,7 +294,7 @@ function MaxSignedOutScreen({
           Войти через MAX
         </Button>
         <Button type="button" variant="outline" onClick={onCode}>
-          Войти по коду
+          Подключить аккаунт по коду
         </Button>
         <Button type="button" variant="ghost" onClick={onCredentials}>
           Другой аккаунт по email и паролю

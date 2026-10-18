@@ -124,6 +124,46 @@ class MaxAuthIntegrationTest {
     }
 
     @Test
+    void legacyMaxEmailCollisionDoesNotBlockLoginOrGrantTheExistingAccountsRole() throws Exception {
+        String lecturerToken = registerLecturer();
+        String lecturerId = json(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + lecturerToken), 200)
+                .get("id").asText();
+        jdbc.sql("update iam.persons set email = 'max-701@max.local' where id = :id")
+                .param("id", UUID.fromString(lecturerId)).update();
+
+        JsonNode student = login(signed(701, Instant.now()), 200);
+
+        assertEquals("STUDENT", student.get("role").asText());
+        assertEquals(false, lecturerId.equals(student.get("personId").asText()));
+        assertEquals(student.get("personId").asText(),
+                login(signed(701, Instant.now()), 200).get("personId").asText());
+        assertEquals("LECTURER", jdbc.sql("select role from iam.persons where id = :id")
+                .param("id", UUID.fromString(lecturerId)).query(String.class).single());
+    }
+
+    @Test
+    void unlinkingReboundLegacyMaxIdentityAllowsANewStudentWithoutReclaimingOldProfiles() throws Exception {
+        String formerStudentId = login(signed(701, Instant.now()), 200).get("personId").asText();
+        jdbc.sql("update iam.persons set email = 'max-701@max.local' where id = :id")
+                .param("id", UUID.fromString(formerStudentId)).update();
+        String lecturerToken = registerLecturer();
+        JsonNode lecturer = loginWithCode(signed(701, Instant.now()), requestMaxLinkCode(lecturerToken), 200);
+        mockMvc.perform(delete("/api/v1/identity/max")
+                        .header("Authorization", "Bearer " + lecturerToken))
+                .andExpect(status().isNoContent());
+
+        JsonNode student = login(signed(701, Instant.now()), 200);
+
+        assertEquals("STUDENT", student.get("role").asText());
+        assertEquals(false, formerStudentId.equals(student.get("personId").asText()));
+        assertEquals(false, lecturer.get("personId").asText().equals(student.get("personId").asText()));
+        assertEquals(4L, count("iam.persons"));
+        assertEquals(1L, count("iam.channel_identities where channel_type = 'max'"));
+        assertEquals(0L, count("iam.channel_identities where person_id = '" + formerStudentId + "'"));
+    }
+
+    @Test
     void existingOnlyDoesNotCreateAnAccountForUnknownMaxUser() throws Exception {
         json(post("/api/v1/auth/max")
                         .contentType(MediaType.APPLICATION_JSON)

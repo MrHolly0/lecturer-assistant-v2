@@ -4,13 +4,15 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../app/AuthContext";
+import { useMaxBridge } from "../app/max/context";
 import { listCourses } from "../app/api/courses-api";
 import { AppHeader } from "../widgets/Layout";
 import { Button } from "../shared/ui/button";
 
 export function StudentHomePage({ joinOnly = false }: { joinOnly?: boolean }) {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, maxSignedOut, continueMaxAuth } = useAuth();
+  const { isMax, initData } = useMaxBridge();
   const [joinCode, setJoinCode] = useState("");
   const coursesQuery = useQuery({
     queryKey: ["courses"],
@@ -26,6 +28,7 @@ export function StudentHomePage({ joinOnly = false }: { joinOnly?: boolean }) {
       toast.error("Введите код лекции.");
       return;
     }
+    if (isMax && initData && !user && !maxSignedOut) continueMaxAuth();
     navigate(`/s/${encodeURIComponent(code)}`);
   }
 
@@ -34,7 +37,7 @@ export function StudentHomePage({ joinOnly = false }: { joinOnly?: boolean }) {
       {joinOnly && <AppHeader />}
       <div id={joinOnly ? "main-content" : undefined} className="page student-home">
         <div className="page-header">
-          <h1>{joinOnly ? "Другое занятие" : "Студенческий кабинет"}</h1>
+          <h1>{joinOnly ? "Подключиться к лекции" : "Студенческий кабинет"}</h1>
           <span className="muted">
             {joinOnly || !user
               ? "Введите код занятия с экрана преподавателя. Вход в аккаунт не нужен."
@@ -44,10 +47,12 @@ export function StudentHomePage({ joinOnly = false }: { joinOnly?: boolean }) {
 
         <div className="student-home-join">
           <section className="student-home-join-panel">
-            <div className="student-home-join-heading">
-              <h2>Подключиться к лекции</h2>
-              <span className="muted">Введите код с экрана преподавателя</span>
-            </div>
+            {!joinOnly && (
+              <div className="student-home-join-heading">
+                <h2>Подключиться к лекции</h2>
+                <span className="muted">Введите код с экрана преподавателя</span>
+              </div>
+            )}
             <form onSubmit={submit} className="inline-form">
               <input
                 aria-label="Код занятия"

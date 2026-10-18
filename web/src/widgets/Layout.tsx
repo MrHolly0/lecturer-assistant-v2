@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   MoreHorizontal,
+  QrCode,
   Shield,
   UserRound,
   Users
@@ -30,6 +31,13 @@ import {
 import { ThemeToggle } from "./ThemeToggle";
 
 const navItems = [
+  {
+    path: "/student/join",
+    icon: QrCode,
+    label: "Подключиться к лекции",
+    roles: ["ADMIN", "LECTURER", "ASSISTANT", "STUDENT"],
+    more: true
+  },
   { path: "/home", icon: Home, label: "Главная", roles: ["STUDENT"] },
   { path: "/courses", icon: BookOpen, label: "Курсы", roles: ["ADMIN", "LECTURER", "ASSISTANT"] },
   {

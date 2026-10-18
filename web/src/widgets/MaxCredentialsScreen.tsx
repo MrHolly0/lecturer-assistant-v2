@@ -12,7 +12,6 @@ interface MaxCredentialsScreenProps {
     password: string,
     invitationCode: string
   ) => Promise<void>;
-  onStudent: () => void;
   onCode: () => void;
   error: string | null;
 }
@@ -20,7 +19,6 @@ interface MaxCredentialsScreenProps {
 export function MaxCredentialsScreen({
   onLogin,
   onRegister,
-  onStudent,
   onCode,
   error: externalError
 }: MaxCredentialsScreenProps) {
@@ -139,11 +137,8 @@ export function MaxCredentialsScreen({
           >
             {mode === "login" ? "Есть приглашение от администратора" : "Уже есть логин и пароль"}
           </Button>
-          <Button variant="ghost" type="button" disabled={pending} onClick={onStudent}>
-            Я студент — войти через MAX
-          </Button>
           <Button variant="ghost" type="button" disabled={pending} onClick={onCode}>
-            Войти по коду
+            Подключить аккаунт по коду
           </Button>
         </div>
       </section>

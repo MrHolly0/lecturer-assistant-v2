@@ -179,7 +179,8 @@ public class AuthService implements EphemeralPersonApi {
         PersonRecord person = persons.create(
                 personId,
                 maxDisplayName(data),
-                "max-" + externalId + "@max.local",
+                // A previous profile keeps its address after MAX is rebound or unlinked.
+                "max-" + personId + "@max.local",
                 passwordEncoder.encode(randomToken()),
                 PersonRole.STUDENT);
         identities.createIdentity(UuidV7.generate(), personId, MAX_CHANNEL, externalId, data.username());

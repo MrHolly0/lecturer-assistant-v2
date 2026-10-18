@@ -16,6 +16,23 @@
   background: transparent;
 }
 
+.auth-session-entry {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  max-width: 432px;
+  margin: 0 auto 32px;
+}
+.auth-session-entry > .ui-button {
+  width: 100%;
+}
+.auth-session-entry > p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  text-align: center;
+}
+
 .auth-layout .auth-header {
   display: grid;
   gap: 16px;
