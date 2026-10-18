@@ -907,10 +907,6 @@
 .preparation-page .session-history-row h3 {
   font-size: 18px;
 }
-.preparation-summary.session-summary-shell {
-  min-height: calc(100dvh - var(--header-height, 84px));
-  padding: 32px var(--page-edge, 48px) 48px;
-}
 .preparation-summary .session-summary-back {
   min-height: 24px;
   padding: 0;
@@ -1264,9 +1260,6 @@
   }
   .preparation-page .session-history-row__copy {
     flex-basis: 100%;
-  }
-  .preparation-summary.session-summary-shell {
-    padding: 24px 20px 32px;
   }
   .preparation-summary .session-summary-header h1 {
     font-size: 28px;

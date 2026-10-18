@@ -35,7 +35,11 @@ export function PresenterSessionSummary({
   const summary = summaryQuery.data;
 
   return (
-    <main className="session-summary-shell preparation-summary">
+    <main
+      id="main-content"
+      className="page session-summary-shell preparation-summary"
+      tabIndex={-1}
+    >
       <LinkButton to={backTo} variant="ghost" className="session-summary-back">
         <ArrowLeft size={17} />
         {backLabel}
