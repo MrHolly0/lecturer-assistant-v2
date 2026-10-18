@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
   Check,
   EyeOff,
@@ -7,12 +7,20 @@ import {
   TriangleAlert,
   CircleX,
   ChevronRight,
-  LockKeyhole
+  LockKeyhole,
+  X
 } from "lucide-react";
 import { toast } from "sonner";
 import type { SignalValue, StudentQuestion, StudentQuestionAnswer } from "../app/api/student-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { Button } from "../shared/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle
+} from "../shared/ui/dialog";
 import { StudentQuestionAnswers } from "./StudentQuestionAnswers";
 
 const SIGNALS: Array<{ value: SignalValue; label: string; icon: typeof Smile }> = [
@@ -36,19 +44,68 @@ interface StudentFeedbackControlsProps {
   onQuestionSubmit: () => void;
   questionError?: boolean;
   onAnonymousChange: (value: boolean) => void;
+  unavailableMessage?: string;
+}
+
+interface VisualViewportMetrics {
+  height: number;
+  offsetTop: number;
 }
 
 export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
   const [questionOpen, setQuestionOpen] = useState(false);
+  const [viewportMetrics, setViewportMetrics] = useState<VisualViewportMetrics | null>(null);
   const [unreadAnswerCount, setUnreadAnswerCount] = useState(0);
   const [answerAnnouncement, setAnswerAnnouncement] = useState("");
   const questionsOpenRef = useRef(false);
+  const questionTriggerRef = useRef<HTMLButtonElement>(null);
+  const questionTitleRef = useRef<HTMLHeadingElement>(null);
+  const questionScrollTopRef = useRef(0);
+  const questionViewportHeightRef = useRef(0);
+  const questionViewportWidthRef = useRef(0);
+  const viewportRestoreCleanupRef = useRef<(() => void) | null>(null);
+  const questionPendingRef = useRef(props.isQuestionPending);
   const seenAnswersRef = useRef(
     new Map(props.answers.map((answer) => [answer.questionId, answer.answerText]))
   );
   useEffect(() => {
-    if (!props.question) setQuestionOpen(false);
-  }, [props.question]);
+    const wasPending = questionPendingRef.current;
+    questionPendingRef.current = props.isQuestionPending;
+    if (
+      questionOpen &&
+      wasPending &&
+      !props.isQuestionPending &&
+      !props.question &&
+      !props.questionError
+    ) {
+      setQuestionOpen(false);
+    }
+  }, [props.isQuestionPending, props.question, props.questionError, questionOpen]);
+  useEffect(() => {
+    if (!questionOpen) return;
+    const viewport = window.visualViewport;
+    const updateMetrics = () => {
+      setViewportMetrics({
+        height: viewport?.height ?? window.innerHeight,
+        offsetTop: viewport?.offsetTop ?? 0
+      });
+    };
+    updateMetrics();
+    window.addEventListener("resize", updateMetrics);
+    viewport?.addEventListener("resize", updateMetrics);
+    viewport?.addEventListener("scroll", updateMetrics);
+    return () => {
+      window.removeEventListener("resize", updateMetrics);
+      viewport?.removeEventListener("resize", updateMetrics);
+      viewport?.removeEventListener("scroll", updateMetrics);
+    };
+  }, [questionOpen]);
+  useEffect(
+    () => () => {
+      viewportRestoreCleanupRef.current?.();
+    },
+    []
+  );
   useEffect(() => {
     const newlyReceived: StudentQuestionAnswer[] = [];
     let updatedCount = 0;
@@ -82,6 +139,89 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
     if (props.question.trim()) props.onQuestionSubmit();
   }
 
+  function openQuestionDialog() {
+    viewportRestoreCleanupRef.current?.();
+    viewportRestoreCleanupRef.current = null;
+    questionScrollTopRef.current = window.scrollY;
+    questionViewportHeightRef.current = window.visualViewport?.height ?? window.innerHeight;
+    questionViewportWidthRef.current = window.visualViewport?.width ?? window.innerWidth;
+    setViewportMetrics(null);
+    setQuestionOpen(true);
+  }
+
+  function handleQuestionOpenChange(open: boolean) {
+    if (open) {
+      if (!questionOpen) {
+        viewportRestoreCleanupRef.current?.();
+        viewportRestoreCleanupRef.current = null;
+        questionScrollTopRef.current = window.scrollY;
+        questionViewportHeightRef.current = window.visualViewport?.height ?? window.innerHeight;
+        questionViewportWidthRef.current = window.visualViewport?.width ?? window.innerWidth;
+      }
+      setViewportMetrics(null);
+    }
+    setQuestionOpen(open);
+  }
+
+  function restoreQuestionPagePosition() {
+    window.scrollTo(0, questionScrollTopRef.current);
+  }
+
+  function restoreFocusAndPagePosition() {
+    questionTriggerRef.current?.focus({ preventScroll: true });
+    restoreQuestionPagePosition();
+
+    const viewport = window.visualViewport;
+    const expectedHeight = questionViewportHeightRef.current;
+    const expectedWidth = questionViewportWidthRef.current;
+    if (!viewport || viewport.height >= expectedHeight - 1) return;
+
+    const restoreAfterKeyboardCloses = () => {
+      if (Math.abs(viewport.width - expectedWidth) > 1) {
+        cleanup();
+        viewportRestoreCleanupRef.current = null;
+        return;
+      }
+      if (viewport.height < expectedHeight - 1) return;
+      cleanup();
+      viewportRestoreCleanupRef.current = null;
+      restoreQuestionPagePosition();
+    };
+    const cancelRestoreAfterInteraction = () => {
+      cleanup();
+      viewportRestoreCleanupRef.current = null;
+    };
+    const cancelRestoreAfterOrientation = () => {
+      cleanup();
+      viewportRestoreCleanupRef.current = null;
+    };
+    const cleanup = () => {
+      viewport.removeEventListener("resize", restoreAfterKeyboardCloses);
+      window.removeEventListener("resize", restoreAfterKeyboardCloses);
+      window.removeEventListener("orientationchange", cancelRestoreAfterOrientation);
+      window.removeEventListener("pointerdown", cancelRestoreAfterInteraction);
+      window.removeEventListener("touchstart", cancelRestoreAfterInteraction);
+      window.removeEventListener("wheel", cancelRestoreAfterInteraction);
+      window.removeEventListener("keydown", cancelRestoreAfterInteraction);
+    };
+    viewportRestoreCleanupRef.current?.();
+    viewportRestoreCleanupRef.current = cleanup;
+    viewport.addEventListener("resize", restoreAfterKeyboardCloses);
+    window.addEventListener("resize", restoreAfterKeyboardCloses);
+    window.addEventListener("orientationchange", cancelRestoreAfterOrientation);
+    window.addEventListener("pointerdown", cancelRestoreAfterInteraction);
+    window.addEventListener("touchstart", cancelRestoreAfterInteraction, { passive: true });
+    window.addEventListener("wheel", cancelRestoreAfterInteraction, { passive: true });
+    window.addEventListener("keydown", cancelRestoreAfterInteraction);
+  }
+
+  const dialogViewportStyle: CSSProperties | undefined = viewportMetrics
+    ? ({
+        "--student-question-vv-height": `${viewportMetrics.height}px`,
+        "--student-question-vv-center": `${viewportMetrics.offsetTop + viewportMetrics.height / 2}px`
+      } as CSSProperties)
+    : undefined;
+
   return (
     <>
       {!props.readOnly && (
@@ -91,7 +231,8 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
           </div>
           {!props.isLive && (
             <p className="student-signal-unavailable muted">
-              Сигналы доступны во время показа при подтверждённой связи.
+              {props.unavailableMessage ??
+                "Сигналы доступны во время показа при подтверждённой связи."}
             </p>
           )}
           <div className="student-signal-grid">
@@ -124,61 +265,104 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
 
           <section className="student-question-entry">
             <Button
+              ref={questionTriggerRef}
               type="button"
               variant="outline"
+              aria-haspopup="dialog"
               aria-expanded={questionOpen}
-              onClick={() => setQuestionOpen((open) => !open)}
+              onClick={openQuestionDialog}
             >
-              <MessageSquareText size={17} aria-hidden="true" />{" "}
-              {questionOpen ? "Скрыть форму вопроса" : "Задать вопрос"}
+              <MessageSquareText size={17} aria-hidden="true" /> Задать вопрос
               <ChevronRight size={20} aria-hidden="true" />
             </Button>
-            {questionOpen && (
-              <form onSubmit={submitQuestion} className="student-question-form">
-                <label htmlFor="student-question">Ваш вопрос</label>
-                <p id="question-audience-hint" className="question-privacy-hint">
-                  {props.anonymous
-                    ? "Сотрудники и участники занятия не увидят ваше имя. Аккаунт используется для доставки личного ответа. Преподаватель может опубликовать вопрос и ответ для участников занятия без имени автора."
-                    : "Вопрос и ваше имя увидят сотрудники с доступом к занятию. Преподаватель может опубликовать вопрос и ответ для участников занятия без имени автора."}
-                </p>
-                <textarea
-                  id="student-question"
-                  value={props.question}
-                  onChange={(event) => props.onQuestionChange(event.target.value)}
-                  placeholder="Напишите вопрос преподавателю"
-                  maxLength={1000}
-                  rows={3}
-                  aria-describedby="question-audience-hint"
-                />
-                <label className="question-anonymous-option">
-                  <input
-                    type="checkbox"
-                    checked={props.anonymous}
-                    onChange={(event) => props.onAnonymousChange(event.target.checked)}
-                    disabled={props.isQuestionPending}
-                  />
-                  <EyeOff size={17} aria-hidden="true" />
-                  Спросить анонимно
-                </label>
-                <Button
-                  type="submit"
-                  disabled={!props.isLive || props.isQuestionPending || !props.question.trim()}
-                >
-                  <MessageSquareText size={16} aria-hidden="true" />
-                  {props.isQuestionPending
-                    ? "Отправляем вопрос…"
-                    : props.anonymous
-                      ? "Отправить анонимно"
-                      : "Отправить с именем"}
-                </Button>
-                {props.questionError && (
-                  <p className="student-question-error" role="alert">
-                    Не удалось отправить вопрос. Черновик сохранён. Проверьте связь и нажмите
-                    «Отправить» ещё раз.
-                  </p>
-                )}
-              </form>
-            )}
+            <Dialog open={questionOpen} onOpenChange={handleQuestionOpenChange}>
+              <DialogContent
+                className="student-question-dialog"
+                data-short-viewport={
+                  viewportMetrics && viewportMetrics.height < 340 ? "true" : undefined
+                }
+                style={dialogViewportStyle}
+                onOpenAutoFocus={(event) => {
+                  event.preventDefault();
+                  questionTitleRef.current?.focus({ preventScroll: true });
+                }}
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  restoreFocusAndPagePosition();
+                }}
+              >
+                <div className="student-question-dialog__header">
+                  <div>
+                    <DialogTitle asChild>
+                      <h2 ref={questionTitleRef} tabIndex={-1}>
+                        Задать вопрос
+                      </h2>
+                    </DialogTitle>
+                    <DialogDescription className="student-question-dialog__description">
+                      Вопрос будет отправлен преподавателю занятия.
+                    </DialogDescription>
+                  </div>
+                  <DialogClose asChild>
+                    <button
+                      type="button"
+                      className="student-question-dialog__close"
+                      aria-label="Закрыть форму вопроса"
+                    >
+                      <X size={18} aria-hidden="true" />
+                      <span className="sr-only">Закрыть форму вопроса</span>
+                    </button>
+                  </DialogClose>
+                </div>
+                <form onSubmit={submitQuestion} className="student-question-form">
+                  <div className="student-question-dialog__body">
+                    <label htmlFor="student-question">Ваш вопрос</label>
+                    <p id="question-audience-hint" className="question-privacy-hint">
+                      {props.anonymous
+                        ? "Сотрудники и участники занятия не увидят ваше имя. Аккаунт используется для доставки личного ответа. Преподаватель может опубликовать вопрос и ответ для участников занятия без имени автора."
+                        : "Вопрос и ваше имя увидят сотрудники с доступом к занятию. Преподаватель может опубликовать вопрос и ответ для участников занятия без имени автора."}
+                    </p>
+                    <textarea
+                      id="student-question"
+                      value={props.question}
+                      onChange={(event) => props.onQuestionChange(event.target.value)}
+                      placeholder="Напишите вопрос преподавателю"
+                      maxLength={1000}
+                      rows={3}
+                      aria-describedby="question-audience-hint"
+                    />
+                    <label className="question-anonymous-option">
+                      <input
+                        type="checkbox"
+                        checked={props.anonymous}
+                        onChange={(event) => props.onAnonymousChange(event.target.checked)}
+                        disabled={props.isQuestionPending}
+                      />
+                      <EyeOff size={17} aria-hidden="true" />
+                      Спросить анонимно
+                    </label>
+                    {props.questionError && (
+                      <p className="student-question-error" role="alert">
+                        Не удалось отправить вопрос. Черновик сохранён. Проверьте связь и нажмите
+                        «Отправить» ещё раз.
+                      </p>
+                    )}
+                  </div>
+                  <footer className="student-question-dialog__footer">
+                    <Button
+                      type="submit"
+                      disabled={!props.isLive || props.isQuestionPending || !props.question.trim()}
+                    >
+                      <MessageSquareText size={16} aria-hidden="true" />
+                      {props.isQuestionPending
+                        ? "Отправляем вопрос…"
+                        : props.anonymous
+                          ? "Отправить анонимно"
+                          : "Отправить с именем"}
+                    </Button>
+                  </footer>
+                </form>
+              </DialogContent>
+            </Dialog>
           </section>
         </>
       )}

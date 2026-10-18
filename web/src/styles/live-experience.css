@@ -262,19 +262,6 @@ div[data-slot="dialog-content"].teacher-question-publish-dialog {
   text-underline-offset: 3px;
 }
 
-.student-slide-dialog {
-  max-width: min(96vw, 1100px);
-  width: 100%;
-}
-
-.student-slide-dialog > img {
-  background: var(--secondary);
-  display: block;
-  max-height: min(76vh, 760px);
-  object-fit: contain;
-  width: 100%;
-}
-
 .student-question-entry > .ui-button {
   min-height: 48px;
   width: 100%;

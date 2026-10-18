@@ -37,6 +37,7 @@ export interface MaxWebApp {
   getViewportSize?: () => Promise<{ height: string; width: string }>;
   ready?: () => void;
   openLink?: (url: string) => void;
+  downloadFile?: (url: string, fileName: string) => Promise<unknown> | void;
   onEvent?: (event: string, callback: () => void) => void;
   offEvent?: (event: string, callback: () => void) => void;
 }

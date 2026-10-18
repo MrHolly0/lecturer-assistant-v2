@@ -25,6 +25,8 @@ export function StudentConnectionBanner({
   syncing,
   error
 }: StudentConnectionBannerProps) {
+  if ((state === "CONNECTED" || state === "POLLING") && !error && !syncing) return null;
+
   const message = error
     ? "Не удалось сверить занятие"
     : syncing

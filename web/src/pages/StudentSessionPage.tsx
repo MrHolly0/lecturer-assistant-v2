@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CirclePause, CircleStop, Clock3, Expand, MessageCircle } from "lucide-react";
+import { CircleStop, MessageCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -33,19 +33,11 @@ import { StudentConnectionBanner } from "../widgets/StudentConnectionBanner";
 import { StudentFeedbackControls } from "../widgets/StudentFeedbackControls";
 import { StudentJoinPanel } from "../widgets/StudentJoinPanel";
 import { StudentPollCard } from "../widgets/StudentPollCard";
-import { SessionGroups } from "../widgets/SessionGroups";
+import { StudentSlideViewer } from "../widgets/StudentSlideViewer";
 import { StudentGroupJoinIssue, StudentGroupPicker } from "../widgets/StudentGroupJoin";
 import { StudentSessionError, StudentSessionLoading } from "../widgets/StudentSessionState";
 import { ThemeToggle } from "../widgets/ThemeToggle";
 import { Button, LinkButton } from "../shared/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from "../shared/ui/dialog";
 import { joinIssueFromError, type JoinIssue } from "../app/api/studentGroupJoinIssue";
 
 interface StudentSessionPageProps {
@@ -363,6 +355,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   }, [normalizedCode, participantToken, refetch, scope]);
 
   const slideLabel = current ? `${current.currentSlideIdx} из ${current.slideCount}` : "";
+  const feedbackUnavailableMessage =
+    current?.status === "SCHEDULED"
+      ? "Показ ещё не начался. Отправить сигнал или вопрос можно будет, когда преподаватель начнёт занятие."
+      : current?.status === "PAUSED"
+        ? "Преподаватель поставил показ на паузу. Сигналы и вопросы станут доступны после продолжения."
+        : "Восстанавливаем связь. Сигналы и вопросы станут доступны после подключения.";
 
   if (sessionQuery.isLoading && !current) {
     return <StudentSessionLoading />;
@@ -381,6 +379,64 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     );
   }
 
+  const nameForm =
+    isJoined && !isTerminalSession && (current.nameRequested || editingName) ? (
+      <form
+        className="student-name-request"
+        onSubmit={(event) => {
+          event.preventDefault();
+          nameMut.mutate();
+        }}
+      >
+        <strong>
+          {current.nameRequested
+            ? "Преподаватель просит указать имя и фамилию"
+            : "Ваше имя на лекции"}
+        </strong>
+        <p>Укажите данные, под которыми вас можно найти в списке участников.</p>
+        <div className="student-name-request__fields">
+          <label>
+            Фамилия
+            <input
+              autoComplete="family-name"
+              minLength={2}
+              maxLength={80}
+              required
+              value={lastName}
+              onChange={(event) => setLastName(event.target.value)}
+            />
+          </label>
+          <label>
+            Имя
+            <input
+              autoComplete="given-name"
+              minLength={2}
+              maxLength={80}
+              required
+              value={firstName}
+              onChange={(event) => setFirstName(event.target.value)}
+            />
+          </label>
+        </div>
+        <Button
+          type="submit"
+          disabled={
+            nameMut.isPending ||
+            snapshotSyncing ||
+            sessionQuery.isError ||
+            !["CONNECTED", "POLLING"].includes(connectionState)
+          }
+        >
+          Отправить преподавателю
+        </Button>
+        {!current.nameRequested && (
+          <Button type="button" variant="ghost" onClick={() => setEditingName(false)}>
+            Отмена
+          </Button>
+        )}
+      </form>
+    ) : null;
+
   return (
     <main className="student-session-shell">
       <header className="student-session-topbar">
@@ -389,45 +445,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           <strong>Занятие</strong>
         </div>
         <div className="student-session-topbar__actions">
-          <span className={`badge student-status student-status--${current.status.toLowerCase()}`}>
-            {STATUS_LABELS[current.status]}
-          </span>
           <ThemeToggle compact />
         </div>
       </header>
       <div className="student-session-context">
-        <div>
-          {current.courseTitle && <span className="muted">{current.courseTitle}</span>}
-          {!current.courseTitle && <span className="muted">Код {current.joinCode}</span>}
-          <h1>{current.lectureTitle}</h1>
-          <SessionGroups groups={current.groups} compact />
-          {isJoined && !isTerminalSession && !current.nameRequested && !editingName && (
-            <button
-              type="button"
-              className="student-edit-name"
-              onClick={() => setEditingName(true)}
-            >
-              Указать имя и фамилию
-            </button>
-          )}
-        </div>
+        <h1>{current.lectureTitle}</h1>
       </div>
-
-      {(isJoined || sessionQuery.isError) && (
-        <StudentConnectionBanner
-          state={connectionState}
-          lastSyncedAt={lastSyncedAt}
-          onRetry={() => {
-            setSnapshotSyncing(true);
-            reconnectRef.current();
-            void refetch().finally(() => {
-              if (scopeRef.current === scope) setSnapshotSyncing(false);
-            });
-          }}
-          syncing={snapshotSyncing}
-          error={Boolean(sessionQuery.error)}
-        />
-      )}
 
       {current.kicked && !isTerminalSession && (
         <div className="student-session-notice student-session-notice--ended" role="alert">
@@ -442,81 +465,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         </div>
       )}
 
-      {isJoined && !isTerminalSession && (current.nameRequested || editingName) && (
-        <form
-          className="student-name-request"
-          onSubmit={(event) => {
-            event.preventDefault();
-            nameMut.mutate();
-          }}
-        >
-          <strong>
-            {current.nameRequested
-              ? "Преподаватель просит указать имя и фамилию"
-              : "Ваше имя на лекции"}
-          </strong>
-          <p>Укажите данные, под которыми вас можно найти в списке участников.</p>
-          <div className="student-name-request__fields">
-            <label>
-              Фамилия
-              <input
-                autoComplete="family-name"
-                minLength={2}
-                maxLength={80}
-                required
-                value={lastName}
-                onChange={(event) => setLastName(event.target.value)}
-              />
-            </label>
-            <label>
-              Имя
-              <input
-                autoComplete="given-name"
-                minLength={2}
-                maxLength={80}
-                required
-                value={firstName}
-                onChange={(event) => setFirstName(event.target.value)}
-              />
-            </label>
-          </div>
-          <Button
-            type="submit"
-            disabled={
-              nameMut.isPending ||
-              snapshotSyncing ||
-              sessionQuery.isError ||
-              !["CONNECTED", "POLLING"].includes(connectionState)
-            }
-          >
-            Отправить преподавателю
-          </Button>
-          {!current.nameRequested && (
-            <Button type="button" variant="ghost" onClick={() => setEditingName(false)}>
-              Отмена
-            </Button>
-          )}
-        </form>
-      )}
+      {current.nameRequested && nameForm}
 
-      {current.status === "SCHEDULED" && isJoined && (
-        <div className="student-session-notice student-session-notice--waiting" role="status">
-          <Clock3 size={22} aria-hidden="true" />
-          <div>
-            <strong>Вы подключены. Ожидаем начала показа.</strong>
-            <span>Преподаватель начнёт показ. Сигналы и ответы станут доступны после начала.</span>
-          </div>
-        </div>
-      )}
-      {current.status === "PAUSED" && (
-        <div className="student-session-notice student-session-notice--paused" role="status">
-          <CirclePause size={22} aria-hidden="true" />
-          <div>
-            <strong>Лекция на паузе</strong>
-            <span>Преподаватель скоро продолжит показ. Отвечать пока нельзя.</span>
-          </div>
-        </div>
-      )}
       {(current.status === "ENDED" || current.status === "ARCHIVED") && (
         <div className="student-session-notice student-session-notice--ended" role="status">
           <CircleStop size={22} aria-hidden="true" />
@@ -539,26 +489,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         <section className="student-slide-card">
           <div className="student-slide-meta">
             <span>Слайд {slideLabel}</span>
-            {!isLive && <span className="muted">Показ сейчас не идет</span>}
-            {current.currentSlide && (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button type="button" variant="outline" size="sm" aria-label="Увеличить слайд">
-                    <Expand size={16} aria-hidden="true" /> Увеличить слайд
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="student-slide-dialog">
-                  <DialogHeader>
-                    <DialogTitle>Слайд {slideLabel}</DialogTitle>
-                    <DialogDescription>{current.lectureTitle}</DialogDescription>
-                  </DialogHeader>
-                  <img
-                    src={current.currentSlide.imageUrl}
-                    alt={`Увеличенный слайд ${current.currentSlide.idx}`}
-                  />
-                </DialogContent>
-              </Dialog>
-            )}
+            {current.currentSlide && <StudentSlideViewer slide={current.currentSlide} />}
             {user &&
               current.currentSlide &&
               (current.status === "LIVE" || current.status === "PAUSED") && (
@@ -654,6 +585,19 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         )
       ) : (
         <section className="student-action-panel student-action-panel--feedback">
+          <StudentConnectionBanner
+            state={connectionState}
+            lastSyncedAt={lastSyncedAt}
+            onRetry={() => {
+              setSnapshotSyncing(true);
+              reconnectRef.current();
+              void refetch().finally(() => {
+                if (scopeRef.current === scope) setSnapshotSyncing(false);
+              });
+            }}
+            syncing={snapshotSyncing}
+            error={Boolean(sessionQuery.error)}
+          />
           {current.activePoll && (
             <StudentPollCard
               poll={current.activePoll}
@@ -667,6 +611,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           )}
           <StudentFeedbackControls
             isLive={commandsReady}
+            unavailableMessage={feedbackUnavailableMessage}
             isSignalPending={signalMut.isPending}
             isQuestionPending={questionMut.isPending}
             lastSignal={lastSignal}
@@ -682,6 +627,32 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           />
         </section>
       )}
+
+      <details className="student-session-details">
+        <summary>О занятии</summary>
+        <dl>
+          {current.courseTitle && (
+            <div>
+              <dt>Курс</dt>
+              <dd>{current.courseTitle}</dd>
+            </div>
+          )}
+          <div>
+            <dt>Состояние</dt>
+            <dd>{STATUS_LABELS[current.status]}</dd>
+          </div>
+          <div>
+            <dt>Код занятия</dt>
+            <dd>{current.joinCode}</dd>
+          </div>
+        </dl>
+        {isJoined && !isTerminalSession && !current.nameRequested && !editingName && (
+          <Button variant="outline" onClick={() => setEditingName(true)}>
+            Указать имя и фамилию
+          </Button>
+        )}
+        {!current.nameRequested && nameForm}
+      </details>
     </main>
   );
 }

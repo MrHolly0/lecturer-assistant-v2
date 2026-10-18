@@ -13,6 +13,8 @@ import "./styles/redesign-base.css";
 import "./styles/redesign-catalog.css";
 import "./styles/redesign-preparation.css";
 import "./styles/redesign-live.css";
+import "./styles/student-experience.css";
+import "./styles/student-question-dialog.css";
 import "./styles/redesign-admin.css";
 import "./styles/redesign-auth.css";
 
