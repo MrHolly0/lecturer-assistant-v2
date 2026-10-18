@@ -1548,6 +1548,9 @@
   grid-template-columns: 44px minmax(0, 1fr) 44px;
   gap: 8px;
 }
+.preparation-dialog .qbank-option-edit-row--short-answer {
+  grid-template-columns: minmax(0, 1fr) 44px;
+}
 .preparation-dialog .qbank-correct-target {
   width: 44px;
 }
