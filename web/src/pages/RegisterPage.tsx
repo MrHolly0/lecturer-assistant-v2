@@ -6,7 +6,6 @@ import { registerByInvitation } from "../app/api/auth-api";
 import { useAuth } from "../app/AuthContext";
 import { ApiError } from "../app/api/http";
 import { landingPath } from "../app/routes";
-import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
 import { AuthPageFrame } from "../widgets/AuthPageFrame";
 import { AuthPasswordField } from "../widgets/AuthPasswordField";
@@ -45,10 +44,6 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
     <AuthPageFrame className="register-page">
       <div className="auth-card">
         <div className="auth-header">
-          <div className="auth-brand app-brand">
-            <BrandMark />
-            <span>Lecturer Assistant</span>
-          </div>
           <h1 className="auth-title">Регистрация</h1>
           <p className="auth-sub">по приглашению</p>
         </div>

@@ -8,7 +8,6 @@ import { useAuth } from "../app/AuthContext";
 import { ApiError } from "../app/api/http";
 import { landingPath } from "../app/routes";
 import { buildMaxBotUrl } from "../app/max/deepLink";
-import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
 import { AuthPageFrame } from "../widgets/AuthPageFrame";
 import { AuthPasswordField } from "../widgets/AuthPasswordField";
@@ -46,11 +45,7 @@ export function LoginPage() {
     <AuthPageFrame className="login-page">
       <div className="auth-card">
         <div className="auth-header">
-          <div className="auth-brand app-brand">
-            <BrandMark />
-            <span>Lecturer Assistant</span>
-          </div>
-          <h1 className="auth-title">Вход в Lecturer Assistant</h1>
+          <h1 className="auth-title">Вход в аккаунт</h1>
           <p className="auth-sub">Продолжите работу с курсами и занятиями</p>
         </div>
 

@@ -29,6 +29,10 @@
   --surface: #f3f4f5;
   --selected: #fff2e8;
   --brand: #ff6900;
+  --action-fill: #f26700;
+  --action-hover: #f05e00;
+  --action-pressed: #e85600;
+  --action-ink: #17191c;
   --page-edge: 48px;
   --header-height: 84px;
   --control-height: 48px;
@@ -118,6 +122,19 @@ h3 {
 .ui-button > svg {
   height: 20px;
   width: 20px;
+}
+.ui-button--primary {
+  background: var(--action-fill);
+  border-color: var(--action-fill);
+  color: var(--action-ink);
+}
+.ui-button--primary:hover:not(:disabled) {
+  background: var(--action-hover);
+  border-color: var(--action-hover);
+}
+.ui-button--primary:active:not(:disabled) {
+  background: var(--action-pressed);
+  border-color: var(--action-pressed);
 }
 .ui-button--outline {
   border-color: var(--input);
