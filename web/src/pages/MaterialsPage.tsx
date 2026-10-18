@@ -384,6 +384,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
               <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
                 <DialogContent
                   className="materials-dialog materials-upload-dialog"
+                  aria-labelledby="deck-upload-dialog-title"
                   onOpenAutoFocus={(event) => {
                     event.preventDefault();
                     document.getElementById("deck-upload-dialog-title")?.focus({

@@ -174,6 +174,7 @@ export function LectureList({
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent
           className="materials-dialog lecture-create-dialog"
+          aria-labelledby="lecture-create-dialog-title"
           onOpenAutoFocus={(event) => {
             event.preventDefault();
             document.getElementById("lecture-create-dialog-title")?.focus({
