@@ -1,6 +1,6 @@
 .auth-layout .auth-shell {
   display: block;
-  min-height: calc(100dvh - var(--header-height));
+  min-height: calc(var(--app-content-height) - var(--header-height));
   padding: 64px 20px 48px;
 }
 

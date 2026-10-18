@@ -150,26 +150,30 @@ export function PollPanel({
       <>
         <div className="poll-panel">
           <div className="poll-panel-header">
-            <BarChart2 size={14} />
-            <span className="poll-panel-title">{activePoll.poll.questionText}</span>
-            <span className="poll-response-count">
-              {total} {pluralizeRu(total, "ответ", "ответа", "ответов")}
-            </span>
-            {isClosed && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="poll-results-toggle"
-                aria-expanded={closedResultsExpanded}
-                onClick={() =>
-                  setExpandedClosedPollId((current) =>
-                    current === activePoll.poll.id ? null : activePoll.poll.id
-                  )
-                }
-              >
-                {closedResultsExpanded ? "Свернуть результаты" : "Показать результаты"}
-              </Button>
-            )}
+            <div className="poll-panel-heading">
+              <BarChart2 size={14} aria-hidden="true" />
+              <span className="poll-panel-title">{activePoll.poll.questionText}</span>
+            </div>
+            <div className="poll-panel-meta">
+              <span className="poll-response-count">
+                {total} {pluralizeRu(total, "ответ", "ответа", "ответов")}
+              </span>
+              {isClosed && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="poll-results-toggle"
+                  aria-expanded={closedResultsExpanded}
+                  onClick={() =>
+                    setExpandedClosedPollId((current) =>
+                      current === activePoll.poll.id ? null : activePoll.poll.id
+                    )
+                  }
+                >
+                  {closedResultsExpanded ? "Свернуть результаты" : "Показать результаты"}
+                </Button>
+              )}
+            </div>
           </div>
           {showResults && (
             <div className="poll-bars">
