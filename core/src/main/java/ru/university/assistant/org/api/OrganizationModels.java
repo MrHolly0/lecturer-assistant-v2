@@ -13,10 +13,25 @@ public final class OrganizationModels {
 
     public enum UnitKind { UNIT, FACULTY, DEPARTMENT }
 
+    public enum UnitIcon {
+        FOLDER,
+        USERS,
+        GRADUATION,
+        BOOK,
+        BUILDING,
+        BRIEFCASE,
+        FLASK,
+        LAPTOP,
+        PALETTE,
+        GLOBE,
+        LIBRARY,
+        SCHOOL
+    }
+
     public enum UnitRole { MEMBER, MANAGER }
 
     public record OrganizationUnit(
-            UUID id, UUID parentId, String name, UnitKind kind,
+            UUID id, UUID parentId, String name, UnitKind kind, UnitIcon icon,
             int directMembersCount, int totalMembersCount, boolean canManage, boolean canViewMembers) {}
 
     public record OrganizationView(List<OrganizationUnit> units, boolean administrator) {}
@@ -26,7 +41,7 @@ public final class OrganizationModels {
             UUID unitId, String unitName, UnitRole unitRole) {}
 
     public record SaveUnitRequest(
-            @NotBlank @Size(max = 120) String name, @NotNull UnitKind kind, UUID parentId) {}
+            @NotBlank @Size(max = 120) String name, @NotNull UnitKind kind, UUID parentId, UnitIcon icon) {}
 
     public record MoveStaffRequest(
             @jakarta.validation.constraints.NotEmpty @jakarta.validation.constraints.Size(max = 200)

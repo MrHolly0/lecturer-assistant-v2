@@ -5,7 +5,7 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   ChevronRight,
-  Folder,
+  ChevronDown,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -47,6 +47,7 @@ import {
   AlertDialogTitle
 } from "../shared/ui/alert-dialog";
 import { PaginationBar } from "../widgets/ListControls";
+import { OrganizationUnitIcon } from "../widgets/OrganizationUnitIcon";
 import {
   OrganizationBulkMemberMoveDialog,
   OrganizationInvitationDialog,
@@ -440,7 +441,10 @@ export function OrganizationPage() {
                 Назад
               </Button>
               <div>
-                <h2 className="org-view-title">{selected.name}</h2>
+                <h2 className="org-view-title">
+                  <OrganizationUnitIcon icon={selected.icon} size={24} />
+                  <span>{selected.name}</span>
+                </h2>
                 <p className="org-group-description">
                   {selected.parentId ? "Вложенная группа сотрудников" : "Группа сотрудников"}
                 </p>
@@ -461,13 +465,14 @@ export function OrganizationPage() {
                           id: selected.id,
                           name: selected.name,
                           kind: selected.kind,
+                          icon: selected.icon,
                           parentId: selected.parentId
                         })
                       )
                     }
                   >
                     <Pencil size={16} />
-                    Переименовать
+                    Изменить группу
                   </DropdownMenuItem>
                   {selected.canManage && (
                     <DropdownMenuItem
@@ -563,12 +568,13 @@ export function OrganizationPage() {
                         id: null,
                         name: "",
                         kind: "UNIT",
+                        icon: "USERS",
                         parentId: selected?.id ?? null
                       })
                     )
                   }
                 >
-                  <Folder size={16} />
+                  <Users size={16} />
                   Создать группу
                 </DropdownMenuItem>
                 {selected
@@ -675,7 +681,7 @@ export function OrganizationPage() {
                       className="org-folder-row"
                       onClick={() => navigateTo(unit.id)}
                     >
-                      <Folder size={19} aria-hidden="true" />
+                      <OrganizationUnitIcon icon={unit.icon} size={19} />
                       <span className="org-folder-copy">
                         <strong>{unit.name}</strong>
                         {!selected && query.trim() && (
@@ -868,14 +874,17 @@ export function OrganizationPage() {
                                 {administrator && person.unitId && (
                                   <Button
                                     type="button"
-                                    variant="ghost"
+                                    variant="outline"
                                     className="org-access-action"
+                                    aria-haspopup="dialog"
+                                    aria-label={`Изменить доступ ${person.displayName}: ${person.unitRole === "MANAGER" ? "Руководитель" : "Сотрудник"}`}
                                     onClick={() =>
                                       setMemberDialog({ action: "access", member: person })
                                     }
                                   >
                                     Доступ:{" "}
                                     {person.unitRole === "MANAGER" ? "Руководитель" : "Сотрудник"}
+                                    <ChevronDown size={16} aria-hidden="true" />
                                   </Button>
                                 )}
                                 {person.unitId && (

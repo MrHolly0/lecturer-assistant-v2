@@ -2149,6 +2149,20 @@ export interface components {
     UnitKind: "UNIT" | "FACULTY" | "DEPARTMENT";
     /** @enum {string} */
     UnitRole: "MEMBER" | "MANAGER";
+    /** @enum {string} */
+    UnitIcon:
+      | "FOLDER"
+      | "USERS"
+      | "GRADUATION"
+      | "BOOK"
+      | "BUILDING"
+      | "BRIEFCASE"
+      | "FLASK"
+      | "LAPTOP"
+      | "PALETTE"
+      | "GLOBE"
+      | "LIBRARY"
+      | "SCHOOL";
     OrganizationUnit: {
       /** Format: uuid */
       id: string;
@@ -2156,6 +2170,7 @@ export interface components {
       parentId: string | null;
       name: string;
       kind: components["schemas"]["UnitKind"];
+      icon: components["schemas"]["UnitIcon"];
       directMembersCount: number;
       totalMembersCount: number;
       canManage: boolean;
@@ -2184,6 +2199,7 @@ export interface components {
       kind: components["schemas"]["UnitKind"];
       /** Format: uuid */
       parentId?: string | null;
+      icon?: components["schemas"]["UnitIcon"];
     };
     AssignStaffRequest: {
       /** Format: uuid */

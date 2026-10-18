@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -19,6 +20,34 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 
 class OrganizationIntegrationTest extends LiveFlowTestBase {
+    @Test
+    void unitIconsDefaultCanBeSetAndSurviveLegacyUpdates() throws Exception {
+        JsonNode defaultUnit = create(adminToken, "Папка", "FACULTY", null, 201);
+        assertEquals("FOLDER", defaultUnit.get("icon").asText());
+
+        JsonNode created = createWithIcon(adminToken, "Дизайн", "FACULTY", null, "PALETTE", 201);
+        assertEquals("PALETTE", created.get("icon").asText());
+        JsonNode renamed = saveWithIcon(adminToken, created.get("id").asText(), "Дизайн и медиа",
+                "FACULTY", null, "SCHOOL", 200);
+        assertEquals("Дизайн и медиа", renamed.get("name").asText());
+        assertEquals("SCHOOL", renamed.get("icon").asText());
+
+        JsonNode legacyUpdate = save(adminToken, created.get("id").asText(), "Дизайн и медиа",
+                "FACULTY", null, 200);
+        assertEquals("SCHOOL", legacyUpdate.get("icon").asText());
+
+        UUID legacyId = UUID.randomUUID();
+        jdbc.sql("insert into org.units(id, name, kind) values (:id, 'Legacy unit', 'FACULTY')")
+                .param("id", legacyId)
+                .update();
+        JsonNode organization = json(get("/api/v1/organization")
+                .header("Authorization", "Bearer " + adminToken), 200);
+        assertEquals("FOLDER", findUnit(organization.get("units"), legacyId.toString()).get("icon").asText());
+
+        createRaw(adminToken, "Invalid icon", "FACULTY", null,
+                "{\"name\":\"Invalid icon\",\"kind\":\"FACULTY\",\"icon\":\"STAR\"}", 400);
+    }
+
     @Test
     void administratorMovesNestedGroupsAndDeletingBranchPreservesAccountsAndCourses() throws Exception {
         String faculty = create(adminToken, "Информатика", "FACULTY", null, 201).get("id").asText();
@@ -62,6 +91,10 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
                 get("/api/v1/organization").header("Authorization", "Bearer " + lecturerToken), 200);
         assertTrue(managerView.get("units").findValues("canManage").stream().filter(JsonNode::asBoolean).count() >= 3);
         members(lecturerToken, other, 403);
+        saveWithIcon(lecturerToken, other, "Факультет Б", "UNIT", null, "USERS", 403);
+        assertEquals("FOLDER", findUnit(json(get("/api/v1/organization")
+                .header("Authorization", "Bearer " + adminToken), 200).get("units"), other)
+                .get("icon").asText());
         assign(lecturerToken, personIdOf(colleague), other, "MEMBER", 403);
         assign(lecturerToken, personIdOf(colleague), department, "MANAGER", 403);
         assign(lecturerToken, personIdOf(lecturerToken), faculty, "MEMBER", 403);
@@ -328,20 +361,43 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
     }
 
     private JsonNode create(String token, String name, String kind, String parentId, int expected) throws Exception {
+        return createWithIcon(token, name, kind, parentId, null, expected);
+    }
+
+    private JsonNode createWithIcon(
+            String token, String name, String kind, String parentId, String icon, int expected) throws Exception {
+        return createRaw(token, name, kind, parentId, unitBody(name, kind, parentId, icon), expected);
+    }
+
+    private JsonNode createRaw(
+            String token, String name, String kind, String parentId, String body, int expected) throws Exception {
         return json(post("/api/v1/organization/units").header("Authorization", "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON).content(unitBody(name, kind, parentId)), expected);
+                .contentType(MediaType.APPLICATION_JSON).content(body), expected);
     }
 
     private JsonNode save(
             String token, String id, String name, String kind, String parentId, int expected) throws Exception {
+        return saveWithIcon(token, id, name, kind, parentId, null, expected);
+    }
+
+    private JsonNode saveWithIcon(
+            String token, String id, String name, String kind, String parentId, String icon, int expected)
+            throws Exception {
         return json(put("/api/v1/organization/units/{id}", id).header("Authorization", "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON).content(unitBody(name, kind, parentId)), expected);
+                .contentType(MediaType.APPLICATION_JSON).content(unitBody(name, kind, parentId, icon)), expected);
     }
 
     private String unitBody(String name, String kind, String parentId) throws Exception {
+        return unitBody(name, kind, parentId, null);
+    }
+
+    private String unitBody(String name, String kind, String parentId, String icon) throws Exception {
         var body = objectMapper.createObjectNode().put("name", name).put("kind", kind);
         if (parentId != null) {
             body.put("parentId", parentId);
+        }
+        if (icon != null) {
+            body.put("icon", icon);
         }
         return objectMapper.writeValueAsString(body);
     }

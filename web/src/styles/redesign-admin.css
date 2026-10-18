@@ -185,11 +185,17 @@
 }
 .organization-page .org-member-actions > .org-access-action {
   min-height: 44px;
-  max-width: 200px;
-  font-size: 12px;
-  padding-inline: 10px;
-  color: var(--muted-foreground);
-  background: var(--surface);
+  max-width: 240px;
+  font-size: 14px;
+  padding-inline: 14px;
+  color: var(--foreground);
+  background: var(--background);
+  border-color: var(--input);
+  gap: 8px;
+}
+.organization-page .org-member-actions > .org-access-action:hover {
+  background: var(--selected);
+  border-color: var(--primary);
 }
 .organization-page .org-member-actions--empty {
   display: none;
@@ -212,9 +218,18 @@
   align-items: flex-start;
 }
 .organization-page .org-view-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   font-size: 24px;
   line-height: 32px;
   font-weight: 600;
+}
+.organization-page .org-view-title > svg {
+  flex: none;
+}
+.organization-page .org-view-title > span {
+  overflow-wrap: anywhere;
 }
 .organization-page .org-group-description {
   margin: 4px 0 0;
@@ -280,8 +295,8 @@
   max-height: none;
   overflow-y: auto;
   gap: 24px;
-  padding: 2px;
-  margin: -2px;
+  padding: 6px;
+  margin: -6px;
   scrollbar-gutter: stable;
 }
 .org-dialog .org-dialog-actions {
@@ -296,6 +311,78 @@
 .org-dialog .org-member-editor-content,
 .org-dialog .org-invite-result {
   gap: 16px;
+}
+.org-icon-picker {
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.org-icon-picker legend {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  padding: 0;
+}
+.org-icon-picker__options {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(44px, 1fr));
+  gap: 8px;
+}
+.org-icon-choice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 48px;
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  color: var(--foreground);
+  background: var(--background);
+  cursor: pointer;
+}
+.org-icon-choice input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.org-icon-choice:hover,
+.org-icon-choice:has(input:checked) {
+  background: var(--selected);
+  border-color: var(--primary);
+}
+.org-icon-choice:has(input:checked) {
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.org-icon-choice:has(input:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: -4px;
+}
+.org-icon-choice:has(input:disabled) {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.org-icon-picker p {
+  font-size: 14px;
+  margin: 12px 0 0;
+}
+.org-picker-group-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.org-picker-group-label > svg {
+  flex: none;
+}
+@media (max-width: 600px) {
+  .org-icon-picker__options {
+    grid-template-columns: repeat(4, minmax(44px, 1fr));
+  }
 }
 .org-dialog .field,
 .org-dialog .org-dialog-context,
@@ -589,8 +676,8 @@
 }
 .admin-invite-dialog .admin-invite-body {
   gap: 16px;
-  margin: 0;
-  padding: 2px;
+  margin: -6px;
+  padding: 6px;
 }
 .admin-invite-dialog .invite-result {
   gap: 16px;
@@ -864,8 +951,8 @@
 }
 .organization-page .org-member-actions {
   display: grid;
-  grid-template-columns: 178px 164px 44px;
-  width: 418px;
+  grid-template-columns: 178px 224px 44px;
+  width: 478px;
 }
 .organization-page .org-member-actions > .ui-button {
   width: 100%;

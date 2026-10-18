@@ -2685,6 +2685,21 @@ components:
       enum:
         - MEMBER
         - MANAGER
+    UnitIcon:
+      type: string
+      enum:
+        - FOLDER
+        - USERS
+        - GRADUATION
+        - BOOK
+        - BUILDING
+        - BRIEFCASE
+        - FLASK
+        - LAPTOP
+        - PALETTE
+        - GLOBE
+        - LIBRARY
+        - SCHOOL
     OrganizationUnit:
       type: object
       required:
@@ -2692,6 +2707,7 @@ components:
         - parentId
         - name
         - kind
+        - icon
         - directMembersCount
         - totalMembersCount
         - canManage
@@ -2708,6 +2724,8 @@ components:
           type: string
         kind:
           $ref: '#/components/schemas/UnitKind'
+        icon:
+          $ref: '#/components/schemas/UnitIcon'
         directMembersCount:
           type: integer
         totalMembersCount:
@@ -2787,6 +2805,8 @@ components:
           type: string
           format: uuid
           nullable: true
+        icon:
+          $ref: '#/components/schemas/UnitIcon'
     AssignStaffRequest:
       type: object
       required:

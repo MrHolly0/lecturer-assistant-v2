@@ -16,6 +16,7 @@ import ru.university.assistant.org.api.OrganizationModels.OrganizationMember;
 import ru.university.assistant.org.api.OrganizationModels.OrganizationUnit;
 import ru.university.assistant.org.api.OrganizationModels.OrganizationView;
 import ru.university.assistant.org.api.OrganizationModels.SaveUnitRequest;
+import ru.university.assistant.org.api.OrganizationModels.UnitIcon;
 import ru.university.assistant.org.api.OrganizationModels.UnitRole;
 import ru.university.assistant.org.api.StaffMembershipApi;
 import ru.university.assistant.shared.api.UuidV7;
@@ -36,7 +37,8 @@ public class OrganizationService implements StaffMembershipApi {
         var manageableIds = membership == null ? java.util.Set.<UUID>of() : repository.descendants(membership.unitId());
         List<OrganizationUnit> units = repository.units().stream()
                 .map(unit -> new OrganizationUnit(
-                        unit.id(), unit.parentId(), unit.name(), unit.kind(), unit.directCount(), unit.totalCount(),
+                        unit.id(), unit.parentId(), unit.name(), unit.kind(), unit.icon(),
+                        unit.directCount(), unit.totalCount(),
                         administrator(user) || (membership != null && membership.role() == UnitRole.MANAGER
                                 && manageableIds.contains(unit.id())),
                         administrator(user) || (membership != null && manageableIds.contains(unit.id()))))
@@ -78,8 +80,11 @@ public class OrganizationService implements StaffMembershipApi {
         }
         validateParent(user, previous, request);
         UUID id = unitId == null ? UuidV7.generate() : unitId;
+        UnitIcon icon = request.icon() != null
+                ? request.icon()
+                : previous == null ? UnitIcon.FOLDER : previous.icon();
         try {
-            repository.save(id, request.parentId(), request.name().trim(), request.kind());
+            repository.save(id, request.parentId(), request.name().trim(), request.kind(), icon);
         } catch (DuplicateKeyException exception) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Подразделение с таким названием уже существует");
         }

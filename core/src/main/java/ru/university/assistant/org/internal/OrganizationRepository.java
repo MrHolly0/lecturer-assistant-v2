@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 import ru.university.assistant.iam.api.PersonRole;
 import ru.university.assistant.iam.api.PersonStatus;
 import ru.university.assistant.org.api.OrganizationModels.OrganizationMember;
+import ru.university.assistant.org.api.OrganizationModels.UnitIcon;
 import ru.university.assistant.org.api.OrganizationModels.UnitKind;
 import ru.university.assistant.org.api.OrganizationModels.UnitRole;
 
@@ -19,7 +20,8 @@ class OrganizationRepository {
         this.jdbc = jdbc;
     }
 
-    record UnitRow(UUID id, UUID parentId, String name, UnitKind kind, int directCount, int totalCount) {}
+    record UnitRow(
+            UUID id, UUID parentId, String name, UnitKind kind, UnitIcon icon, int directCount, int totalCount) {}
 
     record Membership(UUID unitId, UnitRole role) {}
 
@@ -29,7 +31,7 @@ class OrganizationRepository {
 
     List<UnitRow> units() {
         return jdbc.sql("""
-                        select u.id, u.parent_id, u.name, u.kind,
+                        select u.id, u.parent_id, u.name, u.kind, u.icon,
                             (select count(*)::int from org.staff_memberships m
                                 where m.unit_id = u.id) as direct_count,
                             (with recursive descendants(id) as (
@@ -44,6 +46,7 @@ class OrganizationRepository {
                 .query((rs, row) -> new UnitRow(
                         rs.getObject("id", UUID.class), rs.getObject("parent_id", UUID.class),
                         rs.getString("name"), UnitKind.valueOf(rs.getString("kind")),
+                        UnitIcon.valueOf(rs.getString("icon")),
                         rs.getInt("direct_count"), rs.getInt("total_count")))
                 .list();
     }
@@ -104,12 +107,15 @@ class OrganizationRepository {
                 .list();
     }
 
-    void save(UUID id, UUID parentId, String name, UnitKind kind) {
+    void save(UUID id, UUID parentId, String name, UnitKind kind, UnitIcon icon) {
         jdbc.sql("""
-                        insert into org.units(id, parent_id, name, kind) values (:id, :parentId, :name, :kind)
-                        on conflict (id) do update set parent_id = excluded.parent_id, name = excluded.name
+                        insert into org.units(id, parent_id, name, kind, icon)
+                        values (:id, :parentId, :name, :kind, :icon)
+                        on conflict (id) do update set parent_id = excluded.parent_id, name = excluded.name,
+                            icon = excluded.icon
                         """)
-                .param("id", id).param("parentId", parentId).param("name", name).param("kind", kind.name()).update();
+                .param("id", id).param("parentId", parentId).param("name", name)
+                .param("kind", kind.name()).param("icon", icon.name()).update();
     }
 
     void delete(UUID unitId) {

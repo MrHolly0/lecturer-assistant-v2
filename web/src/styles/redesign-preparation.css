@@ -585,8 +585,8 @@
   min-width: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 2px;
-  margin: -2px;
+  padding: 6px;
+  margin: -6px;
   display: grid;
   align-content: start;
   gap: 24px;

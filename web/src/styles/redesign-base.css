@@ -168,6 +168,77 @@ h3 {
   outline: 2px solid var(--ring);
   outline-offset: 3px;
 }
+/* Inset focus remains visible at the edges of modal and sheet scrollports. */
+:is([role="dialog"], [role="alertdialog"], [data-slot="popover-content"])
+  :is(a, button, input, select, textarea, [tabindex]):focus-visible:not(:disabled),
+[data-slot="select-item"]:focus-visible,
+[data-slot="dropdown-menu-item"]:focus-visible,
+[data-slot="command-item"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+@media (max-height: 480px) {
+  [role="dialog"][data-slot="dialog-content"]:is(
+      .org-dialog,
+      .preparation-dialog,
+      .admin-invite-dialog
+    ) {
+    display: block;
+    height: auto;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+  }
+  [role="dialog"][data-slot="dialog-content"]:is(
+      .org-dialog,
+      .preparation-dialog,
+      .admin-invite-dialog
+    )
+    > [data-slot="dialog-header"] {
+    margin-bottom: 20px;
+  }
+  [role="dialog"][data-slot="dialog-content"]
+    :is(.org-dialog-body, .preparation-dialog__body, .admin-invite-body) {
+    max-height: none;
+    overflow: visible;
+    margin-block: 0;
+  }
+  [role="dialog"][data-slot="dialog-content"]:is(
+      .org-dialog,
+      .preparation-dialog,
+      .admin-invite-dialog
+    )
+    > [data-slot="dialog-footer"] {
+    margin-top: 20px;
+    padding-top: 16px;
+  }
+}
+:is([role="dialog"], [role="alertdialog"], [data-slot="popover-content"])
+  :is(.list-search, .org-search):focus-within {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+:is([role="dialog"], [role="alertdialog"], [data-slot="popover-content"])
+  :is(.list-search, .org-search)
+  input:focus-visible:not(:disabled) {
+  outline: none;
+  box-shadow: none;
+}
+:is([role="dialog"], [role="alertdialog"], [data-slot="popover-content"])
+  .ui-button--primary:focus-visible:not(:disabled) {
+  outline-color: var(--action-ink);
+}
+:is([role="dialog"], [role="alertdialog"], [data-slot="popover-content"])
+  .ui-button--destructive:focus-visible:not(:disabled) {
+  outline-color: var(--destructive-foreground);
+}
+:is([role="dialog"], [role="alertdialog"], [data-slot="popover-content"])
+  :is(
+    [data-slot="checkbox"][data-state="checked"],
+    input[type="checkbox"]:checked
+  ):focus-visible:not(:disabled) {
+  outline-color: var(--primary-foreground);
+}
 .field {
   gap: 8px;
   min-width: 0;

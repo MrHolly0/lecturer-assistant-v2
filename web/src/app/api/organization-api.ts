@@ -6,6 +6,7 @@ export type OrganizationMember = components["schemas"]["OrganizationMember"];
 export type OrganizationView = components["schemas"]["OrganizationView"];
 export type UnitKind = "FACULTY" | "DEPARTMENT" | "UNIT";
 export type UnitRole = "MEMBER" | "MANAGER";
+export type UnitIcon = components["schemas"]["UnitIcon"];
 
 export interface MoveOrganizationMembersRequest {
   personIds: string[];
@@ -26,7 +27,7 @@ export async function getOrganizationMembers(unitId?: string): Promise<Organizat
 
 export async function saveOrganizationUnit(
   id: string | null,
-  body: { name: string; kind: UnitKind; parentId: string | null }
+  body: { name: string; kind: UnitKind; parentId: string | null; icon?: UnitIcon }
 ): Promise<OrganizationUnit> {
   const response = await apiFetch(`/organization/units${id ? `/${id}` : ""}`, {
     method: id ? "PUT" : "POST",

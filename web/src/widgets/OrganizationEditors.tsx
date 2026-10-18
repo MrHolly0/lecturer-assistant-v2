@@ -10,6 +10,7 @@ import {
   type OrganizationMember,
   type OrganizationUnit,
   type UnitKind,
+  type UnitIcon,
   type UnitRole
 } from "../app/api/organization-api";
 import { createAdminInvitation } from "../app/api/admin-api";
@@ -26,6 +27,8 @@ import {
 } from "../shared/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import { userErrorMessage } from "../app/api/errors";
+import { ORGANIZATION_ICONS } from "./organizationIcons";
+import { OrganizationUnitIcon } from "./OrganizationUnitIcon";
 
 export const MAX_BULK_MOVE_MEMBERS = 200;
 
@@ -33,6 +36,7 @@ export interface UnitDraft {
   id: string | null;
   name: string;
   kind: UnitKind;
+  icon: UnitIcon;
   parentId: string | null;
 }
 
@@ -81,23 +85,25 @@ export function OrganizationUnitEditor({
   onSaved: (unit: OrganizationUnit) => void;
 }) {
   const [name, setName] = useState(draft.name);
+  const [icon, setIcon] = useState<UnitIcon>(draft.icon ?? "FOLDER");
   const mutation = useMutation({
     mutationFn: () =>
       saveOrganizationUnit(draft.id, {
         name: name.trim(),
         kind: draft.kind,
-        parentId: draft.parentId
+        parentId: draft.parentId,
+        icon
       }),
     onSuccess: (unit) => {
       onSaved(unit);
-      toast.success(draft.id ? "Название группы изменено" : "Группа создана");
+      toast.success(draft.id ? "Группа изменена" : "Группа создана");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось сохранить группу"))
   });
   return (
     <DialogShell
       onCloseAutoFocus={onCloseAutoFocus}
-      title={draft.id ? "Переименовать группу" : "Новая группа"}
+      title={draft.id ? "Изменить группу" : "Новая группа"}
       description={draft.id ? undefined : "Группа будет создана в текущем месте."}
       onClose={() => !mutation.isPending && onClose()}
       className="org-dialog--compact"
@@ -128,12 +134,34 @@ export function OrganizationUnitEditor({
           <span>Название группы</span>
           <input
             value={name}
+            disabled={mutation.isPending}
             onChange={(event) => setName(event.target.value)}
             maxLength={120}
             required
             placeholder="Например, Методическое объединение"
           />
         </label>
+        <fieldset className="org-icon-picker" disabled={mutation.isPending}>
+          <legend>Иконка группы</legend>
+          <div className="org-icon-picker__options">
+            {ORGANIZATION_ICONS.map(({ value, label, Icon }) => (
+              <label key={value} className="org-icon-choice" title={label}>
+                <input
+                  type="radio"
+                  name="organization-icon"
+                  value={value}
+                  checked={icon === value}
+                  onChange={() => setIcon(value)}
+                />
+                <Icon size={22} aria-hidden="true" />
+                <span className="sr-only">{label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="muted">
+            Выбрано: {ORGANIZATION_ICONS.find((option) => option.value === icon)?.label}
+          </p>
+        </fieldset>
         {!draft.id && draft.parentId && (
           <p className="org-dialog-context">
             В группе «{units.find((unit) => unit.id === draft.parentId)?.name ?? "…"}»
@@ -318,6 +346,7 @@ export function OrganizationUnitMoveDialog({
             name="group-parent"
             key={candidate.id}
             label={candidate.name}
+            icon={candidate.icon}
             detail={groupParentPath(candidate, units)}
             selected={parentId === candidate.id}
             onSelect={() => {
@@ -623,6 +652,7 @@ export function OrganizationMemberEditor({
                       name="member-destination"
                       key={unit.id}
                       label={unit.name}
+                      icon={unit.icon}
                       detail={groupParentPath(unit, units)}
                       selected={unitId === unit.id}
                       onSelect={() => {
@@ -850,6 +880,7 @@ export function OrganizationBulkMemberMoveDialog({
             name="bulk-member-destination"
             key={unit.id}
             label={unit.name}
+            icon={unit.icon}
             detail={groupParentPath(unit, units)}
             selected={unitId === unit.id}
             onSelect={() => {
@@ -1004,12 +1035,14 @@ export function OrganizationInvitationDialog({
 function PickerOption({
   name,
   label,
+  icon,
   detail,
   selected,
   onSelect
 }: {
   name: string;
   label: string;
+  icon?: UnitIcon;
   detail: string;
   selected: boolean;
   onSelect: () => void;
@@ -1018,7 +1051,10 @@ function PickerOption({
     <label className={`org-picker-option ${selected ? "is-selected" : ""}`}>
       <input type="radio" name={name} checked={selected} onChange={onSelect} />
       <span>
-        <strong>{label}</strong>
+        <strong className={icon ? "org-picker-group-label" : undefined}>
+          {icon && <OrganizationUnitIcon icon={icon} size={18} />}
+          {label}
+        </strong>
         <small>{detail}</small>
       </span>
     </label>
