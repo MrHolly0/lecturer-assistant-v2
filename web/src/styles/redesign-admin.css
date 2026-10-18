@@ -304,6 +304,9 @@
   gap: 12px;
   padding-top: 24px;
 }
+.org-dialog .org-dialog-actions--plain {
+  border-top: 0;
+}
 .org-dialog .org-dialog-actions > button {
   min-height: 48px;
 }

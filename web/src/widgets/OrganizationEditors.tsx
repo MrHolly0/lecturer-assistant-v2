@@ -108,7 +108,7 @@ export function OrganizationUnitEditor({
       onClose={() => !mutation.isPending && onClose()}
       className="org-dialog--compact"
       footer={
-        <DialogFooter className="org-dialog-actions">
+        <DialogFooter className="org-dialog-actions org-dialog-actions--plain">
           <Button type="button" variant="outline" onClick={onClose} disabled={mutation.isPending}>
             Отмена
           </Button>
