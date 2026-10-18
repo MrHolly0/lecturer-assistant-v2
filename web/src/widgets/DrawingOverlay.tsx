@@ -1,10 +1,11 @@
-import { Eraser, Grip, Pencil, Trash2, Undo2, X } from "lucide-react";
+import { Eraser, Grip, Pencil, Redo2, Trash2, Undo2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useViewportDrag } from "./useViewportDrag";
 
 type Point = { x: number; y: number };
 type DrawAction = { color: string; size: number; points: Point[]; erase?: boolean };
 export type LiveAnnotations = Record<string, DrawAction[]>;
+type DrawingHistory = { past: DrawAction[][]; future: DrawAction[][]; signature: string };
 
 const COLORS = ["#dc2626", "#2563eb", "#16a34a", "#eab308", "#111827"];
 const COLOR_LABELS: Record<string, string> = {
@@ -24,6 +25,9 @@ interface DrawingOverlayProps {
   onChange: (annotations: LiveAnnotations) => void;
   onClose?: () => void;
   toolsVisible?: boolean;
+  saveError?: boolean;
+  saving?: boolean;
+  onRetry?: () => void;
 }
 
 export function DrawingOverlay({
@@ -32,7 +36,10 @@ export function DrawingOverlay({
   active,
   toolsVisible = active,
   onChange,
-  onClose
+  onClose,
+  saveError = false,
+  saving = false,
+  onRetry
 }: DrawingOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -42,9 +49,17 @@ export function DrawingOverlay({
   const [eraserSize, setEraserSize] = useState(ERASER_SIZES[1]);
   const [drawing, setDrawing] = useState(false);
   const [points, setPoints] = useState<Point[]>([]);
-  const toolbarDrag = useViewportDrag<HTMLDivElement>({ x: 16, y: 16 });
+  const [histories, setHistories] = useState<Record<string, DrawingHistory>>({});
+  const toolbarDrag = useViewportDrag<HTMLDivElement>({
+    x: Math.max(16, window.innerWidth - 496),
+    y: Math.max(16, window.innerHeight - 190)
+  });
   const slideKey = String(slideIdx);
   const actions = useMemo(() => annotations[slideKey] ?? [], [annotations, slideKey]);
+  const signature = useMemo(() => JSON.stringify(actions), [actions]);
+  const history = histories[slideKey]?.signature === signature ? histories[slideKey] : undefined;
+  const canUndo = actions.length > 0 || Boolean(history?.past.length);
+  const canRedo = Boolean(history?.future.length);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -67,6 +82,43 @@ export function DrawingOverlay({
   }, [actions]);
 
   function commit(next: DrawAction[]) {
+    setHistories((current) => ({
+      ...current,
+      [slideKey]: {
+        past: [...(history?.past ?? []), actions],
+        future: [],
+        signature: JSON.stringify(next)
+      }
+    }));
+    onChange({ ...annotations, [slideKey]: next });
+  }
+
+  function undo() {
+    if (!canUndo) return;
+    const past = history?.past ?? [];
+    const next = past.length ? past[past.length - 1] : actions.slice(0, -1);
+    setHistories((current) => ({
+      ...current,
+      [slideKey]: {
+        past: past.slice(0, -1),
+        future: [...(history?.future ?? []), actions],
+        signature: JSON.stringify(next)
+      }
+    }));
+    onChange({ ...annotations, [slideKey]: next });
+  }
+
+  function redo() {
+    if (!history?.future.length) return;
+    const next = history.future[history.future.length - 1];
+    setHistories((current) => ({
+      ...current,
+      [slideKey]: {
+        past: [...history.past, actions],
+        future: history.future.slice(0, -1),
+        signature: JSON.stringify(next)
+      }
+    }));
     onChange({ ...annotations, [slideKey]: next });
   }
 
@@ -77,6 +129,15 @@ export function DrawingOverlay({
       y: (event.clientY - rect.top) / rect.height
     };
   }
+
+  const saveFailure = saveError && onRetry && (
+    <div className="drawing-save-error" role="alert">
+      <span>Рисунок не сохранён</span>
+      <button type="button" onClick={onRetry} disabled={saving || !active}>
+        {saving ? "Сохраняем…" : "Повторить"}
+      </button>
+    </div>
+  );
 
   return (
     <div ref={wrapRef} className="drawing-layer">
@@ -130,7 +191,7 @@ export function DrawingOverlay({
           <div className="presenter-tools__drawing-header">
             <div {...toolbarDrag.handleProps} className="presenter-tools__drag-handle">
               <Grip size={16} aria-hidden="true" />
-              <span>Инструменты · переместить</span>
+              <span>Рисование · переместить</span>
             </div>
             {onClose && (
               <button
@@ -144,99 +205,116 @@ export function DrawingOverlay({
               </button>
             )}
           </div>
-          <button
-            type="button"
-            className={`icon-button ${!erase ? "icon-button--active" : ""}`}
-            onClick={() => setErase(false)}
-            title="Карандаш"
-            aria-label="Карандаш"
-            aria-pressed={!erase}
-          >
-            <Pencil size={16} />
-          </button>
-          <div className="drawing-swatches" role="group" aria-label="Цвет пера">
-            {COLORS.map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={`color-swatch ${color === item && !erase ? "color-swatch--active" : ""}`}
-                style={{ backgroundColor: item }}
-                onClick={() => {
-                  setColor(item);
-                  setErase(false);
-                }}
-                title={`Цвет пера: ${COLOR_LABELS[item]}`}
-                aria-label={`Цвет пера: ${COLOR_LABELS[item]}`}
-                aria-pressed={color === item && !erase}
-              />
-            ))}
+          <div className="drawing-tool-row drawing-tool-row--pen">
+            <button
+              type="button"
+              className={`icon-button ${!erase ? "icon-button--active" : ""}`}
+              onClick={() => setErase(false)}
+              title="Карандаш"
+              aria-label="Карандаш"
+              aria-pressed={!erase}
+            >
+              <Pencil size={16} />
+            </button>
+            <div className="drawing-swatches" role="group" aria-label="Цвет пера">
+              {COLORS.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className={`color-swatch ${color === item && !erase ? "color-swatch--active" : ""}`}
+                  style={{ backgroundColor: item }}
+                  onClick={() => {
+                    setColor(item);
+                    setErase(false);
+                  }}
+                  title={`Цвет пера: ${COLOR_LABELS[item]}`}
+                  aria-label={`Цвет пера: ${COLOR_LABELS[item]}`}
+                  aria-pressed={color === item && !erase}
+                />
+              ))}
+            </div>
+            <div className="drawing-sizes" role="group" aria-label="Толщина пера">
+              {PEN_SIZES.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className={`size-dot ${size === item && !erase ? "size-dot--active" : ""}`}
+                  onClick={() => {
+                    setSize(item);
+                    setErase(false);
+                  }}
+                  title={`Перо ${item}px`}
+                  aria-label={`Толщина пера ${item} пикселей`}
+                  aria-pressed={size === item && !erase}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="drawing-sizes" role="group" aria-label="Толщина пера">
-            {PEN_SIZES.map((item) => (
+          <div className="drawing-tool-row drawing-tool-row--eraser">
+            <button
+              type="button"
+              className={`icon-button ${erase ? "icon-button--active" : ""}`}
+              onClick={() => setErase(true)}
+              title="Ластик"
+              aria-label="Ластик"
+              aria-pressed={erase}
+            >
+              <Eraser size={16} />
+            </button>
+            <div className="drawing-sizes" role="group" aria-label="Толщина ластика">
+              {ERASER_SIZES.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className={`size-dot ${eraserSize === item && erase ? "size-dot--active" : ""}`}
+                  onClick={() => {
+                    setEraserSize(item);
+                    setErase(true);
+                  }}
+                  title={`Ластик ${item}px`}
+                  aria-label={`Толщина ластика ${item} пикселей`}
+                  aria-pressed={eraserSize === item && erase}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+            <div className="drawing-history-actions" role="group" aria-label="История рисования">
               <button
-                key={item}
                 type="button"
-                className={`size-dot ${size === item && !erase ? "size-dot--active" : ""}`}
-                onClick={() => {
-                  setSize(item);
-                  setErase(false);
-                }}
-                title={`Перо ${item}px`}
-                aria-label={`Толщина пера ${item} пикселей`}
-                aria-pressed={size === item && !erase}
+                className="icon-button"
+                onClick={undo}
+                title="Отменить"
+                aria-label="Отменить последнее действие"
+                disabled={!active || !canUndo}
               >
-                {item}
+                <Undo2 size={16} />
               </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            className={`icon-button ${erase ? "icon-button--active" : ""}`}
-            onClick={() => setErase(true)}
-            title="Ластик"
-            aria-label="Ластик"
-            aria-pressed={erase}
-          >
-            <Eraser size={16} />
-          </button>
-          <div className="drawing-sizes" role="group" aria-label="Толщина ластика">
-            {ERASER_SIZES.map((item) => (
               <button
-                key={item}
                 type="button"
-                className={`size-dot ${eraserSize === item && erase ? "size-dot--active" : ""}`}
-                onClick={() => {
-                  setEraserSize(item);
-                  setErase(true);
-                }}
-                title={`Ластик ${item}px`}
-                aria-label={`Толщина ластика ${item} пикселей`}
-                aria-pressed={eraserSize === item && erase}
+                className="icon-button"
+                onClick={redo}
+                title="Повторить"
+                aria-label="Повторить отменённое действие"
+                disabled={!active || !canRedo}
               >
-                {item}
+                <Redo2 size={16} />
               </button>
-            ))}
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => commit([])}
+                title="Очистить"
+                aria-label="Очистить рисунок"
+                disabled={!active || actions.length === 0}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => commit(actions.slice(0, -1))}
-            title="Отменить"
-            aria-label="Отменить последнее действие"
-            disabled={actions.length === 0}
-          >
-            <Undo2 size={16} />
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => commit([])}
-            title="Очистить"
-            aria-label="Очистить рисунок"
-            disabled={actions.length === 0}
-          >
-            <Trash2 size={16} />
-          </button>
+          {saveFailure}
         </div>
       )}
       {toolsVisible && (
@@ -306,18 +384,27 @@ export function DrawingOverlay({
             <button
               type="button"
               className="drawing-mobile-tool drawing-mobile-tool--icon"
-              onClick={() => commit(actions.slice(0, -1))}
+              onClick={undo}
               aria-label="Отменить последнее действие"
-              disabled={actions.length === 0}
+              disabled={!active || !canUndo}
             >
               <Undo2 size={17} aria-hidden="true" />
             </button>
             <button
               type="button"
               className="drawing-mobile-tool drawing-mobile-tool--icon"
+              onClick={redo}
+              aria-label="Повторить отменённое действие"
+              disabled={!active || !canRedo}
+            >
+              <Redo2 size={17} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="drawing-mobile-tool drawing-mobile-tool--icon"
               onClick={() => commit([])}
               aria-label="Очистить рисунок"
-              disabled={actions.length === 0}
+              disabled={!active || actions.length === 0}
             >
               <Trash2 size={17} aria-hidden="true" />
             </button>
@@ -333,6 +420,7 @@ export function DrawingOverlay({
               </button>
             )}
           </div>
+          {saveFailure}
         </div>
       )}
     </div>

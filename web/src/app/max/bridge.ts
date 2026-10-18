@@ -102,9 +102,10 @@ export async function readViewport(): Promise<MaxViewportSize> {
 
   try {
     const viewport = await webApp.getViewportSize();
+    const visible = readBrowserViewport();
     return {
-      height: parseDimension(viewport.height, fallback.height),
-      width: parseDimension(viewport.width, fallback.width)
+      height: Math.min(parseDimension(viewport.height, visible.height), visible.height),
+      width: Math.min(parseDimension(viewport.width, visible.width), visible.width)
     };
   } catch {
     return fallback;

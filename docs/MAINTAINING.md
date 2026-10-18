@@ -89,6 +89,8 @@ Kick действует в одном занятии и допускает яв�
 
 ### Команды
 
+Устройство рисования, undo/redo, публикации и мобильного viewport описано в [интерфейсе живого занятия](live-interface.md).
+
 ```sh
 mvn -B verify                         # Java21 + доступный Docker для изолированных Testcontainers
 cd web

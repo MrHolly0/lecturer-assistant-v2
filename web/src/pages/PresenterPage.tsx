@@ -28,7 +28,7 @@ export function PresenterPage(props: { courseId: string; sessionId: string }) {
   return (
     <>
       <AppHeader />
-      <PresenterWorkspace {...props} />
+      <PresenterWorkspace key={`${props.courseId}/${props.sessionId}`} {...props} />
     </>
   );
 }
@@ -38,6 +38,17 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
   const [drawing, setDrawing] = useState(false);
   const [slideErrorTarget, setSlideErrorTarget] = useState<number | null>(null);
   const goRef = useRef<(idx: number) => void>(() => undefined);
+  const [optimisticAnnotations, setOptimisticAnnotations] = useState<LiveAnnotations | null>(null);
+  const [annotationSaveError, setAnnotationSaveError] = useState(false);
+  const annotationQueue = useRef<LiveAnnotations | null>(null);
+  const savingAnnotations = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!drawing || !window.matchMedia("(max-width: 900px)").matches) return;
@@ -99,6 +110,38 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
   const endMut = useMutation({ mutationFn: () => endLiveSession(courseId, sessionId) });
 
   const setSession = live.setSession;
+
+  function persistAnnotations(annotations: LiveAnnotations) {
+    if (paused || commandsBlocked) return;
+    setOptimisticAnnotations(annotations);
+    setAnnotationSaveError(false);
+    annotationQueue.current = annotations;
+    if (savingAnnotations.current) return;
+    savingAnnotations.current = true;
+    void (async () => {
+      let failed = false;
+      try {
+        while (mounted.current && annotationQueue.current) {
+          const next = annotationQueue.current;
+          annotationQueue.current = null;
+          try {
+            const saved = await annotationMut.mutateAsync(next);
+            if (mounted.current) setSession(saved);
+            failed = false;
+          } catch {
+            failed = true;
+          }
+        }
+      } finally {
+        savingAnnotations.current = false;
+        if (mounted.current) {
+          setAnnotationSaveError(failed);
+          if (failed) toast.error("Рисунок не сохранён. Повторите сохранение в панели рисования.");
+          else setOptimisticAnnotations(null);
+        }
+      }
+    })();
+  }
 
   function go(idx: number) {
     if (
@@ -230,16 +273,11 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
               active={drawing && !paused && !commandsBlocked}
               toolsVisible={drawing}
               onClose={() => setDrawing(false)}
-              annotations={session.annotations as LiveAnnotations}
-              onChange={(annotations) => {
-                if (paused || commandsBlocked) return;
-                annotationMut.mutate(annotations, {
-                  onSuccess: (saved) => setSession(saved),
-                  onError: () => {
-                    toast.error("Не удалось сохранить рисунок. Повторите действие.");
-                  }
-                });
-              }}
+              annotations={optimisticAnnotations ?? (session.annotations as LiveAnnotations)}
+              onChange={persistAnnotations}
+              saveError={annotationSaveError}
+              saving={annotationMut.isPending}
+              onRetry={() => optimisticAnnotations && persistAnnotations(optimisticAnnotations)}
             />
             {!drawing && (
               <div className="presenter-stage-navigation" aria-label="Переключение слайдов">

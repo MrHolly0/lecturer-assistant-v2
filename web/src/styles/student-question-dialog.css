@@ -8,8 +8,8 @@
   gap: 0;
   width: min(calc(100vw - 24px), 34rem);
   max-width: none;
-  height: var(--student-question-panel-height);
-  max-height: calc(var(--student-question-vv-height, 100dvh) - 24px);
+  height: auto;
+  max-height: var(--student-question-panel-height);
   top: var(--student-question-vv-center, 50dvh);
   transform: translate(-50%, -50%);
   translate: none;

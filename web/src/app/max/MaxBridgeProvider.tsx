@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   getMaxWebApp,
   isMaxLaunch,
@@ -24,6 +24,7 @@ function readPreferredTheme(): MaxColorScheme | null {
 export function MaxBridgeProvider({ children }: { children: ReactNode }) {
   const [environment, setEnvironment] = useState(readEnvironment);
   const [preferredTheme, setPreferredThemeState] = useState(readPreferredTheme);
+  const viewportRequest = useRef(0);
   const theme = preferredTheme ?? environment.theme;
 
   const setPreferredTheme = useCallback((next: MaxColorScheme | null) => {
@@ -37,7 +38,9 @@ export function MaxBridgeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshViewport = useCallback(async () => {
+    const request = ++viewportRequest.current;
     const viewport = await readViewport();
+    if (request !== viewportRequest.current) return;
     setEnvironment((current) =>
       current.viewport.height === viewport.height && current.viewport.width === viewport.width
         ? current
@@ -72,6 +75,7 @@ export function MaxBridgeProvider({ children }: { children: ReactNode }) {
     document.addEventListener("visibilitychange", refreshBridge);
 
     return () => {
+      viewportRequest.current += 1;
       window.clearInterval(bridgeTimer);
       window.removeEventListener("resize", refreshViewport);
       visualViewport?.removeEventListener("resize", refreshViewport);

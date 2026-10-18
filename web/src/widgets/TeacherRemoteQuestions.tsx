@@ -42,6 +42,8 @@ export function TeacherRemoteQuestions({
   const [filter, setFilter] = useState<StudentQuestion["status"]>("OPEN");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const publishingRef = useRef(publishConfirmOpen);
+  publishingRef.current = publishConfirmOpen;
   const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   const [sectionVisible, setSectionVisible] = useState(true);
   const [documentVisible, setDocumentVisible] = useState(
@@ -202,7 +204,7 @@ export function TeacherRemoteQuestions({
       )}
     </div>
   );
-  const sheetOpen = compact && Boolean(composer);
+  const sheetOpen = compact && Boolean(composer) && !publishConfirmOpen;
   const countsByStatus: Array<{ status: StudentQuestion["status"]; label: string }> = [
     { status: "OPEN", label: "Новые" },
     { status: "ANSWERED", label: "Отвеченные" },
@@ -343,13 +345,14 @@ export function TeacherRemoteQuestions({
           {questionsQuery.isFetchingNextPage ? "Загружаем…" : "Показать ещё вопросы"}
         </Button>
       )}
-      {compact && (
+      {compact && !publishConfirmOpen && (
         <Sheet open={sheetOpen} onOpenChange={(open) => !open && setSelectedId(null)}>
           <SheetContent
             side="bottom"
             className="teacher-question-sheet"
             onCloseAutoFocus={(event) => {
               event.preventDefault();
+              if (publishingRef.current) return;
               const questionId = sheetReturnFocusIdRef.current;
               const returnTarget = questionId
                 ? actionButtonsRef.current.get(questionId)
@@ -383,17 +386,23 @@ export function TeacherRemoteQuestions({
             <p>{answerText}</p>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPublishConfirmOpen(false)}>
-              Вернуться к ответу
+            <Button
+              type="button"
+              variant="outline"
+              aria-label="Вернуться к ответу"
+              onClick={() => setPublishConfirmOpen(false)}
+            >
+              К ответу
             </Button>
             <Button
               type="button"
               disabled={busy || !answerText.trim()}
+              aria-label="Опубликовать для участников"
               onClick={() =>
                 updateMutation.mutate({ status: "ANSWERED", answerVisibility: "SESSION" })
               }
             >
-              Опубликовать для участников
+              Опубликовать
             </Button>
           </DialogFooter>
         </DialogContent>

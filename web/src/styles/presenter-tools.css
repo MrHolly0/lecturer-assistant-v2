@@ -143,7 +143,7 @@
 .presenter-shell .presenter-tools__drawing-toolbar--mobile {
   bottom: max(8px, var(--app-safe-area-bottom));
   display: none;
-  grid-template-columns: repeat(5, minmax(44px, 1fr));
+  grid-template-columns: repeat(6, minmax(44px, 1fr));
   left: 8px;
   max-width: none;
   padding: 4px;
@@ -196,4 +196,55 @@
   padding: 0;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+}
+
+.presenter-shell .presenter-tools__drawing-toolbar--desktop {
+  display: grid;
+  width: max-content;
+  max-width: min(480px, calc(100vw - 16px));
+  gap: 8px;
+}
+.drawing-tool-row,
+.drawing-history-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+.drawing-tool-row .drawing-swatches,
+.drawing-tool-row .drawing-sizes {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.drawing-tool-row button {
+  flex: 0 0 auto;
+}
+.drawing-history-actions {
+  margin-left: auto;
+}
+.drawing-save-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--destructive);
+  font-size: 13px;
+}
+.drawing-save-error button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--card);
+  color: var(--foreground);
+}
+@media (max-width: 900px) {
+  .presenter-shell .presenter-tools__drawing-toolbar--desktop {
+    display: none;
+  }
+  .presenter-shell .drawing-mobile-tool:not(.drawing-mobile-tool--icon) {
+    flex-direction: column;
+    gap: 2px;
+    font-size: 11px;
+  }
 }

@@ -165,17 +165,22 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
   }
 
   function restoreQuestionPagePosition() {
-    window.scrollTo(0, questionScrollTopRef.current);
+    const maxScroll = Math.max(
+      0,
+      document.documentElement.scrollHeight - document.documentElement.clientHeight
+    );
+    window.scrollTo(0, Math.min(questionScrollTopRef.current, maxScroll));
   }
 
   function restoreFocusAndPagePosition() {
     questionTriggerRef.current?.focus({ preventScroll: true });
     restoreQuestionPagePosition();
+    window.requestAnimationFrame(restoreQuestionPagePosition);
 
     const viewport = window.visualViewport;
     const expectedHeight = questionViewportHeightRef.current;
     const expectedWidth = questionViewportWidthRef.current;
-    if (!viewport || viewport.height >= expectedHeight - 1) return;
+    if (!viewport || viewport.height >= expectedHeight - 64) return;
 
     const restoreAfterKeyboardCloses = () => {
       if (Math.abs(viewport.width - expectedWidth) > 1) {
@@ -183,10 +188,10 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
         viewportRestoreCleanupRef.current = null;
         return;
       }
-      if (viewport.height < expectedHeight - 1) return;
+      if (viewport.height < expectedHeight - 64) return;
       cleanup();
       viewportRestoreCleanupRef.current = null;
-      restoreQuestionPagePosition();
+      window.requestAnimationFrame(restoreQuestionPagePosition);
     };
     const cancelRestoreAfterInteraction = () => {
       cleanup();
@@ -198,6 +203,7 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
     };
     const cleanup = () => {
       viewport.removeEventListener("resize", restoreAfterKeyboardCloses);
+      viewport.removeEventListener("scroll", restoreAfterKeyboardCloses);
       window.removeEventListener("resize", restoreAfterKeyboardCloses);
       window.removeEventListener("orientationchange", cancelRestoreAfterOrientation);
       window.removeEventListener("pointerdown", cancelRestoreAfterInteraction);
@@ -208,6 +214,7 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
     viewportRestoreCleanupRef.current?.();
     viewportRestoreCleanupRef.current = cleanup;
     viewport.addEventListener("resize", restoreAfterKeyboardCloses);
+    viewport.addEventListener("scroll", restoreAfterKeyboardCloses);
     window.addEventListener("resize", restoreAfterKeyboardCloses);
     window.addEventListener("orientationchange", cancelRestoreAfterOrientation);
     window.addEventListener("pointerdown", cancelRestoreAfterInteraction);
@@ -299,7 +306,7 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
                         Задать вопрос
                       </h2>
                     </DialogTitle>
-                    <DialogDescription className="student-question-dialog__description">
+                    <DialogDescription className="sr-only">
                       Вопрос будет отправлен преподавателю занятия.
                     </DialogDescription>
                   </div>
@@ -317,11 +324,6 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
                 <form onSubmit={submitQuestion} className="student-question-form">
                   <div className="student-question-dialog__body">
                     <label htmlFor="student-question">Ваш вопрос</label>
-                    <p id="question-audience-hint" className="question-privacy-hint">
-                      {props.anonymous
-                        ? "Сотрудники и участники занятия не увидят ваше имя. Аккаунт используется для доставки личного ответа. Преподаватель может опубликовать вопрос и ответ для участников занятия без имени автора."
-                        : "Вопрос и ваше имя увидят сотрудники с доступом к занятию. Преподаватель может опубликовать вопрос и ответ для участников занятия без имени автора."}
-                    </p>
                     <textarea
                       id="student-question"
                       value={props.question}
@@ -341,6 +343,11 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
                       <EyeOff size={17} aria-hidden="true" />
                       Спросить анонимно
                     </label>
+                    <p id="question-audience-hint" className="question-privacy-hint">
+                      {props.anonymous
+                        ? "Преподаватель и участники не увидят имя. Аккаунт нужен для доставки личного ответа."
+                        : "Ваше имя видно преподавателю и сотрудникам занятия. При публикации ответа для всех имя будет скрыто."}
+                    </p>
                     {props.questionError && (
                       <p className="student-question-error" role="alert">
                         Не удалось отправить вопрос. Черновик сохранён. Проверьте связь и нажмите
@@ -406,15 +413,20 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
         </p>
         <StudentQuestionAnswers answers={props.answers} />
         {unansweredQuestions.length > 0 ? (
-          <ul className="student-question-list">
-            {unansweredQuestions.map((item) => (
-              <li key={item.id}>
-                <span>{item.text}</span>
-                {item.anonymous && <small>Анонимно</small>}
-                <small>{new Date(item.createdAt).toLocaleTimeString("ru-RU")}</small>
-              </li>
-            ))}
-          </ul>
+          <section className="student-pending-questions" aria-labelledby="student-pending-title">
+            <h3 id="student-pending-title">
+              Ожидают ответа <span>{unansweredQuestions.length}</span>
+            </h3>
+            <ul className="student-question-list">
+              {unansweredQuestions.map((item) => (
+                <li key={item.id}>
+                  <span>{item.text}</span>
+                  {item.anonymous && <small>Анонимно</small>}
+                  <small>{new Date(item.createdAt).toLocaleTimeString("ru-RU")}</small>
+                </li>
+              ))}
+            </ul>
+          </section>
         ) : props.answers.length === 0 ? (
           <p className="muted">Отправленные вопросы и ответы преподавателя появятся здесь.</p>
         ) : null}

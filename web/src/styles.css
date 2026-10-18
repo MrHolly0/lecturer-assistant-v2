@@ -8,6 +8,17 @@ body,
   min-height: 100%;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+@supports (scrollbar-gutter: stable) {
+  html body[data-scroll-locked] {
+    /* The root gutter already reserves this space; Radix must not reserve it twice. */
+    margin-right: 0 !important;
+    --removed-body-scroll-bar-size: 0px !important;
+  }
+}
+
 :root {
   --app-safe-area-top: env(safe-area-inset-top, 0px);
   --app-safe-area-right: env(safe-area-inset-right, 0px);

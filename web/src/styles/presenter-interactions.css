@@ -65,6 +65,35 @@
   min-height: 44px;
   flex: 0 0 auto;
   white-space: nowrap;
+  padding: 10px 14px;
+  justify-content: center;
+}
+
+div[data-slot="dialog-content"].teacher-question-publish-dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-width: none;
+  padding: 24px;
+  transition: none;
+}
+.teacher-question-publish-dialog [data-slot="dialog-footer"] {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+.teacher-question-publish-dialog [data-slot="dialog-footer"] .ui-button {
+  min-width: 0;
+  white-space: nowrap;
+  padding-inline: 14px;
+}
+@media (max-width: 480px) {
+  div[data-slot="dialog-content"].teacher-question-publish-dialog {
+    padding: 20px;
+  }
+  .teacher-question-publish-dialog [data-slot="dialog-footer"] .ui-button {
+    flex: 1 1 auto;
+    padding-inline: 10px;
+  }
 }
 
 .teacher-remote-question-item + .teacher-question-composer,
