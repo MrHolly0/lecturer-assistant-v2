@@ -379,6 +379,10 @@
   gap: 8px 20px;
 }
 
+.session-analytics__slide-signals > .ui-button {
+  margin-inline-start: auto;
+}
+
 .session-analytics__slide-count {
   display: inline-flex;
   align-items: center;
