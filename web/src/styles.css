@@ -4796,7 +4796,7 @@ html[data-max-mini-app="true"] .student-session-shell {
   padding: 0;
 }
 
-.teacher-remote-question-list button {
+.teacher-remote-question-list button:not(.ui-button) {
   align-items: center;
   background: var(--card);
   border: 1px solid var(--border);
@@ -4811,7 +4811,7 @@ html[data-max-mini-app="true"] .student-session-shell {
   width: 100%;
 }
 
-.teacher-remote-question-list button > span {
+.teacher-remote-question-list button:not(.ui-button) > span {
   display: grid;
   gap: 3px;
   min-width: 0;
