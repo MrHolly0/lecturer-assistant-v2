@@ -490,7 +490,7 @@ input[type="radio"] {
 .app-header-nav {
   display: flex;
   height: 100%;
-  gap: 32px;
+  gap: 8px;
   align-items: center;
 }
 .app-header-nav__item {
@@ -499,16 +499,44 @@ input[type="radio"] {
   align-items: center;
   gap: 8px;
   height: 100%;
+  padding: 0 16px;
+  isolation: isolate;
   font-size: 18px;
   font-weight: 500;
   color: var(--muted-foreground);
   white-space: nowrap;
 }
 button.app-header-nav__item {
-  padding: 0;
+  padding: 0 16px;
   border-radius: 0;
   background: transparent;
   border: 0;
+}
+.app-header-nav__item::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 48px;
+  transform: translateY(-50%);
+  z-index: -1;
+  border-radius: 8px;
+  background: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+.app-header .app-header-nav__item:is(:hover, :focus-visible, [data-state="open"]) {
+  background: transparent;
+  color: var(--foreground);
+}
+.app-header-nav__item:is(:hover, :focus-visible, [data-state="open"])::before {
+  opacity: 1;
+}
+.app-header-nav__item:focus-visible {
+  outline: none;
+}
+.app-header-nav__item:focus-visible::before {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .app-header-nav__item.is-active {
   font-weight: 600;
@@ -518,8 +546,8 @@ button.app-header-nav__item {
   content: "";
   position: absolute;
   bottom: 0;
-  left: 0;
-  right: 0;
+  left: 16px;
+  right: 16px;
   height: 3px;
   background: var(--brand);
   border-radius: 3px;
@@ -647,7 +675,7 @@ button.app-header-nav__item {
     font-size: 18px;
   }
   .app-header-nav {
-    gap: 24px;
+    gap: 8px;
   }
   .app-profile-trigger > span:not(.app-avatar) {
     max-width: 140px;
