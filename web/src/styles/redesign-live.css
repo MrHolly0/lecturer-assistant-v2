@@ -531,6 +531,17 @@
   display: block;
   margin-top: 8px;
 }
+.student-home .student-home-entry-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+}
+.student-home-entry-header > div {
+  flex: 1 1 480px;
+  min-width: 0;
+}
 .student-home-join {
   display: grid;
   grid-template-columns: 1.3fr 1fr;

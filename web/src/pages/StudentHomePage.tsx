@@ -2,13 +2,14 @@ import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../app/AuthContext";
 import { useMaxBridge } from "../app/max/context";
 import { listCourses } from "../app/api/courses-api";
 import { AppHeader } from "../widgets/Layout";
 import { MaxEntryScreen } from "../widgets/MaxEntryScreen";
-import { Button } from "../shared/ui/button";
+import { Button, LinkButton } from "../shared/ui/button";
 
 export function StudentHomePage({ joinOnly = false }: { joinOnly?: boolean }) {
   const navigate = useNavigate();
@@ -39,13 +40,21 @@ export function StudentHomePage({ joinOnly = false }: { joinOnly?: boolean }) {
     <>
       {joinOnly && <AppHeader />}
       <div id={joinOnly ? "main-content" : undefined} className="page student-home">
-        <div className="page-header">
-          <h1>{joinOnly ? "Подключиться к лекции" : "Студенческий кабинет"}</h1>
-          <span className="muted">
-            {joinOnly || !user
-              ? "Введите код занятия с экрана преподавателя. Вход в аккаунт не нужен."
-              : "Подключение к лекции и ваши курсы"}
-          </span>
+        <div className={`page-header${joinOnly ? " student-home-entry-header" : ""}`}>
+          <div>
+            <h1>{joinOnly ? "Подключиться к лекции" : "Студенческий кабинет"}</h1>
+            <span className="muted">
+              {joinOnly || !user
+                ? "Введите код занятия с экрана преподавателя. Вход в аккаунт не нужен."
+                : "Подключение к лекции и ваши курсы"}
+            </span>
+          </div>
+          {joinOnly && !user && (
+            <LinkButton to="/login" variant="outline">
+              <LogIn aria-hidden="true" />
+              Войти в аккаунт
+            </LinkButton>
+          )}
         </div>
 
         <div className="student-home-join">

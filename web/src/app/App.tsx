@@ -175,6 +175,7 @@ function MaxNavigationRoot() {
   if (isMax && !startParamHandled && startTarget && location.pathname !== startTarget) {
     return <Navigate to={startTarget} replace />;
   }
+  // Only MAX entry resumes a lecture automatically. Browser entry waits for account auth.
   if (
     studentInMax &&
     !startTarget &&
@@ -185,9 +186,6 @@ function MaxNavigationRoot() {
     if (joinCode) {
       return <Navigate to={`/s/${encodeURIComponent(joinCode)}`} replace />;
     }
-  }
-  if (!isMax && !user && storedStudentSession && location.pathname === "/") {
-    return <Navigate to={`/s/${encodeURIComponent(storedStudentSession.joinCode)}`} replace />;
   }
   if (teacherInMax && activeSession.isLoading && canRedirectToTeacherRemote(location.pathname)) {
     return <LoadingScreen message="Ищем активную лекцию…" />;
