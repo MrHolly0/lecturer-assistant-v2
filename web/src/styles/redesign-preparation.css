@@ -678,7 +678,7 @@
 }
 .preparation-dialog .start-session-tabs {
   display: inline-flex;
-  width: auto;
+  width: fit-content;
   max-width: 100%;
   border: 0;
   border-radius: 8px;
@@ -687,9 +687,11 @@
   background: var(--surface);
 }
 .preparation-dialog .start-session-tabs [role="tab"] {
+  flex: 0 0 auto;
   min-height: 48px;
   padding: 0 20px;
   font-size: 16px;
+  white-space: nowrap;
   border-radius: 8px;
   box-shadow: none;
 }
