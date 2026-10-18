@@ -12,6 +12,7 @@ import ru.university.assistant.analytics.api.EventBus;
 import ru.university.assistant.qa.api.QuestionApi;
 import ru.university.assistant.qa.api.QuestionAnswerAudience;
 import ru.university.assistant.qa.api.QuestionAnswerVisibility;
+import ru.university.assistant.qa.api.QuestionPage;
 import ru.university.assistant.qa.api.QuestionStatus;
 import ru.university.assistant.qa.api.ResolvedQuestion;
 import ru.university.assistant.qa.api.StudentQuestion;
@@ -47,6 +48,12 @@ class QuestionService implements QuestionApi {
     @Override
     public List<StudentQuestion> openQuestions(UUID sessionId) {
         return repository.openQuestions(sessionId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public QuestionPage list(UUID sessionId, QuestionStatus status, int limit, int offset) {
+        return repository.list(sessionId, status, limit, offset);
     }
 
     @Override

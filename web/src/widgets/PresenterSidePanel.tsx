@@ -6,7 +6,11 @@ import { pluralizeRu } from "../shared/lib/plural";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { PollPanel } from "./PollPanel";
 import { formatSessionTime } from "../app/live/useSessionTimers";
-import { LiveSlideNotesEditor } from "./LiveSlideNotesEditor";
+import {
+  PresenterNotesActions,
+  PresenterNotesDockedEditor,
+  PresenterNotesWorkspace
+} from "./PresenterTools";
 import { TeacherRemoteQuestions } from "./TeacherRemoteQuestions";
 import { SessionParticipantList } from "./SessionParticipantList";
 
@@ -56,137 +60,145 @@ export function PresenterSidePanel({
   const questions = engagement?.questions ?? [];
 
   return (
-    <aside className="presenter-side">
-      <section className="live-panel signal-summary signal-summary--primary">
-        <div className="section-heading">
-          <h2>Понимание слайда {slide.idx}</h2>
-          <span className="muted">
-            {activeParticipants.length}{" "}
-            {pluralizeRu(activeParticipants.length, "участник", "участника", "участников")}
-          </span>
-        </div>
-        {engagementError && engagement && (
-          <div className="teacher-remote-data-error" role="status">
-            Не удалось обновить сигналы. Показаны последние данные.{" "}
-            <button type="button" onClick={onRetryEngagement}>
-              Повторить
-            </button>
+    <PresenterNotesWorkspace
+      key={`${courseId}:${sessionId}:${slide.deckId}`}
+      courseId={courseId}
+      slide={slide}
+    >
+      <aside className="presenter-side">
+        <section className="live-panel signal-summary signal-summary--primary">
+          <div className="section-heading">
+            <h2>Понимание слайда {slide.idx}</h2>
+            <span className="muted">
+              {activeParticipants.length}{" "}
+              {pluralizeRu(activeParticipants.length, "участник", "участника", "участников")}
+            </span>
           </div>
-        )}
-        {engagement ? (
-          <>
-            <SignalRow
-              label="Понятно"
-              value="GREEN"
-              total={signals?.total ?? 0}
-              signals={signals}
-            />
-            <SignalRow
-              label="Есть вопрос"
-              value="YELLOW"
-              total={signals?.total ?? 0}
-              signals={signals}
-            />
-            <SignalRow
-              label="Не понимаю"
-              value="RED"
-              total={signals?.total ?? 0}
-              signals={signals}
-            />
-          </>
-        ) : (
-          <div className="teacher-remote-data-error" role={engagementError ? "alert" : "status"}>
-            {engagementError
-              ? "Не удалось загрузить понимание."
-              : engagementLoading
-                ? "Загружаем сигналы…"
-                : "Сигналов пока нет."}{" "}
-            {engagementError && (
-              <button type="button" onClick={onRetryEngagement}>
-                Повторить
-              </button>
-            )}
-          </div>
-        )}
-      </section>
-      <Tabs defaultValue="questions" className="live-tabs">
-        <TabsList className="live-tabs__list">
-          <TabsTrigger value="questions">
-            Вопросы
-            {questions.filter((question) => question.status === "OPEN").length > 0 && (
-              <span className="tab-badge tab-badge--alert">
-                {questions.filter((question) => question.status === "OPEN").length}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="poll">Проверка</TabsTrigger>
-          <TabsTrigger value="students">
-            Студенты
-            {activeParticipants.length > 0 && (
-              <span className="tab-badge">{activeParticipants.length}</span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="notes">Заметки</TabsTrigger>
-        </TabsList>
-        <TabsContent value="poll" className="live-panel live-poll-panel">
-          <PollPanel
-            courseId={courseId}
-            sessionId={sessionId}
-            disabled={paused}
-            commandsBlocked={commandsBlocked}
-          />
-        </TabsContent>
-        <TabsContent value="students" className="live-panel">
-          {participantsError && (
+          {engagementError && engagement && (
             <div className="teacher-remote-data-error" role="status">
-              Не удалось обновить участников.{" "}
-              {participants.length > 0 ? "Показаны последние данные." : ""}{" "}
-              <button type="button" onClick={onRetryParticipants}>
+              Не удалось обновить сигналы. Показаны последние данные.{" "}
+              <button type="button" onClick={onRetryEngagement}>
                 Повторить
               </button>
             </div>
           )}
-          <div className="section-heading">
-            <h2>Студенты</h2>
-            <span className="badge">
-              {activeParticipants.length}{" "}
-              {pluralizeRu(activeParticipants.length, "студент", "студента", "студентов")} на связи
-            </span>
-          </div>
-          <SessionParticipantList
-            courseId={courseId}
-            sessionId={sessionId}
-            participants={participants}
-            disabled={commandsBlocked}
-          />
-        </TabsContent>
-        <TabsContent value="notes" className="live-panel">
-          <div className="section-heading">
-            <h2>Заметки</h2>
-            <span className="muted">слайд {slide.idx}</span>
-          </div>
-          <p className="question-privacy-hint">
-            Видны только вам. На проекторе и у студентов их нет.
-          </p>
-          <LiveSlideNotesEditor courseId={courseId} deckId={slide.deckId} slide={slide} />
-        </TabsContent>
-        <TabsContent value="questions" className="live-panel">
-          <TeacherRemoteQuestions
-            courseId={courseId}
-            sessionId={sessionId}
-            questions={questions}
-            isLoading={questionsLoading}
-            loadError={questionsError}
-            onRetry={onRetryQuestions}
-            disabled={commandsBlocked}
-          />
-        </TabsContent>
-      </Tabs>
-      <div className="live-metric">
-        <Clock size={16} />С начала {formatSessionTime(elapsed)} · слайд{" "}
-        {formatSessionTime(slideElapsed)}
-      </div>
-    </aside>
+          {engagement ? (
+            <>
+              <SignalRow
+                label="Понятно"
+                value="GREEN"
+                total={signals?.total ?? 0}
+                signals={signals}
+              />
+              <SignalRow
+                label="Есть вопрос"
+                value="YELLOW"
+                total={signals?.total ?? 0}
+                signals={signals}
+              />
+              <SignalRow
+                label="Не понимаю"
+                value="RED"
+                total={signals?.total ?? 0}
+                signals={signals}
+              />
+            </>
+          ) : (
+            <div className="teacher-remote-data-error" role={engagementError ? "alert" : "status"}>
+              {engagementError
+                ? "Не удалось загрузить понимание."
+                : engagementLoading
+                  ? "Загружаем сигналы…"
+                  : "Сигналов пока нет."}{" "}
+              {engagementError && (
+                <button type="button" onClick={onRetryEngagement}>
+                  Повторить
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+        <Tabs defaultValue="questions" className="live-tabs">
+          <TabsList className="live-tabs__list">
+            <TabsTrigger value="questions">
+              Вопросы
+              {questions.filter((question) => question.status === "OPEN").length > 0 && (
+                <span className="tab-badge tab-badge--alert">
+                  {questions.filter((question) => question.status === "OPEN").length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="poll">Проверка</TabsTrigger>
+            <TabsTrigger value="students">
+              Студенты
+              {activeParticipants.length > 0 && (
+                <span className="tab-badge">{activeParticipants.length}</span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="notes">Заметки</TabsTrigger>
+          </TabsList>
+          <TabsContent value="poll" className="live-panel live-poll-panel">
+            <PollPanel
+              courseId={courseId}
+              sessionId={sessionId}
+              disabled={paused}
+              commandsBlocked={commandsBlocked}
+            />
+          </TabsContent>
+          <TabsContent value="students" className="live-panel">
+            {participantsError && (
+              <div className="teacher-remote-data-error" role="status">
+                Не удалось обновить участников.{" "}
+                {participants.length > 0 ? "Показаны последние данные." : ""}{" "}
+                <button type="button" onClick={onRetryParticipants}>
+                  Повторить
+                </button>
+              </div>
+            )}
+            <div className="section-heading">
+              <h2>Студенты</h2>
+              <span className="badge">
+                {activeParticipants.length}{" "}
+                {pluralizeRu(activeParticipants.length, "студент", "студента", "студентов")} на
+                связи
+              </span>
+            </div>
+            <SessionParticipantList
+              courseId={courseId}
+              sessionId={sessionId}
+              participants={participants}
+              disabled={commandsBlocked}
+            />
+          </TabsContent>
+          <TabsContent value="notes" className="live-panel">
+            <div className="section-heading">
+              <h2>Заметки</h2>
+              <span className="muted">слайд {slide.idx}</span>
+            </div>
+            <p className="question-privacy-hint">
+              Видны только вам. На проекторе и у студентов их нет.
+            </p>
+            <PresenterNotesActions />
+            <PresenterNotesDockedEditor />
+          </TabsContent>
+          <TabsContent value="questions" className="live-panel">
+            <TeacherRemoteQuestions
+              courseId={courseId}
+              sessionId={sessionId}
+              questions={questions}
+              isLoading={questionsLoading}
+              loadError={questionsError}
+              onRetry={onRetryQuestions}
+              disabled={commandsBlocked}
+            />
+          </TabsContent>
+        </Tabs>
+        <div className="live-metric">
+          <Clock size={16} />С начала {formatSessionTime(elapsed)} · слайд{" "}
+          {formatSessionTime(slideElapsed)}
+        </div>
+      </aside>
+    </PresenterNotesWorkspace>
   );
 }
 

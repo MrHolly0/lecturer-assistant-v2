@@ -1,5 +1,6 @@
-import { Eraser, Pencil, Trash2, Undo2 } from "lucide-react";
+import { Eraser, Grip, Pencil, Trash2, Undo2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useViewportDrag } from "./useViewportDrag";
 
 type Point = { x: number; y: number };
 type DrawAction = { color: string; size: number; points: Point[]; erase?: boolean };
@@ -21,9 +22,18 @@ interface DrawingOverlayProps {
   annotations: LiveAnnotations;
   active: boolean;
   onChange: (annotations: LiveAnnotations) => void;
+  onClose?: () => void;
+  toolsVisible?: boolean;
 }
 
-export function DrawingOverlay({ slideIdx, annotations, active, onChange }: DrawingOverlayProps) {
+export function DrawingOverlay({
+  slideIdx,
+  annotations,
+  active,
+  toolsVisible = active,
+  onChange,
+  onClose
+}: DrawingOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [erase, setErase] = useState(false);
@@ -32,6 +42,7 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
   const [eraserSize, setEraserSize] = useState(ERASER_SIZES[1]);
   const [drawing, setDrawing] = useState(false);
   const [points, setPoints] = useState<Point[]>([]);
+  const toolbarDrag = useViewportDrag<HTMLDivElement>({ x: 16, y: 16 });
   const slideKey = String(slideIdx);
   const actions = useMemo(() => annotations[slideKey] ?? [], [annotations, slideKey]);
 
@@ -104,12 +115,35 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
           if (canvas) redraw(canvas, actions);
         }}
       />
-      {active && (
+      {toolsVisible && (
         <div
-          className="drawing-toolbar drawing-toolbar--desktop"
+          ref={toolbarDrag.panelRef}
+          className="drawing-toolbar drawing-toolbar--desktop presenter-tools__drawing-toolbar presenter-tools__drawing-toolbar--desktop"
+          style={{
+            ...toolbarDrag.viewportStyle,
+            left: toolbarDrag.position.x,
+            top: toolbarDrag.position.y
+          }}
           role="toolbar"
           aria-label="Инструменты рисования"
         >
+          <div className="presenter-tools__drawing-header">
+            <div {...toolbarDrag.handleProps} className="presenter-tools__drag-handle">
+              <Grip size={16} aria-hidden="true" />
+              <span>Инструменты · переместить</span>
+            </div>
+            {onClose && (
+              <button
+                type="button"
+                className="presenter-tools__icon"
+                onClick={onClose}
+                aria-label="Закрыть рисование"
+                title="Закрыть рисование"
+              >
+                <X size={17} aria-hidden="true" />
+              </button>
+            )}
+          </div>
           <button
             type="button"
             className={`icon-button ${!erase ? "icon-button--active" : ""}`}
@@ -205,7 +239,7 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
           </button>
         </div>
       )}
-      {active && (
+      {toolsVisible && (
         <div className="drawing-mobile-workspace">
           <div className="drawing-mobile-settings">
             {!erase && (
@@ -247,7 +281,7 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
             </div>
           </div>
           <div
-            className="drawing-toolbar drawing-toolbar--mobile"
+            className="drawing-toolbar drawing-toolbar--mobile presenter-tools__drawing-toolbar presenter-tools__drawing-toolbar--mobile"
             role="toolbar"
             aria-label="Инструменты рисования"
           >
@@ -287,6 +321,17 @@ export function DrawingOverlay({ slideIdx, annotations, active, onChange }: Draw
             >
               <Trash2 size={17} aria-hidden="true" />
             </button>
+            {onClose && (
+              <button
+                type="button"
+                className="drawing-mobile-tool drawing-mobile-tool--icon drawing-mobile-tool--close"
+                onClick={onClose}
+                aria-label="Закрыть рисование"
+                title="Закрыть рисование"
+              >
+                <X size={17} aria-hidden="true" />
+              </button>
+            )}
           </div>
         </div>
       )}

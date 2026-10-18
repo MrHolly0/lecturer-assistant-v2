@@ -10,7 +10,13 @@ interface ViewerSlide {
   imageUrl: string;
 }
 
-export function StudentSlideViewer({ slide }: { slide: ViewerSlide }) {
+export function StudentSlideViewer({
+  slide,
+  restoreFocusOnClose = true
+}: {
+  slide: ViewerSlide;
+  restoreFocusOnClose?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const shownSlide = slide;
   const [zoomed, setZoomed] = useState(false);
@@ -125,7 +131,12 @@ export function StudentSlideViewer({ slide }: { slide: ViewerSlide }) {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="student-slide-viewer-overlay" />
-        <Dialog.Content className="student-slide-viewer">
+        <Dialog.Content
+          className="student-slide-viewer"
+          onCloseAutoFocus={(event) => {
+            if (!restoreFocusOnClose) event.preventDefault();
+          }}
+        >
           <Dialog.Title className="sr-only">Просмотр слайда</Dialog.Title>
           <Dialog.Description className="sr-only">
             Слайд {shownSlide.idx}. Увеличьте изображение или сохраните его на устройство.

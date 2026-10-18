@@ -45,6 +45,8 @@ import ru.university.assistant.interaction.api.PollVote;
 import ru.university.assistant.interaction.api.QuickPollApi;
 import ru.university.assistant.interaction.api.SubmitActivityResponseRequest;
 import ru.university.assistant.qa.api.QuestionApi;
+import ru.university.assistant.qa.api.QuestionPage;
+import ru.university.assistant.qa.api.QuestionStatus;
 import ru.university.assistant.qa.api.ResolvedQuestion;
 import ru.university.assistant.qa.api.StudentQuestion;
 import ru.university.assistant.shared.api.UuidV7;
@@ -310,6 +312,18 @@ public class StudentWebSessionService {
                 feedback.aggregate(sessionId, session.currentSlideIdx()),
                 feedback.problemSlides(sessionId),
                 questions.openQuestions(sessionId));
+    }
+
+    public QuestionPage questions(
+            AuthenticatedUser user, UUID courseId, UUID sessionId, QuestionStatus status, int limit, int offset) {
+        courseAccess.requireManage(user, courseId);
+        sessions.findByCourse(courseId, sessionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        if (limit < 1 || limit > 100 || offset < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "limit must be between 1 and 100 and offset must be non-negative");
+        }
+        return questions.list(sessionId, status, limit, offset);
     }
 
     @Transactional

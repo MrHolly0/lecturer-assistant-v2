@@ -1,4 +1,4 @@
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { StudentActivePoll } from "../app/api/student-api";
 import { Button } from "../shared/ui/button";
@@ -20,16 +20,30 @@ export function StudentPollCard({
   onAnswer
 }: StudentPollCardProps) {
   const [selectedOptionIdx, setSelectedOptionIdx] = useState<number | null>(null);
+  const [collapsedPollId, setCollapsedPollId] = useState<string | null>(null);
+  const collapsed = poll.status === "CLOSED" && collapsedPollId === poll.pollId;
   useEffect(() => setSelectedOptionIdx(null), [poll.pollId]);
   return (
-    <div className="student-poll-card">
+    <div className="student-poll-card" data-poll-status={poll.status}>
       <div className="student-poll-heading">
         <span className="student-poll-kicker">
           {poll.status === "OPEN" ? "Вопрос-проверка" : "Результат"}
         </span>
         <h2 className="student-poll-question">{poll.questionText}</h2>
       </div>
-      {poll.status === "OPEN" && myVote === null ? (
+      {poll.status === "CLOSED" && (
+        <Button
+          type="button"
+          variant="outline"
+          className="student-poll-result-toggle"
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsedPollId(collapsed ? null : poll.pollId)}
+        >
+          {collapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+          {collapsed ? "Показать результат" : "Свернуть результат"}
+        </Button>
+      )}
+      {collapsed ? null : poll.status === "OPEN" && myVote === null ? (
         <div className="student-poll-options" role="radiogroup" aria-label="Варианты ответа">
           {poll.options.map((option, idx) => (
             <label
@@ -67,7 +81,7 @@ export function StudentPollCard({
       ) : (
         <PollResult poll={poll} myVote={myVote} />
       )}
-      {poll.status === "CLOSED" && myVote === null && (
+      {!collapsed && poll.status === "CLOSED" && myVote === null && (
         <p className="student-poll-closed muted">Вы не отвечали на этот вопрос.</p>
       )}
     </div>

@@ -1638,21 +1638,22 @@
     padding: 0 8px;
     font-size: 12px;
   }
-  .student-session-shell .student-poll-card {
+  .student-session-shell .student-poll-card[data-poll-status="OPEN"] {
     order: -1;
   }
-  .student-session-shell:has(.student-poll-card) .student-slide-card {
+  .student-session-shell:has(.student-poll-card[data-poll-status="OPEN"]) .student-slide-card {
     order: 3;
   }
-  .student-session-shell:has(.student-poll-card) .student-action-panel--feedback {
+  .student-session-shell:has(.student-poll-card[data-poll-status="OPEN"])
+    .student-action-panel--feedback {
     display: contents;
   }
-  .student-session-shell:has(.student-poll-card)
+  .student-session-shell:has(.student-poll-card[data-poll-status="OPEN"])
     .student-action-panel--feedback
     > .student-poll-card {
     order: 2;
   }
-  .student-session-shell:has(.student-poll-card)
+  .student-session-shell:has(.student-poll-card[data-poll-status="OPEN"])
     .student-action-panel--feedback
     > :not(.student-poll-card) {
     order: 4;

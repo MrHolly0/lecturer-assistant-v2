@@ -220,7 +220,6 @@ export function TeacherRemotePage({
   const actionPending =
     slideMutation.isPending || pauseMutation.isPending || resumeMutation.isPending;
   const questions = engagementQuery.data?.questions ?? [];
-  const openQuestions = questions.filter((question) => question.status === "OPEN");
 
   return (
     <main className="teacher-remote-shell">
@@ -381,7 +380,7 @@ export function TeacherRemotePage({
         <TeacherRemoteQuestions
           courseId={courseId}
           sessionId={sessionId}
-          questions={openQuestions}
+          questions={questions}
           isLoading={engagementQuery.isLoading}
           loadError={engagementQuery.isError}
           onRetry={() => void engagementQuery.refetch()}

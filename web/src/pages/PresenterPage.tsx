@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
@@ -15,6 +15,7 @@ import {
 } from "../app/api/live-api";
 import { precacheDeck } from "../app/offline";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
+import { PresenterSlideStrip } from "../widgets/PresenterSlideStrip";
 import { PresenterSidePanel } from "../widgets/PresenterSidePanel";
 import { PresenterSessionSummary } from "../widgets/PresenterSessionSummary";
 import { AppHeader } from "../widgets/Layout";
@@ -34,10 +35,7 @@ export function PresenterPage(props: { courseId: string; sessionId: string }) {
 
 function PresenterWorkspace({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const slideInFlightRef = useRef(false);
-  const slideStripRef = useRef<HTMLDivElement | null>(null);
-  const [stripOverflow, setStripOverflow] = useState(false);
   const [drawing, setDrawing] = useState(false);
-  const [previewIdx, setPreviewIdx] = useState<number | null>(null);
   const [slideErrorTarget, setSlideErrorTarget] = useState<number | null>(null);
   const goRef = useRef<(idx: number) => void>(() => undefined);
 
@@ -79,16 +77,6 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
   }, [imageUrls]);
 
   useEffect(() => {
-    const strip = slideStripRef.current;
-    if (!strip) return;
-    const update = () => setStripOverflow(strip.scrollWidth > strip.clientWidth + 1);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(strip);
-    return () => observer.disconnect();
-  }, [deck?.slides.length]);
-
-  useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
       if (session?.status === "LIVE" && sessionStorage.getItem("la_app_updating") !== "true") {
         event.preventDefault();
@@ -111,10 +99,6 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
   const endMut = useMutation({ mutationFn: () => endLiveSession(courseId, sessionId) });
 
   const setSession = live.setSession;
-
-  useEffect(() => {
-    setPreviewIdx(null);
-  }, [session?.currentSlideIdx]);
 
   function go(idx: number) {
     if (
@@ -151,7 +135,9 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
       const target = event.target as HTMLElement | null;
       if (
         target?.isContentEditable ||
-        target?.closest("input, textarea, select, [role='dialog'], [data-radix-collection-item]")
+        target?.closest(
+          "input, textarea, select, button, [role='button'], [role='tab'], [role='dialog'], [role='menu'], [data-radix-collection-item]"
+        )
       )
         return;
       if (event.key === "ArrowLeft" && session) {
@@ -242,6 +228,8 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
             <DrawingOverlay
               slideIdx={slide.idx}
               active={drawing && !paused && !commandsBlocked}
+              toolsVisible={drawing}
+              onClose={() => setDrawing(false)}
               annotations={session.annotations as LiveAnnotations}
               onChange={(annotations) => {
                 if (paused || commandsBlocked) return;
@@ -253,6 +241,37 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
                 });
               }}
             />
+            {!drawing && (
+              <div className="presenter-stage-navigation" aria-label="Переключение слайдов">
+                <button
+                  type="button"
+                  className="presenter-stage-navigation__previous"
+                  aria-label="Предыдущий слайд"
+                  title="Предыдущий слайд"
+                  disabled={
+                    paused || commandsBlocked || slideMut.isPending || session.currentSlideIdx <= 1
+                  }
+                  onClick={() => go(session.currentSlideIdx - 1)}
+                >
+                  <ChevronLeft size={28} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="presenter-stage-navigation__next"
+                  aria-label="Следующий слайд"
+                  title="Следующий слайд"
+                  disabled={
+                    paused ||
+                    commandsBlocked ||
+                    slideMut.isPending ||
+                    session.currentSlideIdx >= deck.slides.length
+                  }
+                  onClick={() => go(session.currentSlideIdx + 1)}
+                >
+                  <ChevronRight size={28} aria-hidden="true" />
+                </button>
+              </div>
+            )}
             {paused && <div className="presenter-pause-banner">Показ приостановлен</div>}
           </div>
           <div className="deck-controls">
@@ -297,69 +316,12 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
               </Button>
             </div>
           )}
-          {previewIdx !== null && previewIdx !== session.currentSlideIdx && (
-            <div className="presenter-preview-action">
-              <span>Предпросмотр слайда {previewIdx}. Показ аудитории не изменён.</span>
-              <Button
-                type="button"
-                disabled={paused || commandsBlocked || slideMut.isPending}
-                onClick={() => go(previewIdx)}
-              >
-                Показать выбранный слайд
-              </Button>
-            </div>
-          )}
-          <div className="presenter-strip-controls">
-            {stripOverflow && (
-              <Button
-                type="button"
-                variant="outline"
-                aria-label="Прокрутить миниатюры к началу"
-                title="Прокрутить миниатюры к началу"
-                onClick={() => {
-                  slideStripRef.current?.scrollTo({ left: 0, behavior: "smooth" });
-                }}
-              >
-                <ChevronsLeft size={18} aria-hidden="true" />
-              </Button>
-            )}
-            <div
-              className="presenter-slide-strip"
-              ref={slideStripRef}
-              aria-label="Предпросмотр слайдов лекции"
-            >
-              {deck.slides.map((item, index) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  disabled={paused || commandsBlocked || slideMut.isPending}
-                  className={`slide-thumb ${item.idx === session.currentSlideIdx ? "slide-thumb--active" : ""} ${item.idx === previewIdx ? "slide-thumb--preview" : ""}`}
-                  onClick={() => setPreviewIdx(item.idx)}
-                  aria-pressed={item.idx === previewIdx}
-                  title={`Предпросмотр слайда ${item.idx}`}
-                >
-                  <img src={slideImageUrl(item)} alt={`Слайд ${item.idx}`} />
-                  <span className="slide-thumb__number">{index + 1}</span>
-                </button>
-              ))}
-            </div>
-            {stripOverflow && (
-              <Button
-                type="button"
-                variant="outline"
-                aria-label="Прокрутить миниатюры к концу"
-                title="Прокрутить миниатюры к концу"
-                onClick={() => {
-                  slideStripRef.current?.scrollTo({
-                    left: slideStripRef.current.scrollWidth,
-                    behavior: "smooth"
-                  });
-                }}
-              >
-                <ChevronsRight size={18} aria-hidden="true" />
-              </Button>
-            )}
-          </div>
+          <PresenterSlideStrip
+            slides={deck.slides}
+            currentSlideIdx={session.currentSlideIdx}
+            disabled={paused || commandsBlocked || slideMut.isPending}
+            onShow={go}
+          />
         </section>
         <PresenterSidePanel
           slide={slide}

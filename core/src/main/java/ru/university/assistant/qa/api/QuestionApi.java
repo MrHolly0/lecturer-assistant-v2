@@ -9,6 +9,8 @@ public interface QuestionApi {
 
     List<StudentQuestion> openQuestions(UUID sessionId);
 
+    QuestionPage list(UUID sessionId, QuestionStatus status, int limit, int offset);
+
     List<QuestionAnswerAudience> answeredQuestions(UUID sessionId);
 
     java.util.Map<UUID, List<StudentQuestion>> personalQuestions(UUID sessionId, java.util.Set<UUID> personIds);

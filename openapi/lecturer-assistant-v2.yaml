@@ -1610,6 +1610,52 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudentEngagement"
+  /courses/{courseId}/sessions/{sessionId}/questions:
+    get:
+      operationId: listSessionQuestions
+      summary: List staff questions for a session by moderation status.
+      description: >
+        Requires course management permission. Items are ordered newest first; counts cover all statuses
+        and do not depend on the selected status or current page.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [OPEN, ANSWERED, DISMISSED]
+            default: OPEN
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: A page of questions and counts for the session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionQuestionPage"
+        "400":
+          description: Invalid status, limit, or offset.
+        "403":
+          description: The caller cannot manage this course.
+        "404":
+          description: Session not found in this course.
   /courses/{courseId}/sessions/{sessionId}/questions/{questionId}:
     put:
       operationId: updateLiveStudentQuestion
@@ -4369,6 +4415,43 @@ components:
           allOf:
             - $ref: "#/components/schemas/QuestionAnswerVisibility"
           nullable: true
+    SessionQuestionCounts:
+      type: object
+      required: [open, answered, dismissed]
+      properties:
+        open:
+          type: integer
+          format: int64
+          minimum: 0
+        answered:
+          type: integer
+          format: int64
+          minimum: 0
+        dismissed:
+          type: integer
+          format: int64
+          minimum: 0
+    SessionQuestionPage:
+      type: object
+      required: [items, total, limit, offset, counts]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentQuestion"
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        offset:
+          type: integer
+          minimum: 0
+        counts:
+          $ref: "#/components/schemas/SessionQuestionCounts"
     QuestionAnswerVisibility:
       type: string
       enum: [AUTHOR, SESSION]

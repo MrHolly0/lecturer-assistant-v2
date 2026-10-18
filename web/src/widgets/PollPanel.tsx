@@ -42,6 +42,7 @@ export function PollPanel({
 }: Props) {
   const qc = useQueryClient();
   const [view, setView] = useState<View>("idle");
+  const [expandedClosedPollId, setExpandedClosedPollId] = useState<string | null>(null);
 
   const activeQuery = useQuery({
     queryKey: ["poll", courseId, sessionId, "active"],
@@ -72,6 +73,7 @@ export function PollPanel({
     onSuccess: (result) => {
       qc.setQueryData(["poll", courseId, sessionId, "active"], result);
       void qc.invalidateQueries({ queryKey: ["poll", courseId, sessionId, "closed"] });
+      setExpandedClosedPollId(null);
       toast.success("Опрос закрыт.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось закрыть опрос."))
@@ -91,7 +93,10 @@ export function PollPanel({
   });
 
   useEffect(() => {
-    if (activePoll?.poll.status === "OPEN") setView("idle");
+    if (activePoll?.poll.status === "OPEN") {
+      setView("idle");
+      setExpandedClosedPollId(null);
+    }
   }, [activePoll?.poll.id, activePoll?.poll.status]);
 
   useEffect(() => {
@@ -138,6 +143,9 @@ export function PollPanel({
   if (activePoll) {
     const total = activePoll.totalResponses;
     const selectedCorrect = activePoll.poll.correctOptionIdx;
+    const isClosed = activePoll.poll.status === "CLOSED";
+    const closedResultsExpanded = expandedClosedPollId === activePoll.poll.id;
+    const showResults = !isClosed || closedResultsExpanded;
     return (
       <>
         <div className="poll-panel">
@@ -147,43 +155,60 @@ export function PollPanel({
             <span className="poll-response-count">
               {total} {pluralizeRu(total, "ответ", "ответа", "ответов")}
             </span>
+            {isClosed && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="poll-results-toggle"
+                aria-expanded={closedResultsExpanded}
+                onClick={() =>
+                  setExpandedClosedPollId((current) =>
+                    current === activePoll.poll.id ? null : activePoll.poll.id
+                  )
+                }
+              >
+                {closedResultsExpanded ? "Свернуть результаты" : "Показать результаты"}
+              </Button>
+            )}
           </div>
-          <div className="poll-bars">
-            {activePoll.poll.options.map((opt, idx) => {
-              const count = activePoll.votes[idx] ?? 0;
-              const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-              const isClosed = activePoll.poll.status === "CLOSED";
-              const isCorrect = selectedCorrect === idx;
-              return (
-                <div
-                  key={idx}
-                  className={`poll-bar-row${isCorrect ? " poll-bar-row--correct" : ""}`}
-                >
-                  <button
-                    type="button"
-                    className="poll-bar-correct-toggle"
-                    aria-label={`Отметить вариант ${idx + 1} правильным`}
-                    aria-pressed={isCorrect}
-                    disabled={commandsBlocked || isClosed || correctMut.isPending}
-                    onClick={() =>
-                      correctMut.mutate({
-                        pollId: activePoll.poll.id,
-                        correctOptionIdx: isCorrect ? null : idx
-                      })
-                    }
+          {showResults && (
+            <div className="poll-bars">
+              {activePoll.poll.options.map((opt, idx) => {
+                const count = activePoll.votes[idx] ?? 0;
+                const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                const isClosed = activePoll.poll.status === "CLOSED";
+                const isCorrect = selectedCorrect === idx;
+                return (
+                  <div
+                    key={idx}
+                    className={`poll-bar-row${isCorrect ? " poll-bar-row--correct" : ""}`}
                   >
-                    {isCorrect ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                  </button>
-                  <PollOptionText text={opt} className="poll-bar-label" />
-                  <div className="poll-bar-track">
-                    <div className="poll-bar-fill" style={{ width: `${pct}%` }} />
+                    <button
+                      type="button"
+                      className="poll-bar-correct-toggle"
+                      aria-label={`Отметить вариант ${idx + 1} правильным`}
+                      aria-pressed={isCorrect}
+                      disabled={commandsBlocked || isClosed || correctMut.isPending}
+                      onClick={() =>
+                        correctMut.mutate({
+                          pollId: activePoll.poll.id,
+                          correctOptionIdx: isCorrect ? null : idx
+                        })
+                      }
+                    >
+                      {isCorrect ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                    </button>
+                    <PollOptionText text={opt} className="poll-bar-label" />
+                    <div className="poll-bar-track">
+                      <div className="poll-bar-fill" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="poll-bar-pct">{pct}%</span>
                   </div>
-                  <span className="poll-bar-pct">{pct}%</span>
-                </div>
-              );
-            })}
-          </div>
-          {activePoll.poll.status === "OPEN" && (
+                );
+              })}
+            </div>
+          )}
+          {!isClosed && (
             <>
               <p className="poll-correct-hint">
                 {selectedCorrect === null || selectedCorrect === undefined
@@ -211,7 +236,7 @@ export function PollPanel({
               </Button>
             </>
           )}
-          {activePoll.poll.status === "CLOSED" && (
+          {isClosed && (
             <Button
               type="button"
               variant="outline"

@@ -24,6 +24,8 @@ import ru.university.assistant.interaction.api.PollVote;
 import ru.university.assistant.interaction.api.SubmitActivityResponseRequest;
 import ru.university.assistant.live.internal.StudentSseBroadcaster;
 import ru.university.assistant.live.internal.StudentWebSessionService;
+import ru.university.assistant.qa.api.QuestionPage;
+import ru.university.assistant.qa.api.QuestionStatus;
 import ru.university.assistant.qa.api.StudentQuestion;
 
 @RestController
@@ -52,6 +54,17 @@ class StudentSessionController {
             @PathVariable UUID courseId,
             @PathVariable UUID sessionId) {
         return studentSessions.engagement(user, courseId, sessionId);
+    }
+
+    @GetMapping("/api/v1/courses/{courseId}/sessions/{sessionId}/questions")
+    public QuestionPage questions(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID sessionId,
+            @RequestParam(defaultValue = "OPEN") QuestionStatus status,
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(defaultValue = "0") int offset) {
+        return studentSessions.questions(user, courseId, sessionId, status, limit, offset);
     }
 
     @PutMapping("/api/v1/courses/{courseId}/sessions/{sessionId}/questions/{questionId}")

@@ -1,0 +1,157 @@
+.presenter-question-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.presenter-question-filters .ui-button {
+  min-height: 44px;
+  gap: 8px;
+}
+
+.presenter-question-filters .ui-button > span {
+  min-width: 1.5em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12px;
+  text-align: center;
+}
+
+.teacher-remote-question-list > li {
+  padding: 10px 0;
+}
+
+.teacher-remote-question-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.teacher-remote-question-item__summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.teacher-remote-question-item__summary > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--muted-foreground);
+}
+
+.teacher-remote-question-item__summary > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.teacher-remote-question-item__summary strong {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+.teacher-remote-question-item__summary small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.teacher-remote-question-item > .ui-button {
+  width: auto;
+  min-height: 44px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.teacher-remote-question-item + .teacher-question-composer,
+.teacher-remote-question-list > li > .teacher-question-composer,
+.teacher-remote-question-list > li > .presenter-question-record-details {
+  margin: 10px 0 8px 31px;
+}
+
+.presenter-question-record-details {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.presenter-question-record-details h3,
+.presenter-question-record-details p {
+  margin: 0;
+}
+
+.presenter-question-record-details__status {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.presenter-question-record-details__answer {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.presenter-question-record-details > small {
+  color: var(--muted-foreground);
+}
+
+.poll-results-toggle.ui-button {
+  min-height: 44px;
+  white-space: normal;
+}
+
+.presenter-question-load-more.ui-button {
+  min-height: 44px;
+  width: 100%;
+  margin: 0 0 12px;
+}
+
+@media (max-width: 540px) {
+  .teacher-remote-question-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .teacher-remote-question-item > .ui-button {
+    width: 100%;
+  }
+
+  .teacher-remote-question-list > li > .teacher-question-composer,
+  .teacher-remote-question-list > li > .presenter-question-record-details {
+    margin-left: 0;
+  }
+
+  .presenter-question-filters .ui-button {
+    flex: 1 1 auto;
+  }
+}
+
+.presenter-question-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.presenter-question-filters .ui-button {
+  min-width: 0;
+  padding-inline: 6px;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.presenter-question-filters .ui-button > span {
+  padding-inline: 4px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 400px) {
+  .presenter-question-filters .ui-button {
+    font-size: 12px;
+  }
+}

@@ -70,6 +70,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [editingName, setEditingName] = useState(false);
+  const nameRequestTitleRef = useRef<HTMLHeadingElement>(null);
+  const revealedNameRequestRef = useRef<string | null>(null);
   const questionDraftKey = user
     ? `student-question-draft:${normalizedCode}:${user.id}`
     : `student-question-draft:${normalizedCode}`;
@@ -329,6 +331,40 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   }, [current?.currentSlideIdx]);
 
   useEffect(() => {
+    if (!current?.nameRequested || !isJoined || isTerminalSession) {
+      revealedNameRequestRef.current = null;
+      return;
+    }
+    if (revealedNameRequestRef.current === scope) return;
+    let frame = 0;
+    const reveal = () => {
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const title = nameRequestTitleRef.current;
+        if (!title || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+        title.focus({ preventScroll: true });
+        title.closest("form")?.scrollIntoView({ block: "start", behavior: "instant" });
+        revealedNameRequestRef.current = scope;
+        observer.disconnect();
+      });
+    };
+    // A teacher request waits for an open question/slide dialog to close.
+    const observer = new MutationObserver(reveal);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-state"]
+    });
+    reveal();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [current?.nameRequested, isJoined, isTerminalSession, scope]);
+
+  useEffect(() => {
     if (!participantToken || !normalizedCode) return undefined;
     const connection = connectStudentSession(
       normalizedCode,
@@ -388,11 +424,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           nameMut.mutate();
         }}
       >
-        <strong>
+        <h2 ref={nameRequestTitleRef} tabIndex={-1}>
           {current.nameRequested
             ? "Преподаватель просит указать имя и фамилию"
             : "Ваше имя на лекции"}
-        </strong>
+        </h2>
         <p>Укажите данные, под которыми вас можно найти в списке участников.</p>
         <div className="student-name-request__fields">
           <label>
@@ -489,7 +525,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         <section className="student-slide-card">
           <div className="student-slide-meta">
             <span>Слайд {slideLabel}</span>
-            {current.currentSlide && <StudentSlideViewer slide={current.currentSlide} />}
+            {current.currentSlide && (
+              <StudentSlideViewer
+                slide={current.currentSlide}
+                restoreFocusOnClose={!current.nameRequested}
+              />
+            )}
             {user &&
               current.currentSlide &&
               (current.status === "LIVE" || current.status === "PAUSED") && (
@@ -611,6 +652,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           )}
           <StudentFeedbackControls
             isLive={commandsReady}
+            restoreFocusOnClose={!current.nameRequested}
             unavailableMessage={feedbackUnavailableMessage}
             isSignalPending={signalMut.isPending}
             isQuestionPending={questionMut.isPending}

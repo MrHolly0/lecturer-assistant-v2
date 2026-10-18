@@ -1,0 +1,199 @@
+.presenter-tools__drag-handle {
+  align-items: center;
+  cursor: grab;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.presenter-tools__drag-handle:active {
+  cursor: grabbing;
+}
+
+.presenter-tools__header,
+.presenter-tools__header-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.presenter-tools__header {
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px 6px 12px;
+}
+
+.presenter-tools__header-actions {
+  flex: 0 0 auto;
+}
+
+.presenter-tools__icon,
+.presenter-tools__action {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 8px;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
+}
+
+.presenter-tools__icon {
+  padding: 0;
+}
+
+.presenter-tools__actions {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.presenter-tools__action {
+  justify-self: start;
+}
+
+.presenter-tools__fallback {
+  align-items: start;
+  border: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.presenter-tools__hint {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.presenter-tools__floating {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 18%);
+  color: var(--foreground);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 16px);
+  overflow: hidden;
+  position: fixed;
+  width: min(420px, calc(100vw - 16px));
+  z-index: 30;
+}
+
+.presenter-tools__body {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.presenter-tools__body .live-note-editor textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.presenter-tools-popup-root {
+  min-height: 100vh;
+}
+
+.presenter-tools-popup-root .presenter-tools__floating--popup {
+  inset: 8px;
+  max-height: calc(100vh - 16px);
+  position: fixed;
+  width: auto;
+}
+
+.presenter-tools-popup-root .presenter-tools__body {
+  flex: 1 1 auto;
+}
+
+.presenter-shell .presenter-tools__drawing-toolbar {
+  bottom: auto;
+  left: auto;
+  max-width: min(760px, calc(100vw - 16px));
+  position: fixed;
+  right: auto;
+  top: auto;
+  z-index: 30;
+}
+
+.presenter-shell .presenter-tools__drawing-header {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex: 0 0 100%;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.presenter-shell .presenter-tools__drawing-header .presenter-tools__icon {
+  background: transparent;
+}
+
+.presenter-shell .presenter-tools__drawing-toolbar--desktop .presenter-tools__drag-handle {
+  flex: 1;
+}
+
+.presenter-shell .presenter-tools__drawing-toolbar--mobile {
+  bottom: max(8px, var(--app-safe-area-bottom));
+  display: none;
+  grid-template-columns: repeat(5, minmax(44px, 1fr));
+  left: 8px;
+  max-width: none;
+  padding: 4px;
+  right: 8px;
+  top: auto;
+  width: auto;
+  z-index: 30;
+}
+
+.presenter-shell .presenter-tools__drawing-toolbar--mobile .drawing-mobile-tool {
+  box-sizing: border-box;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 4px;
+}
+
+.presenter-shell .presenter-tools__drawing-toolbar--mobile .drawing-mobile-tool--icon {
+  flex: initial;
+  width: auto;
+}
+
+.drawing-canvas:not(.drawing-canvas--active) {
+  touch-action: auto;
+}
+
+@media (max-width: 900px) {
+  .presenter-shell .presenter-tools__drawing-toolbar--desktop {
+    display: none;
+  }
+
+  .presenter-shell .presenter-tools__drawing-toolbar--mobile {
+    display: grid;
+  }
+}
+.presenter-tools__floating,
+.presenter-shell .presenter-tools__drawing-toolbar--desktop {
+  max-height: calc(var(--presenter-tool-height, 100dvh) - 16px);
+  border-radius: 10px;
+}
+.presenter-shell .presenter-tools__drawing-toolbar--desktop {
+  overflow-y: auto;
+}
+.presenter-tools__icon,
+.presenter-tools__action {
+  border-radius: 8px;
+}
+.presenter-shell .drawing-sizes .size-dot {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}

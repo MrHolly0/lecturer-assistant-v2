@@ -1256,6 +1256,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/sessions/{sessionId}/questions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List staff questions for a session by moderation status.
+     * @description Requires course management permission. Items are ordered newest first; counts cover all statuses and do not depend on the selected status or current page.
+     */
+    get: operations["listSessionQuestions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/sessions/{sessionId}/questions/{questionId}": {
     parameters: {
       query?: never;
@@ -2990,6 +3010,22 @@ export interface components {
       /** Format: date-time */
       answeredAt?: string | null;
       answerVisibility?: components["schemas"]["QuestionAnswerVisibility"] | null;
+    };
+    SessionQuestionCounts: {
+      /** Format: int64 */
+      open: number;
+      /** Format: int64 */
+      answered: number;
+      /** Format: int64 */
+      dismissed: number;
+    };
+    SessionQuestionPage: {
+      items: components["schemas"]["StudentQuestion"][];
+      /** Format: int64 */
+      total: number;
+      limit: number;
+      offset: number;
+      counts: components["schemas"]["SessionQuestionCounts"];
     };
     /** @enum {string} */
     QuestionAnswerVisibility: "AUTHOR" | "SESSION";
@@ -5531,6 +5567,54 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["StudentEngagement"];
         };
+      };
+    };
+  };
+  listSessionQuestions: {
+    parameters: {
+      query?: {
+        status?: "OPEN" | "ANSWERED" | "DISMISSED";
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description A page of questions and counts for the session. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionQuestionPage"];
+        };
+      };
+      /** @description Invalid status, limit, or offset. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The caller cannot manage this course. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found in this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

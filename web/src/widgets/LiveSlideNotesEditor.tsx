@@ -17,16 +17,35 @@ interface Props {
   courseId: string;
   deckId: string;
   slide: Pick<Slide, "idx" | "note">;
+  draft?: string;
+  onDraftChange?: (slideIdx: number, content?: string, expectedContent?: string) => void;
 }
 
-export function LiveSlideNotesEditor({ courseId, deckId, slide }: Props) {
+export function LiveSlideNotesEditor({
+  courseId,
+  deckId,
+  slide,
+  draft: controlledDraft,
+  onDraftChange
+}: Props) {
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState(slide.note?.content ?? "");
+  const [localDraft, setLocalDraft] = useState(slide.note?.content ?? "");
+  const draft = controlledDraft ?? localDraft;
   const currentContent = slide.note?.content ?? "";
   const draftRef = useRef(draft);
   const activeSlideRef = useRef({ idx: slide.idx, savedContent: currentContent });
   const unsavedDraftsRef = useRef(new Map<number, string>());
   const submittedRef = useRef(new Map<number, string>());
+  const setCurrentDraft = useCallback(
+    (content: string, slideIdx = activeSlideRef.current.idx) => {
+      draftRef.current = content;
+      setLocalDraft(content);
+      onDraftChange?.(slideIdx, content);
+      if (content === currentContent) unsavedDraftsRef.current.delete(slideIdx);
+      else unsavedDraftsRef.current.set(slideIdx, content);
+    },
+    [currentContent, onDraftChange]
+  );
 
   const updateCachedNote = useCallback(
     (slideIdx: number, note?: SlideNote) => {
@@ -51,6 +70,7 @@ export function LiveSlideNotesEditor({ courseId, deckId, slide }: Props) {
     onSuccess: (note, variables) => {
       if (submittedRef.current.get(variables.slideIdx) !== variables.content) return;
       updateCachedNote(variables.slideIdx, note);
+      onDraftChange?.(variables.slideIdx, undefined, variables.content);
       if (unsavedDraftsRef.current.get(variables.slideIdx) === variables.content) {
         unsavedDraftsRef.current.delete(variables.slideIdx);
       }
@@ -67,12 +87,12 @@ export function LiveSlideNotesEditor({ courseId, deckId, slide }: Props) {
     mutationFn: ({ slideIdx }: { slideIdx: number }) => deleteSlideNote(courseId, deckId, slideIdx),
     onSuccess: (_, variables) => {
       updateCachedNote(variables.slideIdx, undefined);
+      onDraftChange?.(variables.slideIdx, undefined);
       unsavedDraftsRef.current.delete(variables.slideIdx);
       submittedRef.current.delete(variables.slideIdx);
       if (activeSlideRef.current.idx === variables.slideIdx) {
-        draftRef.current = "";
         activeSlideRef.current.savedContent = "";
-        setDraft("");
+        setCurrentDraft("", variables.slideIdx);
       }
       toast.success("Заметка очищена.");
     },
@@ -98,10 +118,10 @@ export function LiveSlideNotesEditor({ courseId, deckId, slide }: Props) {
         submitNote(previous.idx, previousDraft);
       }
 
-      const nextDraft = unsavedDraftsRef.current.get(slide.idx) ?? currentContent;
+      const nextDraft =
+        controlledDraft ?? unsavedDraftsRef.current.get(slide.idx) ?? currentContent;
       activeSlideRef.current = { idx: slide.idx, savedContent: currentContent };
-      draftRef.current = nextDraft;
-      setDraft(nextDraft);
+      setCurrentDraft(nextDraft, slide.idx);
       return;
     }
 
@@ -112,11 +132,16 @@ export function LiveSlideNotesEditor({ courseId, deckId, slide }: Props) {
         unsavedDraftsRef.current.delete(slide.idx);
       }
       if (draftRef.current === previousSavedContent) {
-        draftRef.current = currentContent;
-        setDraft(currentContent);
+        setCurrentDraft(currentContent, slide.idx);
       }
     }
-  }, [currentContent, slide.idx, submitNote]);
+  }, [controlledDraft, currentContent, slide.idx, submitNote, setCurrentDraft]);
+
+  useEffect(() => {
+    if (controlledDraft === undefined) return;
+    draftRef.current = controlledDraft;
+    setLocalDraft(controlledDraft);
+  }, [controlledDraft]);
 
   const pending = saveMutation.isPending || clearMutation.isPending;
   const dirty = draft !== currentContent;
@@ -130,13 +155,7 @@ export function LiveSlideNotesEditor({ courseId, deckId, slide }: Props) {
         placeholder="Тезисы, напоминания и примеры для этого слайда"
         onChange={(event) => {
           const nextDraft = event.target.value;
-          draftRef.current = nextDraft;
-          setDraft(nextDraft);
-          if (nextDraft === currentContent) {
-            unsavedDraftsRef.current.delete(slide.idx);
-          } else {
-            unsavedDraftsRef.current.set(slide.idx, nextDraft);
-          }
+          setCurrentDraft(nextDraft, slide.idx);
         }}
         onKeyDown={(event) => {
           if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && dirty) {
@@ -167,9 +186,7 @@ export function LiveSlideNotesEditor({ courseId, deckId, slide }: Props) {
               clearMutation.mutate({ slideIdx: slide.idx });
               return;
             }
-            draftRef.current = "";
-            unsavedDraftsRef.current.delete(slide.idx);
-            setDraft("");
+            setCurrentDraft("", slide.idx);
           }}
         >
           <Eraser size={16} aria-hidden="true" /> Очистить

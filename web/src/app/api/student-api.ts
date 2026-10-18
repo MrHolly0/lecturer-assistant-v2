@@ -16,6 +16,8 @@ export type StudentJoinResponse = components["schemas"]["StudentJoinResponse"];
 export type SignalAggregate = components["schemas"]["SignalAggregate"];
 export type SignalValue = components["schemas"]["SignalValue"];
 export type StudentQuestion = components["schemas"]["StudentQuestion"];
+export type StudentQuestionStatus = StudentQuestion["status"];
+export type SessionQuestionPage = components["schemas"]["SessionQuestionPage"];
 export type StudentQuestionAnswer = components["schemas"]["StudentQuestionAnswer"];
 export type UpdateStudentQuestionRequest = components["schemas"]["UpdateStudentQuestionRequest"];
 export type StudentEngagement = components["schemas"]["StudentEngagement"];
@@ -167,6 +169,18 @@ export async function getStudentEngagement(
 ): Promise<StudentEngagement> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/engagement`);
   return res.json() as Promise<StudentEngagement>;
+}
+
+export async function getSessionQuestionsPage(
+  courseId: string,
+  sessionId: string,
+  status: StudentQuestionStatus = "OPEN",
+  limit = 50,
+  offset = 0
+): Promise<SessionQuestionPage> {
+  const params = new URLSearchParams({ status, limit: String(limit), offset: String(offset) });
+  const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/questions?${params}`);
+  return res.json() as Promise<SessionQuestionPage>;
 }
 
 export function connectStudentSession(

@@ -8,6 +8,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import ru.university.assistant.qa.api.QuestionAnswerAudience;
 import ru.university.assistant.qa.api.QuestionAnswerVisibility;
+import ru.university.assistant.qa.api.QuestionCounts;
+import ru.university.assistant.qa.api.QuestionPage;
 import ru.university.assistant.qa.api.QuestionStatus;
 import ru.university.assistant.qa.api.StudentQuestion;
 import ru.university.assistant.qa.api.StudentQuestionAnswer;
@@ -55,6 +57,40 @@ class QuestionRepository {
                 .param("sessionId", sessionId)
                 .query(this::mapQuestion)
                 .list();
+    }
+
+    QuestionPage list(UUID sessionId, QuestionStatus status, int limit, int offset) {
+        List<StudentQuestion> items = jdbc.sql(
+                        """
+                        select id, session_id, display_name, channel_type, text, status, created_at,
+                               answer_text, answered_at, answer_visibility, anonymous
+                        from qa.questions
+                        where session_id = :sessionId and status = :status
+                        order by created_at desc, id desc
+                        limit :limit offset :offset
+                        """)
+                .param("sessionId", sessionId)
+                .param("status", status.name())
+                .param("limit", limit)
+                .param("offset", offset)
+                .query(this::mapQuestion)
+                .list();
+        long total = jdbc.sql("select count(*) from qa.questions where session_id = :sessionId and status = :status")
+                .param("sessionId", sessionId)
+                .param("status", status.name())
+                .query(Long.class)
+                .single();
+        QuestionCounts counts = jdbc.sql("""
+                        select count(*) filter (where status = 'OPEN') as open,
+                               count(*) filter (where status = 'ANSWERED') as answered,
+                               count(*) filter (where status = 'DISMISSED') as dismissed
+                        from qa.questions where session_id = :sessionId
+                        """)
+                .param("sessionId", sessionId)
+                .query((rs, row) -> new QuestionCounts(
+                        rs.getLong("open"), rs.getLong("answered"), rs.getLong("dismissed")))
+                .single();
+        return new QuestionPage(items, total, limit, offset, counts);
     }
 
     java.util.Optional<StudentQuestion> find(UUID sessionId, UUID questionId) {

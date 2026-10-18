@@ -109,3 +109,30 @@
     padding-inline: 10px;
   }
 }
+.student-name-request {
+  scroll-margin-top: 16px;
+}
+.student-name-request h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.4;
+}
+.student-poll-result-toggle.ui-button {
+  min-height: 44px;
+  justify-self: start;
+}
+.dark .student-session-shell .student-signal-btn--green {
+  color: #8fe1b0;
+  background: color-mix(in srgb, #259c62 22%, var(--background));
+  border-color: color-mix(in srgb, #8fe1b0 38%, var(--border));
+}
+.dark .student-session-shell .student-signal-btn--yellow {
+  color: #f0d57a;
+  background: color-mix(in srgb, #c39c26 22%, var(--background));
+  border-color: color-mix(in srgb, #f0d57a 38%, var(--border));
+}
+.dark .student-session-shell .student-signal-btn--red {
+  color: #ff9aa6;
+  background: color-mix(in srgb, #c54456 22%, var(--background));
+  border-color: color-mix(in srgb, #ff9aa6 38%, var(--border));
+}

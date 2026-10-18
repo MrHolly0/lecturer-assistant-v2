@@ -45,6 +45,7 @@ interface StudentFeedbackControlsProps {
   questionError?: boolean;
   onAnonymousChange: (value: boolean) => void;
   unavailableMessage?: string;
+  restoreFocusOnClose?: boolean;
 }
 
 interface VisualViewportMetrics {
@@ -288,7 +289,7 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
                 }}
                 onCloseAutoFocus={(event) => {
                   event.preventDefault();
-                  restoreFocusAndPagePosition();
+                  if (props.restoreFocusOnClose !== false) restoreFocusAndPagePosition();
                 }}
               >
                 <div className="student-question-dialog__header">
