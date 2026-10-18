@@ -77,7 +77,7 @@ export function StartSessionDialog({
           ? teacherRemotePath(courseId, session.id)
           : `/courses/${courseId}/sessions/${session.id}/join`
       );
-      toast.success("Код занятия создан. Начните показ, когда студенты подключатся.");
+      toast.success("Подключение открыто. Код создан, показ ещё не начался.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось запустить занятие."))
   });
@@ -115,12 +115,12 @@ export function StartSessionDialog({
         if (!startMutation.isPending) onOpenChange(next);
       }}
     >
-      <DialogContent className="start-session-dialog top-4 translate-y-0">
+      <DialogContent className="start-session-dialog">
         <DialogHeader>
-          <DialogTitle>Подготовить занятие</DialogTitle>
+          <DialogTitle>Подключить группы</DialogTitle>
           <DialogDescription>
-            Выберите состав студентов. Сначала откроется ожидание с кодом, а показ вы начнёте
-            отдельно. Лекция «{lecture?.title ?? ""}» останется доступна для следующих занятий.
+            1. Выберите учебные группы. 2. Откройте подключение, чтобы получить код. Показ начнётся
+            после нажатия «Начать показ».
           </DialogDescription>
         </DialogHeader>
 
@@ -132,76 +132,76 @@ export function StartSessionDialog({
           </div>
         </div>
 
-        {courseQuery.isError ? (
-          <div className="form-error" role="alert">
-            Не удалось загрузить группы курса.
-            <Button type="button" variant="outline" onClick={() => courseQuery.refetch()}>
-              Повторить
-            </Button>
-          </div>
-        ) : (
-          <Tabs value={mode} onValueChange={(value) => setMode(value as GroupMode)}>
-            <TabsList className="start-session-tabs">
-              <TabsTrigger value="existing" disabled={groups.length === 0}>
-                Существующая группа
-              </TabsTrigger>
-              <TabsTrigger value="new">Новая группа</TabsTrigger>
-            </TabsList>
-            <TabsContent value="existing" className="start-session-field">
-              <Label>Учебные группы</Label>
-              <div className="start-session-group-list" role="group" aria-label="Группы занятия">
-                {groups.map((group) => {
-                  const checked = groupIds.includes(group.id);
-                  return (
-                    <label key={group.id} className="start-session-group-option">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(next) =>
-                          setGroupIds((ids) =>
-                            next ? [...ids, group.id] : ids.filter((id) => id !== group.id)
-                          )
-                        }
-                      />
-                      <span>{group.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-              <p className="muted">Можно провести один общий эфир сразу для нескольких групп.</p>
-            </TabsContent>
-            <TabsContent value="new" className="start-session-field">
-              <Label htmlFor="start-session-new-group">Название новой группы</Label>
-              <div className="start-session-new-group">
-                <Input
-                  id="start-session-new-group"
-                  className="start-session-control"
-                  value={groupName}
-                  maxLength={120}
-                  placeholder="Например, ИКБО-01-23"
-                  autoComplete="off"
-                  onChange={(event) => setGroupName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addGroupName();
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!cleanGroupName}
-                  onClick={addGroupName}
-                >
-                  <Plus size={16} aria-hidden="true" /> Добавить
-                </Button>
-              </div>
-              <p className="muted">Новые группы будут созданы вместе с занятием.</p>
-            </TabsContent>
-          </Tabs>
-        )}
+        <div className="start-session-body">
+          {courseQuery.isError ? (
+            <div className="form-error" role="alert">
+              Не удалось загрузить группы курса.
+              <Button type="button" variant="outline" onClick={() => courseQuery.refetch()}>
+                Повторить
+              </Button>
+            </div>
+          ) : (
+            <Tabs value={mode} onValueChange={(value) => setMode(value as GroupMode)}>
+              <TabsList className="start-session-tabs">
+                <TabsTrigger value="existing" disabled={groups.length === 0}>
+                  Группы курса
+                </TabsTrigger>
+                <TabsTrigger value="new">Новая группа</TabsTrigger>
+              </TabsList>
+              <TabsContent value="existing" className="start-session-field">
+                <Label>Учебные группы</Label>
+                <div className="start-session-group-list" role="group" aria-label="Группы занятия">
+                  {groups.map((group) => {
+                    const checked = groupIds.includes(group.id);
+                    return (
+                      <label key={group.id} className="start-session-group-option">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(next) =>
+                            setGroupIds((ids) =>
+                              next ? [...ids, group.id] : ids.filter((id) => id !== group.id)
+                            )
+                          }
+                        />
+                        <span>{group.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="muted">Можно провести один общий эфир сразу для нескольких групп.</p>
+              </TabsContent>
+              <TabsContent value="new" className="start-session-field">
+                <Label htmlFor="start-session-new-group">Название новой группы</Label>
+                <div className="start-session-new-group">
+                  <Input
+                    id="start-session-new-group"
+                    className="start-session-control"
+                    value={groupName}
+                    maxLength={120}
+                    placeholder="Например, ИКБО-01-23"
+                    autoComplete="off"
+                    onChange={(event) => setGroupName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addGroupName();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!cleanGroupName}
+                    onClick={addGroupName}
+                  >
+                    <Plus size={16} aria-hidden="true" /> Добавить
+                  </Button>
+                </div>
+                <p className="muted">Новые группы будут созданы вместе с занятием.</p>
+              </TabsContent>
+            </Tabs>
+          )}
 
-        {selectedCount > 0 && (
           <div className="start-session-selection" aria-live="polite">
             <strong>Выбрано: {selectedCount}</strong>
             <div className="start-session-selection__items">
@@ -233,9 +233,12 @@ export function StartSessionDialog({
                   </button>
                 </span>
               ))}
+              {selectedCount === 0 && (
+                <span className="start-session-selection__empty">Группы ещё не выбраны</span>
+              )}
             </div>
           </div>
-        )}
+        </div>
 
         <DialogFooter>
           <DialogClose asChild>
@@ -245,7 +248,7 @@ export function StartSessionDialog({
           </DialogClose>
           <Button type="button" disabled={!canSubmit || startMutation.isPending} onClick={submit}>
             <Play size={16} aria-hidden="true" />
-            {startMutation.isPending ? "Создаём ожидание…" : "Получить код занятия"}
+            {startMutation.isPending ? "Открываем подключение…" : "Открыть подключение"}
           </Button>
         </DialogFooter>
       </DialogContent>

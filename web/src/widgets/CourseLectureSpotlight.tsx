@@ -46,7 +46,16 @@ export function CourseLectureSpotlight({
       <section
         className="course-live-card course-live-card--loading"
         aria-label="Загрузка лекции"
-      />
+        aria-busy="true"
+        role="status"
+      >
+        <div className="course-live-card__skeleton" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <span className="sr-only">Загружаем лекцию и состояние занятия…</span>
+      </section>
     );
   }
 
@@ -58,7 +67,7 @@ export function CourseLectureSpotlight({
             <BookOpenText size={15} /> Лекции
           </span>
           <h2>Не удалось проверить состояние занятия</h2>
-          <p>Повторите запрос, прежде чем создавать новое ожидание.</p>
+          <p>Повторите запрос, прежде чем открыть подключение.</p>
         </div>
         <Button
           type="button"
@@ -124,11 +133,11 @@ export function CourseLectureSpotlight({
           <span className="course-live-card__status">
             <BookOpenText size={15} /> Нет готовых лекций
           </span>
-          <h2>Подготовьте первую лекцию</h2>
+          <h2>Добавьте первую лекцию</h2>
           <p>Добавьте презентацию и свяжите её с лекцией, чтобы запускать занятие отсюда.</p>
         </div>
         <LinkButton className="course-live-card__action" to={`/courses/${courseId}/materials`}>
-          Подготовить лекцию
+          Открыть материалы
         </LinkButton>
       </section>
     );
@@ -153,7 +162,7 @@ export function CourseLectureSpotlight({
             onClick={() => setStartOpen(true)}
           >
             <Play size={17} aria-hidden="true" />
-            Подготовить занятие
+            Провести занятие
           </Button>
         )}
         <LinkButton

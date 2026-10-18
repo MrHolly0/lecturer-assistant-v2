@@ -9,6 +9,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import ru.university.assistant.iam.api.PersonRole;
 import ru.university.assistant.iam.api.PersonStatus;
+import ru.university.assistant.iam.api.UserPage;
+import ru.university.assistant.iam.api.UserProfile;
 
 @Repository
 class PersonRepository {
@@ -123,6 +125,36 @@ class PersonRepository {
                         """)
                 .query(this::mapPerson)
                 .list();
+    }
+
+    UserPage pageUsers(String query, PersonRole role, PersonStatus status, int limit, int offset) {
+        String where = "where status <> 'EPHEMERAL' "
+                + "and (cast(:query as text) is null or position(lower(cast(:query as text)) "
+                + "in lower(display_name)) > 0 or position(lower(cast(:query as text)) in lower(email)) > 0) "
+                + "and (cast(:role as text) is null or role = cast(:role as text)) "
+                + "and (cast(:status as text) is null or status = cast(:status as text))";
+        var count = jdbc.sql("select count(*) from iam.persons " + where)
+                .param("query", query)
+                .param("role", role == null ? null : role.name())
+                .param("status", status == null ? null : status.name())
+                .query(Long.class)
+                .single();
+        List<UserProfile> items = jdbc.sql(
+                        "select id, display_name, email, role, status from iam.persons " + where
+                                + " order by created_at desc, id desc limit :limit offset :offset")
+                .param("query", query)
+                .param("role", role == null ? null : role.name())
+                .param("status", status == null ? null : status.name())
+                .param("limit", limit)
+                .param("offset", offset)
+                .query((resultSet, rowNumber) -> new UserProfile(
+                        resultSet.getObject("id", UUID.class),
+                        resultSet.getString("display_name"),
+                        resultSet.getString("email"),
+                        PersonRole.valueOf(resultSet.getString("role")),
+                        PersonStatus.valueOf(resultSet.getString("status"))))
+                .list();
+        return new UserPage(items, count, limit, offset);
     }
 
     void updatePassword(UUID personId, String passwordHash) {

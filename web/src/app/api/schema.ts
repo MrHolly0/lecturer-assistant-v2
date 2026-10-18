@@ -211,6 +211,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/users/page": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Search and page through users. */
+    get: operations["pageUsers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/users/{personId}/role": {
     parameters: {
       query?: never;
@@ -2272,6 +2289,13 @@ export interface components {
       /** @enum {string} */
       status: "ACTIVE" | "DISABLED" | "EPHEMERAL";
     };
+    UserPage: {
+      items: components["schemas"]["UserProfile"][];
+      /** Format: int64 */
+      total: number;
+      limit: number;
+      offset: number;
+    };
     UpdateUserRoleRequest: {
       /** @enum {string} */
       role: "ADMIN" | "LECTURER" | "ASSISTANT" | "STUDENT";
@@ -3564,6 +3588,32 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["UserProfile"][];
+        };
+      };
+    };
+  };
+  pageUsers: {
+    parameters: {
+      query?: {
+        q?: string;
+        role?: "ADMIN" | "LECTURER" | "ASSISTANT" | "STUDENT";
+        status?: "ACTIVE" | "DISABLED";
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description A page of users. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserPage"];
         };
       };
     };

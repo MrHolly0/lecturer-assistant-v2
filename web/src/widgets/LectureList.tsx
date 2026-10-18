@@ -240,7 +240,7 @@ function LectureRows({
             <div className="lecture-row__actions">
               <Button type="button" onClick={() => onStart?.(lecture)}>
                 <Play size={16} aria-hidden="true" />
-                Запустить занятие
+                Провести занятие
               </Button>
               <ConfirmActionButton
                 title="Архивировать лекцию?"

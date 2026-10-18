@@ -2,6 +2,7 @@ import type { components } from "./schema";
 import { apiFetch } from "./http";
 import { clearStoredAuth, getStoredAuth, setStoredAuth } from "../auth";
 import { refreshAuthSession } from "./refresh";
+import { announceDirectoryChange } from "../directorySync";
 
 type AuthResponse = components["schemas"]["AuthResponse"];
 export type MaxAuthResponse = components["schemas"]["MaxAuthResponse"];
@@ -49,6 +50,7 @@ export async function registerByInvitation(
   });
   const data: AuthResponse = await res.json();
   setStoredAuth({ accessToken: data.accessToken });
+  announceDirectoryChange();
   return data;
 }
 

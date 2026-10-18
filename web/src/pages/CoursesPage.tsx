@@ -113,8 +113,8 @@ export function CoursesPage() {
   const currentSession = activeSession.data;
 
   return (
-    <div className="page">
-      <div className="page-header">
+    <div className="page courses-page">
+      <header className="page-header courses-page__header">
         <div>
           <h1>Курсы</h1>
           <p className="muted">Готовые лекции и учебные группы</p>
@@ -124,7 +124,7 @@ export function CoursesPage() {
             <Plus aria-hidden="true" /> Создать курс
           </Button>
         )}
-      </div>
+      </header>
 
       {activeSession.isError && (
         <div className="courses-session-error" role="alert">
@@ -146,7 +146,7 @@ export function CoursesPage() {
       )}
 
       {canCreateCourse && showCreate && (
-        <form onSubmit={submit} className="inline-form">
+        <form onSubmit={submit} className="inline-form courses-page__create-form">
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -216,7 +216,11 @@ export function CoursesPage() {
                 {course.archived && <span className="badge badge--muted">В архиве</span>}
               </Link>
               {!course.archived && (
-                <div className="course-card__actions">
+                <div
+                  className={`course-card__actions course-card__actions--active${
+                    canCreateCourse ? " course-card__actions--with-archive" : ""
+                  }`}
+                >
                   <CourseQuickStart
                     courseId={course.id}
                     blocked={
@@ -229,6 +233,7 @@ export function CoursesPage() {
                       description="Курс пропадёт из активной работы, но история и материалы сохранятся."
                       confirmLabel="Архивировать"
                       variant="outline"
+                      className="course-card__archive"
                       disabled={archiveMut.isPending}
                       onConfirm={() => archiveMut.mutate(course.id)}
                     >
@@ -238,7 +243,7 @@ export function CoursesPage() {
                 </div>
               )}
               {canCreateCourse && course.archived && (
-                <div className="course-card__actions">
+                <div className="course-card__actions course-card__actions--archive">
                   <Button
                     type="button"
                     variant="ghost"

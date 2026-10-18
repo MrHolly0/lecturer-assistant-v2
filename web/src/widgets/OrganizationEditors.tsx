@@ -23,7 +23,10 @@ import {
   DialogHeader,
   DialogTitle
 } from "../shared/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import { userErrorMessage } from "../app/api/errors";
+
+export const MAX_BULK_MOVE_MEMBERS = 200;
 
 export interface UnitDraft {
   id: string | null;
@@ -36,12 +39,14 @@ function DialogShell({
   title,
   description,
   children,
+  footer,
   onClose,
   className = ""
 }: {
   title: string;
   description?: string;
   children: React.ReactNode;
+  footer?: React.ReactNode;
   onClose: () => void;
   className?: string;
 }) {
@@ -52,7 +57,8 @@ function DialogShell({
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
-        {children}
+        <div className="org-dialog-body">{children}</div>
+        {footer}
       </DialogContent>
     </Dialog>
   );
@@ -89,9 +95,24 @@ export function OrganizationUnitEditor({
       description={draft.id ? undefined : "Группа будет создана в текущем месте."}
       onClose={() => !mutation.isPending && onClose()}
       className="org-dialog--compact"
+      footer={
+        <DialogFooter className="org-dialog-actions">
+          <Button type="button" variant="outline" onClick={onClose} disabled={mutation.isPending}>
+            Отмена
+          </Button>
+          <Button
+            type="submit"
+            form="organization-unit-form"
+            disabled={mutation.isPending || !name.trim()}
+          >
+            {mutation.isPending ? "Сохранение…" : draft.id ? "Сохранить" : "Создать группу"}
+          </Button>
+        </DialogFooter>
+      }
     >
       <form
         className="org-dialog-form"
+        id="organization-unit-form"
         onSubmit={(event) => {
           event.preventDefault();
           mutation.mutate();
@@ -113,14 +134,6 @@ export function OrganizationUnitEditor({
             В группе «{units.find((unit) => unit.id === draft.parentId)?.name ?? "…"}»
           </p>
         )}
-        <DialogFooter className="org-dialog-actions">
-          <Button type="button" variant="outline" onClick={onClose} disabled={mutation.isPending}>
-            Отмена
-          </Button>
-          <Button type="submit" disabled={mutation.isPending || !name.trim()}>
-            {mutation.isPending ? "Сохранение…" : draft.id ? "Сохранить" : "Создать группу"}
-          </Button>
-        </DialogFooter>
       </form>
     </DialogShell>
   );
@@ -232,135 +245,137 @@ export function OrganizationUnitMoveDialog({
       description="Вместе с группой переместятся вложенные группы и сотрудники."
       onClose={() => !mutation.isPending && onClose()}
       className="org-dialog--picker org-unit-move-dialog"
+      footer={
+        <DialogFooter className="org-dialog-actions">
+          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+            Отмена
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={
+              parentId === (unit.parentId ?? "") ||
+              mutation.isPending ||
+              reviewPending ||
+              reviewError ||
+              (managementChanges && !managerConfirmed)
+            }
+          >
+            {mutation.isPending ? "Перемещение…" : "Переместить"}
+          </Button>
+        </DialogFooter>
+      }
     >
-      <div className="org-dialog-body">
-        <div className="org-bulk-move-result org-unit-move-review">
-          <span>Из</span>
-          <strong>{groupPath(unit, units)}</strong>
-          <span>В</span>
-          <strong>{destinationPath}</strong>
-          <span>Состав</span>
-          <strong>
-            {unit.totalMembersCount}{" "}
-            {pluralizeRu(unit.totalMembersCount, "сотрудник", "сотрудника", "сотрудников")} ·{" "}
-            {descendants.size - 1}{" "}
-            {pluralizeRu(
-              descendants.size - 1,
-              "вложенная группа",
-              "вложенные группы",
-              "вложенных групп"
-            )}
-          </strong>
-        </div>
-        <label className="org-search">
-          <Search size={16} aria-hidden="true" />
-          <span className="sr-only">Найти родительскую группу</span>
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Найти группу"
-          />
-        </label>
-        <div className="org-picker-list" role="radiogroup" aria-label="Место для группы">
-          {administrator && (
-            <PickerOption
-              name="group-parent"
-              label="Верхний уровень"
-              detail="Без родительской группы"
-              selected={!parentId}
-              onSelect={() => {
-                setParentId("");
-                setManagerConfirmed(false);
-              }}
-            />
+      <div className="org-bulk-move-result org-unit-move-review">
+        <span>Из</span>
+        <strong>{groupPath(unit, units)}</strong>
+        <span>В</span>
+        <strong>{destinationPath}</strong>
+        <span>Состав</span>
+        <strong>
+          {unit.totalMembersCount}{" "}
+          {pluralizeRu(unit.totalMembersCount, "сотрудник", "сотрудника", "сотрудников")} ·{" "}
+          {descendants.size - 1}{" "}
+          {pluralizeRu(
+            descendants.size - 1,
+            "вложенная группа",
+            "вложенные группы",
+            "вложенных групп"
           )}
-          {candidates.map((candidate) => (
-            <PickerOption
-              name="group-parent"
-              key={candidate.id}
-              label={candidate.name}
-              detail={groupPath(candidate, units)}
-              selected={parentId === candidate.id}
-              onSelect={() => {
-                setParentId(candidate.id);
-                setManagerConfirmed(false);
-              }}
-            />
-          ))}
-          {candidates.length === 0 && <p className="org-picker-empty">Группы не найдены.</p>}
-        </div>
-        {managementChanges && (
-          <>
-            <p className="org-inline-note" role="status">
-              {losingManagers.length > 0 && (
-                <>
-                  У {losingManagers.length}{" "}
-                  {pluralizeRu(
-                    losingManagers.length,
-                    "руководителя",
-                    "руководителей",
-                    "руководителей"
-                  )}{" "}
-                  из {losingManagerGroups.map((name) => "«" + name + "»").join(", ")} область
-                  управления уменьшится.
-                </>
-              )}
-              {gainingManagers.length > 0 && (
-                <>
-                  {losingManagers.length > 0 ? " У " : "У "}
-                  {gainingManagers.length}{" "}
-                  {pluralizeRu(
-                    gainingManagers.length,
-                    "руководителя",
-                    "руководителей",
-                    "руководителей"
-                  )}{" "}
-                  из {gainingManagerGroups.map((name) => "«" + name + "»").join(", ")} область
-                  управления расширится.
-                </>
-              )}
-            </p>
-            <label className="org-manager-consent">
-              <input
-                type="checkbox"
-                checked={managerConfirmed}
-                onChange={(event) => setManagerConfirmed(event.target.checked)}
-              />
-              <span>Подтверждаю изменение области управления при переносе группы.</span>
-            </label>
-          </>
+        </strong>
+      </div>
+      <label className="org-search">
+        <Search size={16} aria-hidden="true" />
+        <span className="sr-only">Найти родительскую группу</span>
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Найти группу"
+        />
+      </label>
+      <div className="org-picker-list" role="radiogroup" aria-label="Место для группы">
+        {administrator && (
+          <PickerOption
+            name="group-parent"
+            label="Верхний уровень"
+            detail="Без родительской группы"
+            selected={!parentId}
+            onSelect={() => {
+              setParentId("");
+              setManagerConfirmed(false);
+            }}
+          />
         )}
-        {reviewPending && (
-          <p className="org-inline-state" role="status">
-            Проверяем изменение области управления…
-          </p>
-        )}
-        {reviewError && (
-          <div className="org-state org-state--inline" role="alert">
-            <p>Не удалось проверить изменение прав руководителей.</p>
-            <Button variant="outline" onClick={() => void managerReview.refetch()}>
-              Попробовать снова
-            </Button>
-          </div>
+        {candidates.map((candidate) => (
+          <PickerOption
+            name="group-parent"
+            key={candidate.id}
+            label={candidate.name}
+            detail={groupPath(candidate, units)}
+            selected={parentId === candidate.id}
+            onSelect={() => {
+              setParentId(candidate.id);
+              setManagerConfirmed(false);
+            }}
+          />
+        ))}
+        {candidates.length === 0 && !administrator && (
+          <p className="org-picker-empty">Подходящих групп нет.</p>
         )}
       </div>
-      <DialogFooter className="org-dialog-actions">
-        <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
-          Отмена
-        </Button>
-        <Button
-          onClick={() => mutation.mutate()}
-          disabled={
-            parentId === (unit.parentId ?? "") ||
-            mutation.isPending ||
-            reviewPending ||
-            reviewError ||
-            (managementChanges && !managerConfirmed)
-          }
-        >
-          {mutation.isPending ? "Перемещение…" : "Переместить"}
-        </Button>
-      </DialogFooter>
+      {managementChanges && (
+        <>
+          <p className="org-inline-note" role="status">
+            {losingManagers.length > 0 && (
+              <>
+                У {losingManagers.length}{" "}
+                {pluralizeRu(
+                  losingManagers.length,
+                  "руководителя",
+                  "руководителей",
+                  "руководителей"
+                )}{" "}
+                из {losingManagerGroups.map((name) => "«" + name + "»").join(", ")} область
+                управления уменьшится.
+              </>
+            )}
+            {gainingManagers.length > 0 && (
+              <>
+                {losingManagers.length > 0 ? " У " : "У "}
+                {gainingManagers.length}{" "}
+                {pluralizeRu(
+                  gainingManagers.length,
+                  "руководителя",
+                  "руководителей",
+                  "руководителей"
+                )}{" "}
+                из {gainingManagerGroups.map((name) => "«" + name + "»").join(", ")} область
+                управления расширится.
+              </>
+            )}
+          </p>
+          <label className="org-manager-consent">
+            <input
+              type="checkbox"
+              checked={managerConfirmed}
+              onChange={(event) => setManagerConfirmed(event.target.checked)}
+            />
+            <span>Подтверждаю изменение области управления при переносе группы.</span>
+          </label>
+        </>
+      )}
+      {reviewPending && (
+        <p className="org-inline-state" role="status">
+          Проверяем изменение области управления…
+        </p>
+      )}
+      {reviewError && (
+        <div className="org-state org-state--inline" role="alert">
+          <p>Не удалось проверить изменение прав руководителей.</p>
+          <Button variant="outline" onClick={() => void managerReview.refetch()}>
+            Попробовать снова
+          </Button>
+        </div>
+      )}
     </DialogShell>
   );
 }
@@ -449,9 +464,39 @@ export function OrganizationMemberEditor({
       }
       onClose={() => !mutation.isPending && onClose()}
       className="org-dialog--picker"
+      footer={
+        <DialogFooter className="org-dialog-actions">
+          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+            Отмена
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={
+              mutation.isPending ||
+              !personId ||
+              !person ||
+              (action === "access" && !administrator) ||
+              (managementChanges && !managerConfirmed) ||
+              (action === "move" &&
+                unitId === (member?.unitId ?? "") &&
+                unitRole === (member?.unitRole ?? "MEMBER"))
+            }
+          >
+            {mutation.isPending
+              ? "Сохранение…"
+              : action === "move-root"
+                ? "Переместить в список «Без группы»"
+                : action === "add"
+                  ? "Переместить сюда"
+                  : action === "move"
+                    ? "Переместить"
+                    : "Сохранить доступ"}
+          </Button>
+        </DialogFooter>
+      }
     >
       {requiresChoice ? (
-        <div className="org-dialog-body">
+        <div className="org-member-editor-content">
           <label className="org-search">
             <Search size={16} aria-hidden="true" />
             <span className="sr-only">Найти сотрудника</span>
@@ -514,7 +559,7 @@ export function OrganizationMemberEditor({
           )}
         </div>
       ) : (
-        <div className="org-dialog-form org-dialog-form--static">
+        <div className="org-member-editor-content">
           {action === "move" && (
             <>
               <label className="org-search">
@@ -526,11 +571,7 @@ export function OrganizationMemberEditor({
                   placeholder="Найти место"
                 />
               </label>
-              <div
-                className="org-picker-list org-picker-list--short"
-                role="radiogroup"
-                aria-label="Место назначения"
-              >
+              <div className="org-picker-list" role="radiogroup" aria-label="Место назначения">
                 {administrator && (
                   <PickerOption
                     name="member-destination"
@@ -642,34 +683,6 @@ export function OrganizationMemberEditor({
           )}
         </div>
       )}
-      <DialogFooter className="org-dialog-actions">
-        <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
-          Отмена
-        </Button>
-        <Button
-          onClick={() => mutation.mutate()}
-          disabled={
-            mutation.isPending ||
-            !personId ||
-            !person ||
-            (action === "access" && !administrator) ||
-            (managementChanges && !managerConfirmed) ||
-            (action === "move" &&
-              unitId === (member?.unitId ?? "") &&
-              unitRole === (member?.unitRole ?? "MEMBER"))
-          }
-        >
-          {mutation.isPending
-            ? "Сохранение…"
-            : action === "move-root"
-              ? "Переместить в список «Без группы»"
-              : action === "add"
-                ? "Переместить сюда"
-                : action === "move"
-                  ? "Переместить"
-                  : "Сохранить доступ"}
-        </Button>
-      </DialogFooter>
     </DialogShell>
   );
 }
@@ -688,6 +701,7 @@ export function OrganizationBulkMemberMoveDialog({
   const [unitId, setUnitId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [managerConfirmed, setManagerConfirmed] = useState(false);
+  const overMemberLimit = members.length > MAX_BULK_MOVE_MEMBERS;
   const managerMembers = members.filter((member) => member.unitRole === "MANAGER");
   const hasMove = unitId !== null && members.some((member) => member.unitId !== (unitId || null));
   const managerScopeChanges =
@@ -721,101 +735,124 @@ export function OrganizationBulkMemberMoveDialog({
       description="Состав будет перемещён одной операцией. Доступ в группе сохранится у каждого сотрудника."
       onClose={() => !mutation.isPending && onClose()}
       className="org-dialog--picker org-bulk-move-dialog"
+      footer={
+        <DialogFooter className="org-dialog-actions">
+          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+            Отмена
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={
+              mutation.isPending ||
+              overMemberLimit ||
+              !members.length ||
+              !hasMove ||
+              (managerScopeChanges && !managerConfirmed)
+            }
+          >
+            {mutation.isPending ? "Перемещение…" : `Переместить: ${members.length}`}
+          </Button>
+        </DialogFooter>
+      }
     >
-      <div className="org-dialog-body">
-        <div className="org-bulk-move-review">
-          <strong>Сотрудники</strong>
-          <ul>
-            {members.map((member) => (
-              <li key={member.id}>
-                <span>{member.displayName}</span>
-                <small>
-                  {member.email} · {member.unitName ?? "Без группы"}
-                </small>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <label className="org-search">
-          <Search size={16} aria-hidden="true" />
-          <span className="sr-only">Найти группу назначения</span>
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Найти группу"
-          />
-        </label>
-        <div className="org-picker-list" role="radiogroup" aria-label="Место назначения">
+      <div className="org-bulk-move-review">
+        <strong>Сотрудники</strong>
+        <ul aria-label="Первые сотрудники в списке">
+          {members.slice(0, 4).map((member) => (
+            <li key={member.id}>
+              <span>{member.displayName}</span>
+              <small>
+                {member.email} · {member.unitName ?? "Без группы"}
+              </small>
+            </li>
+          ))}
+        </ul>
+        {members.length > 4 && (
+          <details className="org-bulk-move-review-details">
+            <summary>Посмотреть всех {members.length}</summary>
+            <ul aria-label="Все выбранные сотрудники">
+              {members.map((member) => (
+                <li key={member.id}>
+                  <span>{member.displayName}</span>
+                  <small>
+                    {member.email} · {member.unitName ?? "Без группы"}
+                  </small>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+      {overMemberLimit && (
+        <p className="org-bulk-move-limit-error" role="alert">
+          За один перенос можно переместить до {MAX_BULK_MOVE_MEMBERS} сотрудников. Сократите выбор.
+        </p>
+      )}
+      <label className="org-search">
+        <Search size={16} aria-hidden="true" />
+        <span className="sr-only">Найти группу назначения</span>
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Найти группу"
+        />
+      </label>
+      <div className="org-picker-list" role="radiogroup" aria-label="Место назначения">
+        <PickerOption
+          name="bulk-member-destination"
+          label="Без группы"
+          detail="Общий список сотрудников"
+          selected={unitId === ""}
+          onSelect={() => {
+            setUnitId("");
+            setManagerConfirmed(false);
+          }}
+        />
+        {candidates.map((unit) => (
           <PickerOption
             name="bulk-member-destination"
-            label="Без группы"
-            detail="Общий список сотрудников"
-            selected={unitId === ""}
+            key={unit.id}
+            label={unit.name}
+            detail={groupPath(unit, units)}
+            selected={unitId === unit.id}
             onSelect={() => {
-              setUnitId("");
+              setUnitId(unit.id);
               setManagerConfirmed(false);
             }}
           />
-          {candidates.map((unit) => (
-            <PickerOption
-              name="bulk-member-destination"
-              key={unit.id}
-              label={unit.name}
-              detail={groupPath(unit, units)}
-              selected={unitId === unit.id}
-              onSelect={() => {
-                setUnitId(unit.id);
-                setManagerConfirmed(false);
-              }}
-            />
-          ))}
-          {candidates.length === 0 && <p className="org-picker-empty">Группы не найдены.</p>}
-        </div>
-        <div className="org-bulk-move-result">
-          <span>Из</span>
-          <strong>{members.length} выбранных сотрудников</strong>
-          <span>В</span>
-          <strong>
-            {unitId === null
-              ? "Выберите место назначения"
-              : destination
-                ? groupPath(destination, units)
-                : "Без группы"}
-          </strong>
-          <span>Доступ</span>
-          <strong>Сохранится для каждого; в «Без группы» руководство снимается</strong>
-        </div>
-        {managerScopeChanges && (
-          <label className="org-manager-consent">
-            <input
-              type="checkbox"
-              checked={managerConfirmed}
-              onChange={(event) => setManagerConfirmed(event.target.checked)}
-            />
-            <span>
-              Подтверждаю изменение области управления для {managerMembers.length}{" "}
-              {pluralizeRu(managerMembers.length, "руководителя", "руководителей", "руководителей")}
-              {unitId ? " согласно новому месту" : ", руководство будет снято"}.
-            </span>
-          </label>
+        ))}
+        {candidates.length === 0 && (
+          <p className="org-picker-empty">Совпадений нет. Можно выбрать «Без группы».</p>
         )}
       </div>
-      <DialogFooter className="org-dialog-actions">
-        <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
-          Отмена
-        </Button>
-        <Button
-          onClick={() => mutation.mutate()}
-          disabled={
-            mutation.isPending ||
-            !members.length ||
-            !hasMove ||
-            (managerScopeChanges && !managerConfirmed)
-          }
-        >
-          {mutation.isPending ? "Перемещение…" : `Переместить: ${members.length}`}
-        </Button>
-      </DialogFooter>
+      <div className="org-bulk-move-result">
+        <span>Из</span>
+        <strong>{members.length} выбранных сотрудников</strong>
+        <span>В</span>
+        <strong>
+          {unitId === null
+            ? "Выберите место назначения"
+            : destination
+              ? groupPath(destination, units)
+              : "Без группы"}
+        </strong>
+        <span>Доступ</span>
+        <strong>Сохранится для каждого; в «Без группы» руководство снимается</strong>
+      </div>
+      {managerScopeChanges && (
+        <label className="org-manager-consent">
+          <input
+            type="checkbox"
+            checked={managerConfirmed}
+            onChange={(event) => setManagerConfirmed(event.target.checked)}
+          />
+          <span>
+            Подтверждаю изменение области управления для {managerMembers.length}{" "}
+            {pluralizeRu(managerMembers.length, "руководителя", "руководителей", "руководителей")}
+            {unitId ? " согласно новому месту" : ", руководство будет снято"}.
+          </span>
+        </label>
+      )}
     </DialogShell>
   );
 }
@@ -858,6 +895,22 @@ export function OrganizationInvitationDialog({
       description={`После регистрации сотрудник попадёт ${unit ? `в группу «${unit.name}»` : "в общий список без группы"}.`}
       onClose={onClose}
       className="org-dialog--compact"
+      footer={
+        <DialogFooter className="org-dialog-actions">
+          {created ? (
+            <Button onClick={onClose}>Готово</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+                Отмена
+              </Button>
+              <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+                {mutation.isPending ? "Создание…" : "Создать ссылку"}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      }
     >
       {created ? (
         <div className="org-invite-result">
@@ -883,31 +936,28 @@ export function OrganizationInvitationDialog({
             </Button>
           </div>
           <small>Действует до {new Date(created.expiresAt).toLocaleString("ru-RU")}</small>
-          <DialogFooter className="org-dialog-actions">
-            <Button onClick={onClose}>Готово</Button>
-          </DialogFooter>
         </div>
       ) : (
-        <div className="org-dialog-form org-dialog-form--static">
+        <div className="org-dialog-form">
           <label className="field">
             <span>Роль</span>
-            <select
+            <Select
               value={role}
-              onChange={(event) => setRole(event.target.value as "LECTURER" | "ASSISTANT")}
+              onValueChange={(value) => setRole(value as "LECTURER" | "ASSISTANT")}
             >
-              <option value="LECTURER">Преподаватель</option>
-              <option value="ASSISTANT">Ассистент</option>
-            </select>
+              <SelectTrigger
+                className="org-dialog-select"
+                aria-label="Роль приглашённого сотрудника"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="LECTURER">Преподаватель</SelectItem>
+                <SelectItem value="ASSISTANT">Ассистент</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <p className="org-dialog-context">В группе новый сотрудник получит доступ «Сотрудник».</p>
-          <DialogFooter className="org-dialog-actions">
-            <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
-              Отмена
-            </Button>
-            <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-              {mutation.isPending ? "Создание…" : "Создать ссылку"}
-            </Button>
-          </DialogFooter>
         </div>
       )}
     </DialogShell>

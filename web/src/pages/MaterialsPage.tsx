@@ -197,14 +197,16 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   }
 
   return (
-    <div className="page page--wide">
-      <div className="page-header">
-        <Link to={`/courses/${courseId}`} className="breadcrumb">
-          ← Курс
-        </Link>
-        <h1>Материалы курса</h1>
-        <span className="muted">{courseQuery.data?.title}</span>
-      </div>
+    <div className="page page--wide course-workflows materials-page">
+      <header className="page-header course-workflow-header">
+        <div className="course-workflow-header__copy">
+          <Link to={`/courses/${courseId}`} className="breadcrumb">
+            ← Курс
+          </Link>
+          <h1>Материалы курса</h1>
+          <p className="muted">{courseQuery.data?.title ?? "Загрузка курса…"}</p>
+        </div>
+      </header>
 
       <CourseSectionNav courseId={courseId} canManage={canManage} />
 

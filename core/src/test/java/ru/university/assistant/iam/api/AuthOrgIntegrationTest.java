@@ -328,12 +328,104 @@ class AuthOrgIntegrationTest {
 
         mockMvc.perform(get("/api/v1/admin/users").header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/admin/users/page").header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isForbidden());
 
         mockMvc.perform(post("/api/v1/admin/invitations")
                         .header("Authorization", bearer(lecturerToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"LECTURER\"}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminCanSearchFilterAndPageUsersWithoutReturningEphemeralPeople() throws Exception {
+        String adminToken = bootstrapAdmin();
+        UUID literalMatchId = UUID.randomUUID();
+        UUID wildcardLookalikeId = UUID.randomUUID();
+        UUID disabledAssistantId = UUID.randomUUID();
+        UUID ephemeralId = UUID.randomUUID();
+        insertUser(literalMatchId, "Alice 100%_done", "alice-literal@example.test", "LECTURER", "ACTIVE", 4);
+        insertUser(wildcardLookalikeId, "Alice 100XXdone", "alice-lookalike@example.test", "LECTURER", "ACTIVE", 3);
+        insertUser(disabledAssistantId, "Bob Assistant", "bob@example.test", "ASSISTANT", "DISABLED", 2);
+        insertUser(ephemeralId, "Guest Alice", "guest@example.test", "STUDENT", "EPHEMERAL", 1);
+
+        mockMvc.perform(get("/api/v1/admin/users/page").header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(4))
+                .andExpect(jsonPath("$.limit").value(20))
+                .andExpect(jsonPath("$.offset").value(0))
+                .andExpect(jsonPath("$.items", hasSize(4)))
+                .andExpect(jsonPath("$.items[*].id").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.hasItem(ephemeralId.toString()))))
+                .andExpect(jsonPath("$.items[0].passwordHash").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/admin/users/page")
+                        .header("Authorization", bearer(adminToken))
+                        .param("q", "100%_")
+                        .param("role", "LECTURER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(literalMatchId.toString()));
+
+        mockMvc.perform(get("/api/v1/admin/users/page")
+                        .header("Authorization", bearer(adminToken))
+                        .param("role", "ASSISTANT")
+                        .param("status", "DISABLED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(disabledAssistantId.toString()));
+
+        mockMvc.perform(get("/api/v1/admin/users/page")
+                        .header("Authorization", bearer(adminToken))
+                        .param("limit", "1")
+                        .param("offset", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(4))
+                .andExpect(jsonPath("$.items", hasSize(1)));
+        mockMvc.perform(get("/api/v1/admin/users/page")
+                        .header("Authorization", bearer(adminToken))
+                        .param("offset", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(4))
+                .andExpect(jsonPath("$.items", hasSize(0)));
+
+        mockMvc.perform(get("/api/v1/admin/users/page")
+                        .header("Authorization", bearer(adminToken))
+                        .param("q", "x".repeat(201)))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/admin/users/page")
+                        .header("Authorization", bearer(adminToken))
+                        .param("status", "EPHEMERAL"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/admin/users/page")
+                        .header("Authorization", bearer(adminToken))
+                        .param("limit", "0"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/admin/users/page")
+                        .header("Authorization", bearer(adminToken))
+                        .param("limit", "101"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/admin/users/page")
+                        .header("Authorization", bearer(adminToken))
+                        .param("offset", "1000001"))
+                .andExpect(status().isBadRequest());
+    }
+
+    private void insertUser(UUID id, String name, String email, String role, String status, int secondsAgo) {
+        jdbc.sql("""
+                        insert into iam.persons
+                            (id, display_name, email, password_hash, role, status, created_at)
+                        values (:id, :name, :email, 'synthetic-test-hash', :role, :status,
+                                now() - make_interval(secs => :secondsAgo))
+                        """)
+                .param("id", id)
+                .param("name", name)
+                .param("email", email)
+                .param("role", role)
+                .param("status", status)
+                .param("secondsAgo", secondsAgo)
+                .update();
     }
 
     @Test

@@ -45,9 +45,9 @@ export function CourseAnalyticsPage({ courseId }: { courseId: string }) {
   }
 
   return (
-    <div className="page page--wide analytics-page">
-      <header className="page-header analytics-page__header">
-        <div>
+    <div className="page page--wide analytics-page course-workflows">
+      <header className="page-header analytics-page__header course-workflow-header">
+        <div className="course-workflow-header__copy">
           <Link to={`/courses/${courseId}`} className="breadcrumb">
             ← Курс
           </Link>

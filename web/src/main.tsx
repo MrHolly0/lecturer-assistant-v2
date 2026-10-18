@@ -7,6 +7,7 @@ import { queryClient } from "./app/queryClient";
 import { registerServiceWorker } from "./app/offline";
 import "./styles.css";
 import "./styles/non-live-workflows.css";
+import "./styles/course-workflows.css";
 import "./styles/live-experience.css";
 
 registerServiceWorker();

@@ -1,18 +1,19 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Copy } from "lucide-react";
+import { useEffect, useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import type { components } from "../app/api/schema";
 import {
   createAdminInvitation,
-  listUsers,
+  getUserPage,
   updateUserRole,
   updateUserStatus
 } from "../app/api/admin-api";
 import { useAuth } from "../app/AuthContext";
-import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
+import { announceDirectoryChange, useDirectorySync } from "../app/directorySync";
 import { PaginationBar, SearchField } from "../widgets/ListControls";
 import { Button, LinkButton } from "../shared/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import { userErrorMessage } from "../app/api/errors";
 import {
   AlertDialog,
@@ -57,11 +58,19 @@ const statusLabels: Record<UserStatus, string> = {
 export function AdminUsersPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
+  useDirectorySync();
   const [inviteRole, setInviteRole] = useState<AdminInviteRole>("LECTURER");
   const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ACTIVE");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
   const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(query.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [confirmAdminInvite, setConfirmAdminInvite] = useState(false);
   const [roleChange, setRoleChange] = useState<{ person: UserProfile; role: UserRole } | null>(
@@ -73,14 +82,28 @@ export function AdminUsersPage() {
   } | null>(null);
 
   const {
-    data: users = [],
+    data: userPage,
     isLoading,
     isError,
+    isPlaceholderData,
     refetch
   } = useQuery({
-    queryKey: ["admin", "users"],
-    queryFn: listUsers
+    queryKey: ["admin", "users", "page", search, statusFilter, roleFilter, page],
+    queryFn: () =>
+      getUserPage({
+        q: search,
+        status: statusFilter === "ALL" ? undefined : statusFilter,
+        role: roleFilter === "ALL" ? undefined : roleFilter,
+        limit: pageSize,
+        offset: (page - 1) * pageSize
+      }),
+    placeholderData: keepPreviousData
   });
+  const total = userPage?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  useEffect(() => {
+    if (userPage && !isPlaceholderData && page > pageCount) setPage(pageCount);
+  }, [isPlaceholderData, page, pageCount, userPage]);
 
   const inviteMut = useMutation({
     mutationFn: () => createAdminInvitation({ role: inviteRole, ttlHours: 168 }),
@@ -97,6 +120,7 @@ export function AdminUsersPage() {
       updateUserRole(personId, { role }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "users"] });
+      announceDirectoryChange();
       setRoleChange(null);
       toast.success("Системная роль обновлена");
     },
@@ -107,6 +131,7 @@ export function AdminUsersPage() {
       updateUserStatus(personId, { status }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "users"] });
+      announceDirectoryChange();
       setStatusChange(null);
       toast.success(
         statusChange?.status === "DISABLED"
@@ -117,17 +142,6 @@ export function AdminUsersPage() {
     onError: (error) =>
       toast.error(userErrorMessage(error, "Не удалось изменить статус учётной записи"))
   });
-
-  const filteredUsers = useMemo(
-    () =>
-      users.filter((item) => {
-        if (statusFilter !== "ALL" && item.status !== statusFilter) return false;
-        if (roleFilter !== "ALL" && item.role !== roleFilter) return false;
-        return includesQuery(query, item.displayName, item.email);
-      }),
-    [query, roleFilter, statusFilter, users]
-  );
-  const paged = usePagedList(filteredUsers, 20);
 
   function requestInvite() {
     setLastInvite(null);
@@ -149,55 +163,62 @@ export function AdminUsersPage() {
           <h1>Учётные записи</h1>
           <p className="muted">Системные роли и доступ к аккаунтам</p>
         </div>
-        <LinkButton to="/organization" variant="outline">
-          Сотрудники
-        </LinkButton>
-        <Button onClick={requestInvite}>Пригласить пользователя</Button>
+        <div className="admin-users-header-actions">
+          <LinkButton to="/organization" variant="outline">
+            Сотрудники
+          </LinkButton>
+          <Button onClick={requestInvite}>Пригласить пользователя</Button>
+        </div>
       </div>
 
       <section className="section">
         <div className="section-heading">
           <h2>Пользователи</h2>
-          <span className="muted">{filteredUsers.length} найдено</span>
+          <span className="muted" role="status" aria-live="polite">
+            {isPlaceholderData || query.trim() !== search
+              ? "Обновляем список…"
+              : `${total} найдено`}
+          </span>
         </div>
         <div className="admin-users-filters">
           <label className="field">
             <span>Статус</span>
-            <span className="admin-select-wrap">
-              <select
-                className="admin-native-select"
-                aria-label="Статус пользователей"
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-              >
-                <option value="ACTIVE">Активные</option>
-                <option value="DISABLED">Деактивированные</option>
-                <option value="ALL">Все статусы</option>
-              </select>
-              <ChevronDown size={16} aria-hidden="true" />
-            </span>
+            <AdminSelect
+              label="Статус пользователей"
+              value={statusFilter}
+              options={[
+                ["ACTIVE", "Активные"],
+                ["DISABLED", "Деактивированные"],
+                ["ALL", "Все статусы"]
+              ]}
+              onChange={(value) => {
+                setStatusFilter(value as StatusFilter);
+                setPage(1);
+              }}
+            />
           </label>
           <label className="field">
             <span>Роль</span>
-            <span className="admin-select-wrap">
-              <select
-                className="admin-native-select"
-                aria-label="Роль пользователей"
-                value={roleFilter}
-                onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
-              >
-                <option value="ALL">Все роли</option>
-                <option value="ADMIN">Администратор</option>
-                <option value="LECTURER">Преподаватель</option>
-                <option value="ASSISTANT">Ассистент</option>
-                <option value="STUDENT">Студент</option>
-              </select>
-              <ChevronDown size={16} aria-hidden="true" />
-            </span>
+            <AdminSelect
+              label="Роль пользователей"
+              value={roleFilter}
+              options={[["ALL", "Все роли"], ...Object.entries(roleLabels)]}
+              onChange={(value) => {
+                setRoleFilter(value as RoleFilter);
+                setPage(1);
+              }}
+            />
           </label>
           <div className="admin-users-filters__search">
             <span>Поиск</span>
-            <SearchField value={query} onChange={setQuery} placeholder="Имя или email" />
+            <SearchField
+              value={query}
+              onChange={(value) => {
+                setQuery(value.slice(0, 200));
+                setPage(1);
+              }}
+              placeholder="Имя или email"
+            />
           </div>
         </div>
         {isLoading ? (
@@ -213,15 +234,23 @@ export function AdminUsersPage() {
           </div>
         ) : (
           <UsersTable
-            users={paged.pageItems}
+            users={userPage?.items ?? []}
             currentUserId={user?.id}
-            rolePending={roleMut.isPending}
-            statusPending={statusMut.isPending}
+            rolePending={roleMut.isPending || isPlaceholderData}
+            statusPending={statusMut.isPending || isPlaceholderData}
             onRole={(person, role) => setRoleChange({ person, role })}
             onStatus={(person, status) => setStatusChange({ person, status })}
           />
         )}
-        {!isLoading && !isError && <PaginationBar {...paged} onPageChange={paged.setPage} />}
+        {!isLoading && !isError && (
+          <PaginationBar
+            page={Math.min(page, pageCount)}
+            pageCount={pageCount}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+          />
+        )}
       </section>
 
       <Dialog
@@ -235,65 +264,65 @@ export function AdminUsersPage() {
               Приглашение действует 7 дней и закрепляет системную роль.
             </DialogDescription>
           </DialogHeader>
-          <label className="field">
-            <span>Системная роль</span>
-            <span className="admin-select-wrap">
-              <select
-                className="admin-native-select"
+          <div className="admin-invite-body">
+            <label className="field">
+              <span>Системная роль</span>
+              <AdminSelect
+                label="Системная роль приглашения"
                 value={inviteRole}
-                onChange={(event) => {
-                  setInviteRole(event.target.value as AdminInviteRole);
+                options={[
+                  ["LECTURER", "Преподаватель"],
+                  ["ASSISTANT", "Ассистент"],
+                  ["ADMIN", "Администратор"]
+                ]}
+                onChange={(value) => {
+                  setInviteRole(value as AdminInviteRole);
                   setLastInvite(null);
                 }}
-              >
-                <option value="LECTURER">Преподаватель</option>
-                <option value="ASSISTANT">Ассистент</option>
-                <option value="ADMIN">Администратор</option>
-              </select>
-              <ChevronDown size={16} aria-hidden="true" />
-            </span>
-          </label>
-          {inviteRole === "ADMIN" && (
-            <p className="form-warning">
-              Администратор получает полный доступ к учётным записям и структуре сотрудников.
-            </p>
-          )}
-          {lastInvite && (
-            <div className="invite-result">
-              <code className="invite-code">{lastInvite.code}</code>
-              <span className="muted">
-                Роль: {roleLabels[lastInvite.role as UserRole]} · действует до{" "}
-                {new Date(lastInvite.expiresAt).toLocaleString("ru-RU")}
-              </span>
-              <div className="invite-result__actions">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void copyInvite(lastInvite.code, "Код приглашения скопирован")}
-                >
-                  <Copy size={16} aria-hidden="true" /> Скопировать код
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    void copyInvite(
-                      registrationHref(lastInvite.code),
-                      "Ссылка на регистрацию скопирована"
-                    )
-                  }
-                >
-                  <Copy size={16} aria-hidden="true" /> Скопировать ссылку
-                </Button>
-                <LinkButton
-                  to={`/register?code=${encodeURIComponent(lastInvite.code)}`}
-                  variant="ghost"
-                >
-                  Открыть регистрацию
-                </LinkButton>
+              />
+            </label>
+            {inviteRole === "ADMIN" && (
+              <p className="form-warning">
+                Администратор получает полный доступ к учётным записям и структуре сотрудников.
+              </p>
+            )}
+            {lastInvite && (
+              <div className="invite-result">
+                <code className="invite-code">{lastInvite.code}</code>
+                <span className="muted">
+                  Роль: {roleLabels[lastInvite.role as UserRole]} · действует до{" "}
+                  {new Date(lastInvite.expiresAt).toLocaleString("ru-RU")}
+                </span>
+                <div className="invite-result__actions">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void copyInvite(lastInvite.code, "Код приглашения скопирован")}
+                  >
+                    <Copy size={16} aria-hidden="true" /> Скопировать код
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      void copyInvite(
+                        registrationHref(lastInvite.code),
+                        "Ссылка на регистрацию скопирована"
+                      )
+                    }
+                  >
+                    <Copy size={16} aria-hidden="true" /> Скопировать ссылку
+                  </Button>
+                  <LinkButton
+                    to={`/register?code=${encodeURIComponent(lastInvite.code)}`}
+                    variant="ghost"
+                  >
+                    Открыть регистрацию
+                  </LinkButton>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
           <DialogFooter>
             <Button
               type="button"
@@ -464,25 +493,16 @@ function UsersTable({
               <td data-label="Имя">{item.displayName}</td>
               <td data-label="Email">{item.email}</td>
               <td data-label="Роль">
-                <span className="admin-select-wrap table-select">
-                  <select
-                    className="admin-native-select"
-                    aria-label={`Роль ${item.displayName}`}
-                    value={item.role}
-                    onChange={(event) => {
-                      const role = event.target.value as UserRole;
-                      if (role !== item.role) onRole(item, role);
-                    }}
-                    disabled={ownProfile || rolePending}
-                  >
-                    {Object.entries(roleLabels).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={16} aria-hidden="true" />
-                </span>
+                <AdminSelect
+                  label={`Роль ${item.displayName}`}
+                  value={item.role}
+                  options={Object.entries(roleLabels)}
+                  disabled={ownProfile || rolePending}
+                  onChange={(value) => {
+                    const role = value as UserRole;
+                    if (role !== item.role) onRole(item, role);
+                  }}
+                />
               </td>
               <td data-label="Статус">
                 <span className={`badge badge--${item.status.toLowerCase()}`}>
@@ -504,5 +524,34 @@ function UsersTable({
         })}
       </tbody>
     </table>
+  );
+}
+
+function AdminSelect({
+  label,
+  value,
+  options,
+  onChange,
+  disabled
+}: {
+  label: string;
+  value: string;
+  options: Array<[string, string]>;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger aria-label={label} className="admin-select">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map(([key, text]) => (
+          <SelectItem key={key} value={key}>
+            {text}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

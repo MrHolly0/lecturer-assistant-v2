@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,6 +28,16 @@ public class AdminUserController {
     @GetMapping("/users")
     public List<UserProfile> listUsers() {
         return authService.listUsers();
+    }
+
+    @GetMapping("/users/page")
+    public UserPage pageUsers(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) PersonRole role,
+            @RequestParam(required = false) PersonStatus status,
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(defaultValue = "0") int offset) {
+        return authService.pageUsers(q, role, status, limit, offset);
     }
 
     @PutMapping("/users/{personId}/role")

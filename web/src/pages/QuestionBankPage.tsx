@@ -45,16 +45,16 @@ export function QuestionBankPage({ courseId }: Props) {
   });
 
   return (
-    <div className="page page--wide qbank-shell">
-      <div className="page-header qbank-page-header">
-        <div>
+    <div className="page page--wide qbank-shell course-workflows">
+      <header className="page-header qbank-page-header course-workflow-header">
+        <div className="course-workflow-header__copy">
           <Link to={`/courses/${courseId}`} className="breadcrumb">
             ← Курс
           </Link>
           <h1>Банк вопросов</h1>
           <p className="muted">Подготовьте короткие проверки до начала лекции.</p>
         </div>
-      </div>
+      </header>
       <CourseSectionNav courseId={courseId} canManage={courseQuery.data?.canManage} />
       {courseQuery.isError && (
         <div className="qbank-load-error" role="alert">

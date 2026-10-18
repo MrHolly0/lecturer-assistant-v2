@@ -25,9 +25,11 @@ import {
 } from "../app/api/organization-api";
 import { userErrorMessage } from "../app/api/errors";
 import { useAuth } from "../app/AuthContext";
+import { useDirectorySync } from "../app/directorySync";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import { pluralizeRu } from "../shared/lib/plural";
 import { Button, IconButton } from "../shared/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,6 +53,7 @@ import {
   OrganizationMemberEditor,
   OrganizationUnitEditor,
   OrganizationUnitMoveDialog,
+  MAX_BULK_MOVE_MEMBERS,
   type UnitDraft
 } from "../widgets/OrganizationEditors";
 
@@ -67,6 +70,7 @@ type MemberDialog =
 const EMPTY_UNITS: OrganizationUnit[] = [];
 
 export function OrganizationPage() {
+  useDirectorySync();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
@@ -205,7 +209,21 @@ export function OrganizationPage() {
     const pageIds = new Set(pagePeople.map((person) => person.id));
     setSelectedPeople((current) => {
       const retained = current.filter((id) => !pageIds.has(id));
-      return checked ? [...retained, ...pagePeople.map((person) => person.id)] : retained;
+      if (!checked) return retained;
+      const availableSlots = Math.max(0, MAX_BULK_MOVE_MEMBERS - retained.length);
+      const additions = pagePeople
+        .map((person) => person.id)
+        .filter((id) => !retained.includes(id))
+        .slice(0, availableSlots);
+      return [...retained, ...additions];
+    });
+  }
+
+  function togglePersonSelection(personId: string, checked: boolean) {
+    setSelectedPeople((current) => {
+      if (!checked) return current.filter((id) => id !== personId);
+      if (current.includes(personId) || current.length >= MAX_BULK_MOVE_MEMBERS) return current;
+      return [...current, personId];
     });
   }
 
@@ -511,11 +529,10 @@ export function OrganizationPage() {
           <div className="org-directory-filters">
             <label>
               <span>Группа</span>
-              <select
-                value={noGroupOnly ? "__unassigned__" : groupFilter}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setGroupFilter(value === "__unassigned__" ? "" : value);
+              <Select
+                value={noGroupOnly ? "__unassigned__" : groupFilter || "__all__"}
+                onValueChange={(value) => {
+                  setGroupFilter(value === "__unassigned__" || value === "__all__" ? "" : value);
                   setParams(
                     value === "__unassigned__"
                       ? { view: "staff", filter: "unassigned" }
@@ -523,16 +540,24 @@ export function OrganizationPage() {
                   );
                 }}
               >
-                <option value="">Все группы</option>
-                <option value="__unassigned__">Без группы</option>
-                {units.map((unit) => (
-                  <option key={unit.id} value={unit.id}>
-                    {getUnitPath(unit, units)
-                      .map((part) => part.name)
-                      .join(" › ")}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  className="org-filter-select"
+                  aria-label="Фильтр по группе сотрудников"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="org-directory-filter-menu">
+                  <SelectItem value="__all__">Все группы</SelectItem>
+                  <SelectItem value="__unassigned__">Без группы</SelectItem>
+                  {units.map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>
+                      {getUnitPath(unit, units)
+                        .map((part) => part.name)
+                        .join(" › ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
           </div>
         )}
@@ -547,17 +572,31 @@ export function OrganizationPage() {
             {filteredPeople.length > pagePeople.length && (
               <Button
                 variant="ghost"
-                onClick={() => setSelectedPeople(filteredPeople.map((person) => person.id))}
+                onClick={() =>
+                  setSelectedPeople(
+                    filteredPeople.slice(0, MAX_BULK_MOVE_MEMBERS).map((person) => person.id)
+                  )
+                }
               >
-                Выбрать всех найденных: {filteredPeople.length}
+                {filteredPeople.length > MAX_BULK_MOVE_MEMBERS
+                  ? `Выбрать первые ${MAX_BULK_MOVE_MEMBERS}`
+                  : `Выбрать всех найденных: ${filteredPeople.length}`}
               </Button>
+            )}
+            {(filteredPeople.length > MAX_BULK_MOVE_MEMBERS ||
+              selectedPeople.length >= MAX_BULK_MOVE_MEMBERS) && (
+              <p id="org-selection-limit-hint" role="status">
+                За один перенос — до {MAX_BULK_MOVE_MEMBERS} сотрудников.
+              </p>
             )}
           </div>
         )}
 
         {allDirectory && administrator && selectedPeople.length > 0 && (
           <div className="org-bulk-bar" aria-live="polite">
-            <strong>Выбрано: {selectedPeople.length}</strong>
+            <strong>
+              Выбрано: {selectedPeople.length} из {MAX_BULK_MOVE_MEMBERS}
+            </strong>
             <Button onClick={() => setMovingPeople(selectedMembers)}>
               <ArrowRightLeft size={16} aria-hidden="true" />
               Переместить
@@ -716,6 +755,12 @@ export function OrganizationPage() {
                   >
                     {paged.pageItems.map((person) => {
                       const group = units.find((unit) => unit.id === person.unitId);
+                      const canEditPerson = getPersonCanEdit(
+                        person,
+                        selected,
+                        administrator,
+                        user?.id
+                      );
                       return (
                         <li key={person.id} className="org-member-row">
                           {allDirectory && administrator && (
@@ -723,90 +768,107 @@ export function OrganizationPage() {
                               <input
                                 type="checkbox"
                                 checked={selectedPeople.includes(person.id)}
+                                disabled={
+                                  !selectedPeople.includes(person.id) &&
+                                  selectedPeople.length >= MAX_BULK_MOVE_MEMBERS
+                                }
+                                aria-describedby={
+                                  filteredPeople.length > MAX_BULK_MOVE_MEMBERS ||
+                                  selectedPeople.length >= MAX_BULK_MOVE_MEMBERS
+                                    ? "org-selection-limit-hint"
+                                    : undefined
+                                }
                                 onChange={(event) =>
-                                  setSelectedPeople((current) =>
-                                    event.target.checked
-                                      ? [...current, person.id]
-                                      : current.filter((id) => id !== person.id)
-                                  )
+                                  togglePersonSelection(person.id, event.target.checked)
                                 }
                               />
                               <span className="sr-only">Выбрать {person.displayName}</span>
                             </label>
                           )}
-                          <div className="org-member-main">
-                            <strong>{person.displayName}</strong>
-                            <span>{person.email}</span>
-                          </div>
-                          <div className="org-member-meta">
-                            <span>
-                              Системная роль: {roleLabels[person.role]}
-                              {person.status === "DISABLED" ? " · отключён" : ""}
-                            </span>
-                            {person.unitRole === "MANAGER" && person.unitId && (
-                              <span className="org-access-badge">
-                                <ShieldCheck size={13} aria-hidden="true" />
-                                Руководитель
+                          <div className="org-member-content">
+                            <div className="org-member-main">
+                              <strong>{person.displayName}</strong>
+                              <span>{person.email}</span>
+                            </div>
+                            <div className="org-member-meta">
+                              <span>
+                                Системная роль: {roleLabels[person.role]}
+                                {person.status === "DISABLED" ? " · отключён" : ""}
                               </span>
-                            )}
-                            {!selected &&
-                              (group ? (
-                                <button
-                                  type="button"
-                                  className="org-member-location"
-                                  onClick={() => navigateTo(group.id)}
-                                >
-                                  Группа:{" "}
-                                  {getUnitPath(group, units)
-                                    .map((unit) => unit.name)
-                                    .join(" › ")}
-                                </button>
-                              ) : (
-                                <span className="org-member-location">Без группы</span>
-                              ))}
+                              {person.unitRole === "MANAGER" && person.unitId && (
+                                <span className="org-access-badge">
+                                  <ShieldCheck size={13} aria-hidden="true" />
+                                  Руководитель
+                                </span>
+                              )}
+                              {!selected &&
+                                (group ? (
+                                  <button
+                                    type="button"
+                                    className="org-member-location"
+                                    onClick={() => navigateTo(group.id)}
+                                  >
+                                    Группа:{" "}
+                                    {getUnitPath(group, units)
+                                      .map((unit) => unit.name)
+                                      .join(" › ")}
+                                  </button>
+                                ) : (
+                                  <span className="org-member-location">Без группы</span>
+                                ))}
+                            </div>
                           </div>
-                          {getPersonCanEdit(person, selected, administrator, user?.id) && (
-                            <div className="org-member-actions">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setMemberDialog({ action: "move", member: person })}
-                              >
-                                <ArrowRightLeft size={15} aria-hidden="true" />
-                                Переместить
-                              </Button>
-                              {administrator && person.unitId && (
+                          <div
+                            className={`org-member-actions${canEditPerson ? "" : " org-member-actions--empty"}`}
+                            aria-hidden={!canEditPerson}
+                          >
+                            {canEditPerson && (
+                              <>
                                 <Button
                                   type="button"
-                                  variant="ghost"
+                                  variant="outline"
                                   onClick={() =>
-                                    setMemberDialog({ action: "access", member: person })
+                                    setMemberDialog({ action: "move", member: person })
                                   }
                                 >
-                                  Доступ:{" "}
-                                  {person.unitRole === "MANAGER" ? "Руководитель" : "Сотрудник"}
+                                  <ArrowRightLeft size={15} aria-hidden="true" />
+                                  Переместить
                                 </Button>
-                              )}
-                              {person.unitId && (
-                                <DropdownMenu modal={false}>
-                                  <DropdownMenuTrigger asChild>
-                                    <IconButton label={`Другие действия для ${person.displayName}`}>
-                                      <MoreHorizontal size={19} />
-                                    </IconButton>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem
-                                      className="text-destructive"
-                                      onSelect={() => setRemoving(person)}
-                                    >
-                                      <Trash2 size={16} />
-                                      Убрать из группы
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              )}
-                            </div>
-                          )}
+                                {administrator && person.unitId && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() =>
+                                      setMemberDialog({ action: "access", member: person })
+                                    }
+                                  >
+                                    Доступ:{" "}
+                                    {person.unitRole === "MANAGER" ? "Руководитель" : "Сотрудник"}
+                                  </Button>
+                                )}
+                                {person.unitId && (
+                                  <DropdownMenu modal={false}>
+                                    <DropdownMenuTrigger asChild>
+                                      <IconButton
+                                        label={`Другие действия для ${person.displayName}`}
+                                      >
+                                        <MoreHorizontal size={19} />
+                                      </IconButton>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem
+                                        className="text-destructive"
+                                        onSelect={() => setRemoving(person)}
+                                      >
+                                        <Trash2 size={16} />
+                                        Убрать из группы
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </li>
                       );
                     })}

@@ -299,9 +299,15 @@
   padding: 0;
   background: none;
   text-align: right;
+}
+.organization-page button.org-member-location {
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
+}
+.organization-page button.org-member-location:hover,
+.organization-page button.org-member-location:focus-visible {
+  color: var(--foreground);
 }
 .organization-page .org-access-badge {
   display: inline-flex;
@@ -366,27 +372,29 @@
 }
 .org-dialog--picker {
   width: min(100% - 24px, 520px);
+  height: min(84dvh, 680px);
 }
 .org-dialog .org-dialog-header {
-  padding-right: 28px;
+  padding-right: 52px;
   text-align: left;
+}
+.org-dialog > button:last-child {
+  top: 4px;
+  right: 4px;
+  display: grid;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  place-items: center;
+  border-radius: 8px;
 }
 .org-dialog .org-dialog-header [data-slot="dialog-title"] {
   line-height: 1.35;
 }
 .org-dialog .org-dialog-header [data-slot="dialog-description"] {
   line-height: 1.5;
-}
-.org-dialog-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 0;
-}
-.org-dialog-form--static {
-  flex: 1;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 .org-dialog-form .field {
   display: flex;
@@ -395,8 +403,7 @@
   font-size: 13px;
   font-weight: 500;
 }
-.org-dialog input:not([type="radio"]):not([type="checkbox"]),
-.org-dialog select,
+.org-dialog .field input:not([type="radio"]):not([type="checkbox"]),
 .org-search input {
   width: 100%;
   min-width: 0;
@@ -409,12 +416,14 @@
   font: inherit;
   font-size: 14px;
 }
-.org-dialog input:focus-visible,
-.org-dialog select:focus-visible,
-.org-search input:focus-visible,
+.org-dialog .field input:focus-visible,
 .org-dialog button:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+.org-search input:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--ring);
 }
 .org-dialog .org-dialog-context {
   margin: 0;
@@ -445,10 +454,22 @@
   gap: 10px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
-.org-dialog-body > *,
-.org-dialog-form--static > * {
+.org-dialog--compact .org-dialog-body {
+  flex: 0 1 auto;
+  max-height: 55dvh;
+}
+.org-dialog-body > * {
   flex-shrink: 0;
+}
+.org-dialog-form,
+.org-member-editor-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
 }
 .org-search {
   position: relative;
@@ -466,25 +487,21 @@
   padding-left: 38px;
 }
 .org-picker-list {
-  min-height: 100px;
-  max-height: 42dvh;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  min-height: 0;
+  flex: 0 0 auto;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
 }
-.org-picker-list--short {
-  max-height: 28dvh;
-}
 .org-picker-option,
 .org-person-option {
-  display: flex;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  min-height: 52px;
-  padding: 8px 12px;
+  min-height: 44px;
+  padding: 7px 10px;
   border: 0;
   border-bottom: 1px solid var(--border);
   background: var(--card);
@@ -493,11 +510,11 @@
   cursor: pointer;
 }
 .org-picker-option > input[type="radio"] {
-  width: 18px;
-  height: 18px;
-  min-height: 18px;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
   flex: 0 0 auto;
-  margin: 0 2px 0 0;
+  margin: 0;
   accent-color: var(--primary);
 }
 .org-picker-option:last-child,
@@ -516,6 +533,14 @@
   min-width: 0;
   flex-direction: column;
   gap: 3px;
+}
+.org-person-option > svg {
+  grid-column: 1;
+  grid-row: 1;
+}
+.org-person-option__text {
+  grid-column: 2;
+  grid-row: 1;
 }
 .org-picker-option strong,
 .org-person-option strong {
@@ -718,40 +743,8 @@
     grid-column: 3;
     grid-row: 1 / span 2;
   }
-  .organization-page .org-member-list > li {
-    grid-template-columns: minmax(0, 1fr) 40px;
-    gap: 6px;
-    padding: 11px 0;
-  }
-  .organization-page .org-member-main {
-    grid-column: 1;
-  }
-  .organization-page .org-member-meta {
-    grid-column: 1;
-    grid-row: 2;
-    justify-content: flex-start;
-  }
-  .organization-page .org-member-list > li > [data-slot="dropdown-menu-trigger"] {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-  }
   .organization-page .org-section-heading {
     flex-wrap: wrap;
-  }
-  .org-dialog {
-    max-height: min(88dvh, 680px);
-    padding: 20px;
-  }
-  .org-dialog .org-dialog-actions {
-    display: flex;
-    flex-direction: row;
-    justify-content: flex-end;
-  }
-  .org-dialog .org-dialog-actions > button {
-    flex: 1;
-  }
-  .org-picker-list {
-    max-height: 38dvh;
   }
 }
 @media (max-width: 390px) {

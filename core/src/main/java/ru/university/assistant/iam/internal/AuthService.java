@@ -15,6 +15,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import ru.university.assistant.iam.api.AccountAccessRevoked;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.analytics.api.DomainEvent;
@@ -31,6 +32,7 @@ import ru.university.assistant.iam.api.PersonStatus;
 import ru.university.assistant.iam.api.RegisterRequest;
 import ru.university.assistant.iam.api.UpdateUserRoleRequest;
 import ru.university.assistant.iam.api.UpdateUserStatusRequest;
+import ru.university.assistant.iam.api.UserPage;
 import ru.university.assistant.iam.api.UserProfile;
 import ru.university.assistant.iam.internal.security.JwtService;
 import ru.university.assistant.org.api.CourseMembershipApi;
@@ -257,6 +259,24 @@ public class AuthService implements EphemeralPersonApi {
                 .filter(person -> person.status() != PersonStatus.EPHEMERAL)
                 .map(PersonRecord::toProfile)
                 .toList();
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public UserPage pageUsers(String query, PersonRole role, PersonStatus status, int limit, int offset) {
+        if (query != null && query.length() > 200) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Search query must be at most 200 characters");
+        }
+        query = query == null || query.isBlank() ? null : query.trim();
+        if (status == PersonStatus.EPHEMERAL) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "EPHEMERAL status is system-managed");
+        }
+        if (limit < 1 || limit > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Limit must be between 1 and 100");
+        }
+        if (offset < 0 || offset > 1_000_000) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Offset must be between 0 and 1000000");
+        }
+        return persons.pageUsers(query, role, status, limit, offset);
     }
 
     @Transactional

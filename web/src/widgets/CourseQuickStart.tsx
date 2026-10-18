@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { StartSessionDialog } from "./StartSessionDialog";
 
 export function CourseQuickStart({ courseId, blocked }: { courseId: string; blocked: boolean }) {
-  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [lectureId, setLectureId] = useState("");
   const [startOpen, setStartOpen] = useState(false);
@@ -26,10 +26,28 @@ export function CourseQuickStart({ courseId, blocked }: { courseId: string; bloc
     () => (lecturesQuery.data ?? []).filter((lecture) => !lecture.archived),
     [lecturesQuery.data]
   );
-  const selectedLecture = lectures.find((lecture) => lecture.id === lectureId) ?? null;
+  const effectiveLectureId = lectures.some((lecture) => lecture.id === lectureId)
+    ? lectureId
+    : lectures[0]?.id ?? "";
+  const selectedLecture = lectures.find((lecture) => lecture.id === effectiveLectureId) ?? null;
+  const accessReady = visible && !accessQuery.isLoading && !accessQuery.isError;
+  const canManage = accessQuery.data?.canManage === true;
+  const loading = !visible || accessQuery.isLoading || (canManage && lecturesQuery.isLoading);
+  const failed = accessQuery.isError || (canManage && lecturesQuery.isError);
+  const unavailable = accessReady && !canManage;
+  const hasLectures = canManage && !loading && !failed && lectures.length > 0;
+  const placeholder = loading
+    ? "Загрузка лекций…"
+    : failed
+      ? "Лекции недоступны"
+      : unavailable
+        ? "Нет доступа к запуску"
+        : lectures.length === 0
+          ? "Нет готовых лекций"
+          : "Выберите лекцию";
 
   useEffect(() => {
-    const node = rootRef.current;
+    const node = triggerRef.current;
     if (!node || typeof IntersectionObserver === "undefined") {
       setVisible(true);
       return;
@@ -53,60 +71,66 @@ export function CourseQuickStart({ courseId, blocked }: { courseId: string; bloc
     }
   }, [lectureId, lectures]);
 
-  if (visible && (accessQuery.isError || accessQuery.data?.canManage === false)) return null;
-
   return (
-    <div ref={rootRef} className="course-quick-start">
-      {(!visible || accessQuery.isLoading || lecturesQuery.isLoading) && (
-        <span className="course-quick-start__state">Загрузка лекций…</span>
-      )}
-      {(accessQuery.isError || lecturesQuery.isError) && (
-        <Button
-          type="button"
-          variant="outline"
-          className="course-quick-start__retry"
-          onClick={() => {
-            if (accessQuery.isError) void accessQuery.refetch();
-            if (lecturesQuery.isError) void lecturesQuery.refetch();
-          }}
-        >
-          <RefreshCw size={15} aria-hidden="true" /> Повторить загрузку
-        </Button>
-      )}
-      {visible && !lecturesQuery.isLoading && !lecturesQuery.isError && lectures.length === 0 && (
-        <span className="course-quick-start__state">Нет готовых лекций</span>
-      )}
-      {lectures.length === 1 && (
-        <span className="course-quick-start__title" title={`Лекция: ${lectures[0].title}`}>
-          <span className="course-quick-start__label">Лекция</span>
-          <span className="course-quick-start__lecture-name">{lectures[0].title}</span>
+    <div className="course-quick-start">
+      <div className="course-quick-start__field">
+        <span className="course-quick-start__label">Лекция</span>
+        <div ref={triggerRef} className="course-quick-start__select-cell">
+          <Select
+            value={hasLectures ? effectiveLectureId : undefined}
+            onValueChange={setLectureId}
+            disabled={!hasLectures}
+          >
+            <SelectTrigger
+              aria-label={`Лекция для занятия: ${selectedLecture?.title ?? placeholder}`}
+              title={selectedLecture?.title}
+              className="course-quick-start__select"
+            >
+              <SelectValue placeholder={placeholder} />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {lectures.map((lecture) => (
+                <SelectItem key={lecture.id} value={lecture.id}>
+                  {lecture.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <span className="course-quick-start__hint" aria-live="polite">
+          {failed ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="course-quick-start__retry"
+              onClick={() => {
+                if (accessQuery.isError) void accessQuery.refetch();
+                if (lecturesQuery.isError) void lecturesQuery.refetch();
+              }}
+            >
+              <RefreshCw size={14} aria-hidden="true" /> Повторить загрузку
+            </Button>
+          ) : blocked ? (
+            "Сначала завершите текущее занятие."
+          ) : unavailable ? (
+            "У вас нет прав проводить занятия в этом курсе."
+          ) : !loading && lectures.length === 0 ? (
+            "Добавьте лекцию в материалах курса."
+          ) : (
+            <span aria-hidden="true">&nbsp;</span>
+          )}
         </span>
-      )}
-      {lectures.length > 1 && (
-        <Select value={lectureId} onValueChange={setLectureId}>
-          <SelectTrigger aria-label="Лекция для запуска" className="course-quick-start__select">
-            <SelectValue placeholder="Выберите лекцию" />
-          </SelectTrigger>
-          <SelectContent align="end">
-            {lectures.map((lecture) => (
-              <SelectItem key={lecture.id} value={lecture.id}>
-                {lecture.title}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-      {lectures.length > 0 && (
-        <Button
-          type="button"
-          disabled={blocked || !lectureId}
-          title={blocked ? "Сначала завершите текущее занятие" : "Подготовить занятие"}
-          onClick={() => setStartOpen(true)}
-        >
-          <Play size={15} aria-hidden="true" />
-          Подготовить занятие
-        </Button>
-      )}
+      </div>
+      <Button
+        type="button"
+        className="course-quick-start__action"
+        disabled={blocked || !hasLectures || !effectiveLectureId}
+        title={blocked ? "Сначала завершите текущее занятие" : "Провести занятие"}
+        onClick={() => setStartOpen(true)}
+      >
+        <Play size={15} aria-hidden="true" />
+        Провести занятие
+      </Button>
       <StartSessionDialog
         courseId={courseId}
         lecture={selectedLecture}
