@@ -55,7 +55,7 @@
   font-size: 16px;
 }
 .preparation-page .lecture-hub {
-  margin: 32px 0 40px;
+  margin: 32px 0 0;
 }
 .preparation-page .lecture-hub__toolbar {
   display: flex;
@@ -189,19 +189,25 @@
   margin: 4px 0 0;
 }
 .preparation-page .materials-workspace {
-  padding: 0;
+  margin-top: 64px;
+  padding: 32px 0 0;
+  border-top: 1px solid var(--border);
 }
 .preparation-page .deck-list {
-  display: block;
+  display: grid;
+  gap: 24px;
 }
 .preparation-page .deck-version-group {
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 0;
+  padding: 0 0 24px;
   margin: 0;
   box-shadow: none;
-  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.preparation-page .deck-version-group .deck-pill {
+  border: 0;
 }
 .preparation-page .deck-pill {
   display: flex;
@@ -244,10 +250,11 @@
   margin: 8px 0;
 }
 .preparation-page .deck-history__content {
-  margin: 0;
+  margin: 16px 0 0;
   padding: 0 24px;
   border: 0;
   background: var(--surface);
+  border-radius: 12px;
 }
 .preparation-page .deck-version-note {
   display: flex;
@@ -262,6 +269,15 @@
 }
 .preparation-page .materials-workspace .list-toolbar {
   margin-bottom: 16px;
+}
+.preparation-page .materials-workspace .deck-list-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+}
+.preparation-page .deck-list-toolbar [role="tablist"] {
+  align-self: flex-start;
 }
 .preparation-page .preparation-upload {
   max-width: 720px;
@@ -719,7 +735,8 @@
 }
 .preparation-page .learning-analytics__heading {
   margin-bottom: 16px;
-  justify-content: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
 }
 .preparation-page .preparation-analytics-note {
   margin: 0 0 16px;
@@ -808,9 +825,70 @@
   font-size: 14px;
 }
 .preparation-page .session-history {
-  margin-top: 40px;
-  padding-top: 0;
-  border: 0;
+  margin-top: 64px;
+  padding-top: 32px;
+  border-top: 1px solid var(--border);
+}
+.session-history-filters {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.5fr) minmax(180px, 1fr) repeat(2, minmax(160px, 0.8fr));
+  gap: 16px;
+  align-items: end;
+}
+.session-history-filters .field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+}
+.session-history-filters [data-slot="select-trigger"],
+.session-history-filters input[type="date"] {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  background: var(--background);
+  font-size: 16px;
+}
+.session-history-filters [data-slot="select-value"] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-history-results-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 48px;
+  margin: 16px 0;
+}
+.session-history-results-heading p {
+  margin: 0;
+  font-size: 14px;
+}
+.session-history-results-heading .ui-button {
+  font-size: 14px;
+  padding-inline: 12px;
+}
+.session-history-results {
+  min-height: 180px;
+}
+.session-history-filters + .form-error {
+  margin-top: 12px;
+}
+@media (max-width: 1100px) {
+  .session-history-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .session-history-filters__search,
+  .session-history-filters > .field:nth-child(2) {
+    grid-column: 1 / -1;
+  }
 }
 .preparation-page .session-history-row {
   min-height: 84px;
@@ -1025,7 +1103,11 @@
     font-size: 22px;
   }
   .preparation-page .lecture-hub {
-    margin: 24px 0 32px;
+    margin: 24px 0 0;
+  }
+  .preparation-page .materials-workspace {
+    margin-top: 40px;
+    padding-top: 24px;
   }
   .preparation-page .lecture-row {
     display: grid;
@@ -1173,7 +1255,8 @@
     grid-template-columns: 1fr;
   }
   .preparation-page .session-history {
-    margin-top: 32px;
+    margin-top: 40px;
+    padding-top: 24px;
   }
   .preparation-page .session-history-row {
     flex-wrap: wrap;

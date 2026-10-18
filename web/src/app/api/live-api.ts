@@ -89,9 +89,18 @@ export async function getLectureSummary(
 export async function listSessionHistory(
   courseId: string,
   limit = 20,
-  offset = 0
+  offset = 0,
+  filters: {
+    query?: string;
+    groupId?: string;
+    endedFrom?: string;
+    endedBefore?: string;
+  } = {}
 ): Promise<SessionHistoryPage> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
   const res = await apiFetch(`/courses/${courseId}/sessions?${params.toString()}`);
   return res.json() as Promise<SessionHistoryPage>;
 }

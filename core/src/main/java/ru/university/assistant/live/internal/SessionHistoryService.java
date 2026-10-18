@@ -1,5 +1,6 @@
 package ru.university.assistant.live.internal;
 
+import java.time.Instant;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -22,12 +23,31 @@ public class SessionHistoryService {
     }
 
     @Transactional(readOnly = true)
-    public SessionHistoryPage list(AuthenticatedUser user, UUID courseId, int limit, int offset) {
+    public SessionHistoryPage list(
+            AuthenticatedUser user,
+            UUID courseId,
+            int limit,
+            int offset,
+            String query,
+            UUID groupId,
+            Instant endedFrom,
+            Instant endedBefore) {
         courseAccess.requireManage(user, courseId);
         if (limit < 1 || limit > MAX_LIMIT || offset < 0) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "limit must be between 1 and 100 and offset must be non-negative");
         }
-        return new SessionHistoryPage(history.list(courseId, limit, offset), limit, offset, history.count(courseId));
+        if (query != null && query.length() > 200) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "query must be at most 200 characters");
+        }
+        if (endedFrom != null && endedBefore != null && !endedFrom.isBefore(endedBefore)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endedFrom must be before endedBefore");
+        }
+        return new SessionHistoryPage(
+                history.list(courseId, query, groupId, endedFrom, endedBefore, limit, offset),
+                history.availableGroups(courseId),
+                limit,
+                offset,
+                history.count(courseId, query, groupId, endedFrom, endedBefore));
     }
 }

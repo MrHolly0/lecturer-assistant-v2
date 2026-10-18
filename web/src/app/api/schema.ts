@@ -2635,6 +2635,8 @@ export interface components {
     };
     SessionHistoryPage: {
       items: components["schemas"]["SessionHistoryItem"][];
+      /** @description Distinct historical groups from all completed sessions in this course, ordered by their latest snapshot name. */
+      availableGroups: components["schemas"]["SessionGroup"][];
       limit: number;
       offset: number;
       /** Format: int64 */
@@ -5093,6 +5095,14 @@ export interface operations {
       query?: {
         limit?: number;
         offset?: number;
+        /** @description Case-insensitive substring in the lecture title or a historical group name. */
+        query?: string;
+        /** @description Include sessions associated with this historical group ID. */
+        groupId?: string;
+        /** @description Inclusive lower bound for the session end time. */
+        endedFrom?: string;
+        /** @description Exclusive upper bound for the session end time. */
+        endedBefore?: string;
       };
       header?: never;
       path: {
@@ -5111,7 +5121,7 @@ export interface operations {
           "application/json": components["schemas"]["SessionHistoryPage"];
         };
       };
-      /** @description Invalid limit or offset. */
+      /** @description Invalid pagination, query, group ID, or end-time range. */
       400: {
         headers: {
           [name: string]: unknown;

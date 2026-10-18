@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Archive, ChevronDown, History, RotateCcw, Trash2, ExternalLink, Info } from "lucide-react";
 import type { SlideDeck } from "../app/api/content-api";
 import { pluralizeRu } from "../shared/lib/plural";
@@ -51,30 +51,18 @@ export function DeckListPanel(props: DeckListPanelProps) {
   );
   const activePaged = usePagedList(visibleGroups, 20);
   const archivePaged = usePagedList(visibleArchived, 20);
-  const showTabs = true;
-  const showSearch = activeGroups.length + archivedDecks.length > 5 || Boolean(query);
-
-  useEffect(() => {
-    if (!showTabs && tab === "archive") setTab("active");
-  }, [showTabs, tab]);
 
   return (
     <section className="material-section" aria-label="Список презентаций">
-      {(showTabs || showSearch) && (
-        <div className="list-toolbar">
-          {showTabs && (
-            <Tabs value={tab} onValueChange={(value) => setTab(value as DeckTab)}>
-              <TabsList>
-                <TabsTrigger value="active">Доступные ({activeGroups.length})</TabsTrigger>
-                <TabsTrigger value="archive">Архив ({archivedDecks.length})</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          )}
-          {showSearch && (
-            <SearchField value={query} onChange={setQuery} placeholder="Найти презентацию" />
-          )}
-        </div>
-      )}
+      <div className="list-toolbar deck-list-toolbar">
+        <SearchField value={query} onChange={setQuery} placeholder="Найти презентацию" />
+        <Tabs value={tab} onValueChange={(value) => setTab(value as DeckTab)}>
+          <TabsList>
+            <TabsTrigger value="active">Доступные ({activeGroups.length})</TabsTrigger>
+            <TabsTrigger value="archive">Архив ({archivedDecks.length})</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
 
       {tab === "active" ? (
         <div className="deck-list">

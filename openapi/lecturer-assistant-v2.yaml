@@ -1320,6 +1320,34 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - name: query
+          in: query
+          required: false
+          description: Case-insensitive substring in the lecture title or a historical group name.
+          schema:
+            type: string
+            maxLength: 200
+        - name: groupId
+          in: query
+          required: false
+          description: Include sessions associated with this historical group ID.
+          schema:
+            type: string
+            format: uuid
+        - name: endedFrom
+          in: query
+          required: false
+          description: Inclusive lower bound for the session end time.
+          schema:
+            type: string
+            format: date-time
+        - name: endedBefore
+          in: query
+          required: false
+          description: Exclusive upper bound for the session end time.
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: Page of completed sessions.
@@ -1328,7 +1356,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/SessionHistoryPage"
         "400":
-          description: Invalid limit or offset.
+          description: Invalid pagination, query, group ID, or end-time range.
         "403":
           description: The caller cannot manage this course.
   /courses/{courseId}/sessions/{sessionId}:
@@ -3623,12 +3651,17 @@ components:
           format: date-time
     SessionHistoryPage:
       type: object
-      required: [items, limit, offset, total]
+      required: [items, availableGroups, limit, offset, total]
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/SessionHistoryItem"
+        availableGroups:
+          type: array
+          description: Distinct historical groups from all completed sessions in this course, ordered by their latest snapshot name.
+          items:
+            $ref: "#/components/schemas/SessionGroup"
         limit:
           type: integer
           minimum: 1

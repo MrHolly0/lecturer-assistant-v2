@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings 0",
     "format": "prettier --check \"src/**/*.{ts,tsx,css}\"",
-    "test": "node --experimental-strip-types --test src/app/api/student-snapshot-gate.test.mjs src/app/student-resume.test.mjs"
+    "test": "node --experimental-strip-types --test src/app/api/student-snapshot-gate.test.mjs src/app/student-resume.test.mjs src/shared/lib/sessionHistoryDates.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "1.2.3",

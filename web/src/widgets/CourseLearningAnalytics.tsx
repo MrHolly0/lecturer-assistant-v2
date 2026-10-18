@@ -85,9 +85,7 @@ export function CourseLearningAnalytics({
   return (
     <section className="learning-analytics" aria-labelledby="learning-analytics-title">
       <div className="section-heading learning-analytics__heading">
-        <h2 id="learning-analytics-title" className="sr-only">
-          Учебная активность
-        </h2>
+        <h2 id="learning-analytics-title">Учебная активность</h2>
         <Tabs value={view} onValueChange={(value) => setView(value as typeof view)}>
           <TabsList>
             <TabsTrigger value="groups">Группы</TabsTrigger>

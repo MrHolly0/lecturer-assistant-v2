@@ -1,6 +1,7 @@
 package ru.university.assistant.live.api;
 
 import jakarta.validation.Valid;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -60,8 +61,12 @@ public class LiveSessionController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestParam(defaultValue = "0") int offset) {
-        return sessionHistory.list(user, courseId, limit, offset);
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) UUID groupId,
+            @RequestParam(required = false) Instant endedFrom,
+            @RequestParam(required = false) Instant endedBefore) {
+        return sessionHistory.list(user, courseId, limit, offset, query, groupId, endedFrom, endedBefore);
     }
 
     @GetMapping("/sessions/{sessionId}/participants")
