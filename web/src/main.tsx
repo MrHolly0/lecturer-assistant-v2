@@ -20,6 +20,7 @@ import "./styles/student-experience.css";
 import "./styles/student-question-dialog.css";
 import "./styles/redesign-admin.css";
 import "./styles/redesign-auth.css";
+import "./styles/session-analytics.css";
 
 registerServiceWorker();
 
