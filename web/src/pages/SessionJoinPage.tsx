@@ -125,14 +125,16 @@ function SessionJoinWorkspace({ courseId, sessionId }: SessionJoinPageProps) {
           <ArrowLeft size={16} aria-hidden="true" />К курсу
         </LinkButton>
         <h1>{session.lectureTitle}</h1>
-        <p className="muted">{courseQuery.data?.title}</p>
-        <span className="session-join-state">
-          {scheduled
-            ? "Подключение открыто"
-            : session.status === "PAUSED"
-              ? "Показ на паузе"
-              : "Занятие идёт"}
-        </span>
+        <div className="session-join-context">
+          <span className="session-join-course">{courseQuery.data?.title}</span>
+          <span className="session-join-state">
+            {scheduled
+              ? "Подключение открыто"
+              : session.status === "PAUSED"
+                ? "Показ на паузе"
+                : "Занятие идёт"}
+          </span>
+        </div>
       </header>
       {commandsBlocked && (
         <TeacherRemoteConnection
