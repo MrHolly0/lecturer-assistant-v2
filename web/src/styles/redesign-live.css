@@ -6,8 +6,8 @@
   min-height: calc(100dvh - var(--header-height, 84px));
   padding: 32px var(--live-edge) 40px;
   width: 100%;
-  max-width: none;
-  margin: 0;
+  max-width: calc(var(--workspace-width) + 2 * var(--live-edge));
+  margin: 0 auto;
   overflow: visible;
 }
 .presenter-shell .presenter-topbar {
@@ -1280,11 +1280,11 @@
 .session-join-shell {
   background: var(--background);
   color: var(--foreground);
-  max-width: none;
+  max-width: calc(var(--content-width) + 2 * var(--page-edge));
   width: 100%;
-  padding: 32px var(--page-edge, 48px) 48px;
+  padding: 40px var(--page-edge, 48px) 64px;
   min-height: calc(100dvh - var(--header-height, 84px));
-  margin: 0;
+  margin: 0 auto;
 }
 .session-join-head {
   display: block;

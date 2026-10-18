@@ -34,6 +34,8 @@
   --action-pressed: #e85600;
   --action-ink: #17191c;
   --page-edge: 48px;
+  --content-width: 1280px;
+  --workspace-width: 1600px;
   --header-height: 84px;
   --control-height: 48px;
   --control-height-sm: 44px;
@@ -303,10 +305,10 @@ input[type="radio"] {
 }
 .page,
 .page.page--wide {
-  max-width: none;
+  max-width: calc(var(--content-width) + 2 * var(--page-edge));
   width: 100%;
-  margin: 0;
-  padding: 32px var(--page-edge) 48px;
+  margin: 0 auto;
+  padding: 40px var(--page-edge) 64px;
   min-height: calc(100dvh - var(--header-height));
 }
 .page .page-header {
@@ -391,7 +393,7 @@ input[type="radio"] {
 }
 .app-header {
   height: var(--header-height);
-  padding: 0 var(--page-edge);
+  padding: 0 max(var(--page-edge), calc((100% - var(--content-width)) / 2));
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 32px;
@@ -581,6 +583,9 @@ button.app-header-nav__item {
   }
 }
 @media (max-width: 1099px) {
+  :root {
+    --page-edge: 32px;
+  }
   .app-header {
     display: flex;
     justify-content: space-between;

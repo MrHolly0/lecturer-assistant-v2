@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Archive, ChevronRight, MoreHorizontal, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Archive, ChevronRight, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 import type { components } from "../app/api/schema";
 import { getCourse } from "../app/api/courses-api";
 import { includesQuery } from "../shared/lib/usePagedList";
 import { pluralizeRu } from "../shared/lib/plural";
-import { IconButton, LinkButton } from "../shared/ui/button";
+import { IconButton } from "../shared/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -170,16 +170,6 @@ export function CourseCatalogItem({
           <ChevronRight />
         </Link>
       </div>
-      {!course.archived && !loading && !error && lectures.length === 0 && canManage && (
-        <LinkButton
-          variant="outline"
-          className="catalog-course__add"
-          to={`/courses/${course.id}/materials`}
-        >
-          <Plus />
-          Добавить лекцию
-        </LinkButton>
-      )}
     </li>
   );
 }

@@ -1,9 +1,4 @@
-/* Organization and account management share the approved flat directory rhythm. */
-.page.organization-page,
-.page.admin-users-page {
-  width: 100%;
-  max-width: none;
-}
+/* Organization and account management use the shared page container. */
 .organization-page .org-header {
   gap: 24px;
   margin-bottom: 24px;

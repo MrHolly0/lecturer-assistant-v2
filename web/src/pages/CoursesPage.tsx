@@ -257,7 +257,7 @@ export function CoursesPage() {
                     restoring={restoreMut.isPending}
                     deleting={hardDeleteMut.isPending}
                     onSelect={() => {
-                      if (window.matchMedia("(max-width: 700px)").matches)
+                      if (window.matchMedia("(max-width: 1099px)").matches)
                         navigate(`/courses/${course.id}`);
                       else setSelectedId(course.id);
                     }}

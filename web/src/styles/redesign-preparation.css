@@ -1,9 +1,4 @@
 /* Preparation surfaces use the common application tokens and controls. */
-.preparation-page.page {
-  max-width: none;
-  width: 100%;
-  padding: 32px var(--page-edge, 48px) 48px;
-}
 .preparation-page .course-workflow-header,
 .preparation-page .page-header {
   margin: 0 0 24px;

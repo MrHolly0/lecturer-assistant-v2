@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Play, RefreshCw } from "lucide-react";
+import { ChevronDown, Play, Plus, RefreshCw } from "lucide-react";
 import { listLectures } from "../app/api/content-api";
 import { getCourse } from "../app/api/courses-api";
-import { Button } from "../shared/ui/button";
+import { Button, LinkButton } from "../shared/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -134,15 +134,22 @@ export function CourseQuickStart({
           </Button>
         )}
       </div>
-      <Button
-        type="button"
-        className="course-quick-start__action"
-        disabled={blocked || !hasLectures}
-        onClick={() => setStartOpen(true)}
-      >
-        <Play aria-hidden="true" />
-        Провести занятие
-      </Button>
+      {canManage && !archived && !loading && !failed && lectures.length === 0 ? (
+        <LinkButton className="course-quick-start__action" to={`/courses/${courseId}/materials`}>
+          <Plus aria-hidden="true" />
+          Добавить лекцию
+        </LinkButton>
+      ) : (
+        <Button
+          type="button"
+          className="course-quick-start__action"
+          disabled={blocked || !hasLectures}
+          onClick={() => setStartOpen(true)}
+        >
+          <Play aria-hidden="true" />
+          Провести занятие
+        </Button>
+      )}
       <p className="course-quick-start__hint" aria-live="polite">
         {archived
           ? "Восстановите курс из архива, чтобы проводить занятия."
