@@ -71,7 +71,7 @@
 .presenter-shell .presenter-actions .presenter-connect {
   margin-right: 12px;
 }
-.presenter-shell .presenter-actions > .ui-button--destructive {
+.presenter-shell .presenter-actions .ui-button--destructive {
   background: var(--background);
   color: var(--destructive, #b42335);
   border: 1px solid currentColor;

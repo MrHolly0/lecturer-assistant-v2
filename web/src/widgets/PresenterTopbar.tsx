@@ -122,11 +122,6 @@ export function PresenterTopbar({
               {connectionLabel}
               {!syncing && syncedAt ? ` в ${syncedAt.toLocaleTimeString("ru-RU")}` : ""}
             </span>
-            {(syncError || connection !== "connected") && (
-              <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
-                Повторить сверку
-              </Button>
-            )}
           </div>
         </div>
         <span
@@ -253,19 +248,28 @@ export function PresenterTopbar({
                 Пауза
               </Button>
             )}
-            <ConfirmActionButton
-              title="Завершить лекцию?"
-              description="Показ на проекторе и у студентов закончится. Данные останутся в итогах занятия. Продолжить это занятие будет нельзя."
-              confirmLabel="Завершить"
-              variant="destructive"
-              disabled={endPending || commandsBlocked}
-              onConfirm={() => {
-                if (!commandsBlocked) onEnd();
-              }}
+            <div
+              className={`presenter-finish-actions${syncError || connection !== "connected" ? " presenter-finish-actions--retry" : ""}`}
             >
-              <Square size={16} />
-              Завершить
-            </ConfirmActionButton>
+              <ConfirmActionButton
+                title="Завершить лекцию?"
+                description="Показ на проекторе и у студентов закончится. Данные останутся в итогах занятия. Продолжить это занятие будет нельзя."
+                confirmLabel="Завершить"
+                variant="destructive"
+                disabled={endPending || commandsBlocked}
+                onConfirm={() => {
+                  if (!commandsBlocked) onEnd();
+                }}
+              >
+                <Square size={16} />
+                Завершить
+              </ConfirmActionButton>
+              {(syncError || connection !== "connected") && (
+                <Button type="button" variant="outline" disabled={syncing} onClick={onRefresh}>
+                  Повторить сверку
+                </Button>
+              )}
+            </div>
           </>
         )}
       </div>
