@@ -844,14 +844,6 @@
 .course-settings .ui-button:not(.ui-button--icon) {
   min-height: 48px;
 }
-.lecture-picker [data-slot="command-input"] {
-  outline: none;
-  box-shadow: none;
-}
-.lecture-picker [data-slot="command-input-wrapper"]:focus-within {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
 @media (max-width: 700px) {
   .course-page-header__copy h1 {
     min-height: 0;

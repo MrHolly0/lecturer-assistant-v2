@@ -214,12 +214,12 @@ h3 {
   }
 }
 :is([role="dialog"], [role="alertdialog"], [data-slot="popover-content"])
-  :is(.list-search, .org-search):focus-within {
+  :is(.list-search, .org-search, [data-slot="command-input-wrapper"]):focus-within {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
 :is([role="dialog"], [role="alertdialog"], [data-slot="popover-content"])
-  :is(.list-search, .org-search)
+  :is(.list-search, .org-search, [data-slot="command-input-wrapper"])
   input:focus-visible:not(:disabled) {
   outline: none;
   box-shadow: none;
