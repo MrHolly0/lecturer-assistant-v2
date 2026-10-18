@@ -1,8 +1,13 @@
 package ru.university.assistant.org.internal;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.Set;
+import jakarta.validation.Validator;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import ru.university.assistant.iam.api.AccountStateApi;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -12,13 +17,16 @@ import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.iam.api.InvitationApi;
 import ru.university.assistant.iam.api.InvitationResponse;
 import ru.university.assistant.iam.api.PersonRole;
+import ru.university.assistant.iam.api.PersonStatus;
 import ru.university.assistant.org.api.BanCourseMemberRequest;
+import ru.university.assistant.org.api.AddCourseMemberRequest;
 import ru.university.assistant.org.api.Course;
 import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.org.api.CourseBan;
 import ru.university.assistant.org.api.CourseDetails;
 import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.CourseMember;
+import ru.university.assistant.org.api.CourseMemberCandidate;
 import ru.university.assistant.org.api.CourseRole;
 import ru.university.assistant.org.api.GroupMismatchException;
 import ru.university.assistant.org.api.GroupSelectionRequiredException;
@@ -33,11 +41,13 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     private final CourseRepository courses;
     private final InvitationApi invitations;
     private final AccountStateApi accounts;
+    private final Validator validator;
 
-    CourseService(CourseRepository courses, InvitationApi invitations, AccountStateApi accounts) {
+    CourseService(CourseRepository courses, InvitationApi invitations, AccountStateApi accounts, Validator validator) {
         this.courses = courses;
         this.accounts = accounts;
         this.invitations = invitations;
+        this.validator = validator;
     }
 
     @Transactional
@@ -95,6 +105,54 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     public List<CourseMember> listMembers(AuthenticatedUser user, UUID courseId) {
         requireVisible(user, courseId);
         return courses.listMembers(courseId);
+    }
+
+    public List<CourseMemberCandidate> findMemberCandidates(AuthenticatedUser user, UUID courseId, String email) {
+        requireManage(user, courseId);
+        requireActiveCourse(courseId);
+        String normalizedEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+        if (!validator.validate(new EmailLookup(normalizedEmail)).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A valid email address is required");
+        }
+        var account = accounts.findActiveByEmail(normalizedEmail).orElse(null);
+        if (account == null || courses.isBanned(courseId, account.id())) {
+            return List.of();
+        }
+        boolean alreadyMember = courses.findMemberRole(courseId, account.id()).isPresent();
+        return List.of(new CourseMemberCandidate(account.id(), account.displayName(), alreadyMember));
+    }
+
+    @Transactional
+    public CourseMember addExistingMember(AuthenticatedUser user, UUID courseId, AddCourseMemberRequest request) {
+        requireManage(user, courseId);
+        Course course = lockActiveCourse(courseId);
+        if (request.groupId() != null) {
+            if (request.role() != CourseRole.STUDENT) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only students can be assigned to a group");
+            }
+            if (!courses.groupBelongsToCourse(request.groupId(), courseId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Group does not belong to course");
+            }
+        }
+        if (course.ownerPersonId().equals(request.personId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Course owner is already a member");
+        }
+        var account = accounts.lock(request.personId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Active account not found"));
+        if (account.status() != PersonStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Active account not found");
+        }
+        if (courses.isBanned(courseId, request.personId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access to this course is banned");
+        }
+        if (!courses.insertMemberIfAbsent(courseId, request.personId(), request.role())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Person is already a course member");
+        }
+        courses.removeGroupMemberships(courseId, request.personId());
+        if (request.groupId() != null) {
+            courses.addGroupMember(request.groupId(), request.personId());
+        }
+        return courses.findMember(courseId, request.personId()).orElseThrow();
     }
 
     public List<StudyGroup> listGroups(AuthenticatedUser user, UUID courseId) {
@@ -371,4 +429,24 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found");
         }
     }
+
+    private Course requireActiveCourse(UUID courseId) {
+        Course course = courses.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        if (course.archived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Archived course cannot accept new members");
+        }
+        return course;
+    }
+
+    private Course lockActiveCourse(UUID courseId) {
+        Course course = courses.lockById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
+        if (course.archived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Archived course cannot accept new members");
+        }
+        return course;
+    }
+
+    private record EmailLookup(@NotBlank @Email @Size(max = 254) String email) {}
 }

@@ -78,7 +78,30 @@ export async function removeStudyGroupMember(
   });
 }
 
-type CourseRole = components["schemas"]["CourseRole"];
+export type CourseRole = components["schemas"]["CourseRole"];
+
+export type CourseMemberCandidate = components["schemas"]["CourseMemberCandidate"];
+export type AddCourseMemberRequest = components["schemas"]["AddCourseMemberRequest"];
+
+export async function findCourseMemberCandidate(
+  courseId: string,
+  email: string
+): Promise<CourseMemberCandidate[]> {
+  const params = new URLSearchParams({ email });
+  const res = await apiFetch(`/courses/${courseId}/member-candidates?${params.toString()}`);
+  return res.json() as Promise<CourseMemberCandidate[]>;
+}
+
+export async function addCourseMember(
+  courseId: string,
+  req: AddCourseMemberRequest
+): Promise<CourseMember> {
+  const res = await apiFetch(`/courses/${courseId}/members`, {
+    method: "POST",
+    body: JSON.stringify(req)
+  });
+  return res.json() as Promise<CourseMember>;
+}
 
 export async function removeCourseMember(courseId: string, personId: string): Promise<void> {
   await apiFetch(`/courses/${courseId}/members/${personId}`, { method: "DELETE" });

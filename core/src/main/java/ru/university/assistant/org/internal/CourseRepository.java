@@ -49,6 +49,17 @@ class CourseRepository {
                 .optional();
     }
 
+    Optional<Course> lockById(UUID courseId) {
+        return jdbc.sql("""
+                        select id, owner_person_id, title, archived
+                        from org.courses where id = :courseId
+                        for no key update
+                        """)
+                .param("courseId", courseId)
+                .query(this::mapCourse)
+                .optional();
+    }
+
     void archive(UUID courseId) {
         jdbc.sql("update org.courses set archived = true, updated_at = now() where id = :courseId")
                 .param("courseId", courseId)
@@ -129,6 +140,19 @@ class CourseRepository {
                 .update();
     }
 
+    boolean insertMemberIfAbsent(UUID courseId, UUID personId, CourseRole role) {
+        return jdbc.sql(
+                        """
+                        insert into org.course_members (course_id, person_id, role)
+                        values (:courseId, :personId, :role)
+                        on conflict (course_id, person_id) do nothing
+                        """)
+                .param("courseId", courseId)
+                .param("personId", personId)
+                .param("role", role.name())
+                .update() == 1;
+    }
+
     void removeMember(UUID courseId, UUID personId) {
         jdbc.sql("delete from org.course_members where course_id = :courseId and person_id = :personId")
                 .param("courseId", courseId)
@@ -167,6 +191,19 @@ class CourseRepository {
                 .query(String.class)
                 .optional()
                 .map(CourseRole::valueOf);
+    }
+
+    Optional<CourseMember> findMember(UUID courseId, UUID personId) {
+        return jdbc.sql("""
+                        select cm.course_id, cm.person_id, p.display_name, cm.role
+                        from org.course_members cm
+                        join iam.persons p on p.id = cm.person_id
+                        where cm.course_id = :courseId and cm.person_id = :personId
+                        """)
+                .param("courseId", courseId)
+                .param("personId", personId)
+                .query(this::mapMember)
+                .optional();
     }
 
     List<CourseMember> listMembers(UUID courseId) {
@@ -264,6 +301,17 @@ class CourseRepository {
                         on conflict do nothing
                         """)
                 .param("groupId", groupId)
+                .param("personId", personId)
+                .update();
+    }
+
+    void removeGroupMemberships(UUID courseId, UUID personId) {
+        jdbc.sql("""
+                        delete from org.group_members gm
+                        using org.study_groups g
+                        where gm.group_id = g.id and g.course_id = :courseId and gm.person_id = :personId
+                        """)
+                .param("courseId", courseId)
                 .param("personId", personId)
                 .update();
     }

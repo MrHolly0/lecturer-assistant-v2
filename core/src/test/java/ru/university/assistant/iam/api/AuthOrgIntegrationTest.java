@@ -36,6 +36,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.RequestBuilder;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -321,6 +322,299 @@ class AuthOrgIntegrationTest {
     }
 
     @Test
+    void courseManagersCanFindAndAddAnExistingAccountByExactEmail() throws Exception {
+        String admin = bootstrapAdmin();
+        AuthResult owner = registerWithProfile(createAdminInvitation(admin, "LECTURER"),
+                "Owner Lecturer", "owner@example.test");
+        UUID courseId = createCourse(owner.accessToken(), "Algorithms");
+        UUID groupId = createGroup(owner.accessToken(), courseId, "BVT-21-1");
+        UUID otherCourseId = createCourse(owner.accessToken(), "Databases");
+        UUID foreignGroupId = createGroup(owner.accessToken(), otherCourseId, "DB-21");
+        UUID studentId = UUID.randomUUID();
+        insertUser(studentId, "Existing Student", "existing.student@example.test", "STUDENT", "ACTIVE", 1);
+        AuthResult existingLecturer = registerWithProfile(createAdminInvitation(admin, "LECTURER"),
+                "Existing Lecturer", "existing.lecturer@example.test");
+
+        JsonNode candidate = json(get("/api/v1/courses/{c}/member-candidates", courseId)
+                .header("Authorization", bearer(owner.accessToken()))
+                .param("email", "  EXISTING.STUDENT@EXAMPLE.TEST "), 200);
+        assertEquals(1, candidate.size());
+        assertEquals(studentId.toString(), candidate.get(0).get("personId").asText());
+        assertEquals("Existing Student", candidate.get(0).get("displayName").asText());
+        assertFalse(candidate.get(0).get("alreadyMember").asBoolean());
+        assertFalse(candidate.get(0).has("email"));
+
+        assertEquals(0, json(get("/api/v1/courses/{c}/member-candidates", courseId)
+                .header("Authorization", bearer(owner.accessToken()))
+                .param("email", "existing.student+other@example.test"), 200).size());
+        json(get("/api/v1/courses/{c}/member-candidates", courseId)
+                .header("Authorization", bearer(owner.accessToken()))
+                .param("email", "not-an-email"), 400);
+
+        JsonNode added = json(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\",\"groupId\":\"%s\"}"
+                                .formatted(studentId, groupId)),
+                201);
+        assertEquals(courseId.toString(), added.get("courseId").asText());
+        assertEquals(studentId.toString(), added.get("personId").asText());
+        assertEquals("STUDENT", added.get("role").asText());
+        assertEquals(1, count("org.group_members where group_id = '" + groupId + "' and person_id = '"
+                + studentId + "'"));
+
+        assertTrue(json(get("/api/v1/courses/{c}/member-candidates", courseId)
+                .header("Authorization", bearer(owner.accessToken()))
+                .param("email", "existing.student@example.test"), 200)
+                .get(0).get("alreadyMember").asBoolean());
+        json(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"ASSISTANT\"}".formatted(studentId)),
+                409);
+        assertEquals(1, count("org.group_members where group_id = '" + groupId + "' and person_id = '"
+                + studentId + "'"), "duplicate add must not clear existing group membership");
+        JsonNode courseMembers = json(get("/api/v1/courses/{c}", courseId)
+                .header("Authorization", bearer(owner.accessToken())), 200).get("members");
+        String savedRole = null;
+        for (JsonNode member : courseMembers) {
+            if (studentId.toString().equals(member.get("personId").asText())) savedRole = member.get("role").asText();
+        }
+        assertEquals("STUDENT", savedRole);
+
+        String lecturerId = existingLecturer.user().get("id").asText();
+        JsonNode lecturerAddedAsStudent = json(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\"}".formatted(lecturerId)),
+                201);
+        assertEquals("STUDENT", lecturerAddedAsStudent.get("role").asText());
+        assertEquals("LECTURER", jdbc.sql("select role from iam.persons where id = :id")
+                .param("id", UUID.fromString(lecturerId)).query(String.class).single());
+
+        String ownerId = owner.user().get("id").asText();
+        json(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"ASSISTANT\"}".formatted(ownerId)),
+                409);
+        json(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"LECTURER\",\"groupId\":\"%s\"}"
+                                .formatted(UUID.randomUUID(), groupId)),
+                400);
+        json(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\",\"groupId\":\"%s\"}"
+                                .formatted(UUID.randomUUID(), foreignGroupId)),
+                400);
+    }
+
+    @Test
+    void readdingCourseMemberClearsOnlyStaleGroupsFromThatCourse() throws Exception {
+        String admin = bootstrapAdmin();
+        AuthResult owner = registerWithProfile(createAdminInvitation(admin, "LECTURER"),
+                "Owner Lecturer", "readd.owner@example.test");
+        UUID courseId = createCourse(owner.accessToken(), "Algorithms");
+        UUID groupA = createGroup(owner.accessToken(), courseId, "BVT-21-A");
+        UUID groupB = createGroup(owner.accessToken(), courseId, "BVT-21-B");
+        UUID otherCourseId = createCourse(owner.accessToken(), "Databases");
+        UUID foreignGroup = createGroup(owner.accessToken(), otherCourseId, "DB-21");
+        UUID studentId = UUID.randomUUID();
+        insertUser(studentId, "Readded Student", "readded.student@example.test", "STUDENT", "ACTIVE", 1);
+
+        mockMvc.perform(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\",\"groupId\":\"%s\"}"
+                                .formatted(studentId, groupA)))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/courses/{c}/members", otherCourseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\",\"groupId\":\"%s\"}"
+                                .formatted(studentId, foreignGroup)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(delete("/api/v1/courses/{c}/members/{p}", courseId, studentId)
+                        .header("Authorization", bearer(owner.accessToken())))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\"}".formatted(studentId)))
+                .andExpect(status().isCreated());
+        assertEquals(0, count("org.group_members gm join org.study_groups g on g.id = gm.group_id"
+                + " where g.course_id = '" + courseId + "' and gm.person_id = '" + studentId + "'"));
+        assertEquals(1, count("org.group_members where group_id = '" + foreignGroup + "' and person_id = '"
+                + studentId + "'"), "groups in other courses must be preserved");
+
+        mockMvc.perform(delete("/api/v1/courses/{c}/members/{p}", courseId, studentId)
+                        .header("Authorization", bearer(owner.accessToken())))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\",\"groupId\":\"%s\"}"
+                                .formatted(studentId, groupB)))
+                .andExpect(status().isCreated());
+        assertEquals(1, count("org.group_members gm join org.study_groups g on g.id = gm.group_id"
+                + " where g.course_id = '" + courseId + "' and gm.person_id = '" + studentId + "'"));
+        assertEquals(1, count("org.group_members where group_id = '" + groupB + "' and person_id = '"
+                + studentId + "'"));
+        assertEquals(0, count("org.group_members where group_id = '" + groupA + "' and person_id = '"
+                + studentId + "'"));
+
+        mockMvc.perform(delete("/api/v1/courses/{c}/members/{p}", courseId, studentId)
+                        .header("Authorization", bearer(owner.accessToken())))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"ASSISTANT\"}".formatted(studentId)))
+                .andExpect(status().isCreated());
+        assertEquals(0, count("org.group_members gm join org.study_groups g on g.id = gm.group_id"
+                + " where g.course_id = '" + courseId + "' and gm.person_id = '" + studentId + "'"),
+                "re-adding staff must clear stale student group links from this course");
+        assertEquals(1, count("org.group_members where group_id = '" + foreignGroup + "' and person_id = '"
+                + studentId + "'"), "re-adding must not touch memberships in another course");
+    }
+
+    @Test
+    void courseMemberLookupAndAddRespectCourseAndAccountAccess() throws Exception {
+        String admin = bootstrapAdmin();
+        AuthResult owner = registerWithProfile(createAdminInvitation(admin, "LECTURER"),
+                "Owner Lecturer", "owner@example.test");
+        UUID courseId = createCourse(owner.accessToken(), "Algorithms");
+        UUID courseGroupId = createGroup(owner.accessToken(), courseId, "BVT-21-1");
+        AuthResult foreignOwner = registerWithProfile(createAdminInvitation(admin, "LECTURER"),
+                "Foreign Lecturer", "foreign.lecturer@example.test");
+        UUID foreignCourseId = createCourse(foreignOwner.accessToken(), "Databases");
+        AuthResult student = registerWithProfile(
+                createCourseInvitation(owner.accessToken(), courseId, courseGroupId, "STUDENT"),
+                "Course Student", "course.student@example.test");
+        UUID otherStudentUuid = UUID.randomUUID();
+        insertUser(otherStudentUuid, "Other Student", "other.student@example.test", "STUDENT", "ACTIVE", 1);
+        String otherStudentId = otherStudentUuid.toString();
+        UUID bannedStudentUuid = UUID.randomUUID();
+        insertUser(bannedStudentUuid, "Banned Student", "banned.student@example.test", "STUDENT", "ACTIVE", 1);
+        String bannedStudentId = bannedStudentUuid.toString();
+
+        json(get("/api/v1/courses/{c}/member-candidates", courseId)
+                .header("Authorization", bearer(student.accessToken()))
+                .param("email", "other.student@example.test"), 403);
+        json(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(student.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\"}".formatted(otherStudentId)),
+                403);
+        json(get("/api/v1/courses/{c}/member-candidates", courseId)
+                .header("Authorization", bearer(owner.accessToken()))
+                .param("email", "other.student@example.test"), 200);
+        json(post("/api/v1/courses/{c}/members", foreignCourseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\"}".formatted(otherStudentId)),
+                403);
+
+        json(post("/api/v1/courses/{c}/bans", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\"}".formatted(bannedStudentId)),
+                201);
+        assertEquals(0, json(get("/api/v1/courses/{c}/member-candidates", courseId)
+                .header("Authorization", bearer(owner.accessToken()))
+                .param("email", "banned.student@example.test"), 200).size());
+        json(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\"}".formatted(bannedStudentId)),
+                403);
+
+        jdbc.sql("update iam.persons set status = 'DISABLED' where id = :id")
+                .param("id", UUID.fromString(otherStudentId)).update();
+        assertEquals(0, json(get("/api/v1/courses/{c}/member-candidates", courseId)
+                .header("Authorization", bearer(owner.accessToken()))
+                .param("email", "other.student@example.test"), 200).size());
+        json(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\"}".formatted(otherStudentId)),
+                404);
+
+        UUID ephemeralId = UUID.randomUUID();
+        jdbc.sql("""
+                        insert into iam.persons(id, display_name, email, password_hash, role, status)
+                        values (:id, 'Ephemeral', 'ephemeral@example.test', 'hash', 'STUDENT', 'EPHEMERAL')
+                        """).param("id", ephemeralId).update();
+        assertEquals(0, json(get("/api/v1/courses/{c}/member-candidates", courseId)
+                .header("Authorization", bearer(owner.accessToken()))
+                .param("email", "ephemeral@example.test"), 200).size());
+        json(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\"}".formatted(ephemeralId)),
+                404);
+        json(get("/api/v1/courses/{c}/member-candidates", UUID.randomUUID())
+                .header("Authorization", bearer(admin))
+                .param("email", "nobody@example.test"), 404);
+        json(delete("/api/v1/courses/{c}", courseId)
+                .header("Authorization", bearer(owner.accessToken())), 204);
+        json(post("/api/v1/courses/{c}/members", courseId)
+                        .header("Authorization", bearer(owner.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"personId\":\"%s\",\"role\":\"STUDENT\"}".formatted(ephemeralId)),
+                409);
+    }
+
+    @Test
+    void addingMemberLocksCourseBeforeWaitingForAccountSoArchiveCannotOvertakeIt() throws Exception {
+        String admin = bootstrapAdmin();
+        AuthResult owner = registerWithProfile(createAdminInvitation(admin, "LECTURER"),
+                "Owner Lecturer", "owner@example.test");
+        UUID courseId = createCourse(owner.accessToken(), "Algorithms");
+        UUID personId = UUID.randomUUID();
+        insertUser(personId, "Concurrent Student", "concurrent.student@example.test", "STUDENT", "ACTIVE", 1);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2);
+                Connection lockConnection = dataSource.getConnection()) {
+            lockConnection.setAutoCommit(false);
+            try (var statement = lockConnection.prepareStatement(
+                    "select id from iam.persons where id = ? for no key update")) {
+                statement.setObject(1, personId);
+                try (var result = statement.executeQuery()) {
+                    assertTrue(result.next());
+                }
+            }
+
+            Future<Integer> add = executor.submit(() -> mockMvc.perform(
+                            post("/api/v1/courses/{c}/members", courseId)
+                                    .header("Authorization", bearer(owner.accessToken()))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("{\"personId\":\"%s\",\"role\":\"STUDENT\"}".formatted(personId)))
+                    .andReturn().getResponse().getStatus());
+            awaitLockWaiter("%from iam.persons where id%for no key update%", 1);
+
+            Future<Integer> archive = executor.submit(() -> mockMvc.perform(
+                            delete("/api/v1/courses/{c}", courseId)
+                                    .header("Authorization", bearer(owner.accessToken())))
+                    .andReturn().getResponse().getStatus());
+            awaitLockWaiter("%update org.courses set archived = true%", 1);
+
+            lockConnection.commit();
+            assertEquals(201, add.get(10, TimeUnit.SECONDS));
+            assertEquals(204, archive.get(10, TimeUnit.SECONDS));
+        }
+
+        assertTrue(jdbc.sql("select archived from org.courses where id = :id")
+                .param("id", courseId).query(Boolean.class).single());
+        assertEquals(1, count("org.course_members where course_id = '" + courseId + "' and person_id = '"
+                + personId + "'"));
+    }
+
+    @Test
     void nonAdminCannotAccessAdminEndpoints() throws Exception {
         String adminToken = bootstrapAdmin();
         String lecturerInvite = createAdminInvitation(adminToken, "LECTURER");
@@ -426,6 +720,19 @@ class AuthOrgIntegrationTest {
                 .param("status", status)
                 .param("secondsAgo", secondsAgo)
                 .update();
+    }
+
+    private JsonNode json(RequestBuilder request, int expectedStatus) throws Exception {
+        String content = mockMvc.perform(request)
+                .andExpect(status().is(expectedStatus))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return content.isBlank() ? objectMapper.createObjectNode() : objectMapper.readTree(content);
+    }
+
+    private long count(String fromAndWhere) {
+        return jdbc.sql("select count(*) from " + fromAndWhere).query(Long.class).single();
     }
 
     @Test

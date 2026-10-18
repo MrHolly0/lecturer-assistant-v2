@@ -12,10 +12,13 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.iam.api.InvitationResponse;
+import ru.university.assistant.org.api.AddCourseMemberRequest;
+import ru.university.assistant.org.api.CourseMemberCandidate;
 import ru.university.assistant.org.internal.CourseService;
 
 @RestController
@@ -74,6 +77,23 @@ public class CourseController {
     @GetMapping("/{courseId}/members")
     public List<CourseMember> members(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID courseId) {
         return courseService.listMembers(user, courseId);
+    }
+
+    @GetMapping("/{courseId}/member-candidates")
+    public List<CourseMemberCandidate> memberCandidates(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @RequestParam String email) {
+        return courseService.findMemberCandidates(user, courseId, email);
+    }
+
+    @PostMapping("/{courseId}/members")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CourseMember addMember(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @Valid @RequestBody AddCourseMemberRequest request) {
+        return courseService.addExistingMember(user, courseId, request);
     }
 
     @DeleteMapping("/{courseId}/members/{personId}")

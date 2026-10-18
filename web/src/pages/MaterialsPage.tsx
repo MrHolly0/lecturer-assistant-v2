@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -21,6 +21,13 @@ import { titleFromFileName } from "../shared/lib/fileName";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import { useMaterialsActions } from "./useMaterialsActions";
 import { Button } from "../shared/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from "../shared/ui/dialog";
 import { useDeckSlideActions } from "./useDeckSlideActions";
 import { useSlideNoteActions } from "./useSlideNoteActions";
 import { useLectureCreation } from "./useLectureCreation";
@@ -31,6 +38,8 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const [fileName, setFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadCompleted, setUploadCompleted] = useState(false);
   const [job, setJob] = useState<ImportJob | null>(null);
   const [selectedDeckId, setSelectedDeckId] = useState("");
   const [activeSlide, setActiveSlide] = useState(0);
@@ -38,12 +47,20 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [lectureTitle, setLectureTitle] = useState("");
   const [lectureDeckId, setLectureDeckId] = useState("");
+  const selectedDeckIdRef = useRef(selectedDeckId);
+  const lectureDeckIdRef = useRef(lectureDeckId);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [lectureCreateOpen, setLectureCreateOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [partialDeckId, setPartialDeckId] = useState("");
   const [partialWarning, setPartialWarning] = useState("");
   const [partialReviewAccepted, setPartialReviewAccepted] = useState(false);
+  const uploadRequestEpoch = useRef(0);
+  const uploadInFlight = useRef(false);
+  const currentCourseId = useRef(courseId);
+  currentCourseId.current = courseId;
+  selectedDeckIdRef.current = selectedDeckId;
+  lectureDeckIdRef.current = lectureDeckId;
   const courseQuery = useQuery({
     queryKey: ["courses", courseId],
     queryFn: () => getCourse(courseId)
@@ -78,12 +95,18 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const selectedDeck = deckQuery.data;
   const latestJob = jobQuery.data ?? job;
   useEffect(() => {
+    uploadRequestEpoch.current += 1;
+    uploadInFlight.current = false;
     setTitle("");
     setFileName("");
     setUploadProgress(0);
+    setUploadingFile(false);
+    setUploadCompleted(false);
     setJob(null);
     setSelectedDeckId("");
+    selectedDeckIdRef.current = "";
     setLectureDeckId("");
+    lectureDeckIdRef.current = "";
     setActiveSlide(0);
     setNotesOpen(true);
     setError(null);
@@ -94,6 +117,10 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     setPartialDeckId("");
     setPartialWarning("");
     setPartialReviewAccepted(false);
+    return () => {
+      uploadRequestEpoch.current += 1;
+      uploadInFlight.current = false;
+    };
   }, [courseId]);
   useEffect(() => {
     if (!jobQuery.data) return;
@@ -103,10 +130,17 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
       (jobQuery.data.status === "COMPLETED" || jobQuery.data.status === "PARTIAL") &&
       jobQuery.data.deckId
     ) {
-      setSelectedDeckId(jobQuery.data.deckId);
-      setLectureDeckId(jobQuery.data.deckId);
-      setActiveSlide(0);
-      setNotesOpen(true);
+      setUploadCompleted(jobQuery.data.status === "COMPLETED");
+      if (!selectedDeckIdRef.current) {
+        selectedDeckIdRef.current = jobQuery.data.deckId;
+        setSelectedDeckId(jobQuery.data.deckId);
+        setActiveSlide(0);
+        setNotesOpen(true);
+      }
+      if (!lectureDeckIdRef.current) {
+        lectureDeckIdRef.current = jobQuery.data.deckId;
+        setLectureDeckId(jobQuery.data.deckId);
+      }
       setJob(null);
       setUploadProgress(jobQuery.data.progressPercent);
       if (jobQuery.data.status === "PARTIAL") {
@@ -139,10 +173,11 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     }
   }, [activeDecks, selectedDeckId]);
   const importing = Boolean(
-    latestJob &&
-      latestJob.status !== "COMPLETED" &&
-      latestJob.status !== "PARTIAL" &&
-      latestJob.status !== "FAILED"
+    uploadingFile ||
+      (latestJob &&
+        latestJob.status !== "COMPLETED" &&
+        latestJob.status !== "PARTIAL" &&
+        latestJob.status !== "FAILED")
   );
   const displayedProgress = importing
     ? latestJob?.progressPercent ?? uploadProgress
@@ -175,13 +210,22 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     setViewerOpen(false);
   });
   async function handleFile(file: File) {
+    if (uploadInFlight.current) return;
+    uploadInFlight.current = true;
+    const requestEpoch = ++uploadRequestEpoch.current;
+    const requestCourseId = courseId;
+    const isCurrentRequest = () =>
+      uploadRequestEpoch.current === requestEpoch && currentCourseId.current === requestCourseId;
+    setJob(null);
+    setUploadCompleted(false);
+    setUploadingFile(true);
     setError(null);
     setPartialDeckId("");
     setPartialWarning("");
     setPartialReviewAccepted(false);
     const cleanTitle = title.trim();
     const effectiveTitle = cleanTitle || titleFromFileName(file.name);
-    setLectureTitle(effectiveTitle);
+    if (!lectureTitle.trim()) setLectureTitle(effectiveTitle);
     if (!cleanTitle) {
       setTitle(effectiveTitle);
       toast.warning(`Название взято из файла: ${effectiveTitle}`);
@@ -190,12 +234,21 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     setUploadProgress(1);
     setUploadOpen(true);
     try {
-      const uploadedJob = await uploadDeck(courseId, effectiveTitle, file, setUploadProgress);
+      const uploadedJob = await uploadDeck(courseId, effectiveTitle, file, (progress) => {
+        if (isCurrentRequest()) setUploadProgress(progress);
+      });
+      if (!isCurrentRequest()) return;
       setJob(uploadedJob);
       setUploadProgress(uploadedJob.progressPercent);
     } catch (err) {
+      if (!isCurrentRequest()) return;
       setError(userErrorMessage(err, "Не удалось загрузить файл."));
       setUploadProgress(0);
+    } finally {
+      if (isCurrentRequest()) {
+        uploadInFlight.current = false;
+        setUploadingFile(false);
+      }
     }
   }
 
@@ -241,8 +294,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
           <Link to={`/courses/${courseId}`} className="breadcrumb">
             ← Курсы / {courseQuery.data?.title ?? "Курс"}
           </Link>
-          <h1>{lectureCreateOpen ? "Новая лекция" : "Лекции и материалы"}</h1>
-          {lectureCreateOpen && <p className="muted">{courseQuery.data?.title}</p>}
+          <h1>Лекции и материалы</h1>
         </div>
       </header>
 
@@ -275,6 +327,11 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
             title={lectureTitle}
             deckId={lectureDeckId}
             creating={createLectureMut.isPending}
+            createError={
+              createLectureMut.error
+                ? userErrorMessage(createLectureMut.error, "Не удалось сохранить лекцию.")
+                : null
+            }
             createOpen={lectureCreateOpen}
             onCreateOpenChange={setLectureCreateOpen}
             onTitleChange={setLectureTitle}
@@ -307,7 +364,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
         </div>
       )}
 
-      {!courseQuery.isError && !lectureCreateOpen && (
+      {!courseQuery.isError && (
         <section className="materials-workspace" aria-labelledby="materials-workspace-title">
           <div className="section-heading materials-workspace__heading">
             <div>
@@ -315,44 +372,98 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
               <p className="muted">Файлы слайдов, версии и заметки преподавателя.</p>
             </div>
             {canManage && (
-              <Button
-                type="button"
-                disabled={importing}
-                onClick={() => setUploadOpen((value) => !value)}
-              >
-                {uploadOpen ? (
-                  <X size={16} aria-hidden="true" />
-                ) : (
-                  <Plus size={16} aria-hidden="true" />
-                )}
-                {uploadOpen ? "Скрыть загрузку" : "Добавить презентацию"}
+              <Button type="button" onClick={() => setUploadOpen(true)}>
+                <Plus size={16} aria-hidden="true" />
+                Добавить презентацию
               </Button>
             )}
           </div>
 
-          {canManage && (uploadOpen || importing || Boolean(error)) && (
+          {canManage && (
             <>
-              <DeckUploadPanel
-                title={title}
-                fileName={fileName}
-                dragOver={dragOver}
-                progress={displayedProgress}
-                importing={importing}
-                error={
-                  error ?? (jobQuery.isError ? "Не удалось проверить состояние импорта." : null)
-                }
-                phase={latestJob?.phase}
-                processedSlides={latestJob?.processedSlides}
-                totalSlides={latestJob?.totalSlides}
-                warning={latestJob?.warningMessage}
-                onTitleChange={setTitle}
-                onFile={(file) => void handleFile(file)}
-                onDragOverChange={setDragOver}
-              />
-              {jobQuery.isError && (
-                <Button type="button" variant="outline" onClick={() => void jobQuery.refetch()}>
-                  Проверить импорт ещё раз
-                </Button>
+              <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+                <DialogContent
+                  className="materials-dialog materials-upload-dialog"
+                  onOpenAutoFocus={(event) => {
+                    event.preventDefault();
+                    document.getElementById("deck-upload-dialog-title")?.focus({
+                      preventScroll: true
+                    });
+                  }}
+                >
+                  <DialogHeader>
+                    <DialogTitle id="deck-upload-dialog-title" tabIndex={-1} data-dialog-heading>
+                      Добавить презентацию
+                    </DialogTitle>
+                    <DialogDescription>
+                      Выберите PowerPoint, ODP или PDF. Импорт начнётся после выбора файла.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="materials-dialog__body">
+                    <DeckUploadPanel
+                      title={title}
+                      fileName={fileName}
+                      dragOver={dragOver}
+                      progress={displayedProgress}
+                      importing={importing}
+                      error={
+                        error ??
+                        (jobQuery.isError ? "Не удалось проверить состояние импорта." : null)
+                      }
+                      phase={latestJob?.phase}
+                      processedSlides={latestJob?.processedSlides}
+                      totalSlides={latestJob?.totalSlides}
+                      warning={partialWarning || latestJob?.warningMessage}
+                      onTitleChange={setTitle}
+                      onFile={(file) => void handleFile(file)}
+                      onDragOverChange={setDragOver}
+                    />
+                    {uploadCompleted && (
+                      <p className="materials-upload-success" role="status">
+                        Импорт завершён. Проверьте презентацию и выберите её при создании лекции.
+                      </p>
+                    )}
+                    {jobQuery.isError && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void jobQuery.refetch()}
+                      >
+                        Проверить импорт ещё раз
+                      </Button>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+              {(importing ||
+                Boolean(error) ||
+                jobQuery.isError ||
+                Boolean(partialWarning) ||
+                uploadCompleted) && (
+                <div
+                  className={`materials-upload-status${uploadOpen ? " materials-upload-status--behind-dialog" : ""}`}
+                  aria-hidden={uploadOpen || undefined}
+                  role={error || jobQuery.isError ? "alert" : "status"}
+                >
+                  <span>
+                    {error ||
+                      (jobQuery.isError
+                        ? "Не удалось проверить состояние импорта."
+                        : importing
+                          ? `Импорт презентации продолжается: ${displayedProgress}%.`
+                          : partialWarning
+                            ? "Презентация импортирована частично, проверьте слайды перед созданием лекции."
+                            : "Импорт завершён. Презентация сохранена в материалах курса.")}
+                  </span>
+                  <Button type="button" variant="outline" onClick={() => setUploadOpen(true)}>
+                    {importing ? "Открыть импорт" : "Открыть результат"}
+                  </Button>
+                  {jobQuery.isError && (
+                    <Button type="button" variant="ghost" onClick={() => void jobQuery.refetch()}>
+                      Проверить ещё раз
+                    </Button>
+                  )}
+                </div>
               )}
             </>
           )}

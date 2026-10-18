@@ -10,13 +10,15 @@ import {
   createStudyGroup,
   deleteStudyGroup,
   getCourse,
-  removeCourseMember
+  removeCourseMember,
+  type CourseMember
 } from "../app/api/courses-api";
 import { CourseContextLinks } from "../widgets/CourseContextLinks";
 import { CourseLectureSpotlight } from "../widgets/CourseLectureSpotlight";
 import { CourseMemberActions } from "../widgets/CourseMemberActions";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import { CourseInvitePanel } from "../widgets/CourseInvitePanel";
+import { CourseParticipantDialog } from "../widgets/CourseParticipantDialog";
 import { CourseGroupManager } from "../widgets/CourseGroupManager";
 import { Button, LinkButton } from "../shared/ui/button";
 import {
@@ -51,7 +53,12 @@ export function CoursePage({ courseId }: { courseId: string }) {
   };
   const [groupName, setGroupName] = useState("");
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [participantDialogOpen, setParticipantDialogOpen] = useState(false);
   const [preferredGroupId, setPreferredGroupId] = useState<string>();
+  useEffect(() => {
+    setParticipantDialogOpen(false);
+    setGroupDialogOpen(false);
+  }, [courseId]);
 
   const {
     data: course,
@@ -204,10 +211,10 @@ export function CoursePage({ courseId }: { courseId: string }) {
         {activeTab === "members" && (
           <div className="section-heading course-settings__heading">
             <h2 id="course-settings-title">Люди и доступ</h2>
-            {canManage && (
-              <Button variant="outline" onClick={() => setActiveTab("invite")}>
+            {canManage && !course.archived && (
+              <Button variant="outline" onClick={() => setParticipantDialogOpen(true)}>
                 <UserRoundPlus aria-hidden="true" />
-                Пригласить
+                Добавить участника
               </Button>
             )}
           </div>
@@ -342,10 +349,35 @@ export function CoursePage({ courseId }: { courseId: string }) {
           </>
         )}
 
-        {canManage && activeTab === "invite" && (
-          <CourseInvitePanel courseId={courseId} groups={course.groups} />
+        {canManage && !course.archived && activeTab === "invite" && (
+          <CourseInvitePanel key={courseId} courseId={courseId} groups={course.groups} />
+        )}
+        {canManage && course.archived && activeTab === "invite" && (
+          <p className="muted">В архивный курс нельзя добавлять участников.</p>
         )}
       </section>
+      {canManage && !course.archived && (
+        <CourseParticipantDialog
+          key={courseId}
+          courseId={courseId}
+          groups={course.groups}
+          open={participantDialogOpen}
+          onOpenChange={setParticipantDialogOpen}
+          onAdded={(member: CourseMember) => {
+            qc.setQueryData(["courses", courseId], (current: typeof course | undefined) => {
+              if (
+                !current ||
+                current.members.some((existing) => existing.personId === member.personId)
+              ) {
+                return current;
+              }
+              return { ...current, members: [...current.members, member] };
+            });
+            void invalidateCourse();
+            toast.success("Участник добавлен в курс");
+          }}
+        />
+      )}
     </div>
   );
 }

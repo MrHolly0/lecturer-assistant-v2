@@ -485,6 +485,24 @@ export interface paths {
     /** List course members. */
     get: operations["listCourseMembers"];
     put?: never;
+    /** Add an existing active account to a course. */
+    post: operations["addExistingCourseMember"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/member-candidates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Look up one active account by its exact email for course membership. */
+    get: operations["findCourseMemberCandidate"];
+    put?: never;
     post?: never;
     delete?: never;
     options?: never;
@@ -2419,6 +2437,19 @@ export interface components {
       displayName: string;
       role: components["schemas"]["CourseRole"];
     };
+    CourseMemberCandidate: {
+      /** Format: uuid */
+      personId: string;
+      displayName: string;
+      alreadyMember: boolean;
+    };
+    AddCourseMemberRequest: {
+      /** Format: uuid */
+      personId: string;
+      role: components["schemas"]["CourseRole"];
+      /** Format: uuid */
+      groupId?: string;
+    };
     /** @enum {string} */
     CourseRole: "LECTURER" | "ASSISTANT" | "STUDENT";
     ChangeMemberRoleRequest: {
@@ -4098,6 +4129,112 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["CourseMember"][];
         };
+      };
+    };
+  };
+  addExistingCourseMember: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AddCourseMemberRequest"];
+      };
+    };
+    responses: {
+      /** @description Member added. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CourseMember"];
+        };
+      };
+      /** @description Invalid role or group selection. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course management is not allowed or the account is banned from the course. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course or active account not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course is archived, or the account is already a member or is the owner. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  findCourseMemberCandidate: {
+    parameters: {
+      query: {
+        email: string;
+      };
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Zero or one matching eligible account. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CourseMemberCandidate"][];
+        };
+      };
+      /** @description Invalid email address. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course management is not allowed. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course is archived. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

@@ -394,23 +394,40 @@
 .course-quick-start--overview {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0 24px;
-  align-items: end;
+  gap: 8px 24px;
+  align-items: start;
 }
 .course-quick-start--overview .course-quick-start__field {
+  display: contents;
+}
+.course-quick-start--overview .course-quick-start__label {
   grid-column: 1;
+  grid-row: 1;
+}
+.course-quick-start--overview .course-quick-start__select {
+  grid-column: 1;
+  grid-row: 2;
 }
 .course-quick-start--overview .course-quick-start__action {
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 2;
+  align-self: stretch;
   width: auto;
   margin-bottom: 0;
 }
 .course-quick-start--overview .course-quick-start__deck {
+  grid-column: 1 / -1;
+  grid-row: 3;
   font-size: 14px;
   margin: 16px 0 0;
 }
+.course-quick-start--overview .course-quick-start__retry {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
 .course-quick-start--overview .course-quick-start__hint {
+  grid-column: 1 / -1;
+  grid-row: 4;
   display: none;
 }
 .course-quick-start--overview .course-quick-start__deck > span {
@@ -604,15 +621,6 @@
   .course-catalog__controls > .muted {
     display: none;
   }
-  .course-quick-start--overview {
-    grid-template-columns: 1fr;
-  }
-  .course-quick-start--overview .course-quick-start__action {
-    grid-column: 1;
-    grid-row: auto;
-    justify-self: start;
-    margin-top: 20px;
-  }
 }
 @media (max-width: 1099px) {
   .course-catalog {
@@ -699,15 +707,6 @@
     border-radius: 0;
     background: transparent;
     margin-top: 32px;
-  }
-  .course-quick-start--overview {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-  .course-quick-start--overview .course-quick-start__action {
-    width: 100%;
-    margin-top: 24px;
   }
   .course-quick-start--overview .course-quick-start__hint {
     display: block;
@@ -932,4 +931,22 @@
   height: 10px;
   background: currentColor;
   border-radius: 50%;
+}
+@media (max-width: 700px) {
+  .course-quick-start--overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .course-quick-start--overview .course-quick-start__action {
+    grid-column: 1;
+    grid-row: 3;
+    width: 100%;
+    margin: 8px 0 0;
+  }
+  .course-quick-start--overview .course-quick-start__deck,
+  .course-quick-start--overview .course-quick-start__retry {
+    grid-row: 4;
+  }
+  .course-quick-start--overview .course-quick-start__hint {
+    grid-row: 5;
+  }
 }

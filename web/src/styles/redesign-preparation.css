@@ -190,9 +190,229 @@
 }
 .preparation-page .materials-workspace {
   margin-top: 64px;
-  padding: 32px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.materials-dialog {
+  display: flex;
+  width: min(640px, calc(100vw - 32px));
+  max-width: 640px;
+  max-height: calc(100dvh - 32px);
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  padding: clamp(20px, 4vw, 32px);
+  text-align: left;
+  transition: none;
+}
+
+.materials-dialog > [data-slot="dialog-header"] {
+  flex: 0 0 auto;
+  text-align: left;
+}
+
+.materials-dialog__body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 2px 4px 0;
+}
+
+.materials-dialog [data-dialog-heading],
+.materials-dialog [data-dialog-heading]:focus-visible {
+  outline: none;
+}
+
+.lecture-create-dialog .lecture-create-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+  margin: 0;
+}
+
+.lecture-create-dialog .lecture-create-form .field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.lecture-create-dialog .lecture-create-form .field > span {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lecture-create-dialog .lecture-create-form input {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+}
+
+.lecture-create-dialog .lecture-create-form .inline-select {
+  width: 100%;
+  max-width: none;
+  min-height: 48px;
+}
+
+.lecture-create-dialog .lecture-version-note {
+  margin: 0;
+  font-size: 14px;
+}
+
+.lecture-create-dialog .lecture-create-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  position: sticky;
+  z-index: 1;
+  bottom: 0;
+  margin: 0 -2px -4px;
+  padding: 12px 2px 4px 0;
+  background: var(--background);
   border-top: 1px solid var(--border);
 }
+
+.materials-upload-dialog .preparation-upload {
+  max-width: none;
+  margin: 0;
+}
+
+.materials-upload-dialog .preparation-upload > .mb-6 {
+  max-width: none;
+  margin-bottom: 20px;
+}
+
+.materials-upload-dialog .upload-dropzone {
+  margin-top: 0;
+}
+
+.materials-upload-dialog .upload-progress {
+  margin-top: 0;
+}
+
+.materials-upload-dialog .upload-progress__body {
+  min-width: 0;
+}
+
+.materials-upload-dialog .upload-progress__meta {
+  min-width: 0;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
+.materials-upload-dialog .upload-progress__meta span:first-child {
+  min-width: 0;
+  flex: 1 1 12rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.materials-upload-dialog .upload-progress__meta span:last-child {
+  flex-shrink: 0;
+}
+
+.materials-upload-dialog .preparation-upload__file {
+  min-width: 0;
+  max-width: 100%;
+  padding: clamp(12px, 4vw, 24px);
+}
+
+.materials-upload-dialog .preparation-upload__file strong {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.materials-upload-dialog .preparation-upload__file svg {
+  flex: 0 0 auto;
+}
+
+.materials-upload-success,
+.materials-upload-status {
+  overflow-wrap: anywhere;
+}
+
+.materials-upload-success {
+  margin: 0;
+  color: var(--chart-2);
+}
+
+.materials-upload-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin-top: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.materials-upload-status--behind-dialog {
+  visibility: hidden;
+}
+
+.materials-upload-status > span {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+@media (max-height: 380px) {
+  .materials-dialog {
+    display: block;
+    overflow-y: auto;
+  }
+  .materials-dialog__body {
+    overflow: visible;
+  }
+  .lecture-create-dialog .lecture-create-actions {
+    position: static;
+  }
+}
+
+@media (max-height: 600px) {
+  .materials-dialog {
+    top: max(8px, env(safe-area-inset-top));
+    max-height: calc(100dvh - 16px);
+    translate: -50% 0;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+
+  .materials-dialog__body {
+    padding-top: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .materials-dialog {
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
+    padding: 18px;
+  }
+
+  .materials-dialog > [data-slot="dialog-header"] {
+    padding-right: 34px;
+  }
+
+  .lecture-create-dialog .lecture-create-actions {
+    gap: 8px;
+  }
+
+  .lecture-create-dialog .lecture-create-actions .ui-button {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+}
+
 .preparation-page .deck-list {
   display: grid;
   gap: 24px;
@@ -1105,7 +1325,7 @@
   }
   .preparation-page .materials-workspace {
     margin-top: 40px;
-    padding-top: 24px;
+    padding-top: 0;
   }
   .preparation-page .lecture-row {
     display: grid;

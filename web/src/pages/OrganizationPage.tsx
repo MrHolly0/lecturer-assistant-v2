@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   ChevronRight,
-  ChevronDown,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -882,9 +881,9 @@ export function OrganizationPage() {
                                       setMemberDialog({ action: "access", member: person })
                                     }
                                   >
+                                    <ShieldCheck size={16} aria-hidden="true" />
                                     Доступ:{" "}
                                     {person.unitRole === "MANAGER" ? "Руководитель" : "Сотрудник"}
-                                    <ChevronDown size={16} aria-hidden="true" />
                                   </Button>
                                 )}
                                 {person.unitId && (

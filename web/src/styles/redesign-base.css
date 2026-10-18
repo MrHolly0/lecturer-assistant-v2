@@ -630,6 +630,8 @@ button.app-header-nav__item {
 }
 .course-section-nav {
   display: flex;
+  width: fit-content;
+  max-width: 100%;
   gap: 32px;
   height: 56px;
   border-bottom: 1px solid var(--border);

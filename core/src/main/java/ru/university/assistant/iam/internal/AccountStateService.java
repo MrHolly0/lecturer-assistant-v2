@@ -31,6 +31,32 @@ class AccountStateService implements AccountStateApi {
     }
 
     @Override
+    public Optional<State> lock(UUID personId) {
+        return jdbc.sql("""
+                        select id, display_name, email, role, status, auth_version
+                        from iam.persons where id = :id for no key update
+                        """)
+                .param("id", personId)
+                .query((rs, row) -> new State(rs.getObject("id", UUID.class), rs.getString("display_name"),
+                        rs.getString("email"), PersonRole.valueOf(rs.getString("role")),
+                        PersonStatus.valueOf(rs.getString("status")), rs.getLong("auth_version")))
+                .optional();
+    }
+
+    @Override
+    public Optional<State> findActiveByEmail(String email) {
+        return jdbc.sql("""
+                        select id, display_name, email, role, status, auth_version
+                        from iam.persons where lower(email) = :email and status = 'ACTIVE'
+                        """)
+                .param("email", email)
+                .query((rs, row) -> new State(rs.getObject("id", UUID.class), rs.getString("display_name"),
+                        rs.getString("email"), PersonRole.valueOf(rs.getString("role")),
+                        PersonStatus.valueOf(rs.getString("status")), rs.getLong("auth_version")))
+                .optional();
+    }
+
+    @Override
     public Set<UUID> enabledPeople(Set<UUID> personIds) {
         if (personIds.isEmpty()) return Set.of();
         return new HashSet<>(jdbc.sql("""
