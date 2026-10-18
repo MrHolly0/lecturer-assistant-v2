@@ -1,5 +1,6 @@
+import { useId, useRef } from "react";
 import { FileText, Upload } from "lucide-react";
-import { buttonVariants } from "../shared/ui/button";
+import { Button } from "../shared/ui/button";
 
 interface DeckUploadPanelProps {
   title: string;
@@ -32,8 +33,14 @@ export function DeckUploadPanel({
   onFile,
   onDragOverChange
 }: DeckUploadPanelProps) {
+  const fileInput = useRef<HTMLInputElement>(null);
+  const inputId = useId();
+  const displayError =
+    error && /^Загрузка завершилась с ошибкой \d+$/.test(error)
+      ? "Не удалось загрузить презентацию. Проверьте файл и выберите его снова."
+      : error;
   return (
-    <section className="material-section">
+    <section className="material-section preparation-upload">
       <div className="mb-6 max-w-xl">
         <label className="field">
           <span>Название презентации</span>
@@ -41,13 +48,19 @@ export function DeckUploadPanel({
             type="text"
             value={title}
             onChange={(event) => onTitleChange(event.target.value)}
-            placeholder="Можно оставить пустым — возьмём из имени файла"
+            placeholder="Можно оставить пустым, возьмём из имени файла"
           />
         </label>
       </div>
 
+      {error && fileName && (
+        <div className="preparation-upload__file">
+          <FileText size={24} aria-hidden="true" />
+          <strong>{fileName}</strong>
+        </div>
+      )}
       {!importing && (
-        <label
+        <div
           className={`upload-dropzone ${dragOver ? "upload-dropzone--active" : ""}`}
           onDragOver={(event) => {
             event.preventDefault();
@@ -62,6 +75,9 @@ export function DeckUploadPanel({
           }}
         >
           <input
+            ref={fileInput}
+            id={inputId}
+            aria-label="Файл презентации"
             type="file"
             accept=".ppt,.pptx,.odp,.pdf"
             hidden
@@ -75,9 +91,11 @@ export function DeckUploadPanel({
             <Upload size={32} />
           </span>
           <strong>Перетащите файл сюда</strong>
-          <span className="muted">PowerPoint, ODP или PDF до 100MB</span>
-          <span className={buttonVariants()}>Выбрать файл</span>
-        </label>
+          <span className="muted">PowerPoint, ODP или PDF до 100 МБ</span>
+          <Button type="button" onClick={() => fileInput.current?.click()}>
+            {error ? "Выбрать другой файл" : "Выбрать файл"}
+          </Button>
+        </div>
       )}
 
       {importing && (
@@ -97,7 +115,11 @@ export function DeckUploadPanel({
       )}
 
       {warning && <p className="form-warning">{warning}</p>}
-      {error && <p className="form-error">{error}</p>}
+      {error && (
+        <p className="form-error" role="alert">
+          {displayError}
+        </p>
+      )}
     </section>
   );
 }

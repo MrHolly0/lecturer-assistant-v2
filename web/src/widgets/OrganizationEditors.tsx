@@ -13,6 +13,7 @@ import {
   type UnitRole
 } from "../app/api/organization-api";
 import { createAdminInvitation } from "../app/api/admin-api";
+import { PaginationBar } from "./ListControls";
 import { Button } from "../shared/ui/button";
 import { pluralizeRu } from "../shared/lib/plural";
 import {
@@ -41,6 +42,7 @@ function DialogShell({
   children,
   footer,
   onClose,
+  onCloseAutoFocus,
   className = ""
 }: {
   title: string;
@@ -48,11 +50,12 @@ function DialogShell({
   children: React.ReactNode;
   footer?: React.ReactNode;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   className?: string;
 }) {
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className={`org-dialog ${className}`}>
+      <DialogContent className={`org-dialog ${className}`} onCloseAutoFocus={onCloseAutoFocus}>
         <DialogHeader className="org-dialog-header">
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
@@ -68,11 +71,13 @@ export function OrganizationUnitEditor({
   draft,
   units,
   onClose,
+  onCloseAutoFocus,
   onSaved
 }: {
   draft: UnitDraft;
   units: OrganizationUnit[];
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onSaved: (unit: OrganizationUnit) => void;
 }) {
   const [name, setName] = useState(draft.name);
@@ -91,6 +96,7 @@ export function OrganizationUnitEditor({
   });
   return (
     <DialogShell
+      onCloseAutoFocus={onCloseAutoFocus}
       title={draft.id ? "Переименовать группу" : "Новая группа"}
       description={draft.id ? undefined : "Группа будет создана в текущем месте."}
       onClose={() => !mutation.isPending && onClose()}
@@ -121,7 +127,6 @@ export function OrganizationUnitEditor({
         <label className="field">
           <span>Название группы</span>
           <input
-            autoFocus
             value={name}
             onChange={(event) => setName(event.target.value)}
             maxLength={120}
@@ -144,12 +149,14 @@ export function OrganizationUnitMoveDialog({
   units,
   administrator,
   onClose,
+  onCloseAutoFocus,
   onSaved
 }: {
   unit: OrganizationUnit;
   units: OrganizationUnit[];
   administrator: boolean;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onSaved: (unit: OrganizationUnit) => void;
 }) {
   const [parentId, setParentId] = useState(unit.parentId ?? "");
@@ -241,6 +248,7 @@ export function OrganizationUnitMoveDialog({
   });
   return (
     <DialogShell
+      onCloseAutoFocus={onCloseAutoFocus}
       title={`Переместить «${unit.name}»`}
       description="Вместе с группой переместятся вложенные группы и сотрудники."
       onClose={() => !mutation.isPending && onClose()}
@@ -310,7 +318,7 @@ export function OrganizationUnitMoveDialog({
             name="group-parent"
             key={candidate.id}
             label={candidate.name}
-            detail={groupPath(candidate, units)}
+            detail={groupParentPath(candidate, units)}
             selected={parentId === candidate.id}
             onSelect={() => {
               setParentId(candidate.id);
@@ -390,6 +398,7 @@ export function OrganizationMemberEditor({
   targetUnitId,
   administrator,
   onClose,
+  onCloseAutoFocus,
   onSaved
 }: {
   action: MemberAction;
@@ -399,9 +408,12 @@ export function OrganizationMemberEditor({
   targetUnitId: string | null;
   administrator: boolean;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onSaved: () => void;
 }) {
   const [personId, setPersonId] = useState(member?.id ?? "");
+  const [choicePage, setChoicePage] = useState(1);
+  const choicePageSize = 20;
   const [unitId, setUnitId] = useState(
     action === "add" ? targetUnitId ?? "" : action === "move-root" ? "" : member?.unitId ?? ""
   );
@@ -454,6 +466,7 @@ export function OrganizationMemberEditor({
   const requiresChoice = action === "add" || action === "move-root";
   return (
     <DialogShell
+      onCloseAutoFocus={onCloseAutoFocus}
       title={title}
       description={
         action === "move-root"
@@ -463,7 +476,7 @@ export function OrganizationMemberEditor({
             : person?.displayName
       }
       onClose={() => !mutation.isPending && onClose()}
-      className="org-dialog--picker"
+      className={action === "access" ? "org-dialog--access" : "org-dialog--picker"}
       footer={
         <DialogFooter className="org-dialog-actions">
           <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
@@ -502,37 +515,49 @@ export function OrganizationMemberEditor({
             <span className="sr-only">Найти сотрудника</span>
             <input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setChoicePage(1);
+              }}
               placeholder="Имя или email"
             />
           </label>
           <div className="org-picker-list" aria-label="Сотрудники">
-            {choices.map((candidate) => (
-              <button
-                type="button"
-                className={`org-person-option ${personId === candidate.id ? "is-selected" : ""}`}
-                key={candidate.id}
-                aria-pressed={personId === candidate.id}
-                onClick={() => {
-                  setPersonId(candidate.id);
-                  setManagerConfirmed(false);
-                  setUnitRole(
-                    action === "move-root" || !targetUnitId
-                      ? "MEMBER"
-                      : candidate.unitRole ?? "MEMBER"
-                  );
-                }}
-              >
-                <span className="org-person-option__text">
-                  <strong>{candidate.displayName}</strong>
-                  <small>{candidate.email}</small>
-                  <small>Сейчас: {candidate.unitName ?? "без группы"}</small>
-                </span>
-                {personId === candidate.id && <Check size={17} aria-label="Выбран" />}
-              </button>
-            ))}
+            {choices
+              .slice((choicePage - 1) * choicePageSize, choicePage * choicePageSize)
+              .map((candidate) => (
+                <button
+                  type="button"
+                  className={`org-person-option ${personId === candidate.id ? "is-selected" : ""}`}
+                  key={candidate.id}
+                  aria-pressed={personId === candidate.id}
+                  onClick={() => {
+                    setPersonId(candidate.id);
+                    setManagerConfirmed(false);
+                    setUnitRole(
+                      action === "move-root" || !targetUnitId
+                        ? "MEMBER"
+                        : candidate.unitRole ?? "MEMBER"
+                    );
+                  }}
+                >
+                  <span className="org-person-option__text">
+                    <strong>{candidate.displayName}</strong>
+                    <small>{candidate.email}</small>
+                    <small>Сейчас: {candidate.unitName ?? "без группы"}</small>
+                  </span>
+                  {personId === candidate.id && <Check size={17} aria-label="Выбран" />}
+                </button>
+              ))}
             {choices.length === 0 && <p className="org-picker-empty">Сотрудники не найдены.</p>}
           </div>
+          <PaginationBar
+            page={choicePage}
+            pageCount={Math.max(1, Math.ceil(choices.length / choicePageSize))}
+            pageSize={choicePageSize}
+            total={choices.length}
+            onPageChange={setChoicePage}
+          />
           {managementChanges && (
             <label className="org-manager-consent">
               <input
@@ -598,7 +623,7 @@ export function OrganizationMemberEditor({
                       name="member-destination"
                       key={unit.id}
                       label={unit.name}
-                      detail={groupPath(unit, units)}
+                      detail={groupParentPath(unit, units)}
                       selected={unitId === unit.id}
                       onSelect={() => {
                         setUnitId(unit.id);
@@ -612,7 +637,12 @@ export function OrganizationMemberEditor({
           )}
           {action === "access" && (
             <fieldset className="org-access-choice">
-              <legend>Доступ в группе «{targetName}»</legend>
+              <legend>
+                Группа: <strong>{destinationName}</strong>
+              </legend>
+              <p className="org-current-access">
+                Текущий доступ: {member?.unitRole === "MANAGER" ? "Руководитель" : "Сотрудник"}
+              </p>
               <label>
                 <input
                   type="radio"
@@ -645,6 +675,12 @@ export function OrganizationMemberEditor({
                 </span>
               </label>
               {!administrator && <small>Назначать руководителей может только администратор.</small>}
+              {member?.unitRole === "MANAGER" && unitRole === "MEMBER" && (
+                <p className="org-inline-note" role="status">
+                  После сохранения сотрудник перестанет управлять этой группой и вложенными
+                  группами.
+                </p>
+              )}
               {action === "access" && unitRole === "MANAGER" && member?.unitRole !== "MANAGER" && (
                 <label className="org-manager-consent">
                   <input
@@ -788,6 +824,7 @@ export function OrganizationBulkMemberMoveDialog({
           За один перенос можно переместить до {MAX_BULK_MOVE_MEMBERS} сотрудников. Сократите выбор.
         </p>
       )}
+      <h3 className="org-destination-title">Куда переместить</h3>
       <label className="org-search">
         <Search size={16} aria-hidden="true" />
         <span className="sr-only">Найти группу назначения</span>
@@ -813,7 +850,7 @@ export function OrganizationBulkMemberMoveDialog({
             name="bulk-member-destination"
             key={unit.id}
             label={unit.name}
-            detail={groupPath(unit, units)}
+            detail={groupParentPath(unit, units)}
             selected={unitId === unit.id}
             onSelect={() => {
               setUnitId(unit.id);
@@ -893,7 +930,7 @@ export function OrganizationInvitationDialog({
     <DialogShell
       title="Пригласить сотрудника"
       description={`После регистрации сотрудник попадёт ${unit ? `в группу «${unit.name}»` : "в общий список без группы"}.`}
-      onClose={onClose}
+      onClose={() => !mutation.isPending && onClose()}
       className="org-dialog--compact"
       footer={
         <DialogFooter className="org-dialog-actions">
@@ -1010,4 +1047,9 @@ function getAncestorUnitIds(parentId: string | null, units: OrganizationUnit[]) 
     parent = units.find((candidate) => candidate.id === parent?.parentId);
   }
   return ids;
+}
+
+function groupParentPath(unit: OrganizationUnit, units: OrganizationUnit[]) {
+  const parent = units.find((candidate) => candidate.id === unit.parentId);
+  return parent ? groupPath(parent, units) : "Группа верхнего уровня";
 }

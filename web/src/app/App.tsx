@@ -43,6 +43,7 @@ import { MaxCredentialsScreen } from "../widgets/MaxCredentialsScreen";
 import { MaxLinkReviewScreen } from "../widgets/MaxLinkReviewScreen";
 import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
 import { Button } from "../shared/ui/button";
+import { AuthPageFrame } from "../widgets/AuthPageFrame";
 
 const maxRootPaths = new Set(["/", "/home", "/student/join", "/courses", "/login", "/register"]);
 const maxStartParamPattern = /^[A-Za-z0-9_-]{1,512}$/;
@@ -237,7 +238,7 @@ function MaxAuthScreen({
   onCredentials: () => void;
 }) {
   return (
-    <main className="auth-shell">
+    <AuthPageFrame>
       <section className="auth-card max-auth-card" aria-labelledby="max-auth-title">
         <div className="auth-header">
           <span className="max-auth-eyebrow">Мини-приложение MAX</span>
@@ -258,7 +259,7 @@ function MaxAuthScreen({
           Войти по email и паролю
         </Button>
       </section>
-    </main>
+    </AuthPageFrame>
   );
 }
 
@@ -272,7 +273,7 @@ function MaxSignedOutScreen({
   onCredentials: () => void;
 }) {
   return (
-    <main className="auth-shell">
+    <AuthPageFrame>
       <section className="auth-card max-auth-card" aria-labelledby="max-signed-out-title">
         <div className="auth-header">
           <span className="max-auth-eyebrow">Мини-приложение MAX</span>
@@ -294,7 +295,7 @@ function MaxSignedOutScreen({
           Другой аккаунт по email и паролю
         </Button>
       </section>
-    </main>
+    </AuthPageFrame>
   );
 }
 

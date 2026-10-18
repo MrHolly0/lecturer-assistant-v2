@@ -28,7 +28,10 @@ export function TeacherRemoteConnection({
           ? "Нет сети"
           : "Восстанавливаем связь";
   return (
-    <div className={`teacher-remote-connection teacher-remote-connection--${state}`} role="status">
+    <div
+      className={`teacher-remote-connection teacher-remote-connection--${state}${syncError || syncing ? " teacher-remote-connection--unverified" : ""}`}
+      role="status"
+    >
       <Icon
         size={15}
         aria-hidden="true"
@@ -39,8 +42,13 @@ export function TeacherRemoteConnection({
         {!syncing && syncedAt
           ? ` · ${syncedAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
           : ""}
+        {(syncError || state !== "connected") && (
+          <small>
+            Показано последнее подтверждённое состояние. Управление станет доступно после сверки.
+          </small>
+        )}
       </span>
-      {syncError && (
+      {(syncError || state !== "connected") && (
         <Button variant="outline" type="button" onClick={onRetry}>
           Повторить
         </Button>

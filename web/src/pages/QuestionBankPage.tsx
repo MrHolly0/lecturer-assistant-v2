@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { archiveQuestion, listQuestions, type QuestionBankEntry } from "../app/api/interaction-api";
 import { Button, IconButton } from "../shared/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
+import { SearchField } from "../widgets/ListControls";
+import { includesQuery } from "../shared/lib/usePagedList";
 import { Badge } from "../shared/ui/badge";
 import { QUESTION_TYPES } from "../shared/lib/questionTypes";
 import { QuestionDialog } from "../widgets/QuestionDialog";
@@ -19,6 +21,7 @@ interface Props {
 
 export function QuestionBankPage({ courseId }: Props) {
   const qc = useQueryClient();
+  const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState<string | undefined>(undefined);
   const [editing, setEditing] = useState<QuestionBankEntry | null>(null);
   const [creating, setCreating] = useState(false);
@@ -32,6 +35,9 @@ export function QuestionBankPage({ courseId }: Props) {
     queryFn: () => listQuestions(courseId, tagFilter)
   });
   const questions = questionsQuery.data ?? [];
+  const visibleQuestions = questions.filter((question) =>
+    includesQuery(query, question.text, ...question.tags)
+  );
 
   const allTags = [...new Set(questions.flatMap((q) => q.tags))].sort();
 
@@ -39,21 +45,25 @@ export function QuestionBankPage({ courseId }: Props) {
     mutationFn: (id: string) => archiveQuestion(courseId, id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["questions", courseId] });
-      toast.success("Вопрос удалён.");
+      toast.success("Вопрос архивирован.");
     },
-    onError: () => toast.error("Не удалось удалить вопрос.")
+    onError: () => toast.error("Не удалось архивировать вопрос.")
   });
 
   return (
-    <div className="page page--wide qbank-shell course-workflows">
+    <div className="page page--wide qbank-shell course-workflows preparation-page">
       <header className="page-header qbank-page-header course-workflow-header">
         <div className="course-workflow-header__copy">
           <Link to={`/courses/${courseId}`} className="breadcrumb">
-            ← Курс
+            ← Курсы / {courseQuery.data?.title ?? "Курс"}
           </Link>
           <h1>Банк вопросов</h1>
-          <p className="muted">Подготовьте короткие проверки до начала лекции.</p>
         </div>
+        {!courseQuery.isError && courseQuery.data?.canManage && (
+          <Button onClick={() => setCreating(true)}>
+            <Plus size={18} /> Новый вопрос
+          </Button>
+        )}
       </header>
       <CourseSectionNav courseId={courseId} canManage={courseQuery.data?.canManage} />
       {courseQuery.isError && (
@@ -65,6 +75,7 @@ export function QuestionBankPage({ courseId }: Props) {
         </div>
       )}
       <div className="qbank-toolbar">
+        <SearchField value={query} onChange={setQuery} placeholder="Поиск по тексту вопроса" />
         {!courseQuery.isError && questions.length > 0 && (
           <div className="qbank-filters">
             <Select
@@ -86,12 +97,6 @@ export function QuestionBankPage({ courseId }: Props) {
             </Select>
           </div>
         )}
-        {!courseQuery.isError && courseQuery.data?.canManage && (
-          <Button onClick={() => setCreating(true)}>
-            <Plus size={14} />
-            Новый вопрос
-          </Button>
-        )}
       </div>
 
       {questionsQuery.isLoading && !courseQuery.isError && (
@@ -110,7 +115,7 @@ export function QuestionBankPage({ courseId }: Props) {
 
       {!questionsQuery.isError && !courseQuery.isError && (
         <ul className="qbank-list">
-          {questions.map((q) => (
+          {visibleQuestions.map((q) => (
             <li key={q.id} className="qbank-item">
               <div className="qbank-item-meta">
                 <span className="qbank-type-badge">
@@ -154,15 +159,23 @@ export function QuestionBankPage({ courseId }: Props) {
               )}
             </li>
           ))}
-          {!questionsQuery.isLoading && questions.length === 0 && (
+          {!questionsQuery.isLoading && visibleQuestions.length === 0 && (
             <li className="qbank-empty">
               <span className="qbank-empty__icon" aria-hidden="true">
                 <ListChecks size={28} />
               </span>
               <div>
-                <strong>Соберите первую проверку</strong>
+                <strong>
+                  {query || tagFilter
+                    ? "Вопросов по запросу нет"
+                    : courseQuery.data?.canManage
+                      ? "Соберите первую проверку"
+                      : "Вопросов пока нет"}
+                </strong>
                 <p className="muted">
-                  Готовый вопрос можно запустить из боковой панели во время лекции.
+                  {query || tagFilter
+                    ? "Попробуйте другой запрос или выберите все теги."
+                    : "Подготовьте текст и варианты ответа для занятия."}
                 </p>
               </div>
               {courseQuery.data?.canManage && (

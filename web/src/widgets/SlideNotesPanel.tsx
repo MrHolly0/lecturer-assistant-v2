@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Loader2, NotebookPen, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Info, LockKeyhole } from "lucide-react";
 import type { SlideNote } from "../app/api/content-api";
+import { Button, IconButton } from "../shared/ui/button";
+import { X } from "lucide-react";
 
 interface SlideNotesPanelProps {
   slideIndex: number;
   note?: SlideNote;
   saving: boolean;
+  readOnly?: boolean;
   onClose: () => void;
   onSave: (content: string) => Promise<void>;
   onClear: () => void;
@@ -15,121 +18,99 @@ export function SlideNotesPanel({
   slideIndex,
   note,
   saving,
+  readOnly = false,
   onClose,
   onSave,
   onClear
 }: SlideNotesPanelProps) {
   const [draft, setDraft] = useState(note?.content ?? "");
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const dragOffset = useRef<{ x: number; y: number } | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
+  const [error, setError] = useState(false);
   useEffect(() => {
     setDraft(note?.content ?? "");
-    window.setTimeout(() => textareaRef.current?.focus(), 0);
+    setError(false);
   }, [note?.content, slideIndex]);
-
-  const handleMouseMove = useCallback((event: MouseEvent) => {
-    if (!dragOffset.current) return;
-    setPos({ x: event.clientX - dragOffset.current.x, y: event.clientY - dragOffset.current.y });
-  }, []);
-
-  const handleMouseUp = useCallback(() => {
-    dragOffset.current = null;
-    document.removeEventListener("mousemove", handleMouseMove);
-    document.removeEventListener("mouseup", handleMouseUp);
-  }, [handleMouseMove]);
-
-  const handleDragStart = (event: React.MouseEvent) => {
-    const panel = panelRef.current;
-    if (!panel || !panel.offsetParent) return;
-    const panelRect = panel.getBoundingClientRect();
-    const parentRect = panel.offsetParent.getBoundingClientRect();
-    const x = panelRect.left - parentRect.left;
-    const y = panelRect.top - parentRect.top;
-    dragOffset.current = { x: event.clientX - x, y: event.clientY - y };
-    setPos({ x, y });
-    event.preventDefault();
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-  };
-
   const isDirty = draft !== (note?.content ?? "");
-
+  async function save() {
+    setError(false);
+    try {
+      await onSave(draft);
+    } catch {
+      setError(true);
+    }
+  }
   return (
-    <div
-      ref={panelRef}
+    <section
       id="slide-notes-panel"
-      className="slide-notes-panel"
-      role="dialog"
-      aria-label="Заметки к слайду"
-      style={pos ? { top: pos.y, left: pos.x, bottom: "auto" } : undefined}
+      className="slide-notes-panel preparation-notes"
+      aria-label={`Заметки к слайду ${slideIndex}`}
     >
-      <div className="snp-header snp-header--draggable" onMouseDown={handleDragStart}>
-        <div className="snp-title">
-          <NotebookPen size={15} />
-          <span>Заметки - слайд {slideIndex}</span>
-        </div>
-        <button
-          className="snp-close-btn"
-          type="button"
-          onClick={onClose}
-          title="Закрыть"
-          aria-label="Закрыть заметки"
-        >
-          <X size={16} />
-        </button>
+      <div className="preparation-notes__heading">
+        <h2>Заметки к слайду {slideIndex}</h2>
+        <IconButton label="Закрыть заметки" onClick={onClose}>
+          <X size={18} />
+        </IconButton>
       </div>
-      <div className="snp-body">
+      <p className="preparation-notes__privacy">
+        <LockKeyhole size={17} aria-hidden="true" /> Только преподавателю
+      </p>
+      <label className="preparation-notes__field" htmlFor="slide-note-textarea">
+        <span>Текст заметки</span>
         <textarea
-          ref={textareaRef}
           id="slide-note-textarea"
           className="snp-textarea"
-          placeholder="Ваши заметки к этому слайду..."
+          placeholder="Ваши заметки к этому слайду…"
+          readOnly={readOnly}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
               event.preventDefault();
-              void onSave(draft);
+              if (isDirty && !saving && !readOnly) void save();
             }
-            if (event.key === "Escape") onClose();
           }}
           rows={8}
         />
-      </div>
-      <div className="snp-footer">
-        <button
-          className="snp-btn"
-          type="button"
-          disabled={saving || !note}
-          onClick={onClear}
-          title="Очистить заметку"
-        >
-          Очистить
-        </button>
-        <button
-          id="slide-notes-save-btn"
-          className={`snp-btn snp-btn-primary ${!isDirty ? "snp-btn-disabled" : ""}`}
-          type="button"
-          disabled={!isDirty || saving}
-          onClick={() => void onSave(draft)}
-          title="Сохранить заметку"
-        >
-          {saving ? <Loader2 size={14} className="snp-spinner" /> : <Check size={14} />}
-          Сохранить
-        </button>
-      </div>
-      {note && (
-        <div className="snp-hint">
-          Обновлено:{" "}
-          {new Date(note.updatedAt).toLocaleTimeString("ru-RU", {
-            hour: "2-digit",
-            minute: "2-digit"
-          })}
+      </label>
+      <p className="preparation-notes__status" role="status">
+        {readOnly
+          ? "Доступ только к просмотру."
+          : saving
+            ? "Сохраняем заметку…"
+            : isDirty
+              ? "Есть несохранённые изменения."
+              : note
+                ? "Все изменения сохранены."
+                : "Заметка ещё не добавлена."}
+      </p>
+      {error && (
+        <p className="form-error" role="alert">
+          Не удалось сохранить заметку. Текст сохранён в редакторе, попробуйте ещё раз.
+        </p>
+      )}
+      {!readOnly && (
+        <div className="preparation-notes__actions">
+          <Button
+            variant="outline"
+            disabled={saving || (!note && !draft)}
+            onClick={() => {
+              if (note) onClear();
+              else setDraft("");
+            }}
+          >
+            Очистить
+          </Button>
+          <Button
+            id="slide-notes-save-btn"
+            disabled={!isDirty || saving}
+            onClick={() => void save()}
+          >
+            Сохранить
+          </Button>
         </div>
       )}
-    </div>
+      <p className="preparation-notes__privacy">
+        <Info size={18} aria-hidden="true" /> Заметки не видны студентам и на проекторе.
+      </p>
+    </section>
   );
 }

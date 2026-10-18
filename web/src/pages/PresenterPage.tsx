@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronsLeft, ChevronsRight, Images } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
@@ -17,17 +17,27 @@ import { precacheDeck } from "../app/offline";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 import { PresenterSidePanel } from "../widgets/PresenterSidePanel";
 import { PresenterSessionSummary } from "../widgets/PresenterSessionSummary";
+import { AppHeader } from "../widgets/Layout";
 import { PresenterTopbar } from "../widgets/PresenterTopbar";
 import { Button } from "../shared/ui/button";
 import { useSessionTimers } from "../app/live/useSessionTimers";
 import { useLiveSession } from "../app/live/useLiveSession";
 
-export function PresenterPage({ courseId, sessionId }: { courseId: string; sessionId: string }) {
+export function PresenterPage(props: { courseId: string; sessionId: string }) {
+  return (
+    <>
+      <AppHeader />
+      <PresenterWorkspace {...props} />
+    </>
+  );
+}
+
+function PresenterWorkspace({ courseId, sessionId }: { courseId: string; sessionId: string }) {
   const slideInFlightRef = useRef(false);
   const slideStripRef = useRef<HTMLDivElement | null>(null);
+  const [stripOverflow, setStripOverflow] = useState(false);
   const [drawing, setDrawing] = useState(false);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
-  const [allSlidesOpen, setAllSlidesOpen] = useState(false);
   const [slideErrorTarget, setSlideErrorTarget] = useState<number | null>(null);
   const goRef = useRef<(idx: number) => void>(() => undefined);
 
@@ -39,6 +49,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   const live = useLiveSession(courseId, sessionId);
   const session = live.session;
   const paused = session?.status === "PAUSED";
+  const commandsBlocked = live.connection !== "connected" || live.syncing || live.syncError;
   const { elapsed, slideElapsed } = useSessionTimers(session);
   const deckQuery = useQuery({
     queryKey: ["content", courseId, "decks", session?.deckId],
@@ -66,6 +77,16 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
   useEffect(() => {
     if (imageUrls.length > 0) precacheDeck(imageUrls);
   }, [imageUrls]);
+
+  useEffect(() => {
+    const strip = slideStripRef.current;
+    if (!strip) return;
+    const update = () => setStripOverflow(strip.scrollWidth > strip.clientWidth + 1);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [deck?.slides.length]);
 
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
@@ -100,6 +121,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       !session ||
       !deck ||
       paused ||
+      commandsBlocked ||
       slideInFlightRef.current ||
       idx < 1 ||
       idx > deck.slides.length
@@ -107,8 +129,6 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       return;
     if (idx === session.currentSlideIdx) return;
     slideInFlightRef.current = true;
-    const next = { ...session, currentSlideIdx: idx };
-    setSession(next);
     slideMut.mutate(idx, {
       onSuccess: (saved) => {
         setSlideErrorTarget(null);
@@ -116,7 +136,6 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
       },
       onError: () => {
         setSlideErrorTarget(idx);
-        setSession(session);
         toast.error("Не удалось переключить слайд.");
       },
       onSettled: () => {
@@ -216,22 +235,19 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
         }
       />
 
-      <main className="presenter-grid">
+      <main id="main-content" className="presenter-grid">
         <section className="presenter-main">
           <div className="presenter-stage">
             <img src={slideImageUrl(slide)} alt={`Слайд ${slide.idx}`} />
             <DrawingOverlay
               slideIdx={slide.idx}
-              active={drawing && !paused}
+              active={drawing && !paused && !commandsBlocked}
               annotations={session.annotations as LiveAnnotations}
               onChange={(annotations) => {
-                if (paused) return;
-                const next = { ...session, annotations };
-                setSession(next);
+                if (paused || commandsBlocked) return;
                 annotationMut.mutate(annotations, {
                   onSuccess: (saved) => setSession(saved),
                   onError: () => {
-                    setSession(session);
                     toast.error("Не удалось сохранить рисунок. Повторите действие.");
                   }
                 });
@@ -243,9 +259,12 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
             <Button
               variant="outline"
               type="button"
-              disabled={paused || slideMut.isPending || session.currentSlideIdx <= 1}
+              disabled={
+                paused || commandsBlocked || slideMut.isPending || session.currentSlideIdx <= 1
+              }
               onClick={() => go(session.currentSlideIdx - 1)}
             >
+              <ChevronLeft size={18} aria-hidden="true" />
               Назад
             </Button>
             <span>
@@ -254,10 +273,14 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
             <Button
               type="button"
               disabled={
-                paused || slideMut.isPending || session.currentSlideIdx >= deck.slides.length
+                paused ||
+                commandsBlocked ||
+                slideMut.isPending ||
+                session.currentSlideIdx >= deck.slides.length
               }
               onClick={() => go(session.currentSlideIdx + 1)}
             >
+              <ChevronRight size={18} aria-hidden="true" />
               Далее
             </Button>
           </div>
@@ -279,7 +302,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
               <span>Предпросмотр слайда {previewIdx}. Показ аудитории не изменён.</span>
               <Button
                 type="button"
-                disabled={paused || slideMut.isPending}
+                disabled={paused || commandsBlocked || slideMut.isPending}
                 onClick={() => go(previewIdx)}
               >
                 Показать выбранный слайд
@@ -287,19 +310,21 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
             </div>
           )}
           <div className="presenter-strip-controls">
-            <Button
-              type="button"
-              variant="outline"
-              aria-label="Прокрутить миниатюры к началу"
-              title="Прокрутить миниатюры к началу"
-              onClick={() => {
-                slideStripRef.current?.scrollTo({ left: 0, behavior: "smooth" });
-              }}
-            >
-              <ChevronsLeft size={18} aria-hidden="true" />
-            </Button>
+            {stripOverflow && (
+              <Button
+                type="button"
+                variant="outline"
+                aria-label="Прокрутить миниатюры к началу"
+                title="Прокрутить миниатюры к началу"
+                onClick={() => {
+                  slideStripRef.current?.scrollTo({ left: 0, behavior: "smooth" });
+                }}
+              >
+                <ChevronsLeft size={18} aria-hidden="true" />
+              </Button>
+            )}
             <div
-              className={`presenter-slide-strip${allSlidesOpen ? " presenter-slide-strip--all" : ""}`}
+              className="presenter-slide-strip"
               ref={slideStripRef}
               aria-label="Предпросмотр слайдов лекции"
             >
@@ -307,7 +332,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
                 <button
                   key={item.id}
                   type="button"
-                  disabled={paused || slideMut.isPending}
+                  disabled={paused || commandsBlocked || slideMut.isPending}
                   className={`slide-thumb ${item.idx === session.currentSlideIdx ? "slide-thumb--active" : ""} ${item.idx === previewIdx ? "slide-thumb--preview" : ""}`}
                   onClick={() => setPreviewIdx(item.idx)}
                   aria-pressed={item.idx === previewIdx}
@@ -318,40 +343,22 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
                 </button>
               ))}
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              aria-label="Прокрутить миниатюры к концу"
-              title="Прокрутить миниатюры к концу"
-              onClick={() => {
-                slideStripRef.current?.scrollTo({
-                  left: slideStripRef.current.scrollWidth,
-                  behavior: "smooth"
-                });
-              }}
-            >
-              <ChevronsRight size={18} aria-hidden="true" />
-            </Button>
-          </div>
-          <div className="presenter-deck-secondary">
-            <Button
-              type="button"
-              variant="outline"
-              aria-expanded={allSlidesOpen}
-              onClick={() => setAllSlidesOpen((open) => !open)}
-            >
-              <Images size={17} aria-hidden="true" />{" "}
-              {allSlidesOpen ? "Свернуть слайды" : "Все слайды"}
-            </Button>
-            <Button
-              type="button"
-              variant={drawing ? "default" : "outline"}
-              disabled={paused}
-              aria-pressed={drawing}
-              onClick={() => setDrawing(!drawing)}
-            >
-              Рисовать
-            </Button>
+            {stripOverflow && (
+              <Button
+                type="button"
+                variant="outline"
+                aria-label="Прокрутить миниатюры к концу"
+                title="Прокрутить миниатюры к концу"
+                onClick={() => {
+                  slideStripRef.current?.scrollTo({
+                    left: slideStripRef.current.scrollWidth,
+                    behavior: "smooth"
+                  });
+                }}
+              >
+                <ChevronsRight size={18} aria-hidden="true" />
+              </Button>
+            )}
           </div>
         </section>
         <PresenterSidePanel
@@ -363,6 +370,7 @@ export function PresenterPage({ courseId, sessionId }: { courseId: string; sessi
           courseId={courseId}
           sessionId={sessionId}
           paused={paused}
+          commandsBlocked={commandsBlocked}
           questionsLoading={engagementQuery.isLoading}
           questionsError={engagementQuery.isError}
           onRetryQuestions={() => void engagementQuery.refetch()}

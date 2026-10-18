@@ -1,14 +1,4 @@
-import {
-  ArrowLeft,
-  ChevronDown,
-  Monitor,
-  Pause,
-  PenLine,
-  Play,
-  QrCode,
-  Square,
-  Wrench
-} from "lucide-react";
+import { ChevronDown, Monitor, Pause, PenLine, Play, QrCode, Square, Wrench } from "lucide-react";
 import {
   setLiveProjectionCode,
   type LiveConnectionState,
@@ -33,10 +23,14 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "../shared/ui/dropdown-menu";
 import { ConfirmActionButton } from "./ConfirmActionButton";
-import { Button, LinkButton } from "../shared/ui/button";
+import { Button } from "../shared/ui/button";
 import { SessionGroups } from "./SessionGroups";
 
 interface PresenterTopbarProps {
@@ -79,6 +73,7 @@ export function PresenterTopbar({
   const maxEnvironment = useMaxBridge();
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [projectionBlocked, setProjectionBlocked] = useState(false);
+  const commandsBlocked = connection !== "connected" || syncing || syncError;
   const sessionActive = session.status === "LIVE" || session.status === "PAUSED";
   const showJoinCode = session.showJoinCode;
   const joinUrl = buildMaxJoinUrl(session.joinCode);
@@ -116,25 +111,33 @@ export function PresenterTopbar({
   return (
     <header className="presenter-topbar">
       <div className="presenter-heading">
-        <LinkButton
-          to={`/courses/${courseId}/materials`}
-          variant="ghost"
-          className="presenter-back"
-          title="Вернуться к материалам"
-        >
-          <ArrowLeft size={18} />
-          <span>Материалы</span>
-        </LinkButton>
         <div className="presenter-title-block">
           <strong>{session.lectureTitle}</strong>
-          <div className="presenter-meta">
+          <div className="presenter-meta" role="status">
             {session.status === "PAUSED" && (
               <span className="badge presenter-status presenter-status--paused">Пауза</span>
             )}
-            <span className="live-code">Код занятия: {session.joinCode}</span>
             <SessionGroups groups={session.groups} compact />
+            <span className="presenter-header-sync">
+              {connectionLabel}
+              {!syncing && syncedAt ? ` в ${syncedAt.toLocaleTimeString("ru-RU")}` : ""}
+            </span>
+            {(syncError || connection !== "connected") && (
+              <Button type="button" variant="outline" size="sm" onClick={onRefresh}>
+                Повторить сверку
+              </Button>
+            )}
           </div>
         </div>
+        <span
+          className={`badge presenter-status presenter-status--${commandsBlocked ? "offline" : session.status.toLowerCase()}`}
+        >
+          {commandsBlocked
+            ? "Сверяем состояние"
+            : session.status === "PAUSED"
+              ? "Пауза"
+              : "В эфире"}
+        </span>
       </div>
 
       {drawing && (
@@ -176,37 +179,13 @@ export function PresenterTopbar({
             </span>
             <Button
               className="presenter-connect"
+              variant="outline"
               type="button"
               onClick={() => setConnectionOpen(true)}
             >
               <QrCode size={16} />
-              Код занятия
+              Код занятия: {session.joinCode}
             </Button>
-
-            <Button
-              className="presenter-projector"
-              type="button"
-              variant="outline"
-              onClick={openProjection}
-            >
-              <Monitor size={16} aria-hidden="true" /> Проектор
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={projectionCodeMutation.isPending}
-              onClick={() => projectionCodeMutation.mutate(!showJoinCode)}
-            >
-              {showJoinCode ? "Вернуться к слайду на проекторе" : "Показать код на проекторе"}
-            </Button>
-            {projectionCodeMutation.isError && (
-              <span className="presenter-action-error" role="alert">
-                Не удалось обновить код.{" "}
-                <button type="button" onClick={() => projectionCodeMutation.mutate(!showJoinCode)}>
-                  Повторить
-                </button>
-              </span>
-            )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -217,27 +196,38 @@ export function PresenterTopbar({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="presenter-action-menu">
-                <DropdownMenuItem onSelect={openProjection}>
-                  <Monitor />
-                  Открыть проектор
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() =>
-                    maxEnvironment.setPreferredTheme(
-                      maxEnvironment.theme === "dark" ? "light" : "dark"
-                    )
-                  }
-                >
-                  {maxEnvironment.theme === "dark" ? "Светлая тема" : "Тёмная тема"}
-                </DropdownMenuItem>
                 <DropdownMenuCheckboxItem
                   checked={drawing}
-                  disabled={session.status === "PAUSED"}
+                  disabled={session.status === "PAUSED" || commandsBlocked}
                   onCheckedChange={(checked) => onDrawingChange(Boolean(checked))}
                 >
                   <PenLine />
                   Рисование
                 </DropdownMenuCheckboxItem>
+                <DropdownMenuItem onSelect={openProjection}>
+                  <Monitor />
+                  Открыть проектор
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>На проекторе</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={showJoinCode ? "code" : "slide"}
+                  onValueChange={(value) => projectionCodeMutation.mutate(value === "code")}
+                >
+                  <DropdownMenuRadioItem
+                    value="slide"
+                    disabled={commandsBlocked || projectionCodeMutation.isPending}
+                  >
+                    Слайд лекции
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem
+                    value="code"
+                    disabled={commandsBlocked || projectionCodeMutation.isPending}
+                  >
+                    Код подключения
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+                <p className="presenter-projection-hint">Слайды переключаются синхронно</p>
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -245,7 +235,7 @@ export function PresenterTopbar({
               <Button
                 type="button"
                 title="Продолжить показ слайдов"
-                disabled={resumePending}
+                disabled={resumePending || commandsBlocked}
                 onClick={onResume}
               >
                 <Play size={16} />
@@ -256,7 +246,7 @@ export function PresenterTopbar({
                 variant="outline"
                 type="button"
                 title="Поставить лекцию на паузу"
-                disabled={pausePending}
+                disabled={pausePending || commandsBlocked}
                 onClick={onPause}
               >
                 <Pause size={16} />
@@ -265,11 +255,13 @@ export function PresenterTopbar({
             )}
             <ConfirmActionButton
               title="Завершить лекцию?"
-              description="Завершение необратимо: рассылка и управление этой сессией остановятся."
+              description="Показ на проекторе и у студентов закончится. Данные останутся в итогах занятия. Продолжить это занятие будет нельзя."
               confirmLabel="Завершить"
               variant="destructive"
-              disabled={endPending}
-              onConfirm={onEnd}
+              disabled={endPending || commandsBlocked}
+              onConfirm={() => {
+                if (!commandsBlocked) onEnd();
+              }}
             >
               <Square size={16} />
               Завершить
@@ -310,8 +302,8 @@ export function PresenterTopbar({
           <DialogHeader>
             <DialogTitle>Окно проектора заблокировано</DialogTitle>
             <DialogDescription>
-              Разрешите всплывающие окна для сайта и повторите. Проектор можно открыть отдельной
-              вкладкой.
+              Разрешите всплывающие окна для сайта и повторите. Можно открыть проектор в текущем
+              окне.
             </DialogDescription>
           </DialogHeader>
           <div className="presenter-popup-actions">
@@ -321,10 +313,8 @@ export function PresenterTopbar({
             <a
               className="ui-button ui-button--outline"
               href={`${window.location.origin}/#/projection/${encodeURIComponent(session.joinCode)}`}
-              target="_blank"
-              rel="noreferrer"
             >
-              Открыть во вкладке
+              Открыть в этом окне
             </a>
           </div>
         </DialogContent>

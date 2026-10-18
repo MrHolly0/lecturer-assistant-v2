@@ -1,12 +1,32 @@
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, Home, Link2, LogOut, Menu, Shield, UserRound, Users, X } from "lucide-react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import {
+  ArrowLeft,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  Home,
+  Link2,
+  LogOut,
+  Menu,
+  MoreHorizontal,
+  Shield,
+  UserRound,
+  Users
+} from "lucide-react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../app/AuthContext";
 import { landingPath } from "../app/routes";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { Button, IconButton } from "../shared/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../shared/ui/tooltip";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "../shared/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "../shared/ui/dropdown-menu";
 import { ThemeToggle } from "./ThemeToggle";
 
 const navItems = [
@@ -22,198 +42,229 @@ const navItems = [
     path: "/settings/max",
     icon: Link2,
     label: "MAX и вход",
-    roles: ["ADMIN", "LECTURER", "ASSISTANT"]
+    roles: ["ADMIN", "LECTURER", "ASSISTANT"],
+    more: true
   },
-  { path: "/admin/users", icon: Shield, label: "Учётные записи", roles: ["ADMIN"] }
+  { path: "/admin/users", icon: Shield, label: "Учётные записи", roles: ["ADMIN"], more: true }
 ];
+const roleLabels: Record<string, string> = {
+  ADMIN: "Администратор",
+  LECTURER: "Преподаватель",
+  ASSISTANT: "Ассистент",
+  STUDENT: "Студент"
+};
 
-export function Layout({ children }: { children: ReactNode }) {
+export function AppHeader({
+  variant = "default",
+  mainId = "main-content"
+}: { variant?: "default" | "public"; mainId?: string } = {}) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(max-width: 1023px)").matches : false
-  );
-  const openButtonRef = useRef<HTMLButtonElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const sidebarRef = useRef<HTMLElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  const closeSidebarAndRestoreFocus = useCallback(() => {
-    setSidebarOpen(false);
-    requestAnimationFrame(() => openButtonRef.current?.focus());
+  const location = useLocation();
+  const publicHeader = variant === "public" || !user;
+  const mobileCourseHeader =
+    !publicHeader && /^\/courses\/[^/]+$/.test(location.pathname) && !location.search;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const items = navItems.filter((item) => !publicHeader && user && item.roles.includes(user.role));
+  const moreItems = items.filter((item) => item.more);
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1100px)");
+    const closeOnDesktop = () => {
+      if (media.matches) setMenuOpen(false);
+    };
+    media.addEventListener("change", closeOnDesktop);
+    return () => media.removeEventListener("change", closeOnDesktop);
   }, []);
-
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 1023px)");
-    const updateViewport = () => {
-      setIsMobile(media.matches);
-      if (!media.matches) setSidebarOpen(false);
-    };
-    updateViewport();
-    media.addEventListener("change", updateViewport);
-    return () => media.removeEventListener("change", updateViewport);
-  }, []);
-
-  useEffect(() => {
-    if (!isMobile || !sidebarOpen) return undefined;
-    closeButtonRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeSidebarAndRestoreFocus();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = sidebarRef.current?.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
-      if (!focusable?.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [closeSidebarAndRestoreFocus, isMobile, sidebarOpen]);
-
-  useEffect(() => {
-    const content = contentRef.current;
-    if (!content) return;
-    content.inert = isMobile && sidebarOpen;
-    if (isMobile && sidebarOpen) content.setAttribute("aria-hidden", "true");
-    else content.removeAttribute("aria-hidden");
-    return () => {
-      content.inert = false;
-      content.removeAttribute("aria-hidden");
-    };
-  }, [isMobile, sidebarOpen]);
-
   async function handleSignOut() {
     await signOut();
     navigate("/login", { replace: true });
   }
-
+  const brand = (
+    <Link
+      to={user ? landingPath(user.role) : "/login"}
+      className="app-brand"
+      aria-label="Lecturer Assistant"
+      onClick={() => setMenuOpen(false)}
+    >
+      <BrandMark />
+      <span>Lecturer Assistant</span>
+    </Link>
+  );
+  const profile = (
+    <div className="app-profile-copy">
+      <strong>{user?.displayName}</strong>
+      <span>{user && roleLabels[user.role]}</span>
+      <span>{user?.email}</span>
+    </div>
+  );
   return (
-    <div className="flex h-screen bg-background text-foreground">
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-20 bg-black/40 lg:hidden"
-          aria-hidden="true"
-          onClick={closeSidebarAndRestoreFocus}
-        />
-      )}
-
-      {(!isMobile || sidebarOpen) && (
-        <aside
-          ref={sidebarRef}
-          id="primary-navigation"
-          aria-label="Основное меню"
-          className={`fixed z-30 flex h-full w-64 flex-col overflow-y-auto border-r border-border bg-card text-card-foreground transition-transform duration-200 lg:static ${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-          }`}
-        >
-          <div className="flex items-center justify-between border-b border-border p-5">
-            <Link
-              to={user ? landingPath(user.role) : "/login"}
-              className="flex min-w-0 items-center gap-2.5 text-sm font-semibold"
-            >
-              <BrandMark className="h-8 w-8 shrink-0 text-orange-500" />
-              <span className="truncate">Lecturer Assistant</span>
-            </Link>
-            <IconButton
-              ref={closeButtonRef}
-              className="icon-touch-target layout-sidebar-close shrink-0"
-              onClick={closeSidebarAndRestoreFocus}
-              label="Закрыть меню"
-            >
-              <X className="h-5 w-5" />
-            </IconButton>
-          </div>
-
-          <nav className="flex-1 p-3">
-            {navItems
-              .filter((item) => user && item.roles.includes(user.role))
-              .map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Tooltip key={item.path}>
-                    <TooltipTrigger asChild>
-                      <NavLink
-                        to={item.path}
-                        onClick={() => setSidebarOpen(false)}
-                        className={({ isActive }) =>
-                          `mb-1 flex min-h-11 items-center gap-3 rounded-md px-3 text-sm transition-colors ${
-                            isActive
-                              ? "bg-accent font-semibold text-accent-foreground"
-                              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                          }`
-                        }
-                      >
-                        <Icon className="h-4 w-4" aria-hidden="true" />
-                        <span>{item.label}</span>
-                      </NavLink>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{item.label}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
-          </nav>
-
-          <div className="border-t border-border p-3">
-            <ThemeToggle />
-            <div className="mb-2 flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground">
-              <UserRound className="h-4 w-4 shrink-0" />
-              <span className="min-w-0">
-                <span className="block truncate text-foreground">{user?.displayName}</span>
-                <span className="block truncate text-xs" title={user?.email}>
-                  {user?.email}
-                </span>
-              </span>
-            </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={() => void handleSignOut()}
-                  variant="ghost"
-                  className="w-full justify-start text-muted-foreground"
+    <>
+      <a
+        href={`#${mainId}`}
+        className="app-skip-link"
+        onClick={(event) => {
+          event.preventDefault();
+          const main = document.getElementById(mainId);
+          if (main && !main.hasAttribute("tabindex")) main.setAttribute("tabindex", "-1");
+          main?.focus();
+          main?.scrollIntoView({ block: "start" });
+        }}
+      >
+        К содержимому
+      </a>
+      <header
+        className={`app-header${mobileCourseHeader ? " app-header--course" : ""}${publicHeader ? " app-header--public" : ""}`}
+      >
+        {mobileCourseHeader && (
+          <Link to="/courses" className="app-course-back">
+            <ArrowLeft aria-hidden="true" />
+            <span>Курсы</span>
+          </Link>
+        )}
+        {brand}
+        {!publicHeader && (
+          <nav className="app-header-nav" aria-label="Основная навигация">
+            {items
+              .filter((item) => !item.more)
+              .map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={({ isActive }) =>
+                    isActive ? "app-header-nav__item is-active" : "app-header-nav__item"
+                  }
                 >
-                  <LogOut className="h-4 w-4" />
-                  <span>Выйти</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Завершить сессию</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </aside>
-      )}
-
-      <div ref={contentRef} className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 text-card-foreground lg:hidden">
-          <IconButton
-            ref={openButtonRef}
-            className="icon-touch-target shrink-0"
-            onClick={() => setSidebarOpen(true)}
-            aria-expanded={sidebarOpen}
-            aria-controls={!isMobile || sidebarOpen ? "primary-navigation" : undefined}
-            label="Открыть меню"
-          >
-            <Menu className="h-5 w-5" />
-          </IconButton>
-          <BrandMark className="h-6 w-6 text-orange-500" />
-          <span className="text-sm font-medium">Lecturer Assistant</span>
+                  {item.label}
+                </NavLink>
+              ))}
+            {moreItems.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className={`app-header-nav__item${moreItems.some((item) => location.pathname.startsWith(item.path)) ? " is-active" : ""}`}
+                  >
+                    Ещё <ChevronDown size={16} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="app-more-menu">
+                  {moreItems.map(({ path, label, icon: Icon }) => (
+                    <DropdownMenuItem key={path} asChild>
+                      <Link to={path}>
+                        <Icon />
+                        {label}
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </nav>
+        )}
+        <div className="app-header-profile">
+          <ThemeToggle compact />
+          {!publicHeader && (
+            <>
+              <span className="app-header-divider" />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="app-profile-trigger">
+                    <span className="app-avatar">
+                      <UserRound />
+                    </span>
+                    <span>{user?.displayName}</span>
+                    <ChevronDown size={16} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="app-profile-menu">
+                  {profile}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => void handleSignOut()}>
+                    <LogOut />
+                    Выйти
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
         </div>
-        <main className="flex-1 overflow-auto">{children}</main>
-      </div>
+        {!publicHeader && (
+          <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
+            <DialogTrigger asChild>
+              <IconButton
+                label="Открыть меню"
+                className="app-mobile-menu-trigger"
+                aria-expanded={menuOpen}
+              >
+                {mobileCourseHeader ? <MoreHorizontal /> : <Menu />}
+              </IconButton>
+            </DialogTrigger>
+            <DialogContent
+              className="app-mobile-menu"
+              aria-describedby={undefined}
+              onOpenAutoFocus={(event) => {
+                event.preventDefault();
+                requestAnimationFrame(() =>
+                  document.querySelector<HTMLElement>(".app-mobile-menu nav a")?.focus()
+                );
+              }}
+            >
+              <DialogTitle className="sr-only">Основное меню</DialogTitle>
+              <div className="app-mobile-menu__header">{brand}</div>
+              <div className="app-mobile-menu__body">
+                <nav aria-label="Мобильная навигация">
+                  {items.map(({ path, label, icon: Icon }) => (
+                    <NavLink
+                      key={path}
+                      to={path}
+                      onClick={() => setMenuOpen(false)}
+                      className={({ isActive }) =>
+                        `app-mobile-menu__item${isActive ? " is-active" : ""}`
+                      }
+                    >
+                      <Icon />
+                      <span>{label}</span>
+                      <ChevronRight />
+                    </NavLink>
+                  ))}
+                </nav>
+                <div className="app-mobile-menu__settings">
+                  <p>Настройки</p>
+                  <ThemeToggle />
+                </div>
+                <div className="app-mobile-menu__profile">
+                  <span className="app-avatar">
+                    <UserRound />
+                  </span>
+                  {profile}
+                </div>
+                <Button
+                  variant="ghost"
+                  className="app-mobile-menu__logout"
+                  onClick={() => void handleSignOut()}
+                >
+                  <LogOut />
+                  Выйти
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+      </header>
+    </>
+  );
+}
+
+export function Layout({ children }: { children: ReactNode }) {
+  return (
+    <div className="app-layout">
+      <AppHeader />
+      <main id="main-content" className="app-main" tabIndex={-1}>
+        {children}
+      </main>
     </div>
   );
 }

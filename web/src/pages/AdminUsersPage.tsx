@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy } from "lucide-react";
+import { Copy, Plus } from "lucide-react";
 import { toast } from "sonner";
 import type { components } from "../app/api/schema";
 import {
@@ -161,19 +161,19 @@ export function AdminUsersPage() {
       <div className="page-header">
         <div>
           <h1>Учётные записи</h1>
-          <p className="muted">Системные роли и доступ к аккаунтам</p>
+          <p className="muted">Системные роли и доступ к установке</p>
         </div>
         <div className="admin-users-header-actions">
-          <LinkButton to="/organization" variant="outline">
-            Сотрудники
-          </LinkButton>
-          <Button onClick={requestInvite}>Пригласить пользователя</Button>
+          <Button onClick={requestInvite}>
+            <Plus size={18} aria-hidden="true" />
+            Пригласить пользователя
+          </Button>
         </div>
       </div>
 
       <section className="section">
-        <div className="section-heading">
-          <h2>Пользователи</h2>
+        <div className="section-heading admin-users-result-count">
+          <h2 className="sr-only">Пользователи</h2>
           <span className="muted" role="status" aria-live="polite">
             {isPlaceholderData || query.trim() !== search
               ? "Обновляем список…"
@@ -352,14 +352,23 @@ export function AdminUsersPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={() => inviteMut.mutate()} disabled={inviteMut.isPending}>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                inviteMut.mutate();
+              }}
+              disabled={inviteMut.isPending}
+            >
               Создать приглашение
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={Boolean(roleChange)} onOpenChange={(open) => !open && setRoleChange(null)}>
+      <AlertDialog
+        open={Boolean(roleChange)}
+        onOpenChange={(open) => !open && !roleMut.isPending && setRoleChange(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Изменить системную роль?</AlertDialogTitle>
@@ -378,10 +387,11 @@ export function AdminUsersPage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={roleMut.isPending}>Отмена</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() =>
-                roleChange &&
-                roleMut.mutate({ personId: roleChange.person.id, role: roleChange.role })
-              }
+              onClick={(event) => {
+                event.preventDefault();
+                if (roleChange)
+                  roleMut.mutate({ personId: roleChange.person.id, role: roleChange.role });
+              }}
               disabled={roleMut.isPending}
             >
               {roleMut.isPending ? "Сохранение…" : "Подтвердить роль"}
@@ -392,7 +402,7 @@ export function AdminUsersPage() {
 
       <AlertDialog
         open={Boolean(statusChange)}
-        onOpenChange={(open) => !open && setStatusChange(null)}
+        onOpenChange={(open) => !open && !statusMut.isPending && setStatusChange(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -415,10 +425,14 @@ export function AdminUsersPage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={statusMut.isPending}>Отмена</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() =>
-                statusChange &&
-                statusMut.mutate({ personId: statusChange.person.id, status: statusChange.status })
-              }
+              onClick={(event) => {
+                event.preventDefault();
+                if (statusChange)
+                  statusMut.mutate({
+                    personId: statusChange.person.id,
+                    status: statusChange.status
+                  });
+              }}
               disabled={statusMut.isPending}
             >
               {statusMut.isPending
@@ -470,9 +484,9 @@ function UsersTable({
     <table className="data-table admin-users-table">
       <thead>
         <tr>
-          <th>Имя</th>
+          <th>Пользователь</th>
           <th>Email</th>
-          <th>Роль</th>
+          <th>Системная роль</th>
           <th>Статус</th>
           <th>Действия</th>
         </tr>
@@ -490,7 +504,10 @@ function UsersTable({
           const canToggle = item.status === "ACTIVE" || item.status === "DISABLED";
           return (
             <tr key={item.id}>
-              <td data-label="Имя">{item.displayName}</td>
+              <td data-label="Пользователь">
+                <strong>{item.displayName}</strong>
+                {ownProfile && <small className="admin-own-account">Ваш аккаунт</small>}
+              </td>
               <td data-label="Email">{item.email}</td>
               <td data-label="Роль">
                 <AdminSelect

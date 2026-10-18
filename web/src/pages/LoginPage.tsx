@@ -10,7 +10,8 @@ import { landingPath } from "../app/routes";
 import { buildMaxBotUrl } from "../app/max/deepLink";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
-import { ThemeToggle } from "../widgets/ThemeToggle";
+import { AuthPageFrame } from "../widgets/AuthPageFrame";
+import { AuthPasswordField } from "../widgets/AuthPasswordField";
 
 export function LoginPage() {
   const { setUser } = useAuth();
@@ -42,13 +43,13 @@ export function LoginPage() {
   const pending = loginMut.isPending;
 
   return (
-    <div className="auth-shell login-page">
+    <AuthPageFrame className="login-page">
       <div className="auth-card">
-        <div className="auth-theme-switch">
-          <ThemeToggle compact />
-        </div>
         <div className="auth-header">
-          <BrandMark className="mx-auto h-16 w-16 text-orange-500" />
+          <div className="auth-brand app-brand">
+            <BrandMark />
+            <span>Lecturer Assistant</span>
+          </div>
           <h1 className="auth-title">Вход в Lecturer Assistant</h1>
           <p className="auth-sub">Продолжите работу с курсами и занятиями</p>
         </div>
@@ -58,24 +59,23 @@ export function LoginPage() {
             <span>Email</span>
             <input
               type="email"
+              name="email"
+              spellCheck={false}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="username"
-              autoFocus
             />
           </label>
-          <label className="field">
-            <span>Пароль</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-              autoComplete="current-password"
-            />
-          </label>
+          <AuthPasswordField
+            label="Пароль"
+            name="password"
+            value={password}
+            onValueChange={setPassword}
+            required
+            minLength={8}
+            autoComplete="current-password"
+          />
           {error && (
             <p className="form-error" role="alert">
               {error}
@@ -107,6 +107,6 @@ export function LoginPage() {
           Есть код приглашения? <Link to="/register">Зарегистрироваться</Link>
         </p>
       </div>
-    </div>
+    </AuthPageFrame>
   );
 }

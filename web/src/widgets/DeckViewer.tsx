@@ -1,9 +1,8 @@
 import { ChevronLeft, ChevronRight, NotebookPen, Trash2 } from "lucide-react";
 import type { SlideDeckDetails } from "../app/api/content-api";
 import { slideImageUrl } from "../app/api/content-api";
-import { pluralizeRu } from "../shared/lib/plural";
 import { SlideNotesPanel } from "./SlideNotesPanel";
-import { IconButton } from "../shared/ui/button";
+import { Button, IconButton } from "../shared/ui/button";
 import { ConfirmActionButton } from "./ConfirmActionButton";
 import { DeckSlideStrip } from "./DeckSlideStrip";
 
@@ -44,91 +43,81 @@ export function DeckViewer({
   }
 
   return (
-    <section className="deck-viewer">
-      <div className="deck-viewer__topbar">
-        <div>
-          <h2>{deck.title}</h2>
-          <span className="muted">
-            Версия {deck.version}, {deck.slides.length}{" "}
-            {pluralizeRu(deck.slides.length, "слайд", "слайда", "слайдов")}
-          </span>
-        </div>
-        <div className="deck-viewer__actions">
-          {canManage && (
-            <ConfirmActionButton
-              title={`Удалить слайд ${slideNumber}?`}
-              description="Слайд и его заметка будут удалены. Для презентации с историей сервер создаст новую версию."
-              confirmLabel="Удалить слайд"
+    <section className="deck-viewer preparation-deck-viewer" aria-label={deck.title}>
+      <div className="preparation-viewer-grid">
+        <div className="preparation-slide-column">
+          <div className="deck-stage">
+            <img
+              src={slideImageUrl(slide)}
+              alt={`Слайд ${slideNumber}`}
+              className="deck-stage__image"
+            />
+          </div>
+          <div className="deck-controls">
+            <IconButton
               variant="outline"
-              size="icon"
-              label={`Удалить слайд ${slideNumber}`}
-              disabled={editing || deck.slides.length <= 1}
-              onConfirm={onDeleteSlide}
+              type="button"
+              disabled={activeIndex === 0}
+              onClick={() => onSlideChange(activeIndex - 1)}
+              label="Предыдущий слайд"
             >
-              <Trash2 size={16} />
-            </ConfirmActionButton>
-          )}
-          <button
-            type="button"
-            className={`snp-trigger-btn ${notesOpen ? "snp-trigger-btn--on" : "snp-trigger-btn--off"}`}
-            onClick={() => onNotesOpenChange(!notesOpen)}
-          >
-            <NotebookPen size={14} />
-            Заметки
-          </button>
-        </div>
-      </div>
+              <ChevronLeft size={16} />
+            </IconButton>
+            <span>
+              {slideNumber} / {deck.slides.length}
+            </span>
+            <IconButton
+              variant="outline"
+              type="button"
+              disabled={activeIndex >= deck.slides.length - 1}
+              onClick={() => onSlideChange(activeIndex + 1)}
+              label="Следующий слайд"
+            >
+              <ChevronRight size={16} />
+            </IconButton>
+          </div>
 
-      <div className="deck-stage">
-        <img
-          src={slideImageUrl(slide)}
-          alt={`Слайд ${slideNumber}`}
-          className="deck-stage__image"
-        />
-        {notesOpen && (
-          <SlideNotesPanel
-            slideIndex={slideNumber}
-            note={slide.note}
-            saving={savingNote}
-            onClose={() => onNotesOpenChange(false)}
-            onSave={onSaveNote}
-            onClear={onClearNote}
+          <DeckSlideStrip
+            slides={deck.slides}
+            activeIndex={activeIndex}
+            canManage={canManage}
+            editing={editing}
+            onSlideChange={onSlideChange}
+            onReorder={onReorderSlide}
           />
-        )}
+          {canManage && (
+            <div className="preparation-slide-actions">
+              <ConfirmActionButton
+                title={`Удалить слайд ${slideNumber}?`}
+                description="Слайд и его заметка будут удалены. Для презентации с историей создаётся новая версия, на неё переходят связанные лекции. Слайды прошедших занятий сохраняются."
+                confirmLabel="Удалить слайд"
+                variant="outline"
+                disabled={editing || deck.slides.length <= 1}
+                onConfirm={onDeleteSlide}
+              >
+                <Trash2 size={18} aria-hidden="true" /> Удалить слайд
+              </ConfirmActionButton>
+            </div>
+          )}
+        </div>
+        <aside className="preparation-notes-column">
+          {notesOpen ? (
+            <SlideNotesPanel
+              slideIndex={slideNumber}
+              note={slide.note}
+              saving={savingNote}
+              readOnly={!canManage}
+              onClose={() => onNotesOpenChange(false)}
+              onSave={onSaveNote}
+              onClear={onClearNote}
+            />
+          ) : (
+            <Button type="button" variant="outline" onClick={() => onNotesOpenChange(true)}>
+              <NotebookPen size={18} aria-hidden="true" /> Заметки к слайду {slideNumber}
+            </Button>
+          )}
+        </aside>
       </div>
-
-      <div className="deck-controls">
-        <IconButton
-          variant="outline"
-          type="button"
-          disabled={activeIndex === 0}
-          onClick={() => onSlideChange(activeIndex - 1)}
-          label="Предыдущий слайд"
-        >
-          <ChevronLeft size={16} />
-        </IconButton>
-        <span>
-          {slideNumber} / {deck.slides.length}
-        </span>
-        <IconButton
-          variant="outline"
-          type="button"
-          disabled={activeIndex >= deck.slides.length - 1}
-          onClick={() => onSlideChange(activeIndex + 1)}
-          label="Следующий слайд"
-        >
-          <ChevronRight size={16} />
-        </IconButton>
-      </div>
-
-      <DeckSlideStrip
-        slides={deck.slides}
-        activeIndex={activeIndex}
-        canManage={canManage}
-        editing={editing}
-        onSlideChange={onSlideChange}
-        onReorder={onReorderSlide}
-      />
     </section>
   );
 }

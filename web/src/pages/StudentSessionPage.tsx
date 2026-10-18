@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CirclePause, CircleStop, Expand, MessageCircle } from "lucide-react";
+import { CirclePause, CircleStop, Clock3, Expand, MessageCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -28,6 +28,7 @@ import { mutationRetryDelay, shouldRetryMutation } from "../app/api/retry";
 import { StudentSnapshotGate } from "../app/api/student-snapshot-gate";
 import { useAuth } from "../app/AuthContext";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
+import { BrandMark } from "../shared/brand/BrandMark";
 import { StudentConnectionBanner } from "../widgets/StudentConnectionBanner";
 import { StudentFeedbackControls } from "../widgets/StudentFeedbackControls";
 import { StudentJoinPanel } from "../widgets/StudentJoinPanel";
@@ -52,7 +53,7 @@ interface StudentSessionPageProps {
 }
 
 const STATUS_LABELS: Record<StudentSessionSnapshot["status"], string> = {
-  SCHEDULED: "Запланирована",
+  SCHEDULED: "Ожидание",
   LIVE: "В эфире",
   PAUSED: "Пауза",
   ENDED: "Завершена",
@@ -157,6 +158,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const isLive = current?.status === "LIVE";
   const isTerminalSession = current?.status === "ENDED" || current?.status === "ARCHIVED";
   const isJoined = Boolean(participantToken) && !current?.kicked;
+  const commandsReady =
+    isLive &&
+    !snapshotSyncing &&
+    !sessionQuery.isError &&
+    (connectionState === "CONNECTED" || connectionState === "POLLING");
 
   const joinMut = useMutation({
     mutationFn: () =>
@@ -336,10 +342,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       normalizedCode,
       participantToken,
       (next) => {
-        commitSnapshot(next, scope);
+        if (commitSnapshot(next, scope)) setSnapshotSyncing(false);
       },
       (state) => {
         setConnectionState(state);
+        if (state === "POLLING") setSnapshotSyncing(true);
         if (state === "CONNECTED") {
           setSnapshotSyncing(true);
           void refetch().finally(() => {
@@ -355,7 +362,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     };
   }, [normalizedCode, participantToken, refetch, scope]);
 
-  const slideLabel = current ? `${current.currentSlideIdx} / ${current.slideCount}` : "";
+  const slideLabel = current ? `${current.currentSlideIdx} из ${current.slideCount}` : "";
 
   if (sessionQuery.isLoading && !current) {
     return <StudentSessionLoading />;
@@ -377,6 +384,18 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   return (
     <main className="student-session-shell">
       <header className="student-session-topbar">
+        <div className="live-mobile-brand">
+          <BrandMark />
+          <strong>Занятие</strong>
+        </div>
+        <div className="student-session-topbar__actions">
+          <span className={`badge student-status student-status--${current.status.toLowerCase()}`}>
+            {STATUS_LABELS[current.status]}
+          </span>
+          <ThemeToggle compact />
+        </div>
+      </header>
+      <div className="student-session-context">
         <div>
           {current.courseTitle && <span className="muted">{current.courseTitle}</span>}
           {!current.courseTitle && <span className="muted">Код {current.joinCode}</span>}
@@ -392,19 +411,19 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             </button>
           )}
         </div>
-        <div className="student-session-topbar__actions">
-          <span className={`badge student-status student-status--${current.status.toLowerCase()}`}>
-            {STATUS_LABELS[current.status]}
-          </span>
-          <ThemeToggle compact />
-        </div>
-      </header>
+      </div>
 
       {(isJoined || sessionQuery.isError) && (
         <StudentConnectionBanner
           state={connectionState}
           lastSyncedAt={lastSyncedAt}
-          onRetry={() => reconnectRef.current()}
+          onRetry={() => {
+            setSnapshotSyncing(true);
+            reconnectRef.current();
+            void refetch().finally(() => {
+              if (scopeRef.current === scope) setSnapshotSyncing(false);
+            });
+          }}
           syncing={snapshotSyncing}
           error={Boolean(sessionQuery.error)}
         />
@@ -461,7 +480,15 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
               />
             </label>
           </div>
-          <Button type="submit" disabled={nameMut.isPending}>
+          <Button
+            type="submit"
+            disabled={
+              nameMut.isPending ||
+              snapshotSyncing ||
+              sessionQuery.isError ||
+              !["CONNECTED", "POLLING"].includes(connectionState)
+            }
+          >
             Отправить преподавателю
           </Button>
           {!current.nameRequested && (
@@ -472,6 +499,15 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         </form>
       )}
 
+      {current.status === "SCHEDULED" && isJoined && (
+        <div className="student-session-notice student-session-notice--waiting" role="status">
+          <Clock3 size={22} aria-hidden="true" />
+          <div>
+            <strong>Вы подключены. Ожидаем начала показа.</strong>
+            <span>Преподаватель начнёт показ. Сигналы и ответы станут доступны после начала.</span>
+          </div>
+        </div>
+      )}
       {current.status === "PAUSED" && (
         <div className="student-session-notice student-session-notice--paused" role="status">
           <CirclePause size={22} aria-hidden="true" />
@@ -499,7 +535,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         </div>
       )}
 
-      {isJoined && (
+      {isJoined && !isTerminalSession && (
         <section className="student-slide-card">
           <div className="student-slide-meta">
             <span>Слайд {slideLabel}</span>
@@ -530,7 +566,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={slideChatMut.isPending || requestedSlideIdx === current.currentSlideIdx}
+                  disabled={
+                    !commandsReady ||
+                    slideChatMut.isPending ||
+                    requestedSlideIdx === current.currentSlideIdx
+                  }
                   onClick={() => slideChatMut.mutate()}
                 >
                   <MessageCircle size={16} aria-hidden="true" />{" "}
@@ -618,7 +658,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             <StudentPollCard
               poll={current.activePoll}
               myVote={myVote}
-              isLive={isLive}
+              isLive={commandsReady}
               isPending={pollMut.isPending}
               onAnswer={(optionIdx) =>
                 pollMut.mutate({ pollId: current.activePoll!.pollId, optionIdx })
@@ -626,7 +666,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             />
           )}
           <StudentFeedbackControls
-            isLive={isLive}
+            isLive={commandsReady}
             isSignalPending={signalMut.isPending}
             isQuestionPending={questionMut.isPending}
             lastSignal={lastSignal}

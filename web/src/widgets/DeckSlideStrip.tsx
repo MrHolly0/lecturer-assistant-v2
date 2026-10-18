@@ -59,7 +59,8 @@ export function DeckSlideStrip({
       {canManage && (
         <p className="slide-strip__instruction">
           <GripVertical size={15} aria-hidden="true" />
-          Порядок слайдов: перетащите за маркер или выберите позицию в меню.
+          Порядок слайдов: перетащите за маркер или выберите позицию в меню. При редактировании
+          презентации с историей создаётся новая версия, на неё переходят связанные лекции.
         </p>
       )}
       <div className="slide-strip" aria-label="Слайды презентации">

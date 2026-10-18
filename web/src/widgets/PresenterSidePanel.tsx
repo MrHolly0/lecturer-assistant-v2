@@ -1,4 +1,4 @@
-import { AlertTriangle, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 import type { Slide } from "../app/api/content-api";
 import type { SessionParticipant } from "../app/api/live-api";
 import type { SignalValue, StudentEngagement } from "../app/api/student-api";
@@ -19,6 +19,7 @@ interface PresenterSidePanelProps {
   courseId: string;
   sessionId: string;
   paused: boolean;
+  commandsBlocked?: boolean;
   questionsLoading?: boolean;
   questionsError?: boolean;
   onRetryQuestions?: () => void;
@@ -38,6 +39,7 @@ export function PresenterSidePanel({
   courseId,
   sessionId,
   paused,
+  commandsBlocked = false,
   questionsLoading = false,
   questionsError = false,
   onRetryQuestions,
@@ -47,31 +49,30 @@ export function PresenterSidePanel({
   participantsError = false,
   onRetryParticipants
 }: PresenterSidePanelProps) {
-  const activeParticipants = participants.filter((participant) => !participant.leftAt);
+  const activeParticipants = participants.filter(
+    (participant) => !participant.leftAt && !participant.kicked
+  );
   const signals = engagement?.signalAggregate;
   const questions = engagement?.questions ?? [];
-  const redCount = signals?.red ?? 0;
 
   return (
     <aside className="presenter-side">
-      <div className="live-metric">
-        <Clock size={16} />С начала {formatSessionTime(elapsed)} · слайд{" "}
-        {formatSessionTime(slideElapsed)}
-      </div>
-      {redCount > 0 && (
-        <div className="signal-alert">
-          <AlertTriangle size={14} />
-          {redCount} {pluralizeRu(redCount, "сигнал", "сигнала", "сигналов")} «Не понимаю»
-        </div>
-      )}
       <section className="live-panel signal-summary signal-summary--primary">
         <div className="section-heading">
           <h2>Понимание слайда {slide.idx}</h2>
           <span className="muted">
-            {signals?.total ?? 0}{" "}
-            {pluralizeRu(signals?.total ?? 0, "сигнал", "сигнала", "сигналов")}
+            {activeParticipants.length}{" "}
+            {pluralizeRu(activeParticipants.length, "участник", "участника", "участников")}
           </span>
         </div>
+        {engagementError && engagement && (
+          <div className="teacher-remote-data-error" role="status">
+            Не удалось обновить сигналы. Показаны последние данные.{" "}
+            <button type="button" onClick={onRetryEngagement}>
+              Повторить
+            </button>
+          </div>
+        )}
         {engagement ? (
           <>
             <SignalRow
@@ -108,22 +109,17 @@ export function PresenterSidePanel({
           </div>
         )}
       </section>
-      <section className="live-poll-panel">
-        <div className="section-heading">
-          <h2>Вопрос-проверка</h2>
-        </div>
-        <PollPanel courseId={courseId} sessionId={sessionId} disabled={paused} />
-      </section>
       <Tabs defaultValue="questions" className="live-tabs">
         <TabsList className="live-tabs__list">
           <TabsTrigger value="questions">
-            Открытые вопросы
+            Вопросы
             {questions.filter((question) => question.status === "OPEN").length > 0 && (
               <span className="tab-badge tab-badge--alert">
                 {questions.filter((question) => question.status === "OPEN").length}
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="poll">Проверка</TabsTrigger>
           <TabsTrigger value="students">
             Студенты
             {activeParticipants.length > 0 && (
@@ -132,6 +128,14 @@ export function PresenterSidePanel({
           </TabsTrigger>
           <TabsTrigger value="notes">Заметки</TabsTrigger>
         </TabsList>
+        <TabsContent value="poll" className="live-panel live-poll-panel">
+          <PollPanel
+            courseId={courseId}
+            sessionId={sessionId}
+            disabled={paused}
+            commandsBlocked={commandsBlocked}
+          />
+        </TabsContent>
         <TabsContent value="students" className="live-panel">
           {participantsError && (
             <div className="teacher-remote-data-error" role="status">
@@ -153,6 +157,7 @@ export function PresenterSidePanel({
             courseId={courseId}
             sessionId={sessionId}
             participants={participants}
+            disabled={commandsBlocked}
           />
         </TabsContent>
         <TabsContent value="notes" className="live-panel">
@@ -160,6 +165,9 @@ export function PresenterSidePanel({
             <h2>Заметки</h2>
             <span className="muted">слайд {slide.idx}</span>
           </div>
+          <p className="question-privacy-hint">
+            Видны только вам. На проекторе и у студентов их нет.
+          </p>
           <LiveSlideNotesEditor courseId={courseId} deckId={slide.deckId} slide={slide} />
         </TabsContent>
         <TabsContent value="questions" className="live-panel">
@@ -170,9 +178,14 @@ export function PresenterSidePanel({
             isLoading={questionsLoading}
             loadError={questionsError}
             onRetry={onRetryQuestions}
+            disabled={commandsBlocked}
           />
         </TabsContent>
       </Tabs>
+      <div className="live-metric">
+        <Clock size={16} />С начала {formatSessionTime(elapsed)} · слайд{" "}
+        {formatSessionTime(slideElapsed)}
+      </div>
     </aside>
   );
 }

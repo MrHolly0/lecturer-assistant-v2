@@ -29,11 +29,17 @@ interface Props {
   courseId: string;
   sessionId: string;
   disabled?: boolean;
+  commandsBlocked?: boolean;
 }
 
 type View = "idle" | "create";
 
-export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
+export function PollPanel({
+  courseId,
+  sessionId,
+  disabled = false,
+  commandsBlocked = false
+}: Props) {
   const qc = useQueryClient();
   const [view, setView] = useState<View>("idle");
 
@@ -89,8 +95,15 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
   }, [activePoll?.poll.id, activePoll?.poll.status]);
 
   useEffect(() => {
-    if (disabled) setView("idle");
-  }, [disabled]);
+    if (disabled || commandsBlocked) setView("idle");
+  }, [disabled, commandsBlocked]);
+
+  if (activeQuery.isLoading)
+    return (
+      <div className="poll-panel" role="status">
+        Проверяем текущую проверку…
+      </div>
+    );
 
   if (activeQuery.isError) {
     return (
@@ -113,7 +126,9 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
           courseId={courseId}
           pending={startMut.isPending}
           onCancel={() => setView("idle")}
-          onStart={(draft) => startMut.mutate(draft)}
+          onStart={(draft) => {
+            if (!disabled && !commandsBlocked) startMut.mutate(draft);
+          }}
         />
         <ClosedPollHistory courseId={courseId} sessionId={sessionId} />
       </>
@@ -149,7 +164,7 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
                     className="poll-bar-correct-toggle"
                     aria-label={`Отметить вариант ${idx + 1} правильным`}
                     aria-pressed={isCorrect}
-                    disabled={isClosed || correctMut.isPending}
+                    disabled={commandsBlocked || isClosed || correctMut.isPending}
                     onClick={() =>
                       correctMut.mutate({
                         pollId: activePoll.poll.id,
@@ -177,9 +192,14 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
               </p>
               <Button
                 type="button"
-                disabled={closeMut.isPending || correctMut.isPending || selectedCorrect == null}
+                disabled={
+                  commandsBlocked ||
+                  closeMut.isPending ||
+                  correctMut.isPending ||
+                  selectedCorrect == null
+                }
                 onClick={() => {
-                  if (selectedCorrect != null) {
+                  if (!commandsBlocked && selectedCorrect != null) {
                     closeMut.mutate({
                       pollId: activePoll.poll.id,
                       correctOptionIdx: selectedCorrect
@@ -195,7 +215,7 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
             <Button
               type="button"
               variant="outline"
-              disabled={disabled}
+              disabled={disabled || commandsBlocked}
               onClick={() => setView("create")}
             >
               <Plus size={14} />
@@ -218,11 +238,11 @@ export function PollPanel({ courseId, sessionId, disabled = false }: Props) {
         type="button"
         variant="outline"
         className="poll-launch-btn"
-        disabled={disabled}
+        disabled={disabled || commandsBlocked}
         onClick={() => setView("create")}
       >
         <BarChart2 size={14} />
-        {disabled ? "Продолжите лекцию для проверки" : "Запустить проверку"}
+        {disabled || commandsBlocked ? "Проверка пока недоступна" : "Запустить проверку"}
       </Button>
       <ClosedPollHistory courseId={courseId} sessionId={sessionId} />
     </>

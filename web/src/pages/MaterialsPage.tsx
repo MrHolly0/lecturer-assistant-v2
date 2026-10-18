@@ -34,11 +34,12 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const [job, setJob] = useState<ImportJob | null>(null);
   const [selectedDeckId, setSelectedDeckId] = useState("");
   const [activeSlide, setActiveSlide] = useState(0);
-  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lectureTitle, setLectureTitle] = useState("");
   const [lectureDeckId, setLectureDeckId] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [lectureCreateOpen, setLectureCreateOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [partialDeckId, setPartialDeckId] = useState("");
   const [partialWarning, setPartialWarning] = useState("");
@@ -84,10 +85,11 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     setSelectedDeckId("");
     setLectureDeckId("");
     setActiveSlide(0);
-    setNotesOpen(false);
+    setNotesOpen(true);
     setError(null);
     setLectureTitle("");
     setUploadOpen(false);
+    setLectureCreateOpen(false);
     setViewerOpen(false);
     setPartialDeckId("");
     setPartialWarning("");
@@ -104,7 +106,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
       setSelectedDeckId(jobQuery.data.deckId);
       setLectureDeckId(jobQuery.data.deckId);
       setActiveSlide(0);
-      setNotesOpen(false);
+      setNotesOpen(true);
       setJob(null);
       setUploadProgress(jobQuery.data.progressPercent);
       if (jobQuery.data.status === "PARTIAL") {
@@ -145,9 +147,10 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const displayedProgress = importing
     ? latestJob?.progressPercent ?? uploadProgress
     : uploadProgress;
-  const createLectureMut = useLectureCreation(courseId, lectureTitle, lectureDeckId, () =>
-    setLectureTitle("")
-  );
+  const createLectureMut = useLectureCreation(courseId, lectureTitle, lectureDeckId, () => {
+    setLectureTitle("");
+    setLectureCreateOpen(false);
+  });
   const noteActions = useSlideNoteActions(courseId, selectedDeck, activeSlide);
   const slideActions = useDeckSlideActions({
     courseId,
@@ -196,15 +199,50 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     }
   }
 
+  if (viewerOpen && selectedDeck) {
+    return (
+      <div className="page page--wide preparation-page materials-page materials-page--viewer">
+        <header className="page-header preparation-viewer-header">
+          <div>
+            <button type="button" className="breadcrumb" onClick={() => setViewerOpen(false)}>
+              ← Лекции и материалы
+            </button>
+            <h1>{selectedDeck.title}</h1>
+            <p className="muted">
+              Версия {selectedDeck.version} · {selectedDeck.slides.length} слайдов
+            </p>
+          </div>
+          <Button type="button" variant="outline" onClick={() => setViewerOpen(false)}>
+            <X size={18} aria-hidden="true" /> Закрыть просмотр
+          </Button>
+        </header>
+        <DeckViewer
+          deck={selectedDeck}
+          activeIndex={activeSlide}
+          notesOpen={notesOpen}
+          savingNote={noteActions.saving}
+          canManage={canManage}
+          editing={slideActions.editing}
+          onSlideChange={setActiveSlide}
+          onNotesOpenChange={setNotesOpen}
+          onSaveNote={(content) => noteActions.save(content).then(() => undefined)}
+          onClearNote={() => noteActions.clear()}
+          onReorderSlide={slideActions.reorderSlide}
+          onDeleteSlide={slideActions.deleteActiveSlide}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="page page--wide course-workflows materials-page">
+    <div className="page page--wide course-workflows materials-page preparation-page">
       <header className="page-header course-workflow-header">
         <div className="course-workflow-header__copy">
           <Link to={`/courses/${courseId}`} className="breadcrumb">
-            ← Курс
+            ← Курсы / {courseQuery.data?.title ?? "Курс"}
           </Link>
-          <h1>Материалы курса</h1>
-          <p className="muted">{courseQuery.data?.title ?? "Загрузка курса…"}</p>
+          <h1>{lectureCreateOpen ? "Новая лекция" : "Лекции и материалы"}</h1>
+          {lectureCreateOpen && <p className="muted">{courseQuery.data?.title}</p>}
         </div>
       </header>
 
@@ -219,27 +257,38 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
         </div>
       )}
 
-      {!courseQuery.isError && !lecturesQuery.isError && !decksQuery.isError && (
-        <LectureList
-          courseId={courseId}
-          lectures={lectures}
-          decks={activeDecks}
-          canManage={canManage}
-          title={lectureTitle}
-          deckId={lectureDeckId}
-          creating={createLectureMut.isPending}
-          onTitleChange={setLectureTitle}
-          onDeckChange={setLectureDeckId}
-          onCreate={() => createLectureMut.mutate()}
-          onArchive={(lectureId) => deleteLectureMut.mutate(lectureId)}
-          onRestore={(lectureId) => restoreLectureMut.mutate(lectureId)}
-          onHardDelete={(lectureId) => hardDeleteLectureMut.mutate(lectureId)}
-          onAddPresentation={() => setUploadOpen(true)}
-          partialImportWarning={lectureDeckId === partialDeckId ? partialWarning : undefined}
-          partialReviewAccepted={partialReviewAccepted}
-          onPartialReviewAccepted={setPartialReviewAccepted}
-        />
+      {(lecturesQuery.isLoading || decksQuery.isLoading) && !courseQuery.isError && (
+        <p className="muted preparation-loading" role="status">
+          Загрузка лекций и презентаций…
+        </p>
       )}
+      {!courseQuery.isError &&
+        !lecturesQuery.isLoading &&
+        !decksQuery.isLoading &&
+        !lecturesQuery.isError &&
+        !decksQuery.isError && (
+          <LectureList
+            courseId={courseId}
+            lectures={lectures}
+            decks={activeDecks}
+            canManage={canManage}
+            title={lectureTitle}
+            deckId={lectureDeckId}
+            creating={createLectureMut.isPending}
+            createOpen={lectureCreateOpen}
+            onCreateOpenChange={setLectureCreateOpen}
+            onTitleChange={setLectureTitle}
+            onDeckChange={setLectureDeckId}
+            onCreate={() => createLectureMut.mutate()}
+            onArchive={(lectureId) => deleteLectureMut.mutate(lectureId)}
+            onRestore={(lectureId) => restoreLectureMut.mutate(lectureId)}
+            onHardDelete={(lectureId) => hardDeleteLectureMut.mutate(lectureId)}
+            onAddPresentation={() => setUploadOpen(true)}
+            partialImportWarning={lectureDeckId === partialDeckId ? partialWarning : undefined}
+            partialReviewAccepted={partialReviewAccepted}
+            onPartialReviewAccepted={setPartialReviewAccepted}
+          />
+        )}
 
       {lecturesQuery.isError && !courseQuery.isError && (
         <div className="materials-load-error" role="alert">
@@ -258,17 +307,16 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
         </div>
       )}
 
-      {!courseQuery.isError && (
+      {!courseQuery.isError && !lectureCreateOpen && (
         <section className="materials-workspace" aria-labelledby="materials-workspace-title">
           <div className="section-heading materials-workspace__heading">
             <div>
               <h2 id="materials-workspace-title">Презентации</h2>
               <p className="muted">Файлы слайдов, версии и заметки преподавателя.</p>
             </div>
-            {canManage && activeDecks.length > 0 && (
+            {canManage && (
               <Button
                 type="button"
-                variant="outline"
                 disabled={importing}
                 onClick={() => setUploadOpen((value) => !value)}
               >
@@ -318,7 +366,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
             </div>
           )}
 
-          {!decksQuery.isError && (
+          {!decksQuery.isError && !decksQuery.isLoading && (
             <DeckListPanel
               decks={decks}
               selectedDeckId={selectedDeckId}
@@ -330,40 +378,13 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
                 setSelectedDeckId(deckId);
                 setLectureDeckId(deckId);
                 setActiveSlide(0);
-                setNotesOpen(false);
+                setNotesOpen(true);
                 setViewerOpen(true);
               }}
               onArchive={(deckId) => archiveDeckMut.mutate(deckId)}
               onRestore={(deckId) => restoreDeckMut.mutate(deckId)}
               onHardDelete={(deckId) => hardDeleteDeckMut.mutate(deckId)}
             />
-          )}
-
-          {selectedDeck && viewerOpen && (
-            <div className="material-viewer-shell">
-              <Button
-                type="button"
-                variant="ghost"
-                className="material-viewer-close"
-                onClick={() => setViewerOpen(false)}
-              >
-                <X size={16} aria-hidden="true" /> Закрыть просмотр
-              </Button>
-              <DeckViewer
-                deck={selectedDeck}
-                activeIndex={activeSlide}
-                notesOpen={notesOpen}
-                savingNote={noteActions.saving}
-                canManage={canManage}
-                editing={slideActions.editing}
-                onSlideChange={setActiveSlide}
-                onNotesOpenChange={setNotesOpen}
-                onSaveNote={(content) => noteActions.save(content).then(() => undefined)}
-                onClearNote={() => noteActions.clear()}
-                onReorderSlide={slideActions.reorderSlide}
-                onDeleteSlide={slideActions.deleteActiveSlide}
-              />
-            </div>
           )}
         </section>
       )}

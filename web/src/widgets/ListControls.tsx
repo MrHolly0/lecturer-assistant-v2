@@ -1,6 +1,6 @@
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { Input } from "../shared/ui/input";
-import { Button } from "../shared/ui/button";
+import { Button, IconButton } from "../shared/ui/button";
 
 interface SearchFieldProps {
   value: string;
@@ -18,6 +18,16 @@ export function SearchField({ value, placeholder, onChange }: SearchFieldProps) 
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
       />
+      {value && (
+        <IconButton
+          label="Очистить поиск"
+          type="button"
+          tooltip={false}
+          onClick={() => onChange("")}
+        >
+          <X />
+        </IconButton>
+      )}
     </label>
   );
 }
@@ -68,5 +78,18 @@ export function PaginationBar({
         </Button>
       </div>
     </div>
+  );
+}
+
+export function HighlightMatch({ text, query }: { text: string; query: string }) {
+  const term = query.trim();
+  const index = term ? text.toLocaleLowerCase("ru").indexOf(term.toLocaleLowerCase("ru")) : -1;
+  if (index < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, index)}
+      <mark className="search-highlight">{text.slice(index, index + term.length)}</mark>
+      {text.slice(index + term.length)}
+    </>
   );
 }

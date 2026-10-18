@@ -1,13 +1,12 @@
-import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpenText, Play, Radio, RefreshCw, Square } from "lucide-react";
+import { BookOpenText, Radio, RefreshCw, Square } from "lucide-react";
 import { toast } from "sonner";
 import { userErrorMessage } from "../app/api/errors";
 import { listLectures } from "../app/api/content-api";
 import { endLiveSession, getMyActiveSession } from "../app/api/live-api";
 import { Button, LinkButton } from "../shared/ui/button";
 import { ConfirmActionButton } from "./ConfirmActionButton";
-import { StartSessionDialog } from "./StartSessionDialog";
+import { CourseQuickStart } from "./CourseQuickStart";
 import { SessionGroups } from "./SessionGroups";
 
 export function CourseLectureSpotlight({
@@ -18,7 +17,6 @@ export function CourseLectureSpotlight({
   canManage: boolean;
 }) {
   const queryClient = useQueryClient();
-  const [startOpen, setStartOpen] = useState(false);
   const lecturesQuery = useQuery({
     queryKey: ["content", courseId, "lectures"],
     queryFn: () => listLectures(courseId)
@@ -95,7 +93,8 @@ export function CourseLectureSpotlight({
       <section className="course-live-card course-live-card--active">
         <div className="course-live-card__copy">
           <span className="course-live-card__status course-live-card__status--live">
-            <Radio size={15} /> Занятие идёт
+            <Radio size={15} />{" "}
+            {activeSession.status === "SCHEDULED" ? "Подключение открыто" : "Занятие идёт"}
           </span>
           <h2>{activeSession.lectureTitle}</h2>
           <SessionGroups groups={activeSession.groups} compact />
@@ -144,40 +143,11 @@ export function CourseLectureSpotlight({
   }
 
   return (
-    <section className="course-live-card">
-      <div className="course-live-card__copy">
-        <span className="course-live-card__status">
-          <BookOpenText size={15} /> Готова к запуску
-        </span>
-        <h2>{firstLecture.title}</h2>
-        <p>
-          {firstLecture.deckTitle} · версия {firstLecture.deckVersion}
-        </p>
-      </div>
-      <div className="course-live-card__actions">
-        {canManage && (
-          <Button
-            type="button"
-            className="course-live-card__action"
-            onClick={() => setStartOpen(true)}
-          >
-            <Play size={17} aria-hidden="true" />
-            Провести занятие
-          </Button>
-        )}
-        <LinkButton
-          variant="ghost"
-          className="course-live-card__secondary"
-          to={`/courses/${courseId}/materials`}
-        >
-          Все лекции
-        </LinkButton>
-      </div>
-      <StartSessionDialog
+    <section className="course-live-card" aria-label="Подготовка занятия">
+      <CourseQuickStart
         courseId={courseId}
-        lecture={firstLecture}
-        open={startOpen}
-        onOpenChange={setStartOpen}
+        blocked={Boolean(activeSessionQuery.data)}
+        variant="overview"
       />
     </section>
   );

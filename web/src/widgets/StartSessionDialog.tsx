@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Play, UsersRound, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -40,6 +40,7 @@ export function StartSessionDialog({
   onOpenChange
 }: StartSessionDialogProps) {
   const navigate = useNavigate();
+  const returnFocus = useRef<HTMLElement | null>(null);
   const maxEnvironment = useMaxBridge();
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<GroupMode>("existing");
@@ -52,15 +53,20 @@ export function StartSessionDialog({
     enabled: open
   });
   const groups = useMemo(() => courseQuery.data?.groups ?? [], [courseQuery.data?.groups]);
-  const groupsKey = groups.map((group) => group.id).join("|");
+  const initializedCourse = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!open || courseQuery.isLoading) return;
+    if (!open) {
+      initializedCourse.current = null;
+      return;
+    }
+    if (courseQuery.isLoading || initializedCourse.current === courseId) return;
+    initializedCourse.current = courseId;
     setMode(groups.length === 0 ? "new" : "existing");
     setGroupIds(groups.length === 1 ? [groups[0].id] : []);
     setGroupName("");
     setNewGroupNames([]);
-  }, [courseQuery.isLoading, groups, groupsKey, open]);
+  }, [courseId, courseQuery.isLoading, groups, open]);
 
   const startMutation = useMutation({
     mutationFn: (request: StartSessionRequest) => {
@@ -115,24 +121,36 @@ export function StartSessionDialog({
         if (!startMutation.isPending) onOpenChange(next);
       }}
     >
-      <DialogContent className="start-session-dialog">
+      <DialogContent
+        className="start-session-dialog preparation-dialog"
+        onOpenAutoFocus={() => {
+          returnFocus.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          if (returnFocus.current?.isConnected) {
+            event.preventDefault();
+            returnFocus.current.focus();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Подключить группы</DialogTitle>
           <DialogDescription>
-            1. Выберите учебные группы. 2. Откройте подключение, чтобы получить код. Показ начнётся
-            после нажатия «Начать показ».
+            Сначала откройте подключение. Показ начнётся отдельно.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="start-session-context">
-          <UsersRound size={20} aria-hidden="true" />
-          <div>
-            <span>Курс</span>
-            <strong>{courseQuery.data?.title ?? "Загрузка…"}</strong>
+        <div className="start-session-body preparation-dialog__body">
+          <div className="start-session-context">
+            <UsersRound size={20} aria-hidden="true" />
+            <div>
+              <span>Курс</span>
+              <strong>{courseQuery.data?.title ?? "Загрузка…"}</strong>
+              <small>{lecture?.title}</small>
+            </div>
           </div>
-        </div>
 
-        <div className="start-session-body">
           {courseQuery.isError ? (
             <div className="form-error" role="alert">
               Не удалось загрузить группы курса.
@@ -154,7 +172,10 @@ export function StartSessionDialog({
                   {groups.map((group) => {
                     const checked = groupIds.includes(group.id);
                     return (
-                      <label key={group.id} className="start-session-group-option">
+                      <label
+                        key={group.id}
+                        className={`start-session-group-option${checked ? " start-session-group-option--selected" : ""}`}
+                      >
                         <Checkbox
                           checked={checked}
                           onCheckedChange={(next) =>
@@ -202,6 +223,14 @@ export function StartSessionDialog({
             </Tabs>
           )}
 
+          {startMutation.isError && (
+            <p className="form-error" role="alert">
+              {userErrorMessage(
+                startMutation.error,
+                "Не удалось открыть подключение. Выбранные группы сохранены, попробуйте ещё раз."
+              )}
+            </p>
+          )}
           <div className="start-session-selection" aria-live="polite">
             <strong>Выбрано: {selectedCount}</strong>
             <div className="start-session-selection__items">

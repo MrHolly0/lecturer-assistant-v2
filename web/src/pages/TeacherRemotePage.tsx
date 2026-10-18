@@ -52,8 +52,9 @@ import { TeacherRemoteQuestions } from "../widgets/TeacherRemoteQuestions";
 import { TeacherRemoteScheduledState } from "../widgets/TeacherRemoteScheduledState";
 import { TeacherRemoteSignals } from "../widgets/TeacherRemoteSignals";
 import { LiveSlideNotesEditor } from "../widgets/LiveSlideNotesEditor";
-import { ThemeToggle } from "../widgets/ThemeToggle";
 import { SessionParticipantList } from "../widgets/SessionParticipantList";
+import { useMaxBridge } from "../app/max/context";
+import { BrandMark } from "../shared/brand/BrandMark";
 import { useLiveSession } from "../app/live/useLiveSession";
 
 export function TeacherRemotePage({
@@ -65,6 +66,7 @@ export function TeacherRemotePage({
 }) {
   const navigate = useNavigate();
   const { signOut } = useAuth();
+  const maxEnvironment = useMaxBridge();
   const queryClient = useQueryClient();
   const slideInFlightRef = useRef(false);
   const [remoteSection, setRemoteSection] = useState<"poll" | "students" | "notes" | "">("");
@@ -90,6 +92,7 @@ export function TeacherRemotePage({
   const deck = deckQuery.data;
   const slide = deck?.slides.find((item) => item.idx === session?.currentSlideIdx);
   const paused = session?.status === "PAUSED";
+  const commandsBlocked = live.connection !== "connected" || live.syncing || live.syncError;
   const { elapsed, slideElapsed } = useSessionTimers(session);
 
   useEffect(() => {
@@ -111,6 +114,7 @@ export function TeacherRemotePage({
       slideInFlightRef.current ||
       slideMutation.isPending ||
       paused ||
+      commandsBlocked ||
       idx < 1 ||
       idx > (deck?.slides.length ?? 0)
     )
@@ -177,6 +181,18 @@ export function TeacherRemotePage({
         joinCode={session.joinCode}
         beginPending={beginMutation.isPending}
         cancelPending={cancelMutation.isPending}
+        disabled={commandsBlocked}
+        connectionNotice={
+          commandsBlocked ? (
+            <TeacherRemoteConnection
+              state={live.connection}
+              syncing={live.syncing}
+              syncedAt={live.syncedAt}
+              syncError={live.syncError}
+              onRetry={live.refresh}
+            />
+          ) : undefined
+        }
         onBegin={() => beginMutation.mutate()}
         onBack={() => navigate(`/courses/${courseId}`)}
         onCancel={() => cancelMutation.mutate()}
@@ -209,22 +225,24 @@ export function TeacherRemotePage({
   return (
     <main className="teacher-remote-shell">
       <header className="teacher-remote-header">
-        <div className="teacher-remote-header__copy">
-          <span>
-            <Radio size={15} aria-hidden="true" /> Пульт лекции
-          </span>
-          <h1>{session.lectureTitle}</h1>
-          <SessionGroups groups={session.groups} compact />
+        <div className="live-mobile-brand">
+          <BrandMark />
+          <strong>Пульт лекции</strong>
         </div>
         <div className="teacher-remote-header__actions">
-          <TeacherRemoteConnection
-            state={live.connection}
-            syncing={live.syncing}
-            syncedAt={live.syncedAt}
-            syncError={live.syncError}
-            onRetry={live.refresh}
-          />
-          <ThemeToggle compact />
+          <span
+            className={`badge presenter-status presenter-status--${commandsBlocked ? "offline" : session.status.toLowerCase()}`}
+          >
+            {live.connection === "offline"
+              ? "Нет сети"
+              : live.connection === "reconnecting"
+                ? "Нет связи"
+                : commandsBlocked
+                  ? "Сверяем"
+                  : paused
+                    ? "Пауза"
+                    : "В эфире"}
+          </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button type="button" size="icon" variant="ghost" aria-label="Меню пульта">
@@ -233,6 +251,15 @@ export function TeacherRemotePage({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => navigate("/courses")}>К курсам</DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() =>
+                  maxEnvironment.setPreferredTheme(
+                    maxEnvironment.theme === "dark" ? "light" : "dark"
+                  )
+                }
+              >
+                {maxEnvironment.theme === "dark" ? "Светлая тема" : "Тёмная тема"}
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => navigate("/settings/max")}>
                 MAX и вход
               </DropdownMenuItem>
@@ -247,6 +274,17 @@ export function TeacherRemotePage({
           </DropdownMenu>
         </div>
       </header>
+      <div className="teacher-remote-context">
+        <h1>{session.lectureTitle}</h1>
+        <SessionGroups groups={session.groups} compact />
+      </div>
+      <TeacherRemoteConnection
+        state={live.connection}
+        syncing={live.syncing}
+        syncedAt={live.syncedAt}
+        syncError={live.syncError}
+        onRetry={live.refresh}
+      />
 
       <section className="teacher-remote-stage" aria-label={`Слайд ${currentSlideIdx}`}>
         {deckQuery.isError ? (
@@ -274,11 +312,11 @@ export function TeacherRemotePage({
         <span>Слайд {formatSessionTime(slideElapsed)}</span>
       </div>
 
-      <div className="teacher-remote-controls">
+      <div className="teacher-remote-controls" aria-label="Управление показом">
         <Button
           type="button"
           variant="outline"
-          disabled={paused || actionPending || currentSlideIdx <= 1}
+          disabled={paused || commandsBlocked || actionPending || currentSlideIdx <= 1}
           onClick={() => go(currentSlideIdx - 1)}
         >
           <ChevronLeft size={25} aria-hidden="true" /> Назад
@@ -286,7 +324,7 @@ export function TeacherRemotePage({
         <Button
           type="button"
           variant={paused ? "default" : "secondary"}
-          disabled={actionPending}
+          disabled={commandsBlocked || actionPending}
           onClick={() => (paused ? resumeMutation.mutate() : pauseMutation.mutate())}
         >
           {paused ? <Play size={22} aria-hidden="true" /> : <Pause size={22} aria-hidden="true" />}
@@ -294,10 +332,10 @@ export function TeacherRemotePage({
         </Button>
         <Button
           type="button"
-          disabled={paused || actionPending || currentSlideIdx >= slideCount}
+          disabled={paused || commandsBlocked || actionPending || currentSlideIdx >= slideCount}
           onClick={() => go(currentSlideIdx + 1)}
         >
-          Далее <ChevronRight size={25} aria-hidden="true" />
+          <ChevronRight size={25} aria-hidden="true" /> Далее
         </Button>
       </div>
 
@@ -307,7 +345,7 @@ export function TeacherRemotePage({
             type="button"
             variant="outline"
             className="teacher-remote-end"
-            disabled={endMutation.isPending}
+            disabled={commandsBlocked || endMutation.isPending}
           >
             <Square size={15} aria-hidden="true" /> Завершить лекцию
           </Button>
@@ -321,7 +359,12 @@ export function TeacherRemotePage({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Продолжить показ</AlertDialogCancel>
-            <AlertDialogAction onClick={() => endMutation.mutate()}>
+            <AlertDialogAction
+              disabled={commandsBlocked || endMutation.isPending}
+              onClick={() => {
+                if (!commandsBlocked) endMutation.mutate();
+              }}
+            >
               Завершить лекцию
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -342,6 +385,7 @@ export function TeacherRemotePage({
           isLoading={engagementQuery.isLoading}
           loadError={engagementQuery.isError}
           onRetry={() => void engagementQuery.refetch()}
+          disabled={commandsBlocked}
         />
       </section>
 
@@ -372,12 +416,20 @@ export function TeacherRemotePage({
       {remoteSection === "poll" && (
         <section className="teacher-remote-expanded">
           <h2>Проверка</h2>
-          <PollPanel courseId={courseId} sessionId={sessionId} disabled={paused} />
+          <PollPanel
+            courseId={courseId}
+            sessionId={sessionId}
+            disabled={paused}
+            commandsBlocked={commandsBlocked}
+          />
         </section>
       )}
       {remoteSection === "notes" && slide && (
         <section className="teacher-remote-expanded">
           <h2>Заметки к слайду {slide.idx}</h2>
+          <p className="question-privacy-hint">
+            Видны только вам. На проекторе и у студентов их нет.
+          </p>
           <LiveSlideNotesEditor courseId={courseId} deckId={slide.deckId} slide={slide} />
         </section>
       )}
@@ -397,6 +449,7 @@ export function TeacherRemotePage({
             courseId={courseId}
             sessionId={sessionId}
             participants={participantsQuery.data ?? []}
+            disabled={commandsBlocked}
           />
         </section>
       )}

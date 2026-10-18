@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   connectStudentSession,
   getPublicStudentSession,
+  type StudentConnectionState,
   type StudentSessionSnapshot
 } from "../app/api/student-api";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
@@ -16,6 +17,7 @@ import { Button } from "../shared/ui/button";
 /** Экран показа использует только доступное студентам состояние лекции. */
 export function ProjectionPage({ joinCode }: { joinCode: string }) {
   const code = joinCode.trim().toUpperCase();
+  const [connectionState, setConnectionState] = useState<StudentConnectionState>("CONNECTING");
   const [liveSnapshot, setLiveSnapshot] = useState<StudentSessionSnapshot | null>(null);
   const sessionQuery = useQuery({
     queryKey: ["projection", code],
@@ -31,7 +33,7 @@ export function ProjectionPage({ joinCode }: { joinCode: string }) {
   useEffect(() => {
     setLiveSnapshot(null);
     if (!code) return;
-    const connection = connectStudentSession(code, "", setLiveSnapshot, () => undefined);
+    const connection = connectStudentSession(code, "", setLiveSnapshot, setConnectionState);
     return () => connection.disconnect();
   }, [code]);
 
@@ -74,35 +76,47 @@ export function ProjectionPage({ joinCode }: { joinCode: string }) {
       </main>
     );
   }
-  if (!session?.currentSlide) {
+  if (!session) {
     return <main className="projection-shell">Загрузка показа…</main>;
   }
 
   return (
     <main className="projection-shell">
-      {showJoinCode ? (
+      {showJoinCode || session.status === "SCHEDULED" ? (
         <section
           className="projection-code projection-code--live"
           aria-label="Код подключения к занятию"
         >
-          <span>Подключитесь к занятию</span>
-          <strong>{session.joinCode}</strong>
-          <SessionGroups groups={session.groups} compact />
-          {joinUrl ? (
-            <div className="projection-qr-lockup">
-              <div className="projection-brand">
-                <BrandMark />
-                <span>Lecturer Assistant</span>
-              </div>
-              <LocalQrCode value={joinUrl} label="Открыть лекцию в MAX" />
+          <div className="projection-brand">
+            <BrandMark />
+            <span>Lecturer Assistant</span>
+          </div>
+          <h1>Подключитесь к занятию</h1>
+          <div className="projection-join-row">
+            <div className="projection-join-code">
+              <span>Код занятия</span>
+              <strong>{session.joinCode}</strong>
+              <p>Введите код или откройте занятие в MAX</p>
             </div>
-          ) : (
-            <small>MAX-бот не настроен</small>
-          )}
+            {joinUrl ? (
+              <LocalQrCode value={joinUrl} label="Открыть занятие в MAX" />
+            ) : (
+              <p className="muted">MAX-бот не настроен. Введите код занятия.</p>
+            )}
+          </div>
+          <div className="projection-context">
+            <h2>{session.courseTitle}</h2>
+            <p>{session.lectureTitle}</p>
+            <SessionGroups groups={session.groups} compact />
+          </div>
         </section>
       ) : (
         <>
-          <img src={session.currentSlide.imageUrl} alt={`Слайд ${session.currentSlideIdx}`} />
+          {session.currentSlide ? (
+            <img src={session.currentSlide.imageUrl} alt={`Слайд ${session.currentSlideIdx}`} />
+          ) : (
+            <p>Ожидаем слайд</p>
+          )}
           <DrawingOverlay
             slideIdx={session.currentSlideIdx}
             annotations={session.annotations as LiveAnnotations}
@@ -117,22 +131,9 @@ export function ProjectionPage({ joinCode }: { joinCode: string }) {
           Показ приостановлен
         </div>
       )}
-      {session.status === "SCHEDULED" && (
-        <div className="projection-code">
-          <span>Код подключения</span>
-          <strong>{session.joinCode}</strong>
-          <SessionGroups groups={session.groups} compact />
-          {joinUrl ? (
-            <div className="projection-qr-lockup">
-              <div className="projection-brand">
-                <BrandMark />
-                <span>Lecturer Assistant</span>
-              </div>
-              <LocalQrCode value={joinUrl} label="Открыть лекцию в MAX" />
-            </div>
-          ) : (
-            <small>MAX-бот не настроен</small>
-          )}
+      {(connectionState === "OFFLINE" || connectionState === "RECONNECTING") && (
+        <div className="projection-sync-warning" role="status">
+          Связь потеряна. На экране последнее подтверждённое состояние.
         </div>
       )}
     </main>

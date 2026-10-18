@@ -12,11 +12,13 @@ import { ConfirmActionButton } from "./ConfirmActionButton";
 export function SessionParticipantList({
   courseId,
   sessionId,
-  participants
+  participants,
+  disabled = false
 }: {
   courseId: string;
   sessionId: string;
   participants: SessionParticipant[];
+  disabled?: boolean;
 }) {
   const queryClient = useQueryClient();
   const active = participants.filter((participant) => !participant.leftAt && !participant.kicked);
@@ -64,7 +66,7 @@ export function SessionParticipantList({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={requestName.isPending || pendingName}
+                disabled={disabled || requestName.isPending || pendingName}
                 onClick={() => requestName.mutate(participant.personId)}
               >
                 {pendingName ? "Имя запрошено" : "Запросить имя"}
@@ -75,8 +77,10 @@ export function SessionParticipantList({
                 confirmLabel="Отключить"
                 variant="outline"
                 size="sm"
-                disabled={kick.isPending}
-                onConfirm={() => kick.mutate(participant.personId)}
+                disabled={disabled || kick.isPending}
+                onConfirm={() => {
+                  if (!disabled) kick.mutate(participant.personId);
+                }}
               >
                 Отключить
               </ConfirmActionButton>

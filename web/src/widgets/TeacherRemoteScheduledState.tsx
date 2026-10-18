@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Play, Radio } from "lucide-react";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { Button } from "../shared/ui/button";
@@ -19,6 +20,8 @@ interface Props {
   joinCode: string;
   beginPending: boolean;
   cancelPending: boolean;
+  disabled?: boolean;
+  connectionNotice?: ReactNode;
   onBegin: () => void;
   onBack: () => void;
   onCancel: () => void;
@@ -29,6 +32,8 @@ export function TeacherRemoteScheduledState({
   joinCode,
   beginPending,
   cancelPending,
+  disabled = false,
+  connectionNotice,
   onBegin,
   onBack,
   onCancel
@@ -44,6 +49,7 @@ export function TeacherRemoteScheduledState({
         <h1>{lectureTitle}</h1>
         <p className="muted">Студенты могут подключиться до начала показа.</p>
       </div>
+      {connectionNotice}
       <section className="teacher-remote-scheduled__join" aria-label="Подключение студентов">
         <div className="teacher-remote-scheduled__code">
           <span>Код занятия</span>
@@ -52,7 +58,7 @@ export function TeacherRemoteScheduledState({
         </div>
         {joinUrl && <LocalQrCode value={joinUrl} label="QR для студентов" />}
       </section>
-      <Button type="button" size="lg" disabled={beginPending} onClick={onBegin}>
+      <Button type="button" size="lg" disabled={disabled || beginPending} onClick={onBegin}>
         <Play size={20} aria-hidden="true" />
         {beginPending ? "Начинаем…" : "Начать показ"}
       </Button>
@@ -61,7 +67,7 @@ export function TeacherRemoteScheduledState({
       </Button>
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <Button type="button" variant="ghost" disabled={cancelPending}>
+          <Button type="button" variant="ghost" disabled={disabled || cancelPending}>
             Отменить занятие
           </Button>
         </AlertDialogTrigger>
@@ -74,7 +80,14 @@ export function TeacherRemoteScheduledState({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Оставить</AlertDialogCancel>
-            <AlertDialogAction onClick={onCancel}>Отменить занятие</AlertDialogAction>
+            <AlertDialogAction
+              disabled={disabled || cancelPending}
+              onClick={() => {
+                if (!disabled) onCancel();
+              }}
+            >
+              Отменить занятие
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

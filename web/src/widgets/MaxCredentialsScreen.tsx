@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { ApiError } from "../app/api/http";
 import { Button } from "../shared/ui/button";
-import { ThemeToggle } from "./ThemeToggle";
+import { AuthPageFrame } from "./AuthPageFrame";
+import { AuthPasswordField } from "./AuthPasswordField";
 
 interface MaxCredentialsScreenProps {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -47,11 +48,8 @@ export function MaxCredentialsScreen({
   }
 
   return (
-    <main className="auth-shell">
+    <AuthPageFrame>
       <section className="auth-card max-credentials" aria-labelledby="max-credentials-title">
-        <div className="auth-theme-switch">
-          <ThemeToggle compact />
-        </div>
         <header className="auth-header">
           <span className="max-auth-eyebrow">Вход через MAX</span>
           <h1 className="auth-title" id="max-credentials-title">
@@ -69,6 +67,8 @@ export function MaxCredentialsScreen({
               <label className="field">
                 <span>Код приглашения</span>
                 <input
+                  name="invitationCode"
+                  spellCheck={false}
                   value={invitationCode}
                   onChange={(event) => setInvitationCode(event.target.value)}
                   autoComplete="one-time-code"
@@ -78,6 +78,7 @@ export function MaxCredentialsScreen({
               <label className="field">
                 <span>Имя</span>
                 <input
+                  name="displayName"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   autoComplete="name"
@@ -91,23 +92,23 @@ export function MaxCredentialsScreen({
             <span>Email</span>
             <input
               type="email"
+              name="email"
+              spellCheck={false}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               autoComplete="email"
               required
             />
           </label>
-          <label className="field">
-            <span>Пароль</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              minLength={mode === "register" ? 8 : undefined}
-              required
-            />
-          </label>
+          <AuthPasswordField
+            label="Пароль"
+            name="password"
+            value={password}
+            onValueChange={setPassword}
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            minLength={mode === "register" ? 8 : undefined}
+            required
+          />
           {(error ?? externalError) && (
             <p className="form-error" role="alert">
               {error ?? externalError}
@@ -146,7 +147,7 @@ export function MaxCredentialsScreen({
           </Button>
         </div>
       </section>
-    </main>
+    </AuthPageFrame>
   );
 }
 

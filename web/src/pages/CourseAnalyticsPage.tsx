@@ -45,14 +45,13 @@ export function CourseAnalyticsPage({ courseId }: { courseId: string }) {
   }
 
   return (
-    <div className="page page--wide analytics-page course-workflows">
+    <div className="page page--wide analytics-page course-workflows preparation-page">
       <header className="page-header analytics-page__header course-workflow-header">
         <div className="course-workflow-header__copy">
           <Link to={`/courses/${courseId}`} className="breadcrumb">
-            ← Курс
+            ← Курсы / {courseQuery.data.title}
           </Link>
-          <h1>Аналитика</h1>
-          <p className="muted">Завершённые лекции и результаты проведённых проверок.</p>
+          <h1>Аналитика курса</h1>
         </div>
       </header>
       <CourseSectionNav courseId={courseId} canManage />
@@ -70,7 +69,7 @@ export function CourseAnalyticsPage({ courseId }: { courseId: string }) {
       <section className="session-history" aria-labelledby="session-history-title">
         <div className="section-heading session-history__heading">
           <div>
-            <h2 id="session-history-title">История лекций</h2>
+            <h2 id="session-history-title">История занятий</h2>
             <p className="muted">Новые занятия отображаются первыми.</p>
           </div>
           {history && <span className="badge">{history.total}</span>}

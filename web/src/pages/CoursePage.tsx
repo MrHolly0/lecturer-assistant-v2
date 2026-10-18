@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Plus, UserRoundPlus } from "lucide-react";
 import { toast } from "sonner";
 import { userErrorMessage } from "../app/api/errors";
 import {
@@ -12,6 +12,7 @@ import {
   getCourse,
   removeCourseMember
 } from "../app/api/courses-api";
+import { CourseContextLinks } from "../widgets/CourseContextLinks";
 import { CourseLectureSpotlight } from "../widgets/CourseLectureSpotlight";
 import { CourseMemberActions } from "../widgets/CourseMemberActions";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
@@ -30,14 +31,24 @@ import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 
 type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
 const ROLE_LABELS: Record<CourseRole, string> = {
-  LECTURER: "Лектор",
+  LECTURER: "Преподаватель",
   ASSISTANT: "Ассистент",
   STUDENT: "Студент"
 };
 
 export function CoursePage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"members" | "groups" | "invite">("members");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const showPeople = searchParams.get("view") === "people";
+  const activeTab =
+    searchParams.get("section") === "groups"
+      ? "groups"
+      : searchParams.get("section") === "invite"
+        ? "invite"
+        : "members";
+  const setActiveTab = (value: "members" | "groups" | "invite") => {
+    setSearchParams(value === "members" ? { view: "people" } : { view: "people", section: value });
+  };
   const [groupName, setGroupName] = useState("");
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [preferredGroupId, setPreferredGroupId] = useState<string>();
@@ -54,10 +65,10 @@ export function CoursePage({ courseId }: { courseId: string }) {
   const canManage = course?.canManage ?? false;
 
   useEffect(() => {
-    if (!canManage && activeTab !== "members") {
-      setActiveTab("members");
+    if (course && !canManage && activeTab !== "members") {
+      setSearchParams({ view: "people" });
     }
-  }, [activeTab, canManage]);
+  }, [activeTab, canManage, course, setSearchParams]);
 
   const createGroupMut = useMutation({
     mutationFn: () => createStudyGroup(courseId, { name: groupName }),
@@ -135,35 +146,86 @@ export function CoursePage({ courseId }: { courseId: string }) {
     );
 
   return (
-    <div className="page page--wide course-page">
+    <div
+      className={`page page--wide course-page${showPeople ? " course-page--people" : ""}${activeTab !== "members" ? " course-page--subsection" : ""}`}
+    >
       <header className="page-header course-page-header">
         <div className="course-page-header__copy">
-          <Link to="/courses" className="breadcrumb">
-            ← Курсы
+          <Link
+            to={activeTab === "invite" ? `/courses/${courseId}?view=people` : "/courses"}
+            className="breadcrumb"
+          >
+            {activeTab === "invite" ? "← К курсу" : "← К курсам"}
           </Link>
-          <h1>{course.title}</h1>
+          <h1>{activeTab === "invite" ? "Пригласить в курс" : course.title}</h1>
+          {activeTab === "invite" ? (
+            <p className="muted">{course.title}</p>
+          ) : (
+            <p className="course-page__mobile-subtitle">
+              {showPeople ? "Люди и доступ" : "Обзор курса"}
+            </p>
+          )}
         </div>
         {course.archived && <span className="badge badge--muted">архив</span>}
       </header>
 
-      <CourseSectionNav courseId={courseId} canManage={canManage} />
-      <CourseLectureSpotlight courseId={courseId} canManage={canManage} />
-
-      <section className="course-settings" aria-labelledby="course-settings-title">
-        <div className="section-heading course-settings__heading">
-          <h2 id="course-settings-title">Люди и доступ</h2>
-        </div>
-        <Tabs
-          className="course-settings__tabs"
-          value={activeTab}
-          onValueChange={(value) => setActiveTab(value as typeof activeTab)}
+      {activeTab !== "invite" && <CourseSectionNav courseId={courseId} canManage={canManage} />}
+      {activeTab === "members" && (
+        <div
+          className={
+            showPeople
+              ? "course-page__launch course-page__launch--mobile-hidden"
+              : "course-page__launch"
+          }
         >
-          <TabsList>
-            <TabsTrigger value="members">Участники ({course.members.length})</TabsTrigger>
-            {canManage && <TabsTrigger value="groups">Группы ({course.groups.length})</TabsTrigger>}
-            {canManage && <TabsTrigger value="invite">Пригласить</TabsTrigger>}
-          </TabsList>
-        </Tabs>
+          <CourseLectureSpotlight courseId={courseId} canManage={canManage} />
+        </div>
+      )}
+      {!showPeople && (
+        <div className="course-page__mobile-links">
+          <CourseContextLinks
+            courseId={courseId}
+            canManage={canManage}
+            onPeople={() => setSearchParams({ view: "people" })}
+          />
+        </div>
+      )}
+
+      <section
+        className={`course-settings${!showPeople ? " course-settings--mobile-hidden" : ""}`}
+        aria-label={
+          activeTab === "groups"
+            ? "Учебные группы"
+            : activeTab === "invite"
+              ? "Пригласить в курс"
+              : "Люди и доступ"
+        }
+      >
+        {activeTab === "members" && (
+          <div className="section-heading course-settings__heading">
+            <h2 id="course-settings-title">Люди и доступ</h2>
+            {canManage && (
+              <Button variant="outline" onClick={() => setActiveTab("invite")}>
+                <UserRoundPlus aria-hidden="true" />
+                Пригласить
+              </Button>
+            )}
+          </div>
+        )}
+        {activeTab === "members" && (
+          <Tabs
+            className="course-settings__tabs"
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as typeof activeTab)}
+          >
+            <TabsList>
+              <TabsTrigger value="members">Участники ({course.members.length})</TabsTrigger>
+              {canManage && (
+                <TabsTrigger value="groups">Учебные группы ({course.groups.length})</TabsTrigger>
+              )}
+            </TabsList>
+          </Tabs>
+        )}
 
         {activeTab === "members" && (
           <ul className="member-list">
@@ -174,6 +236,10 @@ export function CoursePage({ courseId }: { courseId: string }) {
                 <li key={m.personId} className="member-row">
                   <div className="member-info">
                     <span className="member-name">{m.displayName}</span>
+                    <span className="member-description">
+                      {ROLE_LABELS[m.role as CourseRole]}
+                      {isOwner ? " · владелец" : ""}
+                    </span>
                   </div>
                   {canManage && !isOwner ? (
                     <div className="member-actions">
@@ -203,8 +269,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
                   ) : (
                     <div className="member-static-meta">
                       <span className="badge member-role-badge">
-                        {ROLE_LABELS[m.role as CourseRole]}
-                        {isOwner && " · владелец"}
+                        {isOwner ? "Владелец" : ROLE_LABELS[m.role as CourseRole]}
                       </span>
                     </div>
                   )}
@@ -219,11 +284,10 @@ export function CoursePage({ courseId }: { courseId: string }) {
             <div className="course-groups-toolbar">
               <div>
                 <h3>Учебные группы</h3>
-                <p className="muted">Создавайте группы и распределяйте студентов по составам.</p>
               </div>
               <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button type="button">
+                  <Button type="button" variant="outline">
                     <Plus size={17} aria-hidden="true" /> Новая группа
                   </Button>
                 </DialogTrigger>
@@ -244,7 +308,6 @@ export function CoursePage({ courseId }: { courseId: string }) {
                     <label className="field">
                       <span>Название группы</span>
                       <input
-                        autoFocus
                         value={groupName}
                         onChange={(event) => setGroupName(event.target.value)}
                         placeholder="Например, ИВТ-21"

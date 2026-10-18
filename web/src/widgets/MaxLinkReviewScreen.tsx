@@ -1,6 +1,6 @@
 import type { MaxLinkPreview } from "../app/api/auth-api";
 import { Button } from "../shared/ui/button";
-import { ThemeToggle } from "./ThemeToggle";
+import { AuthPageFrame } from "./AuthPageFrame";
 
 interface MaxLinkReviewScreenProps {
   preview: MaxLinkPreview;
@@ -28,11 +28,8 @@ export function MaxLinkReviewScreen({
 }: MaxLinkReviewScreenProps) {
   const current = preview.currentAccount;
   return (
-    <main className="auth-shell max-link-review-shell">
+    <AuthPageFrame className="max-link-review-shell">
       <section className="auth-card max-link-review" aria-labelledby="max-link-review-title">
-        <div className="auth-theme-switch">
-          <ThemeToggle compact />
-        </div>
         <header className="auth-header">
           <span className="max-auth-eyebrow">Проверка перед привязкой</span>
           <h1 className="auth-title" id="max-link-review-title">
@@ -101,6 +98,6 @@ export function MaxLinkReviewScreen({
           </Button>
         </div>
       </section>
-    </main>
+    </AuthPageFrame>
   );
 }

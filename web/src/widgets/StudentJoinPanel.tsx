@@ -47,7 +47,10 @@ export function StudentJoinPanel({
         <>
           <h2>Как вас показать преподавателю?</h2>
           <form onSubmit={submit} className="student-join-form">
+            <label htmlFor="student-display-name">Имя на лекции</label>
             <input
+              id="student-display-name"
+              autoComplete="given-name"
               value={displayName}
               onChange={(event) => onDisplayNameChange(event.target.value)}
               placeholder="Имя на лекции"
@@ -55,6 +58,7 @@ export function StudentJoinPanel({
               minLength={2}
               required
             />
+            <p className="muted">Это имя используется на текущем занятии.</p>
             <Button type="submit" disabled={disabled || isPending || displayName.trim().length < 2}>
               Подключиться
             </Button>

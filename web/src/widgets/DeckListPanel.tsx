@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Archive, ChevronDown, History, RotateCcw, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Archive, ChevronDown, History, RotateCcw, Trash2, ExternalLink, Info } from "lucide-react";
 import type { SlideDeck } from "../app/api/content-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
@@ -51,7 +51,7 @@ export function DeckListPanel(props: DeckListPanelProps) {
   );
   const activePaged = usePagedList(visibleGroups, 20);
   const archivePaged = usePagedList(visibleArchived, 20);
-  const showTabs = archivedDecks.length > 0;
+  const showTabs = true;
   const showSearch = activeGroups.length + archivedDecks.length > 5 || Boolean(query);
 
   useEffect(() => {
@@ -96,6 +96,12 @@ export function DeckListPanel(props: DeckListPanelProps) {
         </div>
       )}
 
+      {activeGroups.some((group) => group.history.length > 0) && (
+        <p className="deck-version-note">
+          <Info size={17} aria-hidden="true" /> Загрузка новой версии не меняет уже созданные
+          лекции.
+        </p>
+      )}
       {tab === "active" ? (
         <PaginationBar {...activePaged} onPageChange={activePaged.setPage} />
       ) : (
@@ -109,23 +115,28 @@ function DeckVersionSection({ group, ...props }: DeckListPanelProps & { group: D
   const selectedInHistory = group.history.some((deck) => deck.id === props.selectedDeckId);
   return (
     <article className="deck-version-group">
-      <DeckRow deck={group.current} context="current" {...props} />
-      {group.history.length > 0 && (
-        <Collapsible defaultOpen={selectedInHistory}>
-          <CollapsibleTrigger asChild>
-            <Button type="button" variant="outline" className="deck-history__trigger">
-              <History size={16} aria-hidden="true" />
-              История версий ({group.history.length})
-              <ChevronDown className="deck-history__chevron" size={16} aria-hidden="true" />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="deck-history__content">
-            {group.history.map((deck) => (
-              <DeckRow key={deck.id} deck={deck} context="history" {...props} />
-            ))}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
+      <Collapsible defaultOpen={selectedInHistory}>
+        <DeckRow
+          deck={group.current}
+          context="current"
+          {...props}
+          historyAction={
+            group.history.length > 0 ? (
+              <CollapsibleTrigger asChild>
+                <Button type="button" variant="outline" className="deck-history__trigger">
+                  <History size={16} aria-hidden="true" /> История версий ({group.history.length})
+                  <ChevronDown className="deck-history__chevron" size={16} aria-hidden="true" />
+                </Button>
+              </CollapsibleTrigger>
+            ) : undefined
+          }
+        />
+        <CollapsibleContent className="deck-history__content">
+          {group.history.map((deck) => (
+            <DeckRow key={deck.id} deck={deck} context="history" {...props} />
+          ))}
+        </CollapsibleContent>
+      </Collapsible>
     </article>
   );
 }
@@ -141,8 +152,13 @@ function DeckRow({
   onSelect,
   onArchive,
   onRestore,
-  onHardDelete
-}: DeckListPanelProps & { deck: SlideDeck; context: "current" | "history" | "archive" }) {
+  onHardDelete,
+  historyAction
+}: DeckListPanelProps & {
+  deck: SlideDeck;
+  context: "current" | "history" | "archive";
+  historyAction?: ReactNode;
+}) {
   const status =
     context === "current"
       ? "Последняя доступная версия"
@@ -158,43 +174,51 @@ function DeckRow({
           {pluralizeRu(deck.slideCount, "слайд", "слайда", "слайдов")}
         </small>
       </button>
-      {canManage && (
-        <div className="deck-pill__actions">
-          {!deck.archived ? (
-            <ConfirmActionButton
-              title="Архивировать презентацию?"
-              description="Презентация исчезнет из активного списка, но её можно восстановить."
-              confirmLabel="Архивировать"
-              variant="outline"
-              disabled={archivePending}
-              onConfirm={() => onArchive(deck.id)}
-            >
-              <Archive size={16} aria-hidden="true" /> Архивировать
-            </ConfirmActionButton>
-          ) : (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={restorePending}
-                onClick={() => onRestore(deck.id)}
-              >
-                <RotateCcw size={16} aria-hidden="true" /> Восстановить
-              </Button>
+      <div className="deck-pill__actions">
+        <Button type="button" variant="outline" onClick={() => onSelect(deck.id)}>
+          <ExternalLink size={17} aria-hidden="true" /> Открыть
+        </Button>
+        {historyAction}
+        {canManage && (
+          <>
+            {!deck.archived ? (
               <ConfirmActionButton
-                title="Удалить презентацию навсегда?"
-                description="Удаление возможно только если дек не привязан к лекциям."
-                confirmLabel="Удалить навсегда"
-                variant="destructive"
-                disabled={hardDeletePending}
-                onConfirm={() => onHardDelete(deck.id)}
+                title="Архивировать презентацию?"
+                description="Презентация исчезнет из активного списка, но её можно восстановить."
+                confirmLabel="Архивировать"
+                variant="ghost"
+                size="icon"
+                label={`Архивировать презентацию ${deck.title}, версия ${deck.version}`}
+                disabled={archivePending}
+                onConfirm={() => onArchive(deck.id)}
               >
-                <Trash2 size={16} aria-hidden="true" /> Удалить навсегда
+                <Archive size={18} aria-hidden="true" />
               </ConfirmActionButton>
-            </>
-          )}
-        </div>
-      )}
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={restorePending}
+                  onClick={() => onRestore(deck.id)}
+                >
+                  <RotateCcw size={16} aria-hidden="true" /> Восстановить
+                </Button>
+                <ConfirmActionButton
+                  title="Удалить презентацию навсегда?"
+                  description="Удаление возможно только если дек не привязан к лекциям."
+                  confirmLabel="Удалить навсегда"
+                  variant="destructive"
+                  disabled={hardDeletePending}
+                  onConfirm={() => onHardDelete(deck.id)}
+                >
+                  <Trash2 size={16} aria-hidden="true" /> Удалить навсегда
+                </ConfirmActionButton>
+              </>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

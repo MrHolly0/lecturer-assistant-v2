@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, RefreshCw } from "lucide-react";
+import { ExternalLink, Link2, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../app/AuthContext";
@@ -14,8 +14,9 @@ import {
   type MaxLinkCode
 } from "../app/api/max-identity-api";
 import { useMaxBridge } from "../app/max/context";
-import { buildMaxLinkUrl } from "../app/max/deepLink";
+import { buildMaxBotUrl, buildMaxLinkUrl } from "../app/max/deepLink";
 import { LocalQrCode } from "../widgets/LocalQrCode";
+import { AuthPasswordField } from "../widgets/AuthPasswordField";
 import { Button } from "../shared/ui/button";
 import {
   AlertDialog,
@@ -95,11 +96,11 @@ export function MaxLinkPage() {
   }, [expired, linkCode]);
 
   return (
-    <div className="page max-link-page">
+    <div className="page max-link-page redesign-auth-settings">
       <div className="page-header">
         <div>
-          <span className="muted">Аккаунт преподавателя</span>
           <h1>MAX и вход</h1>
+          <p className="muted">MAX подключается к вашему аккаунту</p>
           {status.data && (
             <p className="muted">
               {status.data.connected ? "MAX подключён к этому аккаунту" : "MAX пока не подключён"}
@@ -125,22 +126,32 @@ export function MaxLinkPage() {
       <section className="max-link-panel">
         <div className="max-link-copy">
           <h2 className="max-link-copy__heading">
-            <Link2 size={22} aria-hidden="true" />
-            Откройте кабинет преподавателя в MAX
+            {status.data?.connected ? "MAX подключён" : "Подключите MAX"}
           </h2>
           <p className="muted">
             Получите одноразовый код, затем откройте ссылку или отсканируйте QR. Код действует 5
             минут.
           </p>
-          {!linkCode && (
-            <Button
-              type="button"
-              disabled={createCode.isPending}
-              onClick={() => createCode.mutate()}
-            >
-              Получить код подключения MAX
-            </Button>
-          )}
+          <div className="max-link-actions">
+            {(maxUrl || buildMaxBotUrl()) && (
+              <Button asChild>
+                <a href={maxUrl || buildMaxBotUrl() || undefined} target="_blank" rel="noreferrer">
+                  <ExternalLink size={20} aria-hidden="true" /> Открыть MAX
+                </a>
+              </Button>
+            )}
+            {!linkCode && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={createCode.isPending}
+                onClick={() => createCode.mutate()}
+              >
+                <Link2 size={20} aria-hidden="true" />
+                {createCode.isPending ? "Получаем код…" : "Получить код подключения"}
+              </Button>
+            )}
+          </div>
         </div>
 
         {linkCode && (
@@ -209,43 +220,37 @@ export function MaxLinkPage() {
       )}
 
       <section className="max-password-panel" aria-labelledby="max-password-title">
-        <h2 id="max-password-title">Пароль для входа по email</h2>
+        <h2 id="max-password-title">Сменить пароль</h2>
         <p className="muted">
           После смены пароля потребуется снова войти на этом устройстве и в MAX.
         </p>
         <form className="max-password-form" onSubmit={submitPassword}>
-          <label className="field">
-            <span>Текущий пароль</span>
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={currentPassword}
-              onChange={(event) => setCurrentPassword(event.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span>Новый пароль</span>
-            <input
-              type="password"
-              autoComplete="new-password"
-              minLength={8}
-              required
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span>Повторите новый пароль</span>
-            <input
-              type="password"
-              autoComplete="new-password"
-              minLength={8}
-              required
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-            />
-          </label>
+          <AuthPasswordField
+            label="Текущий пароль"
+            name="currentPassword"
+            value={currentPassword}
+            onValueChange={setCurrentPassword}
+            autoComplete="current-password"
+            required
+          />
+          <AuthPasswordField
+            label="Новый пароль"
+            name="newPassword"
+            value={newPassword}
+            onValueChange={setNewPassword}
+            autoComplete="new-password"
+            required
+            minLength={8}
+          />
+          <AuthPasswordField
+            label="Повторите новый пароль"
+            name="confirmPassword"
+            value={confirmPassword}
+            onValueChange={setConfirmPassword}
+            autoComplete="new-password"
+            required
+            minLength={8}
+          />
           {confirmPassword && newPassword !== confirmPassword && (
             <p className="form-error" role="alert">
               Новые пароли не совпадают.

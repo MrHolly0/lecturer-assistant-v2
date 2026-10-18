@@ -35,18 +35,22 @@ export function PresenterSessionSummary({
   const summary = summaryQuery.data;
 
   return (
-    <main className="session-summary-shell">
+    <main className="session-summary-shell preparation-summary">
+      <LinkButton to={backTo} variant="ghost" className="session-summary-back">
+        <ArrowLeft size={17} />
+        {backLabel}
+      </LinkButton>
       <header className="session-summary-header">
         <div>
-          <span className="session-summary-kicker">Лекция завершена</span>
+          <span className="session-summary-kicker">
+            {session.status === "ENDED" || session.status === "ARCHIVED"
+              ? "Занятие завершено"
+              : "Итог занятия"}
+          </span>
           <h1>{summary?.lectureTitle ?? session.lectureTitle}</h1>
           <SessionGroups groups={summary?.groups ?? session.groups} />
           <p className="muted">Итог занятия сформирован по данным живой сессии.</p>
         </div>
-        <LinkButton to={backTo} variant="ghost" className="session-summary-back">
-          <ArrowLeft size={17} />
-          {backLabel}
-        </LinkButton>
       </header>
 
       {summaryQuery.isLoading && <p className="muted">Собираем итог лекции…</p>}
@@ -75,17 +79,17 @@ export function PresenterSessionSummary({
             <SummaryMetric
               icon={PauseCircle}
               label="На паузе"
-              value={formatDuration(summary.pausedDurationSeconds, true)}
+              value={formatDuration(summary.pausedDurationSeconds)}
             />
             <SummaryMetric
               icon={UsersRound}
               label="Участники"
-              value={`${summary.participantCount} ${pluralizeRu(summary.participantCount, "студент", "студента", "студентов")}`}
+              value={String(summary.participantCount)}
             />
             <SummaryMetric
               icon={BarChart3}
               label="Сигналы"
-              value={`${summary.signalTotals.total} ${pluralizeRu(summary.signalTotals.total, "сигнал", "сигнала", "сигналов")}`}
+              value={String(summary.signalTotals.total)}
             />
             <SummaryMetric
               icon={MessageSquareText}
@@ -94,10 +98,12 @@ export function PresenterSessionSummary({
             />
           </section>
 
-          <SessionGroupBreakdown summary={summary} />
-
+          <p className="muted preparation-summary-rounding">Время округлено до минут.</p>
           <div className="session-summary-grid">
-            <ProblemSlides summary={summary} />
+            <div className="preparation-summary-main">
+              <SessionGroupBreakdown summary={summary} />
+              <ProblemSlides summary={summary} />
+            </div>
             <PollResults summary={summary} />
           </div>
         </>
@@ -113,15 +119,20 @@ function SessionGroupBreakdown({ summary }: { summary: LectureSummary }) {
     <section className="session-group-breakdown">
       <div className="section-heading">
         <h2>Результаты по группам</h2>
-        <span className="muted">сравнение внутри общего занятия</span>
       </div>
       <div className="session-group-breakdown__list">
+        <div className="preparation-group-header">
+          <span>Группа</span>
+          <span>Участники</span>
+          <span>Не понимаю</span>
+          <span>Ответов на проверки</span>
+          <span>Вопросов</span>
+        </div>
         {summary.groupBreakdowns.map((breakdown) => {
           const pollResponses = breakdown.pollResults.reduce(
             (total, poll) => total + poll.totalResponses,
             0
           );
-          const problemSlide = breakdown.problemSlides[0];
           return (
             <div key={breakdown.group.id} className="session-group-breakdown__item">
               <strong>{breakdown.group.name}</strong>
@@ -134,14 +145,18 @@ function SessionGroupBreakdown({ summary }: { summary: LectureSummary }) {
                   "участников"
                 )}
               />
-              <GroupMetric value={breakdown.signalTotals.red} label="не понимают" alert />
+              <GroupMetric
+                value={breakdown.signalTotals.red}
+                label={pluralizeRu(
+                  breakdown.signalTotals.red,
+                  "сигнал «Не понимаю»",
+                  "сигнала «Не понимаю»",
+                  "сигналов «Не понимаю»"
+                )}
+                alert
+              />
               <GroupMetric value={pollResponses} label="ответов на проверки" />
               <GroupMetric value={breakdown.questionsCount} label="вопросов" />
-              <span className="session-group-breakdown__problem">
-                {problemSlide
-                  ? `Сложнее всего: слайд ${problemSlide.slideIdx}`
-                  : "Проблемных слайдов нет"}
-              </span>
             </div>
           );
         })}
@@ -180,8 +195,24 @@ function ProblemSlides({ summary }: { summary: LectureSummary }) {
           {summary.problemSlides.map((item) => (
             <li key={item.slideIdx}>
               <strong>Слайд {item.slideIdx}</strong>
-              <span>{item.red} не понимают</span>
-              <span>{item.yellow} есть вопрос</span>
+              <span>
+                {item.red}{" "}
+                {pluralizeRu(
+                  item.red,
+                  "сигнал «Не понимаю»",
+                  "сигнала «Не понимаю»",
+                  "сигналов «Не понимаю»"
+                )}
+              </span>
+              <span>
+                {item.yellow}{" "}
+                {pluralizeRu(
+                  item.yellow,
+                  "сигнал «Есть вопрос»",
+                  "сигнала «Есть вопрос»",
+                  "сигналов «Есть вопрос»"
+                )}
+              </span>
             </li>
           ))}
         </ol>
@@ -207,27 +238,33 @@ function PollResults({ summary }: { summary: LectureSummary }) {
           {summary.pollResults.map((poll) => (
             <article className="summary-poll" key={poll.pollId}>
               <h3>{poll.questionText}</h3>
-              {poll.options.map((option, index) => {
-                const count = poll.votes[index] ?? 0;
-                const percent =
-                  poll.totalResponses > 0 ? Math.round((count / poll.totalResponses) * 100) : 0;
-                return (
-                  <div
-                    key={index}
-                    className={`summary-poll-row${poll.correctOptionIdx === index ? " summary-poll-row--correct" : ""}`}
-                  >
-                    <PollOptionText text={option} />
-                    <div className="summary-poll-track">
-                      <i style={{ width: `${percent}%` }} />
+              {poll.totalResponses === 0 && <p className="muted">Нет ответов</p>}
+              {poll.totalResponses > 0 &&
+                poll.options.map((option, index) => {
+                  const count = poll.votes[index] ?? 0;
+                  const percent =
+                    poll.totalResponses > 0 ? Math.round((count / poll.totalResponses) * 100) : 0;
+                  return (
+                    <div
+                      key={index}
+                      className={`summary-poll-row${poll.correctOptionIdx === index ? " summary-poll-row--correct" : ""}`}
+                    >
+                      <PollOptionText text={option} />
+                      <div className="summary-poll-track">
+                        <i style={{ width: `${percent}%` }} />
+                      </div>
+                      <strong>
+                        {count} из {poll.totalResponses}
+                      </strong>
                     </div>
-                    <strong>{percent}%</strong>
-                  </div>
-                );
-              })}
-              <small className="muted">
-                {poll.totalResponses}{" "}
-                {pluralizeRu(poll.totalResponses, "ответ", "ответа", "ответов")}
-              </small>
+                  );
+                })}
+              {poll.totalResponses > 0 && (
+                <small className="muted">
+                  {poll.totalResponses}{" "}
+                  {pluralizeRu(poll.totalResponses, "ответ", "ответа", "ответов")}
+                </small>
+              )}
             </article>
           ))}
         </div>
@@ -254,10 +291,11 @@ function SummaryMetric({
   );
 }
 
-function formatDuration(seconds: number, allowZero = false) {
+function formatDuration(seconds: number) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   if (hours > 0) return `${hours} ч ${minutes} мин`;
-  if (allowZero && seconds === 0) return "0 мин";
-  return `${Math.max(1, minutes)} мин`;
+  if (seconds === 0) return "0 мин";
+  if (seconds < 60) return "< 1 мин";
+  return `${minutes} мин`;
 }

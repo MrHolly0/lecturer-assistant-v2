@@ -1,15 +1,24 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Check, EyeOff, MessageSquareText } from "lucide-react";
+import {
+  Check,
+  EyeOff,
+  MessageSquareText,
+  Smile,
+  TriangleAlert,
+  CircleX,
+  ChevronRight,
+  LockKeyhole
+} from "lucide-react";
 import { toast } from "sonner";
 import type { SignalValue, StudentQuestion, StudentQuestionAnswer } from "../app/api/student-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { Button } from "../shared/ui/button";
 import { StudentQuestionAnswers } from "./StudentQuestionAnswers";
 
-const SIGNALS: Array<{ value: SignalValue; label: string }> = [
-  { value: "GREEN", label: "Понятно" },
-  { value: "YELLOW", label: "Есть вопрос" },
-  { value: "RED", label: "Не понимаю" }
+const SIGNALS: Array<{ value: SignalValue; label: string; icon: typeof Smile }> = [
+  { value: "GREEN", label: "Понятно", icon: Smile },
+  { value: "YELLOW", label: "Есть вопрос", icon: TriangleAlert },
+  { value: "RED", label: "Не понимаю", icon: CircleX }
 ];
 
 interface StudentFeedbackControlsProps {
@@ -65,6 +74,9 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
       toast.info(message);
     }
   }, [props.answers]);
+  const unansweredQuestions = props.questions.filter(
+    (question) => !props.answers.some((answer) => answer.questionId === question.id)
+  );
   function submitQuestion(event: FormEvent) {
     event.preventDefault();
     if (props.question.trim()) props.onQuestionSubmit();
@@ -77,6 +89,11 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
           <div className="section-heading">
             <h2>Сигнал преподавателю</h2>
           </div>
+          {!props.isLive && (
+            <p className="student-signal-unavailable muted">
+              Сигналы доступны во время показа при подтверждённой связи.
+            </p>
+          )}
           <div className="student-signal-grid">
             {SIGNALS.map((item) => (
               <button
@@ -93,6 +110,7 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
                 aria-pressed={props.lastSignal === item.value}
                 onClick={() => props.onSignal(item.value)}
               >
+                <item.icon size={18} aria-hidden="true" />
                 <strong>
                   {props.lastSignal === item.value && <Check size={16} aria-hidden="true" />}
                   {item.label}
@@ -113,6 +131,7 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
             >
               <MessageSquareText size={17} aria-hidden="true" />{" "}
               {questionOpen ? "Скрыть форму вопроса" : "Задать вопрос"}
+              <ChevronRight size={20} aria-hidden="true" />
             </Button>
             {questionOpen && (
               <form onSubmit={submitQuestion} className="student-question-form">
@@ -175,7 +194,9 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
         }}
       >
         <summary>
+          <LockKeyhole size={20} aria-hidden="true" />
           <span className="student-my-questions__label">Мои вопросы и ответы</span>
+          <ChevronRight className="student-my-questions__arrow" size={20} aria-hidden="true" />
           <span className="student-my-questions__summary-meta" aria-live="polite">
             <span>
               {props.questions.length}{" "}
@@ -199,9 +220,9 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
           {answerAnnouncement}
         </p>
         <StudentQuestionAnswers answers={props.answers} />
-        {props.questions.length > 0 ? (
+        {unansweredQuestions.length > 0 ? (
           <ul className="student-question-list">
-            {props.questions.map((item) => (
+            {unansweredQuestions.map((item) => (
               <li key={item.id}>
                 <span>{item.text}</span>
                 {item.anonymous && <small>Анонимно</small>}

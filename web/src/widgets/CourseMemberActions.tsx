@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Crown, MoreHorizontal, UserMinus } from "lucide-react";
 import {
   AlertDialog,
@@ -26,7 +26,7 @@ type CourseRole = "LECTURER" | "ASSISTANT" | "STUDENT";
 type MemberAction = "owner" | "remove" | "role" | null;
 
 const ROLE_LABELS: Record<CourseRole, string> = {
-  LECTURER: "Лектор",
+  LECTURER: "Преподаватель",
   ASSISTANT: "Ассистент",
   STUDENT: "Студент"
 };
@@ -49,6 +49,7 @@ export function CourseMemberActions({
   onRemove
 }: CourseMemberActionsProps) {
   const [action, setAction] = useState<MemberAction>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
   const [nextRole, setNextRole] = useState<CourseRole | null>(null);
   const remove = action === "remove";
   const changeRole = action === "role";
@@ -62,6 +63,7 @@ export function CourseMemberActions({
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <IconButton
+            ref={menuTrigger}
             className="member-more-button"
             label={`Действия: ${displayName}`}
             tooltip={false}
@@ -82,7 +84,7 @@ export function CourseMemberActions({
               }
             }}
           >
-            <DropdownMenuRadioItem value="LECTURER">Лектор</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="LECTURER">Преподаватель</DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="ASSISTANT">Ассистент</DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="STUDENT">Студент</DropdownMenuRadioItem>
           </DropdownMenuRadioGroup>
@@ -96,7 +98,14 @@ export function CourseMemberActions({
         </DropdownMenuContent>
       </DropdownMenu>
       <AlertDialog open={action !== null} onOpenChange={(open) => !open && setAction(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          onCloseAutoFocus={(event) => {
+            if (menuTrigger.current?.isConnected) {
+              event.preventDefault();
+              menuTrigger.current.focus();
+            }
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {remove
@@ -110,7 +119,7 @@ export function CourseMemberActions({
                 ? `${displayName} потеряет доступ к этому курсу.`
                 : changeRole
                   ? `${displayName} получит роль «${ROLE_LABELS[nextRole ?? role]}» в этом курсе. Системная роль и другие курсы не изменятся.`
-                  : `${displayName} станет лектором-владельцем курса. Вы останетесь лектором.`}
+                  : `${displayName} станет владельцем курса с ролью преподавателя. У вас сохранится роль преподавателя.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

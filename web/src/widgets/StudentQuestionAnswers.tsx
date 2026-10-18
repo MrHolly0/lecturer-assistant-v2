@@ -15,8 +15,6 @@ export function StudentQuestionAnswers({ answers }: { answers: StudentQuestionAn
           const personal = answer.answerVisibility === "AUTHOR";
           return (
             <li key={answer.questionId}>
-              <p className="student-question-answers__question">{answer.questionText}</p>
-              <p className="student-question-answers__answer">{answer.answerText}</p>
               <small>
                 {personal ? (
                   <LockKeyhole size={14} aria-hidden="true" />
@@ -25,6 +23,10 @@ export function StudentQuestionAnswers({ answers }: { answers: StudentQuestionAn
                 )}
                 {personal ? "Ответ только вам" : "Ответ для всех"} · {formatTime(answer.answeredAt)}
               </small>
+              <span className="student-answer-caption">Вопрос</span>
+              <p className="student-question-answers__question">{answer.questionText}</p>
+              <span className="student-answer-caption">Ответ</span>
+              <p className="student-question-answers__answer">{answer.answerText}</p>
             </li>
           );
         })}

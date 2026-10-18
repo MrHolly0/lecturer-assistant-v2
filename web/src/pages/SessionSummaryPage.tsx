@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Navigate } from "react-router-dom";
 import { getCourse } from "../app/api/courses-api";
 import { getLiveSession } from "../app/api/live-api";
+import { AppHeader } from "../widgets/Layout";
+import { Button } from "../shared/ui/button";
 import { PresenterSessionSummary } from "../widgets/PresenterSessionSummary";
 
 export function SessionSummaryPage({
@@ -27,15 +29,34 @@ export function SessionSummaryPage({
   }
   if (courseQuery.data && !canManage) return <Navigate to={`/courses/${courseId}`} replace />;
   if (courseQuery.isError || sessionQuery.isError || !sessionQuery.data) {
-    return <div className="route-loading form-error">Не удалось открыть итог лекции.</div>;
+    return (
+      <>
+        <AppHeader />
+        <div className="page preparation-page" role="alert">
+          <p className="form-error">Не удалось открыть итог лекции.</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              void courseQuery.refetch();
+              if (canManage) void sessionQuery.refetch();
+            }}
+          >
+            Повторить
+          </Button>
+        </div>
+      </>
+    );
   }
 
   return (
-    <PresenterSessionSummary
-      courseId={courseId}
-      session={sessionQuery.data}
-      backTo={`/courses/${courseId}/analytics`}
-      backLabel="К аналитике"
-    />
+    <>
+      <AppHeader />
+      <PresenterSessionSummary
+        courseId={courseId}
+        session={sessionQuery.data}
+        backTo={`/courses/${courseId}/analytics`}
+        backLabel="К аналитике"
+      />
+    </>
   );
 }

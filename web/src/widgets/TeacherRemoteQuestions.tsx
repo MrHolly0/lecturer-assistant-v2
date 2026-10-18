@@ -29,7 +29,8 @@ export function TeacherRemoteQuestions({
   questions,
   isLoading = false,
   loadError = false,
-  onRetry
+  onRetry,
+  disabled = false
 }: {
   courseId: string;
   sessionId: string;
@@ -37,12 +38,26 @@ export function TeacherRemoteQuestions({
   isLoading?: boolean;
   loadError?: boolean;
   onRetry?: () => void;
+  disabled?: boolean;
 }) {
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<StudentQuestion | null>(null);
-  const [answerText, setAnswerText] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 900px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 900px)");
+    const update = () => setCompact(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const openQuestions = questions.filter((question) => question.status === "OPEN");
+  const selected =
+    openQuestions.find((question) => question.id === selectedId) ??
+    (!compact ? openQuestions[0] : undefined);
+  const answerText = selected ? drafts[selected.id] ?? selected.answerText ?? "" : "";
+  const authorLabel = (question: StudentQuestion) =>
+    question.anonymous ? "Анонимный вопрос" : question.displayName || "Вопрос студента";
   const updateMutation = useMutation({
     mutationFn: ({
       status,
@@ -51,7 +66,7 @@ export function TeacherRemoteQuestions({
       status: "ANSWERED" | "DISMISSED";
       answerVisibility?: "AUTHOR" | "SESSION";
     }) => {
-      if (!selected) throw new Error("Вопрос не выбран");
+      if (!selected || disabled || loadError) throw new Error("Дождитесь сверки занятия");
       return updateStudentQuestion(courseId, sessionId, selected.id, {
         status,
         ...(status === "ANSWERED" ? { answerText: answerText.trim(), answerVisibility } : {})
@@ -70,57 +85,101 @@ export function TeacherRemoteQuestions({
               }
             : current
       );
-      setSelected(null);
+      setSelectedId(null);
       setPublishConfirmOpen(false);
       toast.success(updated.status === "ANSWERED" ? "Ответ отправлен." : "Вопрос скрыт.");
     },
-    onError: (error) => toast.error(userErrorMessage(error, "Не удалось обновить вопрос."))
+    onError: (error) =>
+      toast.error(userErrorMessage(error, "Не удалось обновить вопрос. Черновик сохранён."))
   });
-
-  useEffect(() => setAnswerText(selected?.answerText ?? ""), [selected]);
-
+  const busy = disabled || loadError || updateMutation.isPending;
+  const composer = selected && (
+    <div className="teacher-question-composer">
+      <p className="teacher-question-composer__meta">
+        {authorLabel(selected)} · {formatTime(selected.createdAt)}
+      </p>
+      <h3>{selected.text}</h3>
+      <label className="teacher-answer-field">
+        <span>Ответ студенту</span>
+        <Textarea
+          value={answerText}
+          maxLength={4000}
+          rows={3}
+          placeholder="Напишите ответ"
+          onChange={(event) =>
+            setDrafts((current) => ({ ...current, [selected.id]: event.target.value }))
+          }
+        />
+      </label>
+      <p className="question-privacy-hint">Личный ответ увидит только автор.</p>
+      <Button
+        type="button"
+        disabled={busy || !answerText.trim()}
+        onClick={() => updateMutation.mutate({ status: "ANSWERED", answerVisibility: "AUTHOR" })}
+      >
+        <LockKeyhole size={18} aria-hidden="true" />
+        Ответить автору
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={busy || !answerText.trim()}
+        onClick={() => setPublishConfirmOpen(true)}
+      >
+        <Globe2 size={18} aria-hidden="true" />
+        Показать всем
+      </Button>
+      <p className="question-privacy-hint">Вопрос и ответ будут опубликованы без имени автора.</p>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={busy}
+        onClick={() => updateMutation.mutate({ status: "DISMISSED" })}
+      >
+        Скрыть вопрос
+      </Button>
+    </div>
+  );
   return (
-    <section className="teacher-remote-section" aria-labelledby="remote-questions-title">
+    <section className="teacher-remote-section" aria-label="Вопросы студентов">
       <div className="teacher-remote-section__heading">
-        <h2 id="remote-questions-title">Вопросы студентов</h2>
+        <h2>Вопросы студентов</h2>
         <span>
           {openQuestions.length} {pluralizeRu(openQuestions.length, "новый", "новых", "новых")}
         </span>
       </div>
-      {loadError && openQuestions.length > 0 && (
-        <div className="teacher-remote-data-error" role="status">
-          Не удалось обновить список. Показаны последние данные.{" "}
-          <button type="button" onClick={onRetry}>
-            Повторить
-          </button>
-        </div>
-      )}
-      {loadError && openQuestions.length === 0 ? (
-        <div className="teacher-remote-empty teacher-remote-data-error" role="alert">
-          <p>Не удалось загрузить вопросы.</p>
+      {loadError && (
+        <div className="teacher-remote-data-error" role="alert">
+          Не удалось обновить вопросы. {openQuestions.length ? "Показаны последние данные." : ""}{" "}
           <Button type="button" variant="outline" onClick={onRetry}>
             Повторить
           </Button>
         </div>
-      ) : isLoading ? (
+      )}
+      {isLoading ? (
         <div className="teacher-remote-empty">
           <p>Загружаем вопросы…</p>
         </div>
-      ) : openQuestions.length === 0 ? (
+      ) : openQuestions.length === 0 && !loadError ? (
         <div className="teacher-remote-empty">
           <CheckCircle2 size={22} aria-hidden="true" />
           <p>Новых вопросов пока нет.</p>
         </div>
-      ) : (
+      ) : null}
+      {openQuestions.length > 0 && (compact || openQuestions.length > 1) && (
         <ul className="teacher-remote-question-list">
           {openQuestions.map((question) => (
             <li key={question.id}>
-              <button type="button" onClick={() => setSelected(question)}>
+              <button
+                type="button"
+                aria-pressed={selected?.id === question.id}
+                onClick={() => setSelectedId(question.id)}
+              >
                 <MessageCircleQuestion size={19} aria-hidden="true" />
                 <span>
                   <strong>{question.text}</strong>
                   <small>
-                    {question.displayName} · {formatTime(question.createdAt)}
+                    {authorLabel(question)} · {formatTime(question.createdAt)}
                   </small>
                 </span>
                 <ChevronRight size={18} aria-hidden="true" />
@@ -129,58 +188,18 @@ export function TeacherRemoteQuestions({
           ))}
         </ul>
       )}
-
-      <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
-        <SheetContent side="bottom" className="teacher-question-sheet">
-          <SheetHeader>
-            <SheetTitle>{selected?.displayName ?? "Вопрос студента"}</SheetTitle>
-            <SheetDescription>{selected ? formatTime(selected.createdAt) : ""}</SheetDescription>
-          </SheetHeader>
-          <div className="teacher-question-sheet__body">
-            <p>{selected?.text}</p>
-            <label className="field">
-              <span>Ответ студенту</span>
-              <Textarea
-                value={answerText}
-                maxLength={4000}
-                rows={3}
-                placeholder="Напишите ответ"
-                onChange={(event) => setAnswerText(event.target.value)}
-              />
-            </label>
-            <div className="teacher-question-sheet__actions">
-              <p className="question-privacy-hint">
-                Личный ответ увидит только автор. При ответе всем аудитория увидит вопрос и ответ
-                без имени автора.
-              </p>
-              <Button
-                type="button"
-                disabled={updateMutation.isPending || !answerText.trim()}
-                onClick={() =>
-                  updateMutation.mutate({ status: "ANSWERED", answerVisibility: "AUTHOR" })
-                }
-              >
-                <LockKeyhole size={17} aria-hidden="true" /> Ответить автору
-              </Button>
-              <Button
-                type="button"
-                disabled={updateMutation.isPending || !answerText.trim()}
-                onClick={() => setPublishConfirmOpen(true)}
-              >
-                <Globe2 size={17} aria-hidden="true" /> Показать всем
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={updateMutation.isPending}
-                onClick={() => updateMutation.mutate({ status: "DISMISSED" })}
-              >
-                Скрыть вопрос
-              </Button>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
+      {!compact && composer}
+      {compact && (
+        <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelectedId(null)}>
+          <SheetContent side="bottom" className="teacher-question-sheet">
+            <SheetHeader>
+              <SheetTitle>Ответить на вопрос</SheetTitle>
+              <SheetDescription>Выберите, кто увидит ответ.</SheetDescription>
+            </SheetHeader>
+            {composer}
+          </SheetContent>
+        </Sheet>
+      )}
       <Dialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
         <DialogContent className="teacher-question-publish-dialog">
           <DialogHeader>
@@ -201,7 +220,7 @@ export function TeacherRemoteQuestions({
             </Button>
             <Button
               type="button"
-              disabled={updateMutation.isPending || !answerText.trim()}
+              disabled={busy || !answerText.trim()}
               onClick={() =>
                 updateMutation.mutate({ status: "ANSWERED", answerVisibility: "SESSION" })
               }

@@ -1,20 +1,18 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleStop, Loader2, Play } from "lucide-react";
+import { ArrowLeft, CircleStop, Loader2, Play } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import {
-  beginLiveSession,
-  connectLiveSession,
-  endLiveSession,
-  getLiveSession
-} from "../app/api/live-api";
+import { beginLiveSession, endLiveSession } from "../app/api/live-api";
+import { useLiveSession } from "../app/live/useLiveSession";
+import { TeacherRemoteConnection } from "../widgets/TeacherRemoteConnection";
 import { getCourse } from "../app/api/courses-api";
 import { userErrorMessage } from "../app/api/errors";
 import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { useMaxBridge } from "../app/max/context";
 import { isMobileMax, teacherRemotePath } from "../app/max/navigation";
 import { LocalQrCode } from "../widgets/LocalQrCode";
+import { AppHeader } from "../widgets/Layout";
 import { Button, LinkButton } from "../shared/ui/button";
 import { SessionGroups } from "../widgets/SessionGroups";
 import {
@@ -34,32 +32,32 @@ interface SessionJoinPageProps {
   sessionId: string;
 }
 
-export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
+export function SessionJoinPage(props: SessionJoinPageProps) {
+  return (
+    <>
+      <AppHeader />
+      <SessionJoinWorkspace {...props} />
+    </>
+  );
+}
+
+function SessionJoinWorkspace({ courseId, sessionId }: SessionJoinPageProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const maxEnvironment = useMaxBridge();
-  const sessionQuery = useQuery({
-    queryKey: ["live", courseId, sessionId],
-    queryFn: () => getLiveSession(courseId, sessionId),
-    refetchInterval: 2000
-  });
+  const live = useLiveSession(courseId, sessionId);
   const courseQuery = useQuery({
     queryKey: ["courses", courseId],
     queryFn: () => getCourse(courseId)
   });
-  const session = sessionQuery.data;
+  const session = live.session;
+  const commandsBlocked = live.connection !== "connected" || live.syncing || live.syncError;
   const code = session?.joinCode ?? "";
   const maxUrl = useMemo(() => buildMaxJoinUrl(code), [code]);
   const presenterPath = isMobileMax(maxEnvironment)
     ? teacherRemotePath(courseId, sessionId)
     : `/courses/${courseId}/sessions/${sessionId}/presenter`;
   const sawScheduled = useRef(false);
-
-  useEffect(() => {
-    return connectLiveSession(sessionId, (message) => {
-      queryClient.setQueryData(["live", courseId, sessionId], message.session);
-    });
-  }, [courseId, queryClient, sessionId]);
 
   useEffect(() => {
     if (session?.status === "SCHEDULED") sawScheduled.current = true;
@@ -70,7 +68,7 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
   const beginMutation = useMutation({
     mutationFn: () => beginLiveSession(courseId, sessionId),
     onSuccess: (started) => {
-      queryClient.setQueryData(["live", courseId, sessionId], started);
+      live.setSession(started);
       void queryClient.invalidateQueries({ queryKey: ["active-session"] });
       navigate(presenterPath, { replace: true });
       toast.success("Показ начался.");
@@ -87,7 +85,7 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось отменить занятие."))
   });
 
-  if (sessionQuery.isLoading) {
+  if (live.isLoading) {
     return (
       <main className="session-join-shell session-join-shell--center">
         <Loader2 className="student-spinner" size={24} />
@@ -96,11 +94,14 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
     );
   }
 
-  if (sessionQuery.isError || !session || !code) {
+  if (!session || !code) {
     return (
       <main className="session-join-shell session-join-shell--center">
         <h1>Сессия не найдена</h1>
-        <p className="muted">Окно подключения открывается из режима лектора.</p>
+        <p className="muted">Проверьте связь. Окно подключения открывается из режима лектора.</p>
+        <Button type="button" variant="outline" onClick={() => void live.refresh()}>
+          Повторить
+        </Button>
       </main>
     );
   }
@@ -118,40 +119,57 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
   const scheduled = session.status === "SCHEDULED";
 
   return (
-    <main className="session-join-shell">
+    <main id="main-content" className="session-join-shell">
       <header className="session-join-head">
-        <span className="muted">{scheduled ? "Ожидание начала" : "Занятие идет"}</span>
-        <h1>Покажите студентам</h1>
-        <div className="session-join-context">
-          <strong>{courseQuery.data?.title}</strong>
-          <span>{session.lectureTitle}</span>
-          <SessionGroups groups={session.groups} />
-        </div>
-        <strong className="session-join-code">{code}</strong>
-        <small className="muted">
+        <LinkButton to={`/courses/${courseId}`} variant="ghost" className="session-join-back">
+          <ArrowLeft size={16} aria-hidden="true" />К курсу
+        </LinkButton>
+        <h1>{session.lectureTitle}</h1>
+        <p className="muted">{courseQuery.data?.title}</p>
+        <span className="session-join-state">
           {scheduled
-            ? "Студенты могут подключиться заранее. Показ начнется только по вашей команде."
-            : "Наведите камеру телефона и откройте лекцию в MAX."}
-        </small>
+            ? "Подключение открыто"
+            : session.status === "PAUSED"
+              ? "Показ на паузе"
+              : "Занятие идёт"}
+        </span>
       </header>
-      <section className="session-join-panel">
-        {maxUrl ? (
-          <JoinTarget
-            qr={maxUrl}
-            link={maxUrl}
-            hint="После входа MAX сразу откроет текущую лекцию."
-          />
-        ) : (
-          <ChannelSoon />
-        )}
-      </section>
+      {commandsBlocked && (
+        <TeacherRemoteConnection
+          state={live.connection}
+          syncing={live.syncing}
+          syncedAt={live.syncedAt}
+          syncError={live.syncError}
+          onRetry={live.refresh}
+        />
+      )}
+      <div className="session-join-layout">
+        <section className="session-join-codeblock">
+          <h2>Подключите студентов</h2>
+          <p className="muted">
+            {scheduled
+              ? "Код создан. Показ ещё не начался."
+              : "Покажите QR-код или продиктуйте код занятия."}
+          </p>
+          <span className="muted">Код занятия</span>
+          <strong className="session-join-code">{code}</strong>
+          <SessionGroups groups={session.groups} compact />
+        </section>
+        <section className="session-join-panel">
+          {maxUrl ? (
+            <JoinTarget qr={maxUrl} link={maxUrl} hint="Открыть занятие в MAX" />
+          ) : (
+            <ChannelSoon />
+          )}
+        </section>
+      </div>
       <div className="session-join-actions">
         {scheduled ? (
           <>
             <Button
               type="button"
               size="lg"
-              disabled={beginMutation.isPending || cancelMutation.isPending}
+              disabled={commandsBlocked || beginMutation.isPending || cancelMutation.isPending}
               onClick={() => beginMutation.mutate()}
             >
               <Play size={18} aria-hidden="true" />
@@ -162,8 +180,10 @@ export function SessionJoinPage({ courseId, sessionId }: SessionJoinPageProps) {
                 Вернуться к курсу
               </LinkButton>
               <CancelScheduledSession
-                pending={cancelMutation.isPending}
-                onConfirm={() => cancelMutation.mutate()}
+                pending={commandsBlocked || cancelMutation.isPending}
+                onConfirm={() => {
+                  if (!commandsBlocked) cancelMutation.mutate();
+                }}
               />
             </div>
           </>

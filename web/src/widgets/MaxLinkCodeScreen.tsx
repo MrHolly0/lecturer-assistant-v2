@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link2 } from "lucide-react";
 import { normalizeLinkCode } from "../app/max/deepLink";
 import { Button } from "../shared/ui/button";
-import { ThemeToggle } from "./ThemeToggle";
+import { AuthPageFrame } from "./AuthPageFrame";
 
 interface MaxLinkCodeScreenProps {
   initialCode: string;
@@ -29,11 +29,8 @@ export function MaxLinkCodeScreen({
   }
 
   return (
-    <main className="auth-shell">
+    <AuthPageFrame>
       <section className="auth-card max-link-auth" aria-labelledby="max-link-auth-title">
-        <div className="auth-theme-switch">
-          <ThemeToggle compact />
-        </div>
         <div className="auth-header">
           <span className="max-auth-eyebrow">Мини-приложение MAX</span>
           <div className="max-link-auth__heading">
@@ -52,13 +49,14 @@ export function MaxLinkCodeScreen({
             <span>Код подключения MAX</span>
             <input
               className="max-link-code-input"
+              name="maxLinkCode"
+              spellCheck={false}
               value={code}
               onChange={(event) => setCode(normalizeLinkCode(event.target.value))}
               placeholder="ABC123"
               inputMode="text"
               autoComplete="one-time-code"
               maxLength={6}
-              autoFocus
             />
           </label>
           {error && (
@@ -77,6 +75,6 @@ export function MaxLinkCodeScreen({
           Войти по email и паролю
         </Button>
       </section>
-    </main>
+    </AuthPageFrame>
   );
 }

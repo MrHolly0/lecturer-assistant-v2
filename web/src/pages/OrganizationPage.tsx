@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -89,6 +89,27 @@ export function OrganizationPage() {
   const [inviting, setInviting] = useState(false);
   const [deleting, setDeleting] = useState<OrganizationUnit | null>(null);
   const [removing, setRemoving] = useState<OrganizationMember | null>(null);
+  const unitMenuTrigger = useRef<HTMLButtonElement>(null);
+  const addMenuTrigger = useRef<HTMLButtonElement>(null);
+  const personMenuTriggers = useRef(new Map<string, HTMLButtonElement>());
+  const dialogMenuTrigger = useRef<HTMLElement | null>(null);
+
+  function openFromMenu(trigger: HTMLElement | null, open: () => void) {
+    dialogMenuTrigger.current = trigger;
+    open();
+  }
+
+  function restoreMenuFocus(event: Event) {
+    const trigger = dialogMenuTrigger.current;
+    dialogMenuTrigger.current = null;
+    // A successful deletion/removal can remove its row; Add remains in this group view.
+    const target = trigger?.isConnected ? trigger : trigger ? addMenuTrigger.current : null;
+    if (target?.isConnected) {
+      event.preventDefault();
+      target.focus();
+    }
+  }
+
   useEffect(() => {
     if (legacyUnassigned) {
       setParams({ view: "staff", filter: "unassigned" }, { replace: true });
@@ -267,7 +288,8 @@ export function OrganizationPage() {
   });
 
   function openAdd() {
-    if (administrator) setMemberDialog({ action: "add", member: null });
+    if (administrator)
+      openFromMenu(addMenuTrigger.current, () => setMemberDialog({ action: "add", member: null }));
   }
 
   if (organization.isPending) {
@@ -313,65 +335,6 @@ export function OrganizationPage() {
         <div className="org-header-copy">
           <h1>Сотрудники</h1>
           <p className="org-page-description">Общий список и группы сотрудников</p>
-          {selected && (
-            <nav className="org-breadcrumbs org-breadcrumbs--desktop" aria-label="Путь группы">
-              <button type="button" onClick={() => navigateTo(null, "groups")}>
-                Группы сотрудников
-              </button>
-              {breadcrumbs.map((unit, index) => (
-                <span className="org-breadcrumb-part" key={unit.id}>
-                  <ChevronRight size={14} aria-hidden="true" />
-                  {index === breadcrumbs.length - 1 ? (
-                    <span aria-current="page">{unit.name}</span>
-                  ) : (
-                    <button type="button" onClick={() => navigateTo(unit.id)}>
-                      {unit.name}
-                    </button>
-                  )}
-                </span>
-              ))}
-            </nav>
-          )}
-          {selected && (
-            <nav className="org-breadcrumbs org-breadcrumbs--mobile" aria-label="Путь группы">
-              {breadcrumbs.length > 1 ? (
-                <button
-                  type="button"
-                  onClick={() => navigateTo(breadcrumbs[breadcrumbs.length - 2].id)}
-                >
-                  {breadcrumbs[breadcrumbs.length - 2].name}
-                </button>
-              ) : (
-                <button type="button" onClick={() => navigateTo(null, "groups")}>
-                  Группы сотрудников
-                </button>
-              )}
-              <ChevronRight size={14} aria-hidden="true" />
-              <span aria-current="page">{selected.name}</span>
-              {breadcrumbs.length > 2 && (
-                <details className="org-mobile-full-path">
-                  <summary>Весь путь</summary>
-                  <div className="org-mobile-full-path__items">
-                    <button type="button" onClick={() => navigateTo(null, "groups")}>
-                      Группы сотрудников
-                    </button>
-                    {breadcrumbs.map((unit, index) => (
-                      <span className="org-breadcrumb-part" key={unit.id}>
-                        <ChevronRight size={14} aria-hidden="true" />
-                        {index === breadcrumbs.length - 1 ? (
-                          <span aria-current="page">{unit.name}</span>
-                        ) : (
-                          <button type="button" onClick={() => navigateTo(unit.id)}>
-                            {unit.name}
-                          </button>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                </details>
-              )}
-            </nav>
-          )}
         </div>
         <div className="org-header-links">
           {administrator && (
@@ -391,7 +354,7 @@ export function OrganizationPage() {
             className={allDirectory ? "is-active" : ""}
             onClick={() => navigateTo(null, "staff")}
           >
-            <Users size={17} aria-hidden="true" /> Сотрудники
+            Сотрудники
           </button>
           <button
             type="button"
@@ -399,14 +362,70 @@ export function OrganizationPage() {
             className={!allDirectory ? "is-active" : ""}
             onClick={() => navigateTo(null, "groups")}
           >
-            <Folder size={17} aria-hidden="true" /> Группы сотрудников
+            Группы сотрудников
           </button>
         </nav>
       )}
 
       <section className="org-browser" aria-label={title}>
-        {!selected && allDirectory && (
-          <h2 className="org-view-title">Все сотрудники организации</h2>
+        {selected && (
+          <nav className="org-breadcrumbs org-breadcrumbs--desktop" aria-label="Путь группы">
+            <button type="button" onClick={() => navigateTo(null, "groups")}>
+              Группы сотрудников
+            </button>
+            {breadcrumbs.map((unit, index) => (
+              <span className="org-breadcrumb-part" key={unit.id}>
+                <ChevronRight size={14} aria-hidden="true" />
+                {index === breadcrumbs.length - 1 ? (
+                  <span aria-current="page">{unit.name}</span>
+                ) : (
+                  <button type="button" onClick={() => navigateTo(unit.id)}>
+                    {unit.name}
+                  </button>
+                )}
+              </span>
+            ))}
+          </nav>
+        )}
+        {selected && (
+          <nav className="org-breadcrumbs org-breadcrumbs--mobile" aria-label="Путь группы">
+            {breadcrumbs.length > 1 ? (
+              <button
+                type="button"
+                onClick={() => navigateTo(breadcrumbs[breadcrumbs.length - 2].id)}
+              >
+                {breadcrumbs[breadcrumbs.length - 2].name}
+              </button>
+            ) : (
+              <button type="button" onClick={() => navigateTo(null, "groups")}>
+                Группы сотрудников
+              </button>
+            )}
+            <ChevronRight size={14} aria-hidden="true" />
+            <span aria-current="page">{selected.name}</span>
+            {breadcrumbs.length > 2 && (
+              <details className="org-mobile-full-path">
+                <summary>Весь путь</summary>
+                <div className="org-mobile-full-path__items">
+                  <button type="button" onClick={() => navigateTo(null, "groups")}>
+                    Группы сотрудников
+                  </button>
+                  {breadcrumbs.map((unit, index) => (
+                    <span className="org-breadcrumb-part" key={unit.id}>
+                      <ChevronRight size={14} aria-hidden="true" />
+                      {index === breadcrumbs.length - 1 ? (
+                        <span aria-current="page">{unit.name}</span>
+                      ) : (
+                        <button type="button" onClick={() => navigateTo(unit.id)}>
+                          {unit.name}
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </details>
+            )}
+          </nav>
         )}
         {selected && (
           <div className="org-view-heading">
@@ -420,38 +439,51 @@ export function OrganizationPage() {
                 <ArrowLeft size={18} />
                 Назад
               </Button>
-              <h2 className="org-view-title">{selected.name}</h2>
+              <div>
+                <h2 className="org-view-title">{selected.name}</h2>
+                <p className="org-group-description">
+                  {selected.parentId ? "Вложенная группа сотрудников" : "Группа сотрудников"}
+                </p>
+              </div>
             </div>
             {selected.canManage && (
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
-                  <IconButton label={`Действия с группой ${selected.name}`}>
+                  <IconButton ref={unitMenuTrigger} label={`Действия с группой ${selected.name}`}>
                     <MoreHorizontal size={20} />
                   </IconButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem
                     onSelect={() =>
-                      setUnitDraft({
-                        id: selected.id,
-                        name: selected.name,
-                        kind: selected.kind,
-                        parentId: selected.parentId
-                      })
+                      openFromMenu(unitMenuTrigger.current, () =>
+                        setUnitDraft({
+                          id: selected.id,
+                          name: selected.name,
+                          kind: selected.kind,
+                          parentId: selected.parentId
+                        })
+                      )
                     }
                   >
                     <Pencil size={16} />
                     Переименовать
                   </DropdownMenuItem>
                   {selected.canManage && (
-                    <DropdownMenuItem onSelect={() => setMovingUnit(selected)}>
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        openFromMenu(unitMenuTrigger.current, () => setMovingUnit(selected))
+                      }
+                    >
                       <ArrowRightLeft size={16} />
                       Переместить группу
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem
                     className="text-destructive"
-                    onSelect={() => setDeleting(selected)}
+                    onSelect={() =>
+                      openFromMenu(unitMenuTrigger.current, () => setDeleting(selected))
+                    }
                   >
                     <Trash2 size={16} />
                     Удалить группу
@@ -479,10 +511,46 @@ export function OrganizationPage() {
               }
             />
           </label>
+          {allDirectory && administrator && (
+            <div className="org-directory-filters">
+              <label>
+                <span className="sr-only">Группа</span>
+                <Select
+                  value={noGroupOnly ? "__unassigned__" : groupFilter || "__all__"}
+                  onValueChange={(value) => {
+                    setGroupFilter(value === "__unassigned__" || value === "__all__" ? "" : value);
+                    setParams(
+                      value === "__unassigned__"
+                        ? { view: "staff", filter: "unassigned" }
+                        : { view: "staff" }
+                    );
+                  }}
+                >
+                  <SelectTrigger
+                    className="org-filter-select"
+                    aria-label="Фильтр по группе сотрудников"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="org-directory-filter-menu">
+                    <SelectItem value="__all__">Все группы</SelectItem>
+                    <SelectItem value="__unassigned__">Без группы</SelectItem>
+                    {units.map((unit) => (
+                      <SelectItem key={unit.id} value={unit.id}>
+                        {getUnitPath(unit, units)
+                          .map((part) => part.name)
+                          .join(" › ")}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            </div>
+          )}
           {(administrator || Boolean(selected?.canManage)) && !allDirectory && (
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
-                <Button>
+                <Button ref={addMenuTrigger} variant="outline">
                   <Plus size={17} />
                   Добавить
                 </Button>
@@ -490,12 +558,14 @@ export function OrganizationPage() {
               <DropdownMenuContent align="end" className="org-add-menu">
                 <DropdownMenuItem
                   onSelect={() =>
-                    setUnitDraft({
-                      id: null,
-                      name: "",
-                      kind: "UNIT",
-                      parentId: selected?.id ?? null
-                    })
+                    openFromMenu(addMenuTrigger.current, () =>
+                      setUnitDraft({
+                        id: null,
+                        name: "",
+                        kind: "UNIT",
+                        parentId: selected?.id ?? null
+                      })
+                    )
                   }
                 >
                   <Folder size={16} />
@@ -512,7 +582,11 @@ export function OrganizationPage() {
                       <>
                         {allPeople.data?.some((person) => person.unitId !== null) && (
                           <DropdownMenuItem
-                            onSelect={() => setMemberDialog({ action: "move-root", member: null })}
+                            onSelect={() =>
+                              openFromMenu(addMenuTrigger.current, () =>
+                                setMemberDialog({ action: "move-root", member: null })
+                              )
+                            }
                           >
                             <ArrowRightLeft size={16} />
                             Переместить из группы
@@ -524,43 +598,6 @@ export function OrganizationPage() {
             </DropdownMenu>
           )}
         </div>
-
-        {allDirectory && administrator && (
-          <div className="org-directory-filters">
-            <label>
-              <span>Группа</span>
-              <Select
-                value={noGroupOnly ? "__unassigned__" : groupFilter || "__all__"}
-                onValueChange={(value) => {
-                  setGroupFilter(value === "__unassigned__" || value === "__all__" ? "" : value);
-                  setParams(
-                    value === "__unassigned__"
-                      ? { view: "staff", filter: "unassigned" }
-                      : { view: "staff" }
-                  );
-                }}
-              >
-                <SelectTrigger
-                  className="org-filter-select"
-                  aria-label="Фильтр по группе сотрудников"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="org-directory-filter-menu">
-                  <SelectItem value="__all__">Все группы</SelectItem>
-                  <SelectItem value="__unassigned__">Без группы</SelectItem>
-                  {units.map((unit) => (
-                    <SelectItem key={unit.id} value={unit.id}>
-                      {getUnitPath(unit, units)
-                        .map((part) => part.name)
-                        .join(" › ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
-        )}
 
         {allDirectory && administrator && (
           <div className="org-selection-tools">
@@ -795,12 +832,6 @@ export function OrganizationPage() {
                                 Системная роль: {roleLabels[person.role]}
                                 {person.status === "DISABLED" ? " · отключён" : ""}
                               </span>
-                              {person.unitRole === "MANAGER" && person.unitId && (
-                                <span className="org-access-badge">
-                                  <ShieldCheck size={13} aria-hidden="true" />
-                                  Руководитель
-                                </span>
-                              )}
                               {!selected &&
                                 (group ? (
                                   <button
@@ -838,6 +869,7 @@ export function OrganizationPage() {
                                   <Button
                                     type="button"
                                     variant="ghost"
+                                    className="org-access-action"
                                     onClick={() =>
                                       setMemberDialog({ action: "access", member: person })
                                     }
@@ -850,6 +882,10 @@ export function OrganizationPage() {
                                   <DropdownMenu modal={false}>
                                     <DropdownMenuTrigger asChild>
                                       <IconButton
+                                        ref={(node) => {
+                                          if (node) personMenuTriggers.current.set(person.id, node);
+                                          else personMenuTriggers.current.delete(person.id);
+                                        }}
                                         label={`Другие действия для ${person.displayName}`}
                                       >
                                         <MoreHorizontal size={19} />
@@ -858,7 +894,12 @@ export function OrganizationPage() {
                                     <DropdownMenuContent align="end">
                                       <DropdownMenuItem
                                         className="text-destructive"
-                                        onSelect={() => setRemoving(person)}
+                                        onSelect={() =>
+                                          openFromMenu(
+                                            personMenuTriggers.current.get(person.id) ?? null,
+                                            () => setRemoving(person)
+                                          )
+                                        }
                                       >
                                         <Trash2 size={16} />
                                         Убрать из группы
@@ -885,6 +926,7 @@ export function OrganizationPage() {
         <OrganizationUnitEditor
           key={`${unitDraft.id ?? "new"}-${unitDraft.parentId}`}
           draft={unitDraft}
+          onCloseAutoFocus={restoreMenuFocus}
           units={units}
           onClose={() => setUnitDraft(null)}
           onSaved={(unit) => {
@@ -897,6 +939,7 @@ export function OrganizationPage() {
       {movingUnit && (
         <OrganizationUnitMoveDialog
           unit={movingUnit}
+          onCloseAutoFocus={restoreMenuFocus}
           units={units}
           administrator={administrator}
           onClose={() => setMovingUnit(null)}
@@ -911,6 +954,7 @@ export function OrganizationPage() {
         <OrganizationMemberEditor
           key={`${memberDialog.action}-${memberDialog.member?.id ?? "new"}-${selectedId ?? "root"}`}
           action={memberDialog.action}
+          onCloseAutoFocus={restoreMenuFocus}
           member={memberDialog.member}
           people={allPeople.data ?? []}
           units={units}
@@ -943,7 +987,7 @@ export function OrganizationPage() {
         open={Boolean(deleting)}
         onOpenChange={(open) => !open && !deleteMutation.isPending && setDeleting(null)}
       >
-        <AlertDialogContent>
+        <AlertDialogContent onCloseAutoFocus={restoreMenuFocus}>
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить группу «{deleting?.name}»?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -989,7 +1033,7 @@ export function OrganizationPage() {
         open={Boolean(removing)}
         onOpenChange={(open) => !open && !removeMutation.isPending && setRemoving(null)}
       >
-        <AlertDialogContent>
+        <AlertDialogContent onCloseAutoFocus={restoreMenuFocus}>
           <AlertDialogHeader>
             <AlertDialogTitle>Переместить сотрудника в список «Без группы»?</AlertDialogTitle>
             <AlertDialogDescription>

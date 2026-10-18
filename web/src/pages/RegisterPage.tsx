@@ -8,7 +8,8 @@ import { ApiError } from "../app/api/http";
 import { landingPath } from "../app/routes";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
-import { ThemeToggle } from "../widgets/ThemeToggle";
+import { AuthPageFrame } from "../widgets/AuthPageFrame";
+import { AuthPasswordField } from "../widgets/AuthPasswordField";
 
 export function RegisterPage({ code: initialCode }: { code: string }) {
   const { setUser } = useAuth();
@@ -41,13 +42,13 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
   }
 
   return (
-    <div className="auth-shell">
+    <AuthPageFrame className="register-page">
       <div className="auth-card">
-        <div className="auth-theme-switch">
-          <ThemeToggle compact />
-        </div>
         <div className="auth-header">
-          <BrandMark className="mx-auto h-14 w-14 text-orange-500" />
+          <div className="auth-brand app-brand">
+            <BrandMark />
+            <span>Lecturer Assistant</span>
+          </div>
           <h1 className="auth-title">Регистрация</h1>
           <p className="auth-sub">по приглашению</p>
         </div>
@@ -55,46 +56,60 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
           <label className="field">
             <span>Код приглашения</span>
             <input
+              name="invitationCode"
+              autoComplete="off"
+              spellCheck={false}
               value={code}
               onChange={(e) => setCode(e.target.value)}
               required
-              autoFocus={!initialCode}
               placeholder="XXXX-XXXX"
             />
           </label>
           <label className="field">
             <span>Имя</span>
             <input
+              name="displayName"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               required
               minLength={2}
-              autoFocus={!!initialCode}
+              autoComplete="name"
             />
           </label>
           <label className="field">
             <span>Email</span>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </label>
-          <label className="field">
-            <span>Пароль</span>
             <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              type="email"
+              name="email"
+              spellCheck={false}
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
-              minLength={8}
             />
           </label>
-          {error && <p className="form-error">{error}</p>}
+          <AuthPasswordField
+            label="Пароль"
+            name="password"
+            value={password}
+            onValueChange={setPassword}
+            required
+            minLength={8}
+            autoComplete="new-password"
+          />
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
           <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "..." : "Зарегистрироваться"}
+            {mutation.isPending ? "Создаём аккаунт…" : "Зарегистрироваться"}
           </Button>
         </form>
         <p className="auth-hint">
           <Link to="/login">← Войти в существующий аккаунт</Link>
         </p>
       </div>
-    </div>
+    </AuthPageFrame>
   );
 }

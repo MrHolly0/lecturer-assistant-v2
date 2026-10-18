@@ -9,6 +9,12 @@ import "./styles.css";
 import "./styles/non-live-workflows.css";
 import "./styles/course-workflows.css";
 import "./styles/live-experience.css";
+import "./styles/redesign-base.css";
+import "./styles/redesign-catalog.css";
+import "./styles/redesign-preparation.css";
+import "./styles/redesign-live.css";
+import "./styles/redesign-admin.css";
+import "./styles/redesign-auth.css";
 
 registerServiceWorker();
 
