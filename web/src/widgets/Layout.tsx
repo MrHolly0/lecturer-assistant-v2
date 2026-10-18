@@ -35,8 +35,7 @@ const navItems = [
     path: "/student/join",
     icon: QrCode,
     label: "Подключиться к лекции",
-    roles: ["ADMIN", "LECTURER", "ASSISTANT", "STUDENT"],
-    more: true
+    roles: ["STUDENT"]
   },
   { path: "/home", icon: Home, label: "Главная", roles: ["STUDENT"] },
   { path: "/courses", icon: BookOpen, label: "Курсы", roles: ["ADMIN", "LECTURER", "ASSISTANT"] },

@@ -6,6 +6,7 @@ import type { components } from "./api/schema";
 import {
   confirmMaxLink as confirmMaxLinkRequest,
   getCurrentUser,
+  login as loginWithCredentials,
   loginWithMax,
   logout,
   previewMaxLink,
@@ -21,6 +22,7 @@ import { normalizeLinkCode, readMaxLinkCode } from "./max/deepLink";
 
 type UserProfile = components["schemas"]["UserProfile"];
 const MAX_SIGNED_OUT_KEY = "la_max_signed_out";
+const MAX_PASSWORD_SESSION_KEY = "la_max_password_session";
 
 interface AuthContextValue {
   user: UserProfile | null;
@@ -29,11 +31,12 @@ interface AuthContextValue {
   maxSignedOut: boolean;
   maxLinkRequired: boolean;
   maxCredentialsRequired: boolean;
+  maxLoginView: "entry" | "teacher" | null;
   maxLinkPreview: MaxLinkPreview | null;
   maxLinkPreviewPending: boolean;
   maxLinkCodeInput: string;
   maxLinkRegistrationPending: boolean;
-  loginAndLinkMax: (email: string, password: string) => Promise<void>;
+  loginWithPassword: (email: string, password: string) => Promise<void>;
   registerAndLinkMax: (
     name: string,
     email: string,
@@ -48,6 +51,8 @@ interface AuthContextValue {
   resumeMaxAuth: () => void;
   chooseMaxLinkCode: () => void;
   chooseMaxCredentials: () => void;
+  chooseMaxEntry: () => void;
+  chooseMaxTeacher: () => void;
   setUser: (user: UserProfile | null) => void;
   signOut: () => Promise<void>;
 }
@@ -59,11 +64,12 @@ const AuthContext = createContext<AuthContextValue>({
   maxSignedOut: false,
   maxLinkRequired: false,
   maxCredentialsRequired: false,
+  maxLoginView: null,
   maxLinkPreview: null,
   maxLinkPreviewPending: false,
   maxLinkCodeInput: "",
   maxLinkRegistrationPending: false,
-  loginAndLinkMax: async () => {},
+  loginWithPassword: async () => {},
   registerAndLinkMax: async () => {},
   submitMaxLinkCode: () => {},
   confirmMaxLink: async () => {},
@@ -73,6 +79,8 @@ const AuthContext = createContext<AuthContextValue>({
   resumeMaxAuth: () => {},
   chooseMaxLinkCode: () => {},
   chooseMaxCredentials: () => {},
+  chooseMaxEntry: () => {},
+  chooseMaxTeacher: () => {},
   setUser: () => {},
   signOut: async () => {}
 });
@@ -93,14 +101,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [maxLinkCodeDraft, setMaxLinkCodeDraft] = useState("");
   const [allowMaxAuthWithoutCode, setAllowMaxAuthWithoutCode] = useState(false);
   const [maxAuthAttempt, setMaxAuthAttempt] = useState(0);
-  const [maxAuthChoice, setMaxAuthChoice] = useState<"automatic" | "code" | "credentials">(
-    "automatic"
-  );
+  const [maxEntryChosen, setMaxEntryChosen] = useState(false);
+  const [maxAuthChoice, setMaxAuthChoice] = useState<
+    "entry" | "teacher" | "session" | "password" | "automatic" | "code" | "credentials"
+  >(() => (getStoredAuth() ? (readMaxPasswordSession() ? "password" : "session") : "entry"));
 
   useEffect(() => {
     let active = true;
     const expireAuth = () => {
-      if (isMax && initData && !maxSignedOut) {
+      if (isMax && initData && !maxSignedOut && maxAuthChoice === "automatic") {
         setLoading(true);
         void loginWithMax(initData, undefined, undefined, true)
           .then(({ user: restored }) => {
@@ -109,13 +118,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .catch(() => {
             if (!active) return;
             setUserState(null);
-            setMaxAuthError("Вход устарел. Откройте мини-приложение снова или войдите по коду.");
+            setMaxAuthError(
+              "Вход устарел. Откройте мини-приложение снова или войдите по почте и паролю."
+            );
           })
           .finally(() => {
             if (active) setLoading(false);
           });
       } else {
         setUserState(null);
+        if (isMax) {
+          setMaxAuthChoice("teacher");
+          setMaxAuthError("Вход устарел. Выберите способ входа снова.");
+          setLoading(false);
+        }
         toast.error("Сессия истекла. Войдите снова.", { id: "auth-expired" });
       }
     };
@@ -138,16 +154,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setLoading(true);
-    setMaxAuthError(null);
     if (isMax) {
-      if (!initData) {
-        setMaxAuthError(
-          "MAX не передал данные для входа. Закройте и снова откройте мини-приложение."
-        );
+      const startLinkCode =
+        !maxEntryChosen && (maxAuthChoice === "entry" || maxAuthChoice === "session")
+          ? readMaxLinkCode(startParam)
+          : null;
+      const opensLecture =
+        !maxEntryChosen && maxAuthChoice === "entry" && Boolean(startParam && !startLinkCode);
+      if (
+        maxAuthChoice === "teacher" ||
+        (maxAuthChoice === "entry" && !opensLecture && !startLinkCode)
+      ) {
         setLoading(false);
         return cleanup;
       }
-
+      if ((maxAuthChoice === "session" && !startLinkCode) || maxAuthChoice === "password") {
+        getCurrentUser()
+          .then((currentUser) => {
+            if (active) setUserState(currentUser);
+          })
+          .catch(() => {
+            if (!active) return;
+            clearStoredAuth();
+            setUserState(null);
+            setMaxAuthChoice("entry");
+          })
+          .finally(() => {
+            if (active) setLoading(false);
+          });
+        return cleanup;
+      }
       if (maxAuthChoice === "code" && requestedMaxLinkCode === null) {
         setMaxLinkRequired(true);
         setMaxCredentialsRequired(false);
@@ -160,10 +196,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return cleanup;
       }
-
-      const startLinkCode = readMaxLinkCode(startParam);
+      if (!initData) {
+        setMaxAuthError(
+          "MAX не передал данные для входа. Откройте мини-приложение снова или войдите по почте и паролю."
+        );
+        setLoading(false);
+        return cleanup;
+      }
+      setMaxAuthError(null);
       const linkCode = requestedMaxLinkCode === null ? null : requestedMaxLinkCode || null;
-      const opensLecture = Boolean(startParam && !startLinkCode);
       const waitsForPrefilledCode = Boolean(startLinkCode && requestedMaxLinkCode === null);
       if (waitsForPrefilledCode) {
         setMaxLinkRequired(true);
@@ -174,8 +215,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!linkCode && !opensLecture && !allowMaxAuthWithoutCode) {
         loginWithMax(initData, undefined, startParam ?? undefined, true)
-          .then(({ user: maxUser }) => {
+          .then(async ({ user: maxUser }) => {
             if (!active) return;
+            if (maxUser.role === "STUDENT") {
+              await logout();
+              clearStoredAuth();
+              if (!active) return;
+              setUserState(null);
+              setMaxAuthChoice("teacher");
+              setMaxAuthError(
+                "К этому MAX подключён аккаунт студента. Войдите преподавателем по почте и паролю."
+              );
+              return;
+            }
             setUserState(maxUser);
             setMaxLinkRequired(false);
             setMaxCredentialsRequired(false);
@@ -183,7 +235,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .catch((error: unknown) => {
             if (!active) return;
             if (error instanceof ApiError && error.status === 404) {
-              setMaxCredentialsRequired(true);
+              setMaxAuthChoice("teacher");
+              setMaxAuthError(
+                "Аккаунт преподавателя ещё не подключён к MAX. Войдите по почте и паролю."
+              );
             } else {
               setMaxAuthError(maxAuthErrorMessage(error, false));
             }
@@ -260,6 +315,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isMax,
     maxAuthAttempt,
     maxAuthChoice,
+    maxEntryChosen,
     maxSignedOut,
     requestedMaxLinkCode,
     startParam
@@ -280,7 +336,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (refreshed) {
           setUserState(refreshed.user);
           await queryClient.invalidateQueries({ type: "active" });
-        } else if (isMax && initData) {
+        } else if (isMax && initData && maxAuthChoice === "automatic") {
           const restored = await loginWithMax(initData, undefined, undefined, true);
           setUserState(restored.user);
           await queryClient.invalidateQueries({ type: "active" });
@@ -299,7 +355,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("focus", revalidate);
       window.clearInterval(interval);
     };
-  }, [authenticatedUserId, initData, isMax, maxSignedOut, queryClient]);
+  }, [authenticatedUserId, initData, isMax, maxAuthChoice, maxSignedOut, queryClient]);
 
   function retryMaxAuth() {
     setLoading(true);
@@ -307,17 +363,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function resumeMaxAuth() {
+    rememberMaxPasswordSession(false);
     try {
       sessionStorage.removeItem(MAX_SIGNED_OUT_KEY);
     } catch {
       // The current WebView can still resume even if storage is unavailable.
     }
     setLoading(true);
+    setUserState(null);
+    queryClient.clear();
     setMaxSignedOut(false);
     setMaxAuthChoice("automatic");
     setRequestedMaxLinkCode(null);
     setMaxLinkCodeDraft("");
     setAllowMaxAuthWithoutCode(false);
+    setMaxAuthError(null);
+    setMaxLinkRequired(false);
+    setMaxCredentialsRequired(false);
+    setMaxAuthAttempt((attempt) => attempt + 1);
+  }
+
+  function chooseMaxEntry() {
+    setMaxEntryChosen(true);
+    setMaxAuthChoice("entry");
+    setMaxAuthError(null);
+    setMaxLinkRequired(false);
+    setMaxCredentialsRequired(false);
+    setMaxLinkPreview(null);
+    setLoading(false);
+  }
+
+  function chooseMaxTeacher() {
+    chooseMaxEntry();
+    setMaxAuthChoice("teacher");
   }
 
   function chooseMaxLinkCode() {
@@ -367,6 +445,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         initData,
         maxLinkPreview.confirmationToken
       );
+      rememberMaxPasswordSession(false);
       queryClient.clear();
       setUserState(linkedUser);
       setMaxLinkPreview(null);
@@ -418,6 +497,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function continueMaxAuth() {
+    rememberMaxPasswordSession(false);
     setMaxAuthError(null);
     setMaxCredentialsRequired(false);
     setLoading(true);
@@ -428,16 +508,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMaxAuthAttempt((attempt) => attempt + 1);
   }
 
-  async function loginAndLinkMax(email: string, password: string) {
-    if (!initData)
-      throw new Error("MAX не передал данные для входа. Откройте мини-приложение снова.");
+  async function loginWithPassword(email: string, password: string) {
     setMaxAuthError(null);
-    const preview = await previewMaxLink({ initData, email, password });
-    setMaxLinkPreview(preview);
+    const result = await loginWithCredentials(email, password);
+    if (result.user.role === "STUDENT") {
+      await logout();
+      clearStoredAuth();
+      setUserState(null);
+      throw new Error("Это аккаунт студента. Для участия в лекции введите код занятия.");
+    }
+    queryClient.clear();
+    setUserState(result.user);
+    rememberMaxPasswordSession(true);
+    setMaxAuthChoice("password");
+    setMaxLinkPreview(null);
     setPendingRegistration(false);
     setMaxCredentialsRequired(false);
     setMaxLinkRequired(false);
     setMaxAuthError(null);
+    setLoading(false);
   }
 
   async function registerAndLinkMax(
@@ -471,6 +560,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signOut() {
     await logout();
+    rememberMaxPasswordSession(false);
     clearStoredAuth();
     queryClient.clear();
     if (isMax) {
@@ -485,7 +575,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPendingRegistration(false);
       setMaxLinkRequired(false);
       setMaxCredentialsRequired(false);
-      setMaxAuthChoice("automatic");
+      setMaxAuthChoice("entry");
       setRequestedMaxLinkCode(null);
       setMaxLinkCodeDraft("");
       setAllowMaxAuthWithoutCode(false);
@@ -502,11 +592,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         maxSignedOut,
         maxLinkRequired,
         maxCredentialsRequired,
+        maxLoginView:
+          maxAuthChoice === "teacher"
+            ? "teacher"
+            : maxAuthChoice === "entry" && (maxEntryChosen || !startParam)
+              ? "entry"
+              : null,
         maxLinkPreview,
         maxLinkPreviewPending,
         maxLinkCodeInput: maxLinkCodeDraft,
         maxLinkRegistrationPending: pendingRegistration,
-        loginAndLinkMax,
+        loginWithPassword,
         registerAndLinkMax,
         submitMaxLinkCode,
         confirmMaxLink: confirmPendingMaxLink,
@@ -516,6 +612,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resumeMaxAuth,
         chooseMaxLinkCode,
         chooseMaxCredentials,
+        chooseMaxEntry,
+        chooseMaxTeacher,
         setUser: setUserState,
         signOut
       }}
@@ -530,6 +628,23 @@ function readMaxSignedOut(): boolean {
     return sessionStorage.getItem(MAX_SIGNED_OUT_KEY) === "true";
   } catch {
     return false;
+  }
+}
+
+function readMaxPasswordSession(): boolean {
+  try {
+    return sessionStorage.getItem(MAX_PASSWORD_SESSION_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function rememberMaxPasswordSession(enabled: boolean) {
+  try {
+    if (enabled) sessionStorage.setItem(MAX_PASSWORD_SESSION_KEY, "true");
+    else sessionStorage.removeItem(MAX_PASSWORD_SESSION_KEY);
+  } catch {
+    // The current WebView still retains the selected login method in memory.
   }
 }
 

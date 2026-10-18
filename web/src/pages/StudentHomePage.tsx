@@ -7,6 +7,7 @@ import { useAuth } from "../app/AuthContext";
 import { useMaxBridge } from "../app/max/context";
 import { listCourses } from "../app/api/courses-api";
 import { AppHeader } from "../widgets/Layout";
+import { MaxEntryScreen } from "../widgets/MaxEntryScreen";
 import { Button } from "../shared/ui/button";
 
 export function StudentHomePage({ joinOnly = false }: { joinOnly?: boolean }) {
@@ -31,6 +32,8 @@ export function StudentHomePage({ joinOnly = false }: { joinOnly?: boolean }) {
     if (isMax && initData && !user && !maxSignedOut) continueMaxAuth();
     navigate(`/s/${encodeURIComponent(code)}`);
   }
+
+  if (joinOnly && isMax) return <MaxEntryScreen />;
 
   return (
     <>

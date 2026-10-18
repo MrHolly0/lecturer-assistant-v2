@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { ApiError } from "../app/api/http";
+import { ArrowLeft } from "lucide-react";
+import { useAuth } from "../app/AuthContext";
 import { Button } from "../shared/ui/button";
 import { AuthPageFrame } from "./AuthPageFrame";
 import { AuthPasswordField } from "./AuthPasswordField";
@@ -22,6 +24,7 @@ export function MaxCredentialsScreen({
   onCode,
   error: externalError
 }: MaxCredentialsScreenProps) {
+  const { chooseMaxTeacher } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -48,14 +51,23 @@ export function MaxCredentialsScreen({
   return (
     <AuthPageFrame>
       <section className="auth-card max-credentials" aria-labelledby="max-credentials-title">
+        <Button
+          type="button"
+          variant="ghost"
+          className="max-entry-back"
+          disabled={pending}
+          onClick={chooseMaxTeacher}
+        >
+          <ArrowLeft aria-hidden="true" /> Способы входа
+        </Button>
         <header className="auth-header">
-          <span className="max-auth-eyebrow">Вход через MAX</span>
+          <span className="max-auth-eyebrow">Для преподавателей</span>
           <h1 className="auth-title" id="max-credentials-title">
             {mode === "login" ? "Войти преподавателем" : "Создать учётную запись"}
           </h1>
           <p className="auth-hint">
             {mode === "login"
-              ? "После проверки пароля вы увидите текущий и выбранный аккаунты и подтвердите привязку MAX."
+              ? "Введите почту и пароль учётной записи преподавателя."
               : "После регистрации проверьте аккаунты и подтвердите привязку MAX. Если отменить, учётная запись останется созданной без подключения MAX."}
           </p>
         </header>
@@ -118,11 +130,7 @@ export function MaxCredentialsScreen({
             </p>
           )}
           <Button type="submit" disabled={pending}>
-            {pending
-              ? "Проверяем аккаунт…"
-              : mode === "login"
-                ? "Проверить аккаунт"
-                : "Создать аккаунт и проверить"}
+            {pending ? "Входим…" : mode === "login" ? "Войти" : "Создать аккаунт и проверить"}
           </Button>
         </form>
         <div className="max-credentials__other">

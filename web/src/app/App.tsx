@@ -41,8 +41,8 @@ import { readStudentResume } from "./studentResume";
 import { MaxLinkCodeScreen } from "../widgets/MaxLinkCodeScreen";
 import { MaxCredentialsScreen } from "../widgets/MaxCredentialsScreen";
 import { MaxLinkReviewScreen } from "../widgets/MaxLinkReviewScreen";
+import { MaxEntryScreen, MaxTeacherScreen } from "../widgets/MaxEntryScreen";
 import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
-import { Button } from "../shared/ui/button";
 import { AuthPageFrame } from "../widgets/AuthPageFrame";
 
 const maxRootPaths = new Set(["/", "/home", "/student/join", "/courses", "/login", "/register"]);
@@ -61,13 +61,12 @@ function MaxNavigationRoot() {
     maxLinkPreviewPending,
     maxLinkCodeInput,
     maxLinkRegistrationPending,
-    loginAndLinkMax,
+    loginWithPassword,
+    maxLoginView,
     registerAndLinkMax,
     submitMaxLinkCode,
     confirmMaxLink,
     cancelMaxLinkPreview,
-    continueMaxAuth,
-    retryMaxAuth,
     resumeMaxAuth,
     chooseMaxLinkCode,
     chooseMaxCredentials,
@@ -123,7 +122,7 @@ function MaxNavigationRoot() {
 
   useEffect(() => {
     if (startParamHandled || !isMax || loading || !user) return;
-    if (!startTarget || location.pathname === startTarget) setStartParamHandled(true);
+    if (!startTarget || location.pathname.startsWith("/s/")) setStartParamHandled(true);
   }, [isMax, loading, location.pathname, startParamHandled, startTarget, user]);
 
   if (location.pathname.startsWith("/projection/") || publicStudentJoin) return <Outlet />;
@@ -149,22 +148,15 @@ function MaxNavigationRoot() {
       />
     );
   }
-  if (isMax && maxSignedOut) {
-    return (
-      <MaxSignedOutScreen
-        onLogin={resumeMaxAuth}
-        onCode={chooseMaxLinkCode}
-        onCredentials={chooseMaxCredentials}
-      />
-    );
-  }
+  if (isMax && maxLoginView === "teacher") return <MaxTeacherScreen />;
+  if (isMax && (maxLoginView === "entry" || maxSignedOut)) return <MaxEntryScreen />;
   if (isMax && maxLinkRequired) {
     return (
       <MaxLinkCodeScreen
         initialCode={maxLinkCodeInput || readMaxLinkCode(startParam) || ""}
         error={maxAuthError}
         onSubmit={submitMaxLinkCode}
-        onContinue={continueMaxAuth}
+        onContinue={resumeMaxAuth}
         onCredentials={chooseMaxCredentials}
       />
     );
@@ -172,23 +164,14 @@ function MaxNavigationRoot() {
   if (isMax && maxCredentialsRequired) {
     return (
       <MaxCredentialsScreen
-        onLogin={loginAndLinkMax}
+        onLogin={loginWithPassword}
         onRegister={registerAndLinkMax}
         onCode={chooseMaxLinkCode}
         error={maxAuthError}
       />
     );
   }
-  if (isMax && !user) {
-    return (
-      <MaxAuthScreen
-        error={maxAuthError}
-        onRetry={retryMaxAuth}
-        onCode={chooseMaxLinkCode}
-        onCredentials={chooseMaxCredentials}
-      />
-    );
-  }
+  if (isMax && !user) return <MaxTeacherScreen />;
   if (isMax && !startParamHandled && startTarget && location.pathname !== startTarget) {
     return <Navigate to={startTarget} replace />;
   }
@@ -227,79 +210,6 @@ function LoadingScreen({ message = "Загрузка…" }: { message?: string }
       <div className="max-auth-status muted" role="status" aria-live="polite">
         {message}
       </div>
-    </AuthPageFrame>
-  );
-}
-
-function MaxAuthScreen({
-  error,
-  onRetry,
-  onCode,
-  onCredentials
-}: {
-  error: string | null;
-  onRetry: () => void;
-  onCode: () => void;
-  onCredentials: () => void;
-}) {
-  return (
-    <AuthPageFrame>
-      <section className="auth-card max-auth-card" aria-labelledby="max-auth-title">
-        <div className="auth-header">
-          <span className="max-auth-eyebrow">Мини-приложение MAX</span>
-          <h1 className="auth-title" id="max-auth-title">
-            Не удалось войти
-          </h1>
-        </div>
-        <p className="form-error" role="alert">
-          {error ?? "Повторите вход через MAX."}
-        </p>
-        <Button className="max-auth-retry" type="button" onClick={onRetry}>
-          Попробовать снова
-        </Button>
-        <Button type="button" variant="outline" onClick={onCode}>
-          Подключить аккаунт по коду
-        </Button>
-        <Button type="button" variant="ghost" onClick={onCredentials}>
-          Войти по email и паролю
-        </Button>
-      </section>
-    </AuthPageFrame>
-  );
-}
-
-function MaxSignedOutScreen({
-  onLogin,
-  onCode,
-  onCredentials
-}: {
-  onLogin: () => void;
-  onCode: () => void;
-  onCredentials: () => void;
-}) {
-  return (
-    <AuthPageFrame>
-      <section className="auth-card max-auth-card" aria-labelledby="max-signed-out-title">
-        <div className="auth-header">
-          <span className="max-auth-eyebrow">Мини-приложение MAX</span>
-          <h1 className="auth-title" id="max-signed-out-title">
-            Вы вышли из аккаунта
-          </h1>
-          <p className="auth-hint">
-            Выберите способ входа. Перед сменой аккаунта мы покажем, к чему сейчас подключён MAX, и
-            попросим подтвердить действие.
-          </p>
-        </div>
-        <Button className="max-auth-retry" type="button" onClick={onLogin}>
-          Войти через MAX
-        </Button>
-        <Button type="button" variant="outline" onClick={onCode}>
-          Подключить аккаунт по коду
-        </Button>
-        <Button type="button" variant="ghost" onClick={onCredentials}>
-          Другой аккаунт по email и паролю
-        </Button>
-      </section>
     </AuthPageFrame>
   );
 }

@@ -1,4 +1,5 @@
-.auth-layout .auth-shell {
+.auth-layout .auth-shell,
+html[data-max-mini-app="true"] .auth-layout .auth-shell {
   display: block;
   min-height: calc(var(--app-content-height) - var(--header-height));
   padding: 64px 20px 48px;
@@ -16,21 +17,11 @@
   background: transparent;
 }
 
-.auth-session-entry {
-  display: grid;
-  gap: 8px;
-  width: 100%;
-  max-width: 432px;
-  margin: 0 auto 32px;
-}
-.auth-session-entry > .ui-button {
-  width: 100%;
-}
-.auth-session-entry > p {
-  margin: 0;
-  color: var(--muted-foreground);
-  font-size: 14px;
-  text-align: center;
+.auth-layout .auth-card > .max-entry-back {
+  width: auto;
+  align-self: flex-start;
+  justify-content: flex-start;
+  padding-inline: 0;
 }
 
 .auth-layout .auth-header {
