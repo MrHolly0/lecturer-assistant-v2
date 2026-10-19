@@ -2,9 +2,10 @@
 
 Это исходники отдельного пользовательского компонента. Основной продукт остаётся
 сайтом и MAX mini-app. Помощник не заменяет кабинет преподавателя и не требует телефона.
-**Собраны macOS DMG для испытаний, отдельно Intel и Apple Silicon.** Для Windows готовы
-self-contained бинарники x64/ARM64 и исходники Inno Setup; готовый EXE и реальная установка
-на Windows ещё требуют native CI. Локальная Wine/QEMU упаковка на Mac не завершилась.
+**Сборочные скрипты создают Windows EXE и macOS DMG для испытаний, отдельно x64 и ARM64.**
+[Native CI](https://github.com/MrHolly0/lecturer-assistant-v2/actions/workflows/projector-agent.yml)
+проверяет установку и обновление на Windows, а также реальную распаковку и запуск
+Mac-пакетов на Intel и Apple Silicon. Результат и артефакты относятся к конкретному SHA.
 Сборки ещё не имеют Windows Authenticode / Apple Developer ID и notarization. Публичный
 каталог загрузок остаётся отключён до этих проверок и испытаний физического HDMI.
 Браузерный мастер работает без установки.

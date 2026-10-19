@@ -48,8 +48,9 @@ UPDATE_CHECK_REQUESTED; отсутствующая metadata — RELEASE_FEED_NOT
 присутствуют с первого исходного пакета. Автоматический source path включается только при
 реальном signed envelope в `release` и запуске из установленного stable launcher.
 В текущем каталоге такого релиза нет, поэтому сайт не предлагает скачивание и online
-update. Development DMG собраны отдельно для испытаний. Windows EXE предусмотрен
-скриптом и native CI; локальная эмуляционная упаковка на Mac не дала установщик.
+update. Development EXE/DMG формируются отдельно для испытаний; их статус и артефакты
+публикует [native CI](https://github.com/MrHolly0/lecturer-assistant-v2/actions/workflows/projector-agent.yml).
+Успешная проверка CI не заменяет OS-signing и физическую HDMI-матрицу.
 
 Недостаёт перед первым публичным подписанным release:
 
