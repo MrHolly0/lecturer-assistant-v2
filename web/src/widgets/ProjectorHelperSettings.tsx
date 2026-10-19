@@ -806,8 +806,10 @@ export function ProjectorHelperSettings({
                   <details className="projector-manual-pairing">
                     <summary>Помощник не открылся? Ввести код вручную</summary>
                     <p>
-                      Откройте Lecturer Projector из «Приложений» на Mac или меню «Пуск» на Windows.
-                      В окне подключения укажите:
+                      {/win/i.test(navigator.platform)
+                        ? "Откройте Lecturer Projector из меню «Пуск». Нажмите значок помощника возле часов → «Подключить к учреждению…»."
+                        : "Откройте Lecturer Projector из «Приложений». Появится окно подключения."}{" "}
+                      Укажите в нём:
                     </p>
                     <label>
                       <span>Адрес сайта для помощника</span>

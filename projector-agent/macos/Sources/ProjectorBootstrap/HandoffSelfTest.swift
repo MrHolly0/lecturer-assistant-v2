@@ -24,6 +24,7 @@ import Darwin
 @MainActor final class HandoffSelfTest: NSObject, NSApplicationDelegate {
     let report: URL
     private var owned: [WorkspaceOpened] = []
+    private var diagnostics: [String: Any] = [:]
     init(report: URL) { self.report = report.standardizedFileURL }
     static func run(report: URL) {
         let app = NSApplication.shared; app.setActivationPolicy(.accessory)
@@ -36,6 +37,7 @@ import Darwin
             do { result = try await exercise() }
             catch BootstrapFailure.code(let code) { result = ["success": false, "code": code]; status = 1 }
             catch { result = ["success": false, "code": "HANDOFF_FIXTURE_FAILED"]; status = 1 }
+            if status != 0 { result["diagnostics"] = diagnostics }
             for child in owned {
                 if let app = NSRunningApplication(processIdentifier: child.pid), app.bundleURL?.standardizedFileURL.path == child.bundlePath { app.terminate() }
             }
@@ -74,8 +76,20 @@ import Darwin
         // Copy the app just as the installer does; do not launch from the source bundle again.
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: source, to: target)
+        let sourceIdentity = try? Installation.codeIdentity(source), targetIdentity = try? Installation.codeIdentity(target)
+        diagnostics = ["expectedIdentifier": fakeID, "sourceIdentifier": Bundle(url: source)?.bundleIdentifier ?? "missing",
+                       "targetIdentifier": Bundle(url: target)?.bundleIdentifier ?? "missing",
+                       "sourceVersion": Bundle(url: source)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "missing",
+                       "targetVersion": Bundle(url: target)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "missing",
+                       "sourceIdentityVerified": sourceIdentity != nil, "targetIdentityVerified": targetIdentity != nil,
+                       "nativeIdentityEqual": sourceIdentity != nil && sourceIdentity == targetIdentity,
+                       "sourcePath": source.path, "targetPath": target.path]
         let match = try Installation.installedMatch(runningBundle: source, candidates: [target], expectedIdentifier: fakeID)
-        guard match == target else { throw BootstrapFailure.code("HANDOFF_FIXTURE_CANONICAL_MATCH") }
+        guard let match else { throw BootstrapFailure.code("HANDOFF_FIXTURE_NO_IDENTITY_MATCH") }
+        diagnostics["matchedPath"] = match.path
+        // Foundation releases differ in preserving a directory URL's trailing slash.
+        // The security decision above is independent; compare canonical filesystem paths.
+        guard match.path == target.standardizedFileURL.path else { throw BootstrapFailure.code("HANDOFF_FIXTURE_CANONICAL_PATH") }
         let alternate = root.appendingPathComponent("SharedApplications/Lecturer Projector.app")
         try FileManager.default.createDirectory(at: alternate.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: target, to: alternate)
