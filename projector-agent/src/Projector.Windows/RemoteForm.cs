@@ -21,6 +21,7 @@ internal sealed class RemoteForm : Form
     private (int Width, int Height, bool Collapsed)? pendingSize;
     private readonly TaskCompletionSource<bool> loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal Task<bool> Ready => loaded.Task;
+    internal string? ProfileColorScheme => web?.CoreWebView2?.Profile.PreferredColorScheme.ToString();
     internal bool MatchesScene(Uri candidate) => StringComparer.Ordinal.Equals(scene.AbsoluteUri, candidate.AbsoluteUri);
     public CaptureExclusion Exclusion { get; private set; } = new(false, false, "WINDOW_NOT_READY");
 

@@ -12,6 +12,7 @@ internal static class WorkspaceSelfTest
         var identifier = "00000000-0000-4000-8000-000000000001";
         var scene = new Uri(origin, "#/helper/remote?courseId=" + identifier + "&sessionId=" + identifier + "&controlToken=" + identifier + "." + new string('a', 64));
         var checks = new List<string>(); var success = false; string? error = null; CaptureExclusion? exclusion = null;
+        var themeDiagnostics = new Dictionary<string, JsonElement>();
         var gate = new object(); var stage = "starting"; var written = false;
         var progressPath = Path.ChangeExtension(path, ".progress.json");
         void Stage(string next)
@@ -30,6 +31,7 @@ internal static class WorkspaceSelfTest
                 if (written) return; written = true;
                 using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
                 JsonSerializer.Serialize(output, new { mode = "WORKSPACE_SELF_TEST", version = ReleaseInfo.Version, success = passed, checks = checks.ToArray(), error = failure, stage,
+                    themeDiagnostics,
                     captureExclusion = exclusion, captureContentVerified = false, captureContentVerification = "REQUIRES_USER_PICKER_AND_INTERACTIVE_CAPTURE",
                     displayMutation = false, startupChanged = false, pairingChanged = false, externalContentRequested = false }, Wire.Json);
             }
@@ -42,6 +44,27 @@ internal static class WorkspaceSelfTest
         ApplicationConfiguration.Initialize();
         ProjectionForm? fixtureProjection = null; var stopRequests = 0;
         using var remote = new RemoteForm(origin, scene, stopProjection: () => { stopRequests++; ProjectionForm.CloseOwned(ref fixtureProjection); }, theme: "dark");
+        async Task<JsonElement> ThemeSnapshot(string name)
+        {
+            var script = await remote.RunFixtureScript("""
+                ({initialBridge:window.fixtureInitialTheme ?? null,
+                  initialStored:window.fixtureStoredTheme ?? null,
+                  currentBridge:window.lectureProjectorNative?.theme ?? null,
+                  stored:localStorage.getItem('la_theme_preference'),
+                  mediaDark:matchMedia('(prefers-color-scheme: dark)').matches,
+                  mediaLight:matchMedia('(prefers-color-scheme: light)').matches,
+                  forcedColors:matchMedia('(forced-colors: active)').matches,
+                  rootTheme:document.documentElement.dataset.appTheme ?? null,
+                  rootDark:document.documentElement.classList.contains('dark'),
+                  rootColorScheme:document.documentElement.style.colorScheme,
+                  themeEvents:window.fixtureThemeEvents ?? [],
+                  readyState:document.readyState})
+                """);
+            using var document = JsonDocument.Parse(script);
+            var snapshot = JsonSerializer.SerializeToElement(new { profileColorScheme = remote.ProfileColorScheme, document = document.RootElement }, Wire.Json);
+            lock (gate) themeDiagnostics[name] = snapshot;
+            return snapshot.GetProperty("document");
+        }
         remote.Shown += async (_, _) => {
             try
             {
@@ -104,9 +127,24 @@ internal static class WorkspaceSelfTest
                 await remote.RunFixtureScript("window.lectureProjectorNative.capabilities()");
                 await WaitForFixture(remote, "window.fixtureCapabilityEvents.includes('WINDOWS')");
                 Stage("checking inherited theme before application bootstrap");
-                Assert(await remote.RunFixtureScript("window.fixtureInitialTheme === 'dark' && window.fixtureStoredTheme === 'dark' && window.lectureProjectorNative.theme === 'dark' && matchMedia('(prefers-color-scheme: dark)').matches") == "true", "site theme available before bootstrap");
+                var initialTheme = await ThemeSnapshot("initial");
+                Assert(initialTheme.GetProperty("initialBridge").GetString() == "dark", "native theme available before bootstrap");
+                Assert(initialTheme.GetProperty("initialStored").GetString() == "dark", "stored theme available before bootstrap");
+                Assert(initialTheme.GetProperty("currentBridge").GetString() == "dark", "native theme preserved after navigation");
+                Assert(remote.ProfileColorScheme == "Dark", "native profile received dark preference");
+                Stage("waiting for initial browser dark preference");
+                await WaitForFixture(remote, "matchMedia('(prefers-color-scheme: dark)').matches", "initial browser dark preference delivery");
+                await ThemeSnapshot("initialBrowserReady");
+                Passed("site theme available before bootstrap");
+                Stage("updating theme without navigation");
                 remote.SetTheme("light");
-                await WaitForFixture(remote, "window.lectureProjectorNative.theme === 'light' && localStorage.getItem('la_theme_preference') === 'light' && window.fixtureThemeEvents.includes('light') && !matchMedia('(prefers-color-scheme: dark)').matches");
+                await ThemeSnapshot("lightRequested");
+                Assert(remote.ProfileColorScheme == "Light", "native profile received light preference");
+                await WaitForFixture(remote, "window.lectureProjectorNative.theme === 'light' && localStorage.getItem('la_theme_preference') === 'light' && window.fixtureThemeEvents.includes('light')", "live site theme event delivery");
+                await ThemeSnapshot("lightEventReady");
+                Stage("waiting for browser light preference");
+                await WaitForFixture(remote, "!matchMedia('(prefers-color-scheme: dark)').matches && matchMedia('(prefers-color-scheme: light)').matches", "live browser light preference delivery");
+                await ThemeSnapshot("lightBrowserReady");
                 Assert(await remote.RunFixtureScript("window.fixtureInitialTheme === 'dark' && window.fixtureStoredTheme === 'dark'") == "true", "theme change does not reload the document");
                 var invalidThemeRejected = false; try { remote.SetTheme("invalid"); } catch (InvalidDataException) { invalidThemeRejected = true; }
                 Assert(invalidThemeRejected && await remote.RunFixtureScript("window.lectureProjectorNative.theme === 'light'") == "true", "invalid theme preserves current remote");
@@ -142,7 +180,11 @@ internal static class WorkspaceSelfTest
                 Passed("explicit native stop closes the public window");
                 success = true;
             }
-            catch (Exception ex) { lock (gate) error = (ex is InvalidDataException ? ex.Message : ex.GetType().Name) + " at " + stage; }
+            catch (Exception ex)
+            {
+                lock (gate) error = (ex is InvalidDataException ? ex.Message : ex.GetType().Name) + " at " + stage;
+                try { await ThemeSnapshot("failure"); } catch { }
+            }
             finally { Stage("closing fixture window"); ProjectionForm.CloseOwned(ref fixtureProjection); remote.Close(); }
         };
         Application.Run(remote);
@@ -151,14 +193,14 @@ internal static class WorkspaceSelfTest
         return success ? 0 : 1;
     }
     private static void Assert(bool valid, string name) { if (!valid) throw new InvalidDataException("CHECK_FAILED: " + name); }
-    private static async Task WaitForFixture(RemoteForm remote, string expression)
+    private static async Task WaitForFixture(RemoteForm remote, string expression, string name = "remote event delivery")
     {
         for (var attempt = 0; attempt < 30; attempt++)
         {
             if (await remote.RunFixtureScript(expression) == "true") return;
             await Task.Delay(100);
         }
-        throw new InvalidDataException("CHECK_FAILED: remote event delivery");
+        throw new InvalidDataException("CHECK_FAILED: " + name);
     }
     private sealed class NoUiDispatchContext : SynchronizationContext
     {
