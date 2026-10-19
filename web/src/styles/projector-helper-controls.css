@@ -136,6 +136,33 @@
   max-width: 60ch;
   line-height: 1.5;
 }
+.projector-manual-pairing {
+  width: 100%;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.projector-manual-pairing summary {
+  cursor: pointer;
+  padding-block: 8px;
+}
+.projector-manual-pairing p {
+  margin-block: 8px 16px;
+}
+.projector-manual-pairing label {
+  display: grid;
+  gap: 6px;
+  margin-block: 12px;
+}
+.projector-manual-pairing input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  background: var(--input-background);
+  color: var(--foreground);
+}
 .projector-helper--wizard {
   margin-block-start: 0;
   padding: 0;

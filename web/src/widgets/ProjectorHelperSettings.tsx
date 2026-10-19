@@ -773,7 +773,7 @@ export function ProjectorHelperSettings({
               onClick={() => pairing.mutate()}
             >
               <Link2 size={18} aria-hidden="true" />
-              {pairing.isPending ? "Получаем код…" : "Подключить компонент"}
+              {pairing.isPending ? "Готовим подключение…" : "Подключить компьютер"}
             </Button>
           )}
           {pair && showInstallation && (
@@ -791,19 +791,47 @@ export function ProjectorHelperSettings({
                 </>
               ) : (
                 <>
-                  <p>Введите код в компоненте на этом компьютере:</p>
-                  <strong>{pair.pairingCode}</strong>
+                  <p>Откройте установленный помощник и подтвердите подключение к этому сайту.</p>
                   <Button asChild>
                     <a
                       href={`lecturer-projector://pair?${new URLSearchParams({ origin: window.location.origin, code: pair.pairingCode })}`}
                     >
-                      Открыть установленный помощник
+                      Открыть помощник
                     </a>
                   </Button>
                   <small>
-                    Подтвердите подключение этого сайта в окне помощника. Если он ещё не установлен,
-                    сначала установите пакет выше.
+                    Код передастся автоматически. Если помощник ещё не установлен, сначала
+                    установите пакет выше.
                   </small>
+                  <details className="projector-manual-pairing">
+                    <summary>Помощник не открылся? Ввести код вручную</summary>
+                    <p>
+                      Откройте Lecturer Projector из «Приложений» на Mac или меню «Пуск» на Windows.
+                      В окне подключения укажите:
+                    </p>
+                    <label>
+                      <span>Адрес сайта для помощника</span>
+                      <input
+                        value={window.location.origin}
+                        readOnly
+                        spellCheck={false}
+                        onFocus={(event) => event.currentTarget.select()}
+                      />
+                    </label>
+                    <label>
+                      <span>Код подключения помощника</span>
+                      <input
+                        value={pair.pairingCode}
+                        readOnly
+                        spellCheck={false}
+                        onFocus={(event) => event.currentTarget.select()}
+                      />
+                    </label>
+                    <small>
+                      Это одноразовый код из 12 символов для этого компьютера. Код занятия со слайда
+                      здесь не используется.
+                    </small>
+                  </details>
                   <p>
                     Действует до{" "}
                     {new Date(pair.expiresAt).toLocaleTimeString("ru-RU", {

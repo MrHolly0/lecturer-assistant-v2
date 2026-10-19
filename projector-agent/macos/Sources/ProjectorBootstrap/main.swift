@@ -3,8 +3,10 @@ import Foundation
 import ServiceManagement
 import Security
 import Darwin
+import CoreServices
 
 enum BootstrapFailure: Error { case code(String) }
+struct PairingRequest: Sendable { let origin: String; let code: String }
 
 @MainActor enum Installation {
     static let name = "Lecturer Projector.app"
@@ -15,6 +17,69 @@ enum BootstrapFailure: Error { case code(String) }
     static var root: URL { data.appendingPathComponent("install", isDirectory: true) }
     static func shouldActivateSeed(installedVersion: String?, seedVersion: String) -> Bool {
         installedVersion == nil || installedVersion!.compare(seedVersion, options: .numeric) == .orderedAscending
+    }
+    static func codeIdentity(_ bundle: URL) throws -> Data {
+        try requirePlainDirectory(bundle)
+        #if arch(arm64)
+        let architecture = CPU_TYPE_ARM64
+        #else
+        let architecture = CPU_TYPE_X86_64
+        #endif
+        var code: SecStaticCode?
+        let attributes = [kSecCodeAttributeArchitecture as String: NSNumber(value: architecture)] as CFDictionary
+        guard SecStaticCodeCreateWithPathAndAttributes(bundle as CFURL, [], attributes, &code) == errSecSuccess, let code,
+              SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode), nil) == errSecSuccess else { throw BootstrapFailure.code("APPLICATION_SIGNATURE_REJECTED") }
+        var information: CFDictionary?
+        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
+              let hash = (information as? [String: Any])?[kSecCodeInfoUnique as String] as? Data, !hash.isEmpty else { throw BootstrapFailure.code("APPLICATION_IDENTITY_UNAVAILABLE") }
+        return hash
+    }
+    static func installedMatch(runningBundle: URL, candidates: [URL]? = nil, expectedIdentifier: String = identifier) throws -> URL? {
+        let runningIdentity = try codeIdentity(runningBundle)
+        let runningMetadata = try readMetadata(runningBundle.appendingPathComponent("Contents/Resources/bootstrap.json"))
+        var matches: [URL] = []
+        for candidate in candidates ?? [userApplication, URL(fileURLWithPath: "/Applications/" + name)] {
+            guard files.fileExists(atPath: candidate.path) else { continue }
+            try checkParents(candidate)
+            guard Bundle(url: candidate)?.bundleIdentifier == expectedIdentifier,
+                  Bundle(url: candidate)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == runningMetadata["version"] as? String,
+                  let metadata = try? readMetadata(candidate.appendingPathComponent("Contents/Resources/bootstrap.json")),
+                  metadata["packageSha256"] as? String == runningMetadata["packageSha256"] as? String,
+                  let candidateIdentity = try? codeIdentity(candidate), candidateIdentity == runningIdentity else { continue }
+            matches.append(candidate.standardizedFileURL)
+        }
+        guard matches.count <= 1 else { throw BootstrapFailure.code("MULTIPLE_MATCHING_INSTALLATIONS") }
+        return matches.first
+    }
+    static func requestVisibleOpen() throws {
+        try checkParents(data)
+        try files.createDirectory(at: data, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let file = data.appendingPathComponent("pending-open.json")
+        if files.fileExists(atPath: file.path), (try file.resourceValues(forKeys: [.isSymbolicLinkKey])).isSymbolicLink == true { throw BootstrapFailure.code("UNSAFE_OPEN_REQUEST") }
+        try JSONSerialization.data(withJSONObject: ["action": "show", "requestId": UUID().uuidString]).write(to: file, options: [.atomic])
+        try files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    }
+    static func pairingRequest(_ urls: [URL]) -> PairingRequest? {
+        guard urls.count == 1, let url = urls.first, url.absoluteString.count <= 2048, url.scheme == "lecturer-projector", url.host == "pair", url.port == nil,
+              url.path.isEmpty || url.path == "/", url.user == nil, url.password == nil, url.fragment == nil,
+              let parts = URLComponents(url: url, resolvingAgainstBaseURL: false), let items = parts.queryItems,
+              items.count == 2, Set(items.map(\.name)) == ["origin", "code"],
+              let origin = items.first(where: { $0.name == "origin" })?.value,
+              let site = URLComponents(string: origin), site.scheme == "https", site.host != nil,
+              site.user == nil, site.password == nil, (site.path.isEmpty || site.path == "/"), site.query == nil, site.fragment == nil,
+              let code = items.first(where: { $0.name == "code" })?.value, code.count == 12,
+              code.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) }) else { return nil }
+        return PairingRequest(origin: origin, code: code)
+    }
+    static func writePairingRequest(_ request: PairingRequest, directory: URL? = nil) throws {
+        let destination = directory ?? data
+        try checkParents(destination)
+        try files.createDirectory(at: destination, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let file = destination.appendingPathComponent("pending-pair.json")
+        if files.fileExists(atPath: file.path), (try file.resourceValues(forKeys: [.isSymbolicLinkKey])).isSymbolicLink == true { throw BootstrapFailure.code("UNSAFE_PAIR_REQUEST") }
+        try JSONSerialization.data(withJSONObject: ["origin": request.origin, "code": request.code]).write(to: file, options: [.atomic])
+        try files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        try? files.removeItem(at: destination.appendingPathComponent("pending-open.json"))
     }
     static func isStable(_ bundle: URL, home: URL = files.homeDirectoryForCurrentUser) -> Bool {
         let path = bundle.standardizedFileURL.path
@@ -118,34 +183,40 @@ enum BootstrapFailure: Error { case code(String) }
 @MainActor final class BootstrapDelegate: NSObject, NSApplicationDelegate {
     private var launcher: Process?
     private var startupLock: Int32 = -1
+    private var quietLaunch = false
+    private var lastPairRequest = Date.distantPast
+    func applicationWillFinishLaunching(_ notification: Notification) { detectQuietLaunch() }
+    private func detectQuietLaunch() {
+        let launch = NSAppleEventManager.shared().currentAppleEvent?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
+        quietLaunch = quietLaunch || launch == keyAELaunchedAsLogInItem || launch == keyAELaunchedAsServiceItem
+    }
+    private func requestVisibleOpenSoon() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self, Date().timeIntervalSince(self.lastPairRequest) > 2 else { return }
+            do { try Installation.requestVisibleOpen() } catch { Self.showError("VISIBLE_OPEN_FAILED") }
+        }
+    }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        requestVisibleOpenSoon(); return true
+    }
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard urls.count == 1, let url = urls.first, url.absoluteString.count <= 2048, url.scheme == "lecturer-projector", url.host == "pair", url.port == nil,
-              url.path.isEmpty || url.path == "/", url.user == nil, url.password == nil, url.fragment == nil,
-              let parts = URLComponents(url: url, resolvingAgainstBaseURL: false), let items = parts.queryItems,
-              items.count == 2, Set(items.map(\.name)) == ["origin", "code"],
-              let origin = items.first(where: { $0.name == "origin" })?.value,
-              let site = URLComponents(string: origin), site.scheme == "https", site.host != nil,
-              site.user == nil, site.password == nil, (site.path.isEmpty || site.path == "/"), site.query == nil, site.fragment == nil,
-              let code = items.first(where: { $0.name == "code" })?.value, code.count == 12,
-              code.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) }) else { return }
-        do {
-            try Installation.checkParents(Installation.data)
-            try Installation.files.createDirectory(at: Installation.data, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let file = Installation.data.appendingPathComponent("pending-pair.json")
-            if Installation.files.fileExists(atPath: file.path) { guard (try file.resourceValues(forKeys: [.isSymbolicLinkKey])).isSymbolicLink != true else { return } }
-            try JSONSerialization.data(withJSONObject: ["origin": origin, "code": code]).write(to: file, options: [.atomic])
-            try Installation.files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
-        } catch { Self.showError("PAIR_LINK_FAILED") }
+        guard let request = Installation.pairingRequest(urls) else { return }
+        lastPairRequest = Date()
+        do { try Installation.writePairingRequest(request) } catch { Self.showError("PAIR_LINK_FAILED") }
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
-            let bundle = Bundle.main.bundleURL
+            detectQuietLaunch()
+            let running = Bundle.main.bundleURL
             guard Bundle.main.bundleIdentifier == Installation.identifier else { throw BootstrapFailure.code("INVALID_APPLICATION_BUNDLE") }
-            if !Installation.isStable(bundle) { try install(from: bundle); return }
+            guard let bundle = try Installation.installedMatch(runningBundle: running) else { try install(from: running); return }
             try Installation.checkParents(Installation.data)
             try Installation.files.createDirectory(at: Installation.data, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             startupLock = open(Installation.data.appendingPathComponent("bootstrap.lock").path, O_CREAT | O_RDWR, 0o600)
-            guard startupLock >= 0, flock(startupLock, LOCK_EX | LOCK_NB) == 0 else { NSApp.terminate(nil); return }
+            guard startupLock >= 0, flock(startupLock, LOCK_EX | LOCK_NB) == 0 else {
+                if !quietLaunch { try Installation.requestVisibleOpen() }
+                NSApp.terminate(nil); return
+            }
             let resources = bundle.appendingPathComponent("Contents/Resources")
             let seed = try Installation.readMetadata(resources.appendingPathComponent("bootstrap.json"))
             let executable = bundle.appendingPathComponent("Contents/MacOS/launcher/Projector.Launcher")
@@ -172,6 +243,7 @@ enum BootstrapFailure: Error { case code(String) }
                 }
             }
             try process.run(); launcher = process
+            if !quietLaunch { requestVisibleOpenSoon() }
         } catch BootstrapFailure.code(let code) { Self.showError(code); NSApp.terminate(nil) }
         catch { Self.showError("INSTALLATION_FAILED"); NSApp.terminate(nil) }
     }
@@ -182,8 +254,9 @@ enum BootstrapFailure: Error { case code(String) }
         let candidateVersion = Bundle(url: bundle)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
         let upgrade = exists && installedVersion.compare(candidateVersion, options: .numeric) == .orderedAscending
         let alert = NSAlert(); alert.messageText = upgrade ? "Обновить помощник до " + candidateVersion + "?" : (exists ? "Помощник уже установлен" : "Установить помощник проектора?")
-        alert.informativeText = upgrade ? "Сначала завершите показ и выйдите из LA в строке меню. Подключение учреждения и ваши настройки сохранятся; версия не заменяется во время занятия." : (exists ? "Откроется установленное приложение. Более новая версия не будет заменена старой." : "Приложение будет скопировано в «Приложения» вашей учётной записи. Сайт и MAX продолжат работать без него. Автозапуск можно включить отдельно в меню помощника.")
+        alert.informativeText = upgrade ? "Помощник будет обновлён. Если сейчас идёт показ, сначала завершите его и закройте помощник. Подключение учреждения и настройки сохранятся." : (exists ? "Откроется установленный помощник и окно подключения. Возьмите 12-символьный код помощника в «Настройке проектора» на сайте — не код занятия со слайда." : "Приложение будет скопировано в «Приложения» вашей учётной записи. Затем откроется форма адреса сайта и 12-символьного кода помощника. Автозапуск можно включить отдельно в меню LA.")
         alert.addButton(withTitle: upgrade ? "Обновить" : (exists ? "Открыть установленный" : "Установить в мои Приложения")); alert.addButton(withTitle: "Отмена")
+        NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { NSApp.terminate(nil); return }
         if exists {
             try Installation.requirePlainDirectory(target)
@@ -208,31 +281,37 @@ enum BootstrapFailure: Error { case code(String) }
                 try? Installation.files.removeItem(at: backup)
             } else { try Installation.files.moveItem(at: temporary, to: target) }
         }
-        let configuration = NSWorkspace.OpenConfiguration(); configuration.activates = false
-        configuration.allowsRunningApplicationSubstitution = false
-        NSWorkspace.shared.openApplication(at: target, configuration: configuration) { _, error in
-            let failed = error != nil
-            Task { @MainActor in if failed { Self.showError("START_INSTALLED_APPLICATION_FAILED") }; NSApp.terminate(nil) }
+        Task { @MainActor in
+            do { _ = try await WorkspaceHandoff.open(target: target) }
+            catch { Self.showError("START_INSTALLED_APPLICATION_FAILED") }
+            NSApp.terminate(nil)
         }
     }
     private static func showError(_ code: String) {
         let alert = NSAlert(); alert.messageText = "Помощник не запущен"
         let explanation: String
         switch code {
+        case "MULTIPLE_MATCHING_INSTALLATIONS": explanation = "Найдены две одинаковые установки: в ваших «Приложениях» и общих /Applications. Оставьте одну установку и откройте её снова. Помощник не выбирает копию за вас."
         case "UPDATE_RECOVERY_REQUIRED": explanation = "Предыдущее обновление не завершилось. Не удаляйте сохранённые файлы вручную: передайте код в поддержку. Браузерный мастер доступен."
         case "HELPER_RUNNING", "INSTALLATION_BUSY", "ACTIVE_SHOW", "SHOW_ACTIVE", "AGENT_RUNNING", "INSTALL_INSTANCE_ACTIVE": explanation = "Помощник уже запущен: найдите значок LA в строке меню. Перед переустановкой завершите показ и выйдите из помощника."
         case "DISPLAY_RECOVERY_REQUIRED": explanation = "Сохранена прежняя настройка экранов. Если значок LA уже есть в строке меню, выберите там «Вернуть настройку экранов…». Иначе верните режим через настройки macOS по инструкции сайта; не удаляйте журнал восстановления вручную."
         default: explanation = "Используйте браузерный мастер «Настройка проектора». Для поддержки сохраните код ошибки. Настройки экранов не изменены."
         }
-        alert.informativeText = explanation + "\n\nКод: " + code; alert.runModal()
+        alert.informativeText = explanation + "\n\nКод: " + code
+        NSApp.activate(ignoringOtherApps: true); alert.runModal()
     }
     func applicationWillTerminate(_ notification: Notification) { if startupLock >= 0 { close(startupLock) } }
 }
 
 if CommandLine.arguments.contains("--self-test") {
     try Installation.selfTest()
+} else if let index = CommandLine.arguments.firstIndex(of: "--handoff-self-test"), CommandLine.arguments.count > index + 1 {
+    HandoffSelfTest.run(report: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if let index = CommandLine.arguments.firstIndex(of: "--handoff-fixture-child"), CommandLine.arguments.count > index + 1 {
+    HandoffFixtureChild.run(report: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if CommandLine.arguments.contains("--login-status") || CommandLine.arguments.contains("--enable-login") || CommandLine.arguments.contains("--disable-login") {
-    guard Installation.isStable(Bundle.main.bundleURL), Bundle.main.bundleIdentifier == Installation.identifier else { FileHandle.standardError.write(Data("STABLE_INSTALL_REQUIRED\n".utf8)); exit(1) }
+    guard Bundle.main.bundleIdentifier == Installation.identifier,
+          (try? Installation.installedMatch(runningBundle: Bundle.main.bundleURL)) != nil else { FileHandle.standardError.write(Data("STABLE_INSTALL_REQUIRED\n".utf8)); exit(1) }
     do {
         if CommandLine.arguments.contains("--enable-login") { try SMAppService.mainApp.register() }
         if CommandLine.arguments.contains("--disable-login"), SMAppService.mainApp.status != .notRegistered, SMAppService.mainApp.status != .notFound { try SMAppService.mainApp.unregister() }

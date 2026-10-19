@@ -27,6 +27,12 @@ import Darwin
     private var updateStopTimer: Timer?
     private var instanceLock: Int32 = -1
     private var startupStatus = "UNAVAILABLE"
+    private var connectionForm: ConnectionForm?
+    private var localDialogOpen = false
+    private var lastRemoteAction: [String: Any]?
+    private var userInitiatedPairing = false
+    private var pairingDraft: String?
+    private var pairingError: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("LecturerProjector", isDirectory: true)
@@ -59,7 +65,14 @@ import Darwin
         updateStopTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.consumePairingRequest()
+                let pairingFile = self.directory.appendingPathComponent("pending-pair.json")
+                if self.connectionForm != nil && FileManager.default.fileExists(atPath: pairingFile.path) {
+                    if NSApp.modalWindow === self.connectionForm?.alert.window { NSApp.abortModal() }
+                }
+                if !self.localDialogOpen {
+                    if self.consumePairingRequest() { self.discardOpenRequest() }
+                    else { self.consumeOpenRequest() }
+                } else { self.discardOpenRequest() }
                 if let updater = self.pendingUpdater {
                     if self.preflightReady() { self.pendingUpdater = nil; self.stop(); NSApp.terminate(nil); return }
                     if !updater.isRunning || ProcessInfo.processInfo.systemUptime - self.preflightStartedAt > 600 {
@@ -87,6 +100,7 @@ import Darwin
         let menu = NSMenu()
         let label = NSMenuItem(title: status, action: nil, keyEquivalent: ""); label.isEnabled = false; menu.addItem(label)
         add(menu, "Подключить к учреждению…", #selector(pair))
+        add(menu, "Открыть помощник…", #selector(revealFromUser))
         add(menu, "Подготовить отдельный экран…", #selector(prepare))
         add(menu, "Остановить показ", #selector(stop))
         add(menu, "Вернуть настройку экранов…", #selector(restore))
@@ -115,17 +129,42 @@ import Darwin
         return message["transactionId"] as? String == id && message["nonce"] as? String == nonce
     }
     @objc private func pair() {
-        projection.neutralize()
-        let alert = NSAlert(); alert.messageText = "Подключить проектор"
-        alert.informativeText = "Откройте «Настройка проектора» на сайте учреждения. Введите адрес сайта и одноразовый код. Пароль аккаунта не нужен."
-        let stack = NSStackView(); stack.orientation = .vertical; stack.spacing = 8
-        let address = NSTextField(string: origin?.absoluteString ?? ""); address.placeholderString = "https://адрес-учреждения/"
-        let code = NSTextField(string: ""); code.placeholderString = "Одноразовый код устройства"
-        for field in [address, code] { field.frame.size = NSSize(width: 380, height: 28); stack.addArrangedSubview(field) }
-        stack.frame = NSRect(x: 0, y: 0, width: 380, height: 70); alert.accessoryView = stack
-        alert.addButton(withTitle: "Подключить"); alert.addButton(withTitle: "Отмена")
-        guard alert.runModal() == .alertFirstButtonReturn, let url = Self.validOrigin(address.stringValue), !code.stringValue.isEmpty else { return }
-        origin = url; start(origin: url, token: nil, pairingCode: code.stringValue)
+        guard !localDialogOpen else { connectionForm?.alert.window.makeKeyAndOrderFront(nil); return }
+        localDialogOpen = true
+        let form = ConnectionForm(origin: origin?.absoluteString ?? ""); connectionForm = form
+        if let pairingDraft { form.code.stringValue = pairingDraft }
+        if let pairingError { form.validationError(pairingError) }
+        defer { connectionForm = nil; localDialogOpen = false; form.alert.window.close() }
+        NSApp.activate(ignoringOtherApps: true)
+        while form.alert.runModal() == .alertFirstButtonReturn {
+            guard let url = Self.validOrigin(form.address.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) else { form.validationError("Введите адрес сайта учреждения, начинающийся с https://."); continue }
+            guard ConnectionForm.validCode(form.code.stringValue) else { form.validationError("Нужен код подключения помощника из 12 букв и цифр. Код занятия со слайда не подходит."); continue }
+            origin = url; start(origin: url, token: nil, pairingCode: ConnectionForm.normalizedCode(form.code.stringValue), userInitiated: true); return
+        }
+    }
+    @objc private func revealFromUser() {
+        guard !localDialogOpen else { connectionForm?.alert.window.makeKeyAndOrderFront(nil); return }
+        if let origin, let action = lastRemoteAction, (try? showRemote(action, origin: origin)) != nil { return }
+        if origin == nil || process?.isRunning != true { pair(); return }
+        localDialogOpen = true
+        let alert = NSAlert(); alert.messageText = "Помощник проектора готов"
+        alert.informativeText = status + "\n\nСайт: " + (origin?.absoluteString ?? "") + "\n\nВернитесь на сайт → «Открыть проектор». Выберите этот компьютер, проверьте номер экрана и подтвердите код на проекторе. Во время занятия здесь откроется отдельный пульт."
+        alert.addButton(withTitle: "Готово"); alert.addButton(withTitle: "Подключить к другому сайту…")
+        NSApp.activate(ignoringOtherApps: true)
+        let result = alert.runModal(); localDialogOpen = false
+        if result == .alertSecondButtonReturn { pair() }
+    }
+    private func discardOpenRequest() { try? FileManager.default.removeItem(at: directory.appendingPathComponent("pending-open.json")) }
+    private func consumeOpenRequest() {
+        let file = directory.appendingPathComponent("pending-open.json")
+        guard FileManager.default.fileExists(atPath: file.path) else { return }
+        defer { discardOpenRequest() }
+        guard let attributes = try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey]),
+              attributes.isRegularFile == true, attributes.isSymbolicLink != true, (attributes.fileSize ?? 99999) <= 512,
+              abs((attributes.contentModificationDate ?? .distantPast).timeIntervalSinceNow) < 60,
+              let bytes = try? Data(contentsOf: file), let value = try? JSONSerialization.jsonObject(with: bytes) as? [String: String],
+              value["action"] == "show", UUID(uuidString: value["requestId"] ?? "") != nil else { return }
+        discardOpenRequest(); revealFromUser()
     }
     private static func validOrigin(_ text: String) -> URL? {
         guard let components = URLComponents(string: text), components.scheme == "https", components.host != nil,
@@ -133,28 +172,35 @@ import Darwin
               components.query == nil, components.fragment == nil else { return nil }
         return URL(string: components.string!.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/")
     }
-    private func consumePairingRequest() {
+    private func consumePairingRequest() -> Bool {
         let file = directory.appendingPathComponent("pending-pair.json")
-        guard FileManager.default.fileExists(atPath: file.path) else { return }
+        guard FileManager.default.fileExists(atPath: file.path) else { return false }
         defer { try? FileManager.default.removeItem(at: file) }
         guard let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey]),
               values.isRegularFile == true, values.isSymbolicLink != true, (values.fileSize ?? 99999) <= 4096,
               abs((values.contentModificationDate ?? .distantPast).timeIntervalSinceNow) < 60,
               let data = try? Data(contentsOf: file), let request = try? JSONSerialization.jsonObject(with: data) as? [String: String],
               let rawOrigin = request["origin"], let origin = Self.validOrigin(rawOrigin), let code = request["code"],
-              code.count == 12, code.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) }) else { return }
+              code.count == 12, code.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) }) else { return false }
         try? FileManager.default.removeItem(at: file)
+        discardOpenRequest(); localDialogOpen = true
+        defer { localDialogOpen = false }
         let alert = NSAlert(); alert.messageText = "Подключить помощник к сайту?"
         alert.informativeText = "Адрес учреждения: " + origin.absoluteString + "\n\nПодтвердите подключение, если только что нажали кнопку на этом сайте. Сайт сможет управлять только разрешённым показом; пароль аккаунта не передаётся."
         alert.addButton(withTitle: "Подключить"); alert.addButton(withTitle: "Отмена")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        self.origin = origin; start(origin: origin, token: nil, pairingCode: code)
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return true }
+        self.origin = origin; start(origin: origin, token: nil, pairingCode: code, userInitiated: true)
+        return true
     }
-    private func start(origin: URL, token: String?, pairingCode: String?) {
+    private func start(origin: URL, token: String?, pairingCode: String?, userInitiated: Bool = false) {
+        userInitiatedPairing = userInitiated && pairingCode != nil
+        if userInitiatedPairing { pairingDraft = pairingCode; pairingError = nil }
+        lastRemoteAction = nil
         generation = UUID(); let currentGeneration = generation
         process?.terminate(); projection.neutralize(); remote.close(); Task { await capture.stop() }; pending.removeAll()
         let coordinator = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/coordinator/Projector.Agent")
-        guard FileManager.default.isExecutableFile(atPath: coordinator.path) else { status = "Компонент сборки отсутствует — используйте сайт"; rebuildMenu(); return }
+        guard FileManager.default.isExecutableFile(atPath: coordinator.path) else { status = "Компонент сборки отсутствует — используйте сайт"; rebuildMenu(); pairingFailedIfNeeded(); return }
         let process = Process(); let input = Pipe(); let output = Pipe()
         process.executableURL = coordinator; process.arguments = ["--native-stdio"]
         process.standardInput = input; process.standardOutput = output; process.standardError = FileHandle.nullDevice
@@ -162,14 +208,28 @@ import Darwin
             let data = handle.availableData
             Task { @MainActor in guard self?.generation == currentGeneration else { return }; self?.receive(data) }
         }
-        process.terminationHandler = { [weak self] _ in Task { @MainActor in guard self?.generation == currentGeneration else { return }; self?.projection.neutralize(); self?.remote.close(); await self?.capture.stop(); self?.status = "Связь остановлена — используйте сайт"; self?.rebuildMenu() } }
+        process.terminationHandler = { [weak self] _ in Task { @MainActor in guard self?.generation == currentGeneration else { return }; self?.projection.neutralize(); self?.remote.close(); await self?.capture.stop(); self?.status = "Связь остановлена — используйте сайт"; self?.rebuildMenu(); self?.pairingFailedIfNeeded() } }
         do {
             try process.run(); self.process = process; self.input = input
             var bootstrap: [String: Any] = ["origin": origin.absoluteString, "name": Host.current().localizedName ?? "Mac", "platform": platform()]
             if let token { bootstrap["deviceToken"] = token }
             if let pairingCode { bootstrap["pairingCode"] = pairingCode }
             send(bootstrap); status = "Подключение…"; rebuildMenu()
-        } catch { status = "Не удалось запустить компонент"; rebuildMenu() }
+        } catch { status = "Не удалось запустить компонент"; rebuildMenu(); pairingFailedIfNeeded() }
+    }
+    private func pairingFailedIfNeeded() {
+        guard userInitiatedPairing else { return }; userInitiatedPairing = false
+        pairingError = "Не удалось подключить помощник. Код мог истечь или уже использоваться. Получите новый 12-символьный код в «Настройке проектора» и проверьте адрес сайта и интернет."
+        DispatchQueue.main.async { [weak self] in self?.pair() }
+    }
+    private func pairingSucceededIfNeeded() {
+        guard userInitiatedPairing else { return }; userInitiatedPairing = false; pairingDraft = nil; pairingError = nil
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.localDialogOpen else { return }; self.localDialogOpen = true
+            let alert = NSAlert(); alert.messageText = "Помощник подключён"
+            alert.informativeText = "Вернитесь на сайт → «Открыть проектор». Выберите этот компьютер, проверьте номер экрана и подтвердите код на проекторе. Помощник останется доступен в строке меню LA."
+            alert.addButton(withTitle: "Готово"); NSApp.activate(ignoringOtherApps: true); alert.runModal(); self.localDialogOpen = false
+        }
     }
     private func platform() -> String {
         #if arch(arm64)
@@ -192,7 +252,8 @@ import Darwin
                     try Keychain.store(token, account: origin.absoluteString)
                     try origin.absoluteString.write(to: directory.appendingPathComponent("origin.txt"), atomically: true, encoding: .utf8)
                     status = "Готов — управление на сайте"; rebuildMenu()
-                } catch { process?.terminate(); status = "Не удалось сохранить устройство в Связке ключей"; rebuildMenu() }
+                    pairingSucceededIfNeeded()
+                } catch { process?.terminate(); status = "Не удалось сохранить устройство в Связке ключей"; rebuildMenu(); pairingFailedIfNeeded() }
                 continue
             }
             do {
@@ -213,7 +274,7 @@ import Darwin
                     try projection.show(screenID: action["targetScreenId"] as? String ?? "", url: url, origin: origin)
                     if action["remoteUrl"] != nil { try showRemote(action, origin: origin) }
                     status = "Идёт показ"
-                case "NEUTRAL_STOP": projection.neutralize(); remote.close(); identification.dismiss(); Task { await capture.stop() }; status = "Показ остановлен"
+                case "NEUTRAL_STOP": lastRemoteAction = nil; projection.neutralize(); remote.close(); identification.dismiss(); Task { await capture.stop() }; status = "Показ остановлен"
                 case "TARGET_HELP": status = "Основной экран: выберите проектор в браузерном мастере"
                 case "UPDATE_READY":
                     try beginUpdate(action)
@@ -247,6 +308,7 @@ import Darwin
               RemoteWindow.matches(remoteURL, courseID: courseID, sessionID: sessionID, token: token) else { throw HostError.code("REMOTE_SCOPE_REJECTED") }
         try remote.show(url: remoteURL, origin: origin)
         capture.bind(NativeCaptureScope(origin: origin, courseID: courseID, sessionID: sessionID, token: token))
+        lastRemoteAction = action
     }
     private func beginUpdate(_ action: [String: Any]) throws {
         guard !capture.isActive else { throw HostError.code("CAPTURE_ACTIVE_UPDATE_DEFERRED") }
@@ -305,7 +367,7 @@ import Darwin
         catch { status = "Подготовка не удалась — используйте инструкцию на сайте"; rebuildMenu(); throw error }
         rebuildMenu()
     }
-    @objc private func stop() { pendingLocalStop = true; projection.neutralize(); remote.close(); identification.dismiss(); Task { await capture.stop() }; status = "Показ остановлен локально"; rebuildMenu() }
+    @objc private func stop() { lastRemoteAction = nil; pendingLocalStop = true; projection.neutralize(); remote.close(); identification.dismiss(); Task { await capture.stop() }; status = "Показ остановлен локально"; rebuildMenu() }
     @objc private func restore() {
         do { try restoreFromSite() } catch { status = "Возврат не удался — используйте настройки macOS"; rebuildMenu() }
     }
@@ -408,17 +470,19 @@ import Darwin
                 throw error
             }
             unpair()
-            NSWorkspace.shared.recycle([bundle, root]) { [weak self] _, error in
-                let failed = error != nil
-                Task { @MainActor [weak self] in
-                    if failed {
-                        if let self, self.instanceLock >= 0 { _ = flock(self.instanceLock, LOCK_EX | LOCK_NB) }
-                        self?.status = "Удаление не завершено — переместите приложение в Корзину"; self?.rebuildMenu()
-                    }
-                    else { NSApp.terminate(nil) }
-                }
-            }
+            NSWorkspace.shared.recycle([bundle, root], completionHandler: Self.recycleCompletion(for: self))
         } catch { status = "Удаление остановлено — отключите автозапуск в настройках macOS"; rebuildMenu() }
+    }
+    nonisolated private static func recycleCompletion(for delegate: AppDelegate) -> @Sendable ([URL: URL], (any Error)?) -> Void {
+        { [weak delegate] _, error in
+            let failed = error != nil
+            Task { @MainActor [weak delegate] in
+                if failed {
+                    if let delegate, delegate.instanceLock >= 0 { _ = flock(delegate.instanceLock, LOCK_EX | LOCK_NB) }
+                    delegate?.status = "Удаление не завершено — переместите приложение в Корзину"; delegate?.rebuildMenu()
+                } else { NSApp.terminate(nil) }
+            }
+        }
     }
     @objc private func quit() { stop(); NSApp.terminate(nil) }
     func applicationWillTerminate(_ notification: Notification) { projection.neutralize(); remote.close(); identification.dismiss(); process?.terminate(); if instanceLock >= 0 { close(instanceLock) } }
@@ -451,6 +515,8 @@ if CommandLine.arguments.contains("--journal-self-test") {
     try CaptureSelfTest.run()
 } else if let index = CommandLine.arguments.firstIndex(of: "--remote-self-test"), CommandLine.arguments.count > index + 1 {
     RemoteSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if let index = CommandLine.arguments.firstIndex(of: "--connection-self-test"), CommandLine.arguments.count > index + 1 {
+    ConnectionSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if CommandLine.arguments.contains("--preflight") {
     let data = try JSONSerialization.data(withJSONObject: ["platform": "macOS", "mutation": false, "screens": DisplayController.screens()], options: [.sortedKeys])
     print(String(decoding: data, as: UTF8.self))
