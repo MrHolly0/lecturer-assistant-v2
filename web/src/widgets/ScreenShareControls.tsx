@@ -27,6 +27,7 @@ export function ScreenShareControls({
   onPause,
   onResume,
   onSessionChange,
+  onProjectorSetup,
   nativeWorkspace = false
 }: {
   courseId: string;
@@ -35,6 +36,7 @@ export function ScreenShareControls({
   onPause: () => void;
   onResume: () => void;
   onSessionChange?: (session: LiveSession) => void;
+  onProjectorSetup?: () => void;
   nativeWorkspace?: boolean;
 }) {
   const controller = workspaceShare();
@@ -113,7 +115,7 @@ export function ScreenShareControls({
       return;
     }
     if (nativeDevices.length > 1) {
-      window.location.hash = `/settings/projector?${new URLSearchParams({ courseId, sessionId: session.id, joinCode: session.joinCode })}`;
+      onProjectorSetup?.();
       toast.info("Выберите компьютер, на котором нужно открыть пульт.");
       return;
     }

@@ -5,6 +5,7 @@ import {
   type LiveSession
 } from "../app/api/live-api";
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getMaxWebApp } from "../app/max/bridge";
@@ -31,8 +32,8 @@ import {
 import { ConfirmActionButton } from "./ConfirmActionButton";
 import { Button } from "../shared/ui/button";
 import { SessionGroups } from "./SessionGroups";
-import { useNavigate } from "react-router-dom";
 import { ScreenShareControls } from "./ScreenShareControls";
+import { ProjectorSetup } from "./ProjectorSetup";
 
 interface PresenterTopbarProps {
   courseId: string;
@@ -72,8 +73,17 @@ export function PresenterTopbar({
   onEnd
 }: PresenterTopbarProps) {
   const maxEnvironment = useMaxBridge();
-  const navigate = useNavigate();
+  const [query, setQuery] = useSearchParams();
   const [connectionOpen, setConnectionOpen] = useState(false);
+  const [projectorOpen, setProjectorOpen] = useState(query.get("projector") === "setup");
+  const closeProjectionSetup = () => {
+    setProjectorOpen(false);
+    if (query.get("projector") === "setup") {
+      const next = new URLSearchParams(query);
+      next.delete("projector");
+      setQuery(next, { replace: true });
+    }
+  };
   const commandsBlocked = connection !== "connected" || syncing || syncError;
   const sessionActive = session.status === "LIVE" || session.status === "PAUSED";
   const showJoinCode = session.showJoinCode;
@@ -89,7 +99,7 @@ export function PresenterTopbar({
       }
       return;
     }
-    navigate(path);
+    setProjectorOpen(true);
   };
   const projectionCodeMutation = useMutation({
     mutationFn: (show: boolean) => setLiveProjectionCode(courseId, session.id, show),
@@ -231,6 +241,7 @@ export function PresenterTopbar({
               onPause={onPause}
               onResume={onResume}
               onSessionChange={onSessionChange}
+              onProjectorSetup={openProjectionSetup}
             />
             {session.status === "PAUSED" ? (
               <Button
@@ -279,6 +290,13 @@ export function PresenterTopbar({
           </>
         )}
       </div>
+      {projectorOpen && (
+        <ProjectorSetup
+          presentation="dialog"
+          lesson={{ courseId, sessionId: session.id, joinCode: session.joinCode }}
+          onClose={closeProjectionSetup}
+        />
+      )}
       <Dialog open={connectionOpen} onOpenChange={setConnectionOpen}>
         <DialogContent className="presenter-connection-dialog">
           <DialogHeader>

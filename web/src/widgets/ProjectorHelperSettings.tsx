@@ -496,15 +496,17 @@ function HelperDeviceControls({
 
 export function ProjectorHelperSettings({
   wizard = false,
+  lesson,
   onProjectionReady
 }: {
   wizard?: boolean;
+  lesson?: { courseId: string; sessionId: string };
   onProjectionReady?: () => void;
 }) {
   const { user } = useAuth();
   const [query] = useSearchParams();
-  const courseId = query.get("courseId");
-  const sessionId = query.get("sessionId");
+  const courseId = lesson?.courseId ?? query.get("courseId");
+  const sessionId = lesson?.sessionId ?? query.get("sessionId");
   const client = useQueryClient();
   const queryKey = ["projection-settings", user?.id];
   const settings = useQuery({
