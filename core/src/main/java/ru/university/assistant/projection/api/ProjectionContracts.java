@@ -11,7 +11,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-/** Wire protocol v1. No private lesson material or staff credentials are sent to a helper. */
+/** Wire protocol v1. Separate public-view and narrowly scoped lecture-control grants. */
 public final class ProjectionContracts {
     public static final String VERSION_PATTERN = "[0-9]{1,5}\\.[0-9]{1,5}\\.[0-9]{1,5}";
 
@@ -19,7 +19,10 @@ public final class ProjectionContracts {
 
     public enum Platform { WINDOWS_X64, WINDOWS_ARM64, MACOS_X64, MACOS_ARM64 }
     public enum DeviceStatus { IDLE, TESTING, SHOWING, PAUSED, ERROR }
-    public enum CommandType { TEST_TARGET, START_PUBLIC_PROJECTION, STOP_PROJECTION, CHECK_UPDATE }
+    public enum CommandType {
+        PREPARE_DISPLAYS, IDENTIFY_SCREENS, RESTORE_DISPLAYS, FOCUS_PRIVATE_REMOTE,
+        TEST_TARGET, START_PUBLIC_PROJECTION, STOP_PROJECTION, CHECK_UPDATE
+    }
     public enum CommandResult { COMPLETED, FAILED }
 
     public record Settings(boolean agentAllowed, String minimumVersion, String latestVersion,
@@ -51,7 +54,7 @@ public final class ProjectionContracts {
 
     public record Device(UUID id, String name, Platform platform, String version, String osVersion,
             DeviceStatus status, Instant lastSeenAt, boolean connected, boolean revoked,
-            boolean updateRequired, List<Screen> screens, String diagnosticCode) {}
+            boolean updateRequired, List<Screen> screens, String diagnosticCode, UUID activeSessionId) {}
 
     public record Ack(@NotNull UUID commandId, @NotNull CommandResult result,
             @Pattern(regexp = "[A-Z0-9_]{1,64}") String diagnosticCode) {}
@@ -64,7 +67,7 @@ public final class ProjectionContracts {
     public record AgentPolicy(boolean allowed, String minimumVersion) {}
 
     public record CommandPayload(String joinCode, String targetScreenId, String testCode,
-            String projectionViewToken) {}
+            String projectionViewToken, String controlToken, UUID courseId, UUID sessionId) {}
 
     public record Command(UUID id, CommandType type, Instant expiresAt, CommandPayload payload) {}
 

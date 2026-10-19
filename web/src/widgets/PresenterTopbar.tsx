@@ -1,14 +1,4 @@
-import {
-  ChevronDown,
-  Monitor,
-  Pause,
-  PenLine,
-  Play,
-  QrCode,
-  Settings2,
-  Square,
-  Wrench
-} from "lucide-react";
+import { ChevronDown, Monitor, Pause, PenLine, Play, QrCode, Square, Wrench } from "lucide-react";
 import {
   setLiveProjectionCode,
   type LiveConnectionState,
@@ -32,7 +22,6 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -44,8 +33,6 @@ import { Button } from "../shared/ui/button";
 import { SessionGroups } from "./SessionGroups";
 import { useNavigate } from "react-router-dom";
 import { ScreenShareControls } from "./ScreenShareControls";
-import { openProjectionWindow } from "../app/projection/browserProjection";
-import { screenShare } from "../app/sharing/screenShare";
 
 interface PresenterTopbarProps {
   courseId: string;
@@ -103,20 +90,6 @@ export function PresenterTopbar({
       return;
     }
     navigate(path);
-  };
-  const openPublicProjection = () => {
-    const share = screenShare.getSnapshot();
-    const attempt = share.scope?.sessionId === session.id ? share.localChannelId : null;
-    if (maxEnvironment.isMax && getMaxWebApp()?.openLink) {
-      const query = attempt ? `?shareAttempt=${encodeURIComponent(attempt)}` : "";
-      getMaxWebApp()?.openLink?.(
-        `${window.location.origin}${window.location.pathname}#/projection/${encodeURIComponent(session.joinCode)}${query}`
-      );
-      return;
-    }
-    if (!openProjectionWindow(session.joinCode, attempt ?? undefined)) {
-      toast.error("Разрешите открытие отдельного окна в браузере и повторите.");
-    }
   };
   const projectionCodeMutation = useMutation({
     mutationFn: (show: boolean) => setLiveProjectionCode(courseId, session.id, show),
@@ -204,11 +177,11 @@ export function PresenterTopbar({
               onClick={() => setConnectionOpen(true)}
             >
               <QrCode size={16} />
-              Код занятия: {session.joinCode}
+              Код: {session.joinCode}
             </Button>
-            <Button variant="outline" type="button" onClick={openPublicProjection}>
+            <Button variant="outline" type="button" onClick={openProjectionSetup}>
               <Monitor size={16} />
-              Открыть проектор
+              Проектор
             </Button>
 
             <DropdownMenu>
@@ -228,10 +201,6 @@ export function PresenterTopbar({
                   <PenLine />
                   Рисование
                 </DropdownMenuCheckboxItem>
-                <DropdownMenuItem onSelect={openProjectionSetup}>
-                  <Settings2 />
-                  Настроить проектор
-                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel>На проекторе</DropdownMenuLabel>
                 <DropdownMenuRadioGroup

@@ -631,6 +631,43 @@
 .projector-show-destinations p + p {
   margin-top: 8px;
 }
+.projector-methods {
+  display: grid;
+  gap: 12px;
+  margin-block: 24px;
+}
+.projector-methods > .ui-button {
+  justify-content: flex-start;
+  height: auto;
+  min-height: 76px;
+  padding: 16px;
+  white-space: normal;
+  text-align: left;
+}
+.projector-methods > .ui-button > span {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+}
+.projector-methods strong {
+  font-size: 16px;
+}
+.projector-methods small {
+  font-weight: 400;
+  line-height: 1.5;
+}
+.projector-identify {
+  margin-block: 20px;
+}
+.projector-identify p,
+.projector-next-steps {
+  color: var(--muted-foreground);
+  line-height: 1.6;
+  font-size: 14px;
+}
+.projector-next-steps li + li {
+  margin-top: 12px;
+}
 @media (max-width: 600px) {
   .projector-setup__summary {
     padding: 20px 16px;

@@ -24,7 +24,7 @@ import { endLiveSession, type LiveSession } from "../app/api/live-api";
 import { userErrorMessage } from "../app/api/errors";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
-import { screenShare } from "../app/sharing/screenShare";
+import { nativeBridge, nativeCommand, workspaceShare } from "../app/projection/nativeWorkspace";
 import { openProjectionWindow } from "../app/projection/browserProjection";
 import { formatSessionTime, useSessionTimers } from "../app/live/useSessionTimers";
 import { LectureRemoteTools, type LectureRemoteSection } from "./LectureRemoteTools";
@@ -73,7 +73,8 @@ export function FloatingLectureRemote({
   );
   const [publishing, setPublishing] = useState(false);
   const [section, setSection] = useState<LectureRemoteSection>("questions");
-  const share = useSyncExternalStore(screenShare.subscribe, screenShare.getSnapshot);
+  const controller = workspaceShare();
+  const share = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const sharing = share.scope?.sessionId === session.id && share.phase === "publishing";
   const { elapsed } = useSessionTimers(session);
   const panel = useRef<HTMLElement>(null);
@@ -104,6 +105,28 @@ export function FloatingLectureRemote({
     refetchInterval: 3000,
     refetchIntervalInBackground: true
   });
+  const remoteRefresh = useRef(() => {});
+  remoteRefresh.current = () => {
+    void questions.refetch();
+    void feedback.refetch();
+  };
+  useEffect(() => {
+    if (!external || external.closed) return;
+    // Use the visible window's timer. An inactive opener can have its own timers throttled.
+    const refresh = () => {
+      if (!external.closed && external.document.visibilityState !== "hidden")
+        remoteRefresh.current();
+    };
+    const timer = external.setInterval(refresh, 1000);
+    external.addEventListener("focus", refresh);
+    external.document.addEventListener("visibilitychange", refresh);
+    refresh();
+    return () => {
+      external.clearInterval(timer);
+      external.removeEventListener("focus", refresh);
+      external.document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [external]);
   const question = questionItems.find((item) => item.id === selected);
   const answer = question ? drafts[question.id] ?? question.answerText ?? "" : "";
   const update = useMutation({
@@ -136,7 +159,7 @@ export function FloatingLectureRemote({
   const finish = useMutation({
     mutationFn: () => endLiveSession(courseId, session.id),
     onSuccess: (ended) => {
-      void screenShare.stop();
+      void controller.stop();
       onSessionChange?.(ended);
       void client.invalidateQueries({ queryKey: ["active-session"] });
       onClose();
@@ -152,7 +175,7 @@ export function FloatingLectureRemote({
     return () => {
       // StrictMode immediately sets up again; only a real unmount closes the OS window.
       queueMicrotask(() => {
-        if (lifecycle.generation === generation) externalRef.current?.close();
+        if (lifecycle.generation === generation && !nativeBridge()) externalRef.current?.close();
       });
     };
   }, []);
@@ -190,6 +213,15 @@ export function FloatingLectureRemote({
       aria-label="Приватный пульт занятия"
     >
       <header className="floating-remote-header">
+        {nativeBridge() && (
+          <button
+            className="floating-remote-drag"
+            aria-label="Переместить пульт"
+            onPointerDown={() => nativeCommand("drag")}
+          >
+            ⠿
+          </button>
+        )}
         <BrandMark className="brand-mark" />
         {!collapsed && <strong className="floating-remote-title">Пульт</strong>}
         {collapsed && (
@@ -233,6 +265,10 @@ export function FloatingLectureRemote({
             <Button
               variant="link"
               onClick={() => {
+                if (nativeBridge()) {
+                  nativeCommand("focusProjection");
+                  return;
+                }
                 if (
                   !openProjectionWindow(
                     session.joinCode,
@@ -291,6 +327,7 @@ export function FloatingLectureRemote({
             container={external.document.body}
             noteDrafts={noteDrafts}
             onNoteDraftChange={changeNoteDraft}
+            newQuestionCount={counts?.open ?? 0}
           >
             <div className="floating-remote-filters" role="group" aria-label="Вопросы">
               {(
@@ -455,12 +492,13 @@ export function FloatingLectureRemote({
             {session.status === "PAUSED" ? "Продолжить" : "Пауза"}
           </Button>
           <Button
-            variant={sharing ? "destructive" : "outline"}
+            variant="outline"
+            className={sharing ? "floating-remote-stop" : undefined}
             disabled={!sharing && disabled}
-            onClick={() => (sharing ? void screenShare.stop() : onChooseSource?.())}
+            onClick={() => (sharing ? void controller.stop() : onChooseSource?.())}
           >
             <Square size={18} />
-            {sharing ? "Остановить демонстрацию" : "Показать приложение"}
+            {sharing ? "Остановить показ" : "Демонстрация"}
           </Button>
         </div>
         <ConfirmActionButton

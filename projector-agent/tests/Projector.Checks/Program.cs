@@ -232,6 +232,10 @@ Check("private remote focus preserves showing output and needs a scoped grant an
     var action = focusHost.Actions.Last(); Equal("FOCUS_PRIVATE_REMOTE", action.Type); Equal<string?>(null, action.TargetScreenId); Equal<string?>(null, action.Url);
     Equal(LectureWorkspace.Build(origin, course, session, grant).AbsoluteUri, action.RemoteUrl); Equal(grant, action.ControlToken);
     Equal<Guid?>(course, action.CourseId); Equal<Guid?>(session, action.SessionId);
+    focusHost.Failure = "WEBVIEW2_RUNTIME_MISSING"; focusHost.FailureType = "FOCUS_PRIVATE_REMOTE";
+    before = focusHost.Executions;
+    Equal("WEBVIEW2_RUNTIME_MISSING", Run("FOCUS_PRIVATE_REMOTE", payload).DiagnosticCode);
+    Equal("SHOWING", focus.Status); Equal(before + 1, focusHost.Executions); Equal("FOCUS_PRIVATE_REMOTE", focusHost.Actions.Last().Type);
 });
 Check("CHECK_UPDATE acknowledges configured envelope request without claiming installation", () => {
     var configured = new CommandExecutor(origin, host, loadUpdateTrust: () => trust);

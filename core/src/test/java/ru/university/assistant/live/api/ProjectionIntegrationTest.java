@@ -31,6 +31,7 @@ import ru.university.assistant.projection.internal.ProjectionReleaseVerifier.Ver
 /** Real persistence and HTTP/security tests: device tokens must not bypass current course/policy checks. */
 class ProjectionIntegrationTest extends LiveFlowTestBase {
     @Autowired ProjectionCatalogStore releaseCheckpoints;
+    private String deviceVersion = "0.1.0";
     private static final List<Map<String, Object>> SCREENS = List.of(Map.of(
             "id", "hdmi-1", "label", "External display", "width", 1920, "height", 1080, "isPrimary", false));
 
@@ -127,6 +128,232 @@ class ProjectionIntegrationTest extends LiveFlowTestBase {
         assertEquals(joinCode, show.get("commands").get(0).get("payload").get("joinCode").asText());
         assertFalse(show.toString().contains("password"));
         assertFalse(show.get("leaseUntil").isNull());
+    }
+
+    @Test
+    void displayPreparationAndNumbersDoNotRequireTargetOrCreateOutputLease() throws Exception {
+        JsonNode device = readyWorkspaceDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String token = device.get("deviceToken").asText();
+        poll(token, "IDLE", null, List.of(), 200);
+        for (String type : List.of("PREPARE_DISPLAYS", "IDENTIFY_SCREENS")) {
+            JsonNode setup = noTargetCommand(id, type, 202);
+            JsonNode delivered = poll(token, "IDLE", null, List.of(), 200);
+            assertEquals(setup.get("id"), delivered.at("/commands/0/id"));
+            assertEquals(type, delivered.at("/commands/0/type").asText());
+            for (String privateField : List.of(
+                    "targetScreenId", "projectionViewToken", "controlToken", "courseId", "sessionId")) {
+                assertTrue(delivered.at("/commands/0/payload/" + privateField).isNull(), privateField);
+            }
+            assertTrue(delivered.get("leaseUntil").isNull());
+            assertFalse(delivered.get("mustStop").asBoolean());
+            assertEquals(0, count("projection.devices where active_command_id is not null"));
+            poll(token, "IDLE", ack(setup, "COMPLETED"), List.of(), 200);
+        }
+    }
+
+    @Test
+    void privateControlGrantWorksForOneLessonAndCannotBecomeStaffOrPublicCredential() throws Exception {
+        JsonNode device = readyDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        JsonNode start = startOutput(id, device.get("deviceToken").asText());
+        String control = start.at("/payload/controlToken").asText();
+        String publicView = start.at("/payload/projectionViewToken").asText();
+        assertTrue(control.matches("[a-f0-9-]{36}\\.[a-f0-9]{64}"));
+        assertTrue(control.startsWith(id + "."));
+        assertNotEquals(publicView, control);
+        assertNotEquals(device.get("deviceToken").asText(), control);
+        assertEquals(courseId.toString(), start.at("/payload/courseId").asText());
+        assertEquals(sessionId.toString(), start.at("/payload/sessionId").asText());
+        String lesson = lectureControlPath();
+        assertEquals(sessionId.toString(), json(get(lesson)
+                .header("X-Lecture-Control-Token", control), 200).get("id").asText());
+        json(get(lesson + "/questions").header("X-Lecture-Control-Token", control), 200);
+        json(get(lesson + "/engagement").header("X-Lecture-Control-Token", control), 200);
+        json(get(lesson + "/participants").header("X-Lecture-Control-Token", control), 200);
+        json(get("/api/v1/courses/{course}/decks/{deck}", courseId, deckId)
+                .header("X-Lecture-Control-Token", control), 200);
+
+        String student = maxLogin(8771201);
+        join(student, null);
+        JsonNode question = json(post("/api/v1/student/sessions/{code}/questions", joinCode)
+                .header("Authorization", "Bearer " + student).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"text\":\"Почему условие такое?\"}"), 201);
+        JsonNode answered = json(put(lesson + "/questions/" + question.get("id").asText())
+                .header("X-Lecture-Control-Token", control).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"ANSWERED\",\"answerText\":\"Разберём пример.\","
+                        + "\"answerVisibility\":\"AUTHOR\"}"), 200);
+        assertEquals("ANSWERED", answered.get("status").asText());
+        assertEquals("Разберём пример.", answered.get("answerText").asText());
+        assertEquals("AUTHOR", answered.get("answerVisibility").asText());
+
+        UUID otherSession = UUID.fromString(startAnotherSession().get("id").asText());
+        json(get("/api/v1/courses/{course}/sessions/{session}", courseId, otherSession)
+                .header("X-Lecture-Control-Token", control), 403);
+        json(get("/api/v1/courses/{course}/sessions/{session}", UUID.randomUUID(), sessionId)
+                .header("X-Lecture-Control-Token", control), 403);
+        json(get("/api/v1/auth/me").header("X-Lecture-Control-Token", control), 403);
+        json(post("/api/v1/auth/refresh").header("X-Lecture-Control-Token", control), 403);
+        json(put("/api/v1/admin/projection/policy").header("X-Lecture-Control-Token", control)
+                .header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"agentAllowed\":false,\"minimumVersion\":\"0.1.0\",\"expectedRevision\":1}"), 403);
+        json(post(lesson + "/projection/commands").header("X-Lecture-Control-Token", control)
+                .contentType(MediaType.APPLICATION_JSON).content("{}"), 403);
+        json(get(lesson).header("Authorization", "Bearer " + control), 401);
+        json(get(lesson).header("X-Lecture-Control-Token", publicView), 401);
+        json(get(lesson).header("X-Lecture-Control-Token", device.get("deviceToken").asText()), 401);
+        json(get(projectionViewerPath(joinCode, UUID.randomUUID()))
+                .header("X-Projection-View-Token", control), 401);
+    }
+
+    @Test
+    void controlGrantExpiresWithOutputLeaseAndCannotSurviveAReplacementOrPolicyDisable() throws Exception {
+        JsonNode device = readyDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String token = device.get("deviceToken").asText();
+        String control = startOutput(id, token).at("/payload/controlToken").asText();
+        jdbc.sql("update projection.devices set active_until = now() - interval '1 minute'").update();
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", control), 401);
+        String replacement = startOutput(id, token).at("/payload/controlToken").asText();
+        assertNotEquals(control, replacement);
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", control), 401);
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", replacement), 200);
+        policy(false, "0.1.0");
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", replacement), 401);
+    }
+
+    @Test
+    void revokedDeviceAndInactiveStaffImmediatelyLosePrivateControl() throws Exception {
+        JsonNode device = readyDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String control = startOutput(id, device.get("deviceToken").asText()).at("/payload/controlToken").asText();
+        jdbc.sql("update iam.persons set status = 'DISABLED' where email = 'lecturer@example.test'").update();
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", control), 401);
+        jdbc.sql("update iam.persons set status = 'ACTIVE' where email = 'lecturer@example.test'").update();
+        json(delete("/api/v1/projection/devices/{id}", id)
+                .header("Authorization", "Bearer " + lecturerToken), 204);
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", control), 401);
+    }
+
+    @Test
+    void removedCourseMembershipInvalidatesPrivateControl() throws Exception {
+        JsonNode device = readyDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String control = startOutput(id, device.get("deviceToken").asText()).at("/payload/controlToken").asText();
+        jdbc.sql("delete from org.course_members where course_id = ?").param(courseId).update();
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", control), 401);
+    }
+
+    @Test
+    void restoreRemainsAvailableAfterEndAndPolicyDisableWithoutRenewingPrivateControl() throws Exception {
+        JsonNode device = readyWorkspaceDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String token = device.get("deviceToken").asText();
+        String control = startOutput(id, token).at("/payload/controlToken").asText();
+        json(post(lectureControlPath() + "/end").header("X-Lecture-Control-Token", control), 200);
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", control), 401);
+        policy(false, "0.2.0");
+        JsonNode restore = noTargetCommand(id, "RESTORE_DISPLAYS", 202);
+        JsonNode delivered = poll(token, "IDLE", null, SCREENS, 200);
+        assertEquals(restore.get("id"), delivered.at("/commands/0/id"));
+        assertEquals("RESTORE_DISPLAYS", delivered.at("/commands/0/type").asText());
+        assertTrue(delivered.get("leaseUntil").isNull());
+        assertTrue(delivered.get("mustStop").asBoolean());
+        assertTrue(delivered.at("/commands/0/payload/controlToken").isNull());
+        poll(token, "IDLE", ack(restore, "COMPLETED"), SCREENS, 200);
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", control), 401);
+    }
+
+    @Test
+    void malformedUnknownAndAncientPrivateGrantsAreAuthenticationFailures() throws Exception {
+        JsonNode device = readyWorkspaceDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        JsonNode start = startOutput(id, device.get("deviceToken").asText());
+        String control = start.at("/payload/controlToken").asText();
+        for (String invalid : List.of("bad", id + "." + "0".repeat(64), UUID.randomUUID() + "." + "0".repeat(64))) {
+            json(get(lectureControlPath()).header("X-Lecture-Control-Token", invalid), 401);
+        }
+        jdbc.sql("update projection.commands set created_at = now() - interval '9 hours' where id = ?")
+                .param(UUID.fromString(start.get("id").asText())).update();
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", control), 401);
+        noTargetCommand(id, "FOCUS_PRIVATE_REMOTE", 409);
+    }
+
+    @Test
+    void reopeningPrivateRemoteReusesCurrentStartGrantsAndNeverReplacesPublicOutput() throws Exception {
+        JsonNode device = readyWorkspaceDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String token = device.get("deviceToken").asText();
+        noTargetCommand(id, "FOCUS_PRIVATE_REMOTE", 409);
+        JsonNode test = command(id, "TEST_TARGET", false, null, UUID.randomUUID(), 202);
+        poll(token, "IDLE", null, SCREENS, 200);
+        poll(token, "TESTING", ack(test, "COMPLETED"), SCREENS, 200);
+        noTargetCommand(id, "FOCUS_PRIVATE_REMOTE", 409);
+        JsonNode start = startOutput(id, token);
+        assertEquals(sessionId.toString(), settings(lecturerToken).at("/devices/0/activeSessionId").asText());
+        JsonNode focus = noTargetCommand(id, "FOCUS_PRIVATE_REMOTE", 202);
+        assertEquals(start.at("/payload/controlToken"), focus.at("/payload/controlToken"));
+        assertEquals(start.at("/payload/projectionViewToken"), focus.at("/payload/projectionViewToken"));
+        assertEquals(start.at("/payload/courseId"), focus.at("/payload/courseId"));
+        assertEquals(start.at("/payload/sessionId"), focus.at("/payload/sessionId"));
+        JsonNode delivered = poll(token, "SHOWING", null, SCREENS, 200);
+        assertEquals(focus.get("id"), delivered.at("/commands/0/id"));
+        assertEquals(start.at("/payload/controlToken"), delivered.at("/commands/0/payload/controlToken"));
+        assertEquals(UUID.fromString(start.get("id").asText()), jdbc.sql(
+                "select active_command_id from projection.devices where id = ?").param(id).query(UUID.class).single());
+        assertFalse(delivered.get("leaseUntil").isNull());
+        assertFalse(delivered.get("mustStop").asBoolean());
+        JsonNode afterFailedFocus = poll(token, "SHOWING", ack(focus, "FAILED"), SCREENS, 200);
+        assertFalse(afterFailedFocus.get("mustStop").asBoolean());
+        assertFalse(afterFailedFocus.get("leaseUntil").isNull());
+        json(get(lectureControlPath())
+                .header("X-Lecture-Control-Token", start.at("/payload/controlToken").asText()), 200);
+        UUID otherSession = UUID.fromString(startAnotherSession().get("id").asText());
+        json(post("/api/v1/courses/{course}/sessions/{session}/projection/commands", courseId, otherSession)
+                .header("Authorization", "Bearer " + lecturerToken).contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("deviceId", id, "requestId", UUID.randomUUID(),
+                        "type", "FOCUS_PRIVATE_REMOTE"))), 409);
+        jdbc.sql("update projection.devices set active_until = now() - interval '1 minute' where id = ?")
+                .param(id).update();
+        noTargetCommand(id, "FOCUS_PRIVATE_REMOTE", 409);
+        policy(false, "0.1.0");
+        noTargetCommand(id, "FOCUS_PRIVATE_REMOTE", 403);
+        assertTrue(settings(lecturerToken).at("/devices/0/activeSessionId").isNull());
+    }
+
+    @Test
+    void queuedPrivateRemoteCannotReopenAfterItsPublicLeaseExpires() throws Exception {
+        JsonNode device = readyWorkspaceDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String token = device.get("deviceToken").asText();
+        startOutput(id, token);
+        noTargetCommand(id, "FOCUS_PRIVATE_REMOTE", 202);
+        jdbc.sql("update projection.devices set active_until = now() - interval '1 minute' where id = ?")
+                .param(id).update();
+        JsonNode expired = poll(token, "SHOWING", null, SCREENS, 200);
+        assertTrue(expired.get("mustStop").asBoolean());
+        assertEquals(0, expired.get("commands").size());
+        assertTrue(expired.get("leaseUntil").isNull());
+    }
+
+    @Test
+    void oldInstalledHelperMustUpgradeForWorkspaceButCanKeepItsLegacyPublicShow() throws Exception {
+        JsonNode device = readyDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String token = device.get("deviceToken").asText();
+        for (String type : List.of(
+                "PREPARE_DISPLAYS", "IDENTIFY_SCREENS", "RESTORE_DISPLAYS", "FOCUS_PRIVATE_REMOTE")) {
+            noTargetCommand(id, type, 409);
+        }
+        JsonNode legacy = startOutput(id, token);
+        noTargetCommand(id, "FOCUS_PRIVATE_REMOTE", 409);
+        assertEquals(legacy.get("id").asText(), jdbc.sql(
+                "select active_command_id from projection.devices where id = ?")
+                .param(id).query(UUID.class).single().toString());
+        deviceVersion = "0.2.0";
+        poll(token, "SHOWING", null, SCREENS, 200);
+        JsonNode upgraded = noTargetCommand(id, "FOCUS_PRIVATE_REMOTE", 202);
+        assertEquals(legacy.at("/payload/controlToken"), upgraded.at("/payload/controlToken"));
     }
 
     @Test
@@ -428,7 +655,7 @@ class ProjectionIntegrationTest extends LiveFlowTestBase {
     private JsonNode pair(String code, int expected) throws Exception {
         return json(post("/api/v1/projection/agent/pair").contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("pairingCode", code, "name", "Room 12",
-                        "platform", "WINDOWS_X64", "version", "0.1.0", "osVersion", "10.0.26100",
+                        "platform", "WINDOWS_X64", "version", deviceVersion, "osVersion", "10.0.26100",
                         "protocolVersion", 1))), expected);
     }
 
@@ -437,6 +664,11 @@ class ProjectionIntegrationTest extends LiveFlowTestBase {
         JsonNode device = pair(pairing().get("pairingCode").asText(), 201);
         poll(device.get("deviceToken").asText(), "IDLE", null, SCREENS, 200);
         return device;
+    }
+
+    private JsonNode readyWorkspaceDevice() throws Exception {
+        deviceVersion = "0.2.0";
+        return readyDevice();
     }
 
     private JsonNode command(UUID deviceId, String type, boolean confirmed, String testCode,
@@ -453,10 +685,21 @@ class ProjectionIntegrationTest extends LiveFlowTestBase {
                 .content(objectMapper.writeValueAsString(body)), expected);
     }
 
+    private String lectureControlPath() {
+        return "/api/v1/courses/" + courseId + "/sessions/" + sessionId;
+    }
+
+    private JsonNode noTargetCommand(UUID deviceId, String type, int expected) throws Exception {
+        return json(post(lectureControlPath() + "/projection/commands")
+                .header("Authorization", "Bearer " + lecturerToken).contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("deviceId", deviceId,
+                        "requestId", UUID.randomUUID(), "type", type))), expected);
+    }
+
     private JsonNode poll(String token, String status, Map<String, Object> ack,
             List<Map<String, Object>> screens, int expected) throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("version", "0.1.0");
+        body.put("version", deviceVersion);
         body.put("protocolVersion", 1);
         body.put("status", status);
         body.put("screens", screens);

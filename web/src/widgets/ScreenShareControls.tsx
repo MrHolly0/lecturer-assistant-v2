@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { MonitorUp, MessageCircle, Square } from "lucide-react";
 import { toast } from "sonner";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { LiveSession } from "../app/api/live-api";
-import { screenShare } from "../app/sharing/screenShare";
+import { nativeBridge, nativeCommand, workspaceShare } from "../app/projection/nativeWorkspace";
 import { useMaxBridge } from "../app/max/context";
 import { getMaxWebApp } from "../app/max/bridge";
 import { openLectureRemoteWindow } from "../app/projection/lectureRemoteWindow";
@@ -16,6 +17,8 @@ import {
   DialogTitle
 } from "../shared/ui/dialog";
 import { FloatingLectureRemote } from "./FloatingLectureRemote";
+import { getProjectionSettings, sendProjectionCommand } from "../app/api/projection-api";
+import { preferredNativeProjectionDevice } from "../app/projection/nativeProjectionPreference";
 
 export function ScreenShareControls({
   courseId,
@@ -23,7 +26,8 @@ export function ScreenShareControls({
   disabled,
   onPause,
   onResume,
-  onSessionChange
+  onSessionChange,
+  nativeWorkspace = false
 }: {
   courseId: string;
   session: LiveSession;
@@ -31,14 +35,59 @@ export function ScreenShareControls({
   onPause: () => void;
   onResume: () => void;
   onSessionChange?: (session: LiveSession) => void;
+  nativeWorkspace?: boolean;
 }) {
-  const share = useSyncExternalStore(screenShare.subscribe, screenShare.getSnapshot);
+  const controller = workspaceShare();
+  const share = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const previewFrame =
+    "previewFrame" in share && typeof share.previewFrame === "string"
+      ? share.previewFrame
+      : undefined;
+  const hasPreview = Boolean(share.stream || previewFrame);
+  const excluded = nativeBridge()?.captureExclusion?.enabled === true;
   const { isMax } = useMaxBridge();
-  const [pult, setPult] = useState(false);
+  const helpers = useQuery({
+    queryKey: ["projection-settings"],
+    queryFn: getProjectionSettings,
+    enabled: !nativeWorkspace,
+    refetchInterval: 3000,
+    retry: false
+  });
+  const nativeDevices = helpers.data?.agentAllowed
+    ? helpers.data.devices.filter(
+        (device) =>
+          device.connected &&
+          !device.revoked &&
+          device.version
+            .split(".")
+            .map(Number)
+            .some((part, index) => (index === 0 ? part > 0 : index === 1 && part >= 2)) &&
+          device.activeSessionId === session.id &&
+          (device.status === "SHOWING" || device.status === "PAUSED")
+      ) ?? []
+    : [];
+  const preferredDevice = preferredNativeProjectionDevice(courseId, session.id);
+  const nativeDevice =
+    nativeDevices.find((device) => device.id === preferredDevice) ??
+    (nativeDevices.length === 1 ? nativeDevices[0] : undefined);
+  const focusNative = useMutation({
+    mutationFn: () =>
+      sendProjectionCommand(courseId, session.id, {
+        deviceId: nativeDevice!.id,
+        requestId: crypto.randomUUID(),
+        type: "FOCUS_PRIVATE_REMOTE",
+        displayConfirmed: false
+      }),
+    onError: () =>
+      toast.error(
+        "Не удалось открыть пульт компонента. Проверьте его подключение в настройке проектора."
+      )
+  });
+  const [pult, setPult] = useState(nativeWorkspace);
   const [confirmed, setConfirmed] = useState(false);
   const [preview, setPreview] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [remoteWindow, setRemoteWindow] = useState<Window | null>(null);
+  const [remoteWindow, setRemoteWindow] = useState<Window | null>(nativeWorkspace ? window : null);
   const [remoteError, setRemoteError] = useState<string | null>(null);
   const mounted = useRef(true);
   const video = useRef<HTMLVideoElement>(null);
@@ -51,6 +100,15 @@ export function ScreenShareControls({
     };
   }, []);
   const openRemote = () => {
+    if (nativeDevice) {
+      focusNative.mutate();
+      return;
+    }
+    if (nativeDevices.length > 1) {
+      window.location.hash = `/settings/projector?${new URLSearchParams({ courseId, sessionId: session.id, joinCode: session.joinCode })}`;
+      toast.info("Выберите компьютер, на котором нужно открыть пульт.");
+      return;
+    }
     const opening = openLectureRemoteWindow({ windowKey: session.id });
     setRemoteError(null);
     void opening
@@ -67,8 +125,8 @@ export function ScreenShareControls({
       });
   };
   useEffect(() => {
-    if (ours) screenShare.setPaused(session.status === "PAUSED");
-  }, [session.status, ours]);
+    if (ours) controller.setPaused(session.status === "PAUSED");
+  }, [session.status, ours, controller]);
   useEffect(() => {
     if (!preview || !share.stream || !video.current) return;
     const element = video.current;
@@ -89,11 +147,16 @@ export function ScreenShareControls({
       getMaxWebApp()?.openLink?.(url);
       return;
     }
-    if (ours && share.phase === "publishing") void screenShare.stop();
+    if (ours && share.phase === "publishing") void controller.stop();
     setPreview(true);
-    void screenShare.choose({ courseId, sessionId: session.id, joinCode: session.joinCode });
+    void controller.choose({ courseId, sessionId: session.id, joinCode: session.joinCode });
   };
   const prepare = () => {
+    if (nativeDevices.length > 0) {
+      openRemote();
+      toast.info("В отдельном пульте нажмите «Показать приложение» и выберите источник.");
+      return;
+    }
     if (isMax) {
       choose();
       return;
@@ -103,28 +166,32 @@ export function ScreenShareControls({
   };
   return (
     <>
-      <Button
-        variant="outline"
-        disabled={
-          !(ours && share.phase === "publishing") &&
-          (disabled ||
-            session.status !== "LIVE" ||
-            share.phase === "choosing" ||
-            (share.phase === "publishing" && !ours))
-        }
-        onClick={ours && share.phase === "publishing" ? () => void screenShare.stop() : prepare}
-      >
-        {ours && share.phase === "publishing" ? (
-          <Square size={16} aria-hidden="true" />
-        ) : (
-          <MonitorUp size={18} aria-hidden="true" />
-        )}
-        {ours && share.phase === "publishing" ? "Остановить демонстрацию" : "Начать демонстрацию"}
-      </Button>
-      <Button variant="outline" onClick={openRemote}>
-        <MessageCircle size={18} aria-hidden="true" />
-        Вынести пульт
-      </Button>
+      {!nativeWorkspace && (
+        <Button
+          variant="outline"
+          disabled={
+            !(ours && share.phase === "publishing") &&
+            (disabled ||
+              session.status !== "LIVE" ||
+              share.phase === "choosing" ||
+              (share.phase === "publishing" && !ours))
+          }
+          onClick={ours && share.phase === "publishing" ? () => void controller.stop() : prepare}
+        >
+          {ours && share.phase === "publishing" ? (
+            <Square size={16} aria-hidden="true" />
+          ) : (
+            <MonitorUp size={18} aria-hidden="true" />
+          )}
+          {ours && share.phase === "publishing" ? "Остановить показ" : "Демонстрация"}
+        </Button>
+      )}
+      {!nativeWorkspace && (
+        <Button variant="outline" onClick={openRemote}>
+          <MessageCircle size={18} aria-hidden="true" />
+          Пульт
+        </Button>
+      )}
       {remoteError && (
         <span className="screen-share-remote-error" role="alert">
           {remoteError}
@@ -135,7 +202,7 @@ export function ScreenShareControls({
         onOpenChange={(open) => {
           if (publishing) return;
           setPreview(open);
-          if (!open && share.phase !== "publishing") void screenShare.stop();
+          if (!open && share.phase !== "publishing") void controller.stop();
         }}
       >
         <DialogContent className="screen-share-preview">
@@ -149,7 +216,9 @@ export function ScreenShareControls({
               демонстрацию, его не нужно выбирать источником.
             </DialogDescription>
           </DialogHeader>
-          {share.stream ? (
+          {previewFrame ? (
+            <img src={previewFrame} alt="Предпросмотр демонстрации" />
+          ) : share.stream ? (
             <video ref={video} muted autoPlay playsInline aria-label="Предпросмотр демонстрации" />
           ) : (
             <div className="screen-share-preview-empty" role="status">
@@ -160,14 +229,14 @@ export function ScreenShareControls({
             </div>
           )}
           {share.error && share.stream && <p role="alert">{share.error}</p>}
-          {share.stream && capturesScreen && (
+          {hasPreview && capturesScreen && (
             <p className="screen-share-capture-note" role="note">
               {share.surface === "monitor"
                 ? "Выбран весь экран."
                 : "Браузер не указал тип источника."}{" "}
-              Пульт, личные вопросы и другие окна на этом экране тоже будут видны. Браузер не
-              скрывает их из демонстрации. Для приватного управления выберите отдельное окно
-              приложения или оставьте пульт на другом экране.
+              {excluded
+                ? "Компонент исключает собственный пульт из захвата. Сверните вкладку лекции и другие личные окна перед показом. Проверьте кадр: остальные окна экрана будут видны."
+                : "Пульт и другие окна этого экрана будут видны. Для приватного управления установите компонент в настройке проектора или выберите отдельное окно приложения."}
             </p>
           )}
           <label className="screen-share-confirm">
@@ -175,10 +244,10 @@ export function ScreenShareControls({
               type="checkbox"
               checked={confirmed}
               onChange={(event) => setConfirmed(event.target.checked)}
-              disabled={!share.stream || publishing}
+              disabled={!hasPreview || publishing}
             />
             <span>
-              {capturesScreen
+              {capturesScreen && !excluded
                 ? "Понимаю, что видны все окна выбранного экрана"
                 : "В кадре только материал для аудитории"}
             </span>
@@ -193,19 +262,19 @@ export function ScreenShareControls({
               disabled={publishing || share.phase === "choosing"}
               onClick={choose}
             >
-              {share.stream ? "Другой источник" : "Выбрать окно или экран"}
+              {hasPreview ? "Другой источник" : "Выбрать окно или экран"}
             </Button>
             <Button
               disabled={
-                !confirmed || !share.stream || share.phase !== "preview" || disabled || publishing
+                !confirmed || !hasPreview || share.phase !== "preview" || disabled || publishing
               }
               onClick={async () => {
                 // Reserve the separate window before publishing consumes the click activation.
-                openRemote();
+                if (!nativeWorkspace) openRemote();
                 setPublishing(true);
                 try {
-                  await screenShare.publish();
-                  if (screenShare.getSnapshot().phase === "publishing") {
+                  await controller.publish();
+                  if (controller.getSnapshot().phase === "publishing") {
                     setPreview(false);
                   }
                 } finally {
@@ -229,6 +298,10 @@ export function ScreenShareControls({
           onSessionChange={onSessionChange}
           initialWindow={remoteWindow}
           onClose={() => {
+            if (nativeWorkspace) {
+              nativeCommand("close");
+              return;
+            }
             setPult(false);
             setRemoteWindow(null);
           }}

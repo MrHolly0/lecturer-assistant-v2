@@ -117,6 +117,48 @@
 .projector-helper-warning {
   font-weight: 600;
 }
+.projector-helper-steps {
+  margin: 0;
+  padding-left: 22px;
+  font-size: 14px;
+  color: var(--muted-foreground);
+  line-height: 1.6;
+}
+.projector-helper-steps li + li {
+  margin-top: 6px;
+}
+.projector-helper .projector-pairing {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+.projector-helper .projector-pairing small {
+  max-width: 60ch;
+  line-height: 1.5;
+}
+.projector-helper--wizard {
+  margin-block-start: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+.projector-helper--wizard .projector-helper-heading {
+  display: none;
+}
+.projector-helper--wizard .projector-helper-physical-test {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+.projector-package-help {
+  margin-block: 12px 20px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.projector-package-help summary {
+  cursor: pointer;
+  padding-block: 8px;
+}
 .projector-policy-conflict {
   display: grid;
   justify-items: start;

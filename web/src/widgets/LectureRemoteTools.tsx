@@ -27,6 +27,7 @@ export function LectureRemoteTools({
   container,
   noteDrafts,
   onNoteDraftChange,
+  newQuestionCount = 0,
   children
 }: {
   courseId: string;
@@ -38,6 +39,7 @@ export function LectureRemoteTools({
   container: HTMLElement;
   noteDrafts: Record<number, string>;
   onNoteDraftChange: (idx: number, content?: string, expected?: string) => void;
+  newQuestionCount?: number;
   children: ReactNode;
 }) {
   const deck = useQuery({
@@ -102,7 +104,12 @@ export function LectureRemoteTools({
         onValueChange={(value) => onSectionChange(value as LectureRemoteSection)}
       >
         <TabsList aria-label="Инструменты пульта">
-          <TabsTrigger value="questions">Вопросы</TabsTrigger>
+          <TabsTrigger value="questions">
+            Вопросы
+            {newQuestionCount > 0 && (
+              <span className="floating-remote-tab-count">{newQuestionCount}</span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="poll">Проверка</TabsTrigger>
           <TabsTrigger value="students">
             Участники{active.length > 0 ? ` (${active.length})` : ""}

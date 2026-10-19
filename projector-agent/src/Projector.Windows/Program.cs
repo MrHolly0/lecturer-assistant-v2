@@ -68,6 +68,7 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
     private readonly NativeDisplays display;
     private ProjectionForm? projection;
     private RemoteForm? remote;
+    private RemoteForm? openingRemote;
     private ScreenIdentification? identification;
     private Uri? origin;
     private CancellationTokenSource? cancellation;
@@ -241,8 +242,12 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
             }
             catch (Exception ex)
             {
-                projection?.Neutral(); CloseRemote();
-                if (ex is InvalidDataException { Message: "WEBVIEW2_RUNTIME_MISSING" }) { status = "Для показа нужен Microsoft WebView2 — откройте помощь в меню"; UpdateMenu(); }
+                // Failure to focus the private controller must not interrupt an existing show.
+                if (action.Type != "FOCUS_PRIVATE_REMOTE")
+                {
+                    projection?.Neutral(); CloseRemote();
+                    if (ex is InvalidDataException { Message: "WEBVIEW2_RUNTIME_MISSING" }) { status = "Для показа нужен Microsoft WebView2 — откройте помощь в меню"; UpdateMenu(); }
+                }
                 completion.TrySetResult(new(action.Id, false, ex is InvalidDataException ? ex.Message : "NATIVE_OPERATION_FAILED"));
             }
         });
@@ -252,13 +257,30 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
     private async Task ShowRemote(Uri scene)
     {
         if (origin is null) throw new InvalidDataException("PAIRING_REQUIRED");
-        CloseRemote();
-        var form = new RemoteForm(origin, scene, () => { projection?.Show(); projection?.Activate(); }); remote = form;
-        form.FormClosed += (_, _) => { if (ReferenceEquals(remote, form)) { remote = null; UpdateMenu(); } };
-        form.Show(); await form.LoadRemote(); form.Activate();
+        if (openingRemote is not null) throw new InvalidDataException("REMOTE_ALREADY_OPENING");
+        var prior = remote; var expectedGeneration = generation;
+        var form = new RemoteForm(origin, scene, () => { projection?.Show(); projection?.Activate(); }); openingRemote = form;
+        form.FormClosed += (_, _) => {
+            if (ReferenceEquals(openingRemote, form)) openingRemote = null;
+            if (ReferenceEquals(remote, form)) { remote = null; UpdateMenu(); }
+        };
+        try
+        {
+            form.Show(); await form.LoadRemote();
+            if (form.IsDisposed || !ReferenceEquals(openingRemote, form) || generation != expectedGeneration)
+                throw new InvalidDataException("REMOTE_OPEN_CANCELLED");
+            // Keep the previous private window/capture alive until its replacement initialized.
+            remote = form; openingRemote = null; prior?.Close(); prior?.Dispose(); form.Activate();
+        }
+        catch
+        {
+            if (ReferenceEquals(openingRemote, form)) openingRemote = null;
+            form.Close(); form.Dispose(); throw;
+        }
     }
     private void CloseRemote()
     {
+        var pending = openingRemote; openingRemote = null; pending?.Close(); pending?.Dispose();
         var prior = remote; remote = null; prior?.Close(); prior?.Dispose();
     }
     private static string ScreenId(Screen screen) => DisplaySafety.Fingerprint($"{NativeDisplays.ScreenIdentity(screen)}@{screen.Bounds.X},{screen.Bounds.Y}:{screen.Bounds.Width}x{screen.Bounds.Height}");
@@ -331,6 +353,6 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
     }
     protected override void ExitThreadCore()
     {
-        SystemEvents.DisplaySettingsChanged -= OnScreensChanged; cancellation?.Cancel(); pairingPipe.Dispose(); remote?.Dispose(); identification?.Dispose(); projection?.Dispose(); updateStopTimer.Dispose(); tray.Visible = false; tray.Dispose(); dispatcher.Dispose(); base.ExitThreadCore();
+        SystemEvents.DisplaySettingsChanged -= OnScreensChanged; cancellation?.Cancel(); pairingPipe.Dispose(); openingRemote?.Dispose(); remote?.Dispose(); identification?.Dispose(); projection?.Dispose(); updateStopTimer.Dispose(); tray.Visible = false; tray.Dispose(); dispatcher.Dispose(); base.ExitThreadCore();
     }
 }

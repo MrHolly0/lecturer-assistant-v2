@@ -298,6 +298,19 @@
   font-size: 12px;
   white-space: normal;
 }
+.floating-remote-tab-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  padding-inline: 3px;
+  border-radius: 9px;
+  background: var(--brand);
+  color: var(--foreground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
 .floating-remote-tools > [data-slot="tabs-content"] {
   display: grid;
   gap: 12px;
@@ -514,12 +527,16 @@
 }
 .floating-remote-document .floating-lecture-remote.is-detached {
   position: static;
-  width: 100%;
+  width: min(100%, 420px);
+  margin-inline: auto;
   height: auto;
   max-height: 100dvh;
   border: none;
   border-radius: 0;
   box-shadow: none;
+}
+.floating-remote-document .floating-lecture-remote.is-detached.is-collapsed {
+  width: min(100%, 264px);
 }
 /* Service controls sit below modal dialogs, including a new source preview. */
 .floating-lecture-remote {
@@ -565,4 +582,22 @@
   color: var(--muted-foreground);
   font-size: 12px;
   text-align: center;
+}
+@media (min-width: 1180px) {
+  .presenter-shell .presenter-actions {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .presenter-shell .presenter-actions .ui-button {
+    padding-inline: 12px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .presenter-shell .presenter-actions .presenter-connect {
+    margin-right: 0;
+  }
+  .presenter-shell .presenter-finish-actions {
+    margin-left: auto;
+    flex: none;
+  }
 }

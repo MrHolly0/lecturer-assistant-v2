@@ -1,6 +1,12 @@
 import AppKit
 import WebKit
 
+/// Borderless panels need an explicit keyboard-focus contract for WKWebView text entry.
+@MainActor private final class NativeRemotePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
 /// A separate native surface. Its data store never contains browser staff credentials.
 @MainActor final class RemoteWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler, NSWindowDelegate {
     private var panel: NSPanel?
@@ -43,12 +49,17 @@ import WebKit
         config.userContentController.addUserScript(WKUserScript(source: "window.lectureProjectorNative={platform:'MACOS',nativeCapture:true,captureExclusion:{supported:true,enabled:true},postMessage:function(message){window.webkit.messageHandlers.lectureNative.postMessage(message)}};", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let web = WKWebView(frame: .zero, configuration: config)
         web.navigationDelegate = self
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 560), styleMask: [.borderless, .resizable, .nonactivatingPanel], backing: .buffered, defer: false)
+        let panel = makePanel(web: web)
+        self.web = web; self.panel = panel
+        web.load(URLRequest(url: url)); panel.orderFrontRegardless()
+    }
+    private func makePanel(web: WKWebView) -> NSPanel {
+        let panel = NativeRemotePanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 560), styleMask: [.borderless, .resizable, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "Пульт · Lecturer Assistant"; panel.titleVisibility = .hidden; panel.titlebarAppearsTransparent = true
         panel.isReleasedWhenClosed = false; panel.level = .floating; panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.minSize = NSSize(width: 264, height: 64); panel.maxSize = NSSize(width: 520, height: 900)
-        panel.isMovableByWindowBackground = false; panel.delegate = self
+        panel.isMovableByWindowBackground = false; panel.becomesKeyOnlyIfNeeded = false; panel.delegate = self
         panel.hasShadow = true
         panel.contentView?.wantsLayer = true; panel.contentView?.layer?.cornerRadius = 12; panel.contentView?.layer?.masksToBounds = true
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
@@ -57,13 +68,61 @@ import WebKit
         web.frame = NSRect(x: 0, y: 0, width: 420, height: 560); web.autoresizingMask = [.width, .height]
         panel.contentView?.addSubview(web)
         if let bounds = NSScreen.main?.visibleFrame { panel.setFrameTopLeftPoint(NSPoint(x: bounds.maxX - 440, y: bounds.maxY - 20)) }
-        self.web = web; self.panel = panel
-        web.load(URLRequest(url: url)); panel.orderFrontRegardless()
+        return panel
+    }
+    /// Exercises the same window factory with local content only. No institution/session is opened.
+    static func exerciseLocalFixture() async throws -> [String: Any] {
+        let remote = RemoteWindow()
+        let configuration = WKWebViewConfiguration(); configuration.websiteDataStore = .nonPersistent()
+        let web = WKWebView(frame: .zero, configuration: configuration)
+        let panel = remote.makePanel(web: web); remote.web = web; remote.panel = panel
+        let previous = NSWorkspace.shared.frontmostApplication
+        defer {
+            remote.close(notify: false)
+            if let previous, previous.processIdentifier != ProcessInfo.processInfo.processIdentifier { previous.activate(options: []) }
+        }
+        web.loadHTMLString("<!doctype html><html><head><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'\"><style>body{font:16px system-ui;margin:16px}textarea{box-sizing:border-box;width:100%;height:100px;font:16px system-ui}</style></head><body><label for='reply'>Локальная проверка ответа</label><textarea id='reply'></textarea></body></html>", baseURL: nil)
+        panel.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        guard panel.canBecomeKey, !panel.canBecomeMain else { throw HostError.code("REMOTE_FIXTURE_KEY_CONTRACT") }
+        let deadline = Date().addingTimeInterval(20)
+        var ready = false
+        while Date() < deadline {
+            if (try? await web.evaluateJavaScript("document.readyState==='complete' && !!document.getElementById('reply')")) as? Bool == true { ready = true; break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        guard ready else { throw HostError.code("REMOTE_FIXTURE_WEB_CONTENT_TIMEOUT") }
+        guard panel.makeFirstResponder(web) else { throw HostError.code("REMOTE_FIXTURE_FIRST_RESPONDER") }
+        _ = try await web.evaluateJavaScript("document.getElementById('reply').focus();document.activeElement.id")
+        try await Task.sleep(for: .milliseconds(150))
+        let active = try await web.evaluateJavaScript("document.activeElement.id") as? String
+        guard active == "reply", panel.isKeyWindow, let input = panel.firstResponder as? NSTextInputClient else { throw HostError.code("REMOTE_FIXTURE_TEXT_INPUT_FOCUS") }
+        let responderName = NSStringFromClass(type(of: panel.firstResponder!))
+        input.insertText("Проверка пульта 123", replacementRange: NSRange(location: NSNotFound, length: 0))
+        try await Task.sleep(for: .milliseconds(100))
+        let value = try await web.evaluateJavaScript("document.getElementById('reply').value") as? String
+        guard value == "Проверка пульта 123" else { throw HostError.code("REMOTE_FIXTURE_NATIVE_TEXT_INSERT") }
+        remote.resize(width: 264, height: 64)
+        try await Task.sleep(for: .milliseconds(100))
+        let compact = panel.frame.size
+        let compactWidth = try await web.evaluateJavaScript("window.innerWidth") as? Double
+        guard abs(compact.width - 264) < 1, abs(compact.height - 64) < 1, compactWidth == 264 else { throw HostError.code("REMOTE_FIXTURE_COMPACT_GEOMETRY") }
+        remote.resize(width: 420, height: 560)
+        try await Task.sleep(for: .milliseconds(100))
+        let expanded = panel.frame.size
+        guard abs(expanded.width - 420) < 1, expanded.height <= 560, expanded.height >= 64 else { throw HostError.code("REMOTE_FIXTURE_EXPANDED_GEOMETRY") }
+        remote.resize(width: 10000, height: 10000)
+        let bounded = panel.frame.size, bounds = panel.screen?.visibleFrame ?? panel.frame
+        guard bounded.width <= min(520, bounds.width), bounded.height <= min(900, bounds.height - 20),
+              panel.frame.minY >= bounds.minY - 1, panel.frame.maxX <= bounds.maxX + 1 else { throw HostError.code("REMOTE_FIXTURE_BOUNDS") }
+        return ["success": true, "platform": "MACOS", "nativeWindowClass": NSStringFromClass(type(of: panel)), "canBecomeKey": panel.canBecomeKey, "canBecomeMain": panel.canBecomeMain,
+                "firstResponderClass": responderName, "nativeTextInput": true, "textareaValueMatched": true,
+                "compact": ["width": compact.width, "height": compact.height], "expanded": ["width": expanded.width, "height": expanded.height], "oversizeClamped": ["width": bounded.width, "height": bounded.height],
+                "networkUsed": false, "screenCaptured": false, "displaySettingsChanged": false, "loginItemsChanged": false, "keychainChanged": false]
     }
     func resize(width: Double, height: Double) {
         guard width.isFinite, height.isFinite, let panel else { return }
         let frame = panel.frame, bounds = panel.screen?.visibleFrame ?? frame
-        let size = NSSize(width: min(max(width, 264), min(520, bounds.width)), height: min(max(height, 64), bounds.height - 20))
+        let size = NSSize(width: min(max(width, 264), min(520, bounds.width)), height: min(max(height, 64), min(900, bounds.height - 20)))
         panel.setFrame(NSRect(x: min(frame.minX, bounds.maxX - size.width), y: max(bounds.minY, frame.maxY - size.height), width: size.width, height: size.height), display: true)
     }
     func emit(_ event: [String: Any]) {

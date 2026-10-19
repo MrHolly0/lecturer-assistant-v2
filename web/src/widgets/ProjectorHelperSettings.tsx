@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Link2, Monitor, Play, RefreshCw, Shield, Square, Unplug } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -18,6 +18,7 @@ import {
   type ProjectionPolicyUpdate
 } from "../app/api/projection-api";
 import { ApiError, userErrorMessage } from "../app/api/errors";
+import { rememberNativeProjectionDevice } from "../app/projection/nativeProjectionPreference";
 import { Button } from "../shared/ui/button";
 import {
   Dialog,
@@ -44,6 +45,11 @@ const statusLabels: Record<ProjectionDevice["status"], string> = {
 };
 const versionPattern = /^\d{1,5}\.\d{1,5}\.\d{1,5}$/;
 const testCodePattern = /^[A-HJ-NP-Z2-9]{6}$/;
+function workspaceNeedsUpdate(version: string) {
+  if (!versionPattern.test(version)) return true;
+  const [major, minor] = version.split(".").map(Number);
+  return major === 0 && minor < 2;
+}
 
 type HelperContext = { courseId: string; sessionId: string; active: boolean };
 
@@ -52,13 +58,19 @@ function HelperDeviceControls({
   context,
   allowed,
   fresh,
-  onSent
+  onSent,
+  onProjectionReady,
+  wizard = false,
+  onRequestUpgrade
 }: {
   device: ProjectionDevice;
   context: HelperContext | null;
   allowed: boolean;
   fresh: boolean;
   onSent: () => void;
+  onProjectionReady?: () => void;
+  wizard?: boolean;
+  onRequestUpgrade?: () => void;
 }) {
   const targetId = useId();
   const [target, setTarget] = useState("");
@@ -70,16 +82,22 @@ function HelperDeviceControls({
   const [code, setCode] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [notice, setNotice] = useState("");
+  const [waitingForShow, setWaitingForShow] = useState<number | null>(null);
+  const [step, setStep] = useState<
+    "prepare" | "identify" | "confirm" | "waiting" | "manage" | "stopped"
+  >(() => (device.status === "SHOWING" || device.status === "PAUSED" ? "manage" : "prepare"));
   const topology = JSON.stringify(
     [...device.screens].sort((left, right) => left.id.localeCompare(right.id))
   );
   const selected = device.screens.find((screen) => screen.id === target);
   const testCurrent = test?.screenId === target && test.topology === topology;
   const unavailable = !fresh || !device.connected || device.revoked;
+  const workspaceOutdated = workspaceNeedsUpdate(device.version);
   const canTest =
     !unavailable &&
     allowed &&
     !device.updateRequired &&
+    (!wizard || !workspaceOutdated) &&
     context?.active &&
     selected &&
     !selected.isPrimary;
@@ -99,18 +117,42 @@ function HelperDeviceControls({
     },
     onSuccess: (result) => {
       if (result.type === "TEST_TARGET") {
+        setStep("confirm");
         setTest({ command: result, screenId: target, topology });
         setCode("");
         setConfirmed(false);
         setNotice("Команда проверки отправлена. Дождитесь кода на физическом проекторе.");
       } else if (result.type === "START_PUBLIC_PROJECTION") {
+        setStep("waiting");
+        setWaitingForShow(Date.now());
         setNotice("Команда показа отправлена. Статус обновится после ответа компонента.");
       } else if (result.type === "STOP_PROJECTION") {
+        setWaitingForShow(null);
+        setStep("stopped");
         setTest(null);
         setCode("");
         setConfirmed(false);
         setNotice(
           "Команда остановки отправлена. Занятие продолжится; режим экранов сам не переключится."
+        );
+      } else if (result.type === "PREPARE_DISPLAYS") {
+        setStep("identify");
+        setTest(null);
+        setTarget("");
+        setNotice(
+          "Помощник включает отдельные рабочие столы. Дождитесь обновления списка экранов."
+        );
+      } else if (result.type === "IDENTIFY_SCREENS") {
+        setNotice("На экранах появятся номера. Посмотрите номер на проекторе и выберите его ниже.");
+      } else if (result.type === "RESTORE_DISPLAYS") {
+        setStep("stopped");
+        setNotice(
+          "Запрошен возврат исходного режима. Помощник проверит, что вы не меняли его вручную."
+        );
+      } else if (result.type === "FOCUS_PRIVATE_REMOTE") {
+        if (context) rememberNativeProjectionDevice(context.courseId, context.sessionId, device.id);
+        setNotice(
+          "Помощник открывает пульт этого занятия. Материал на проекторе продолжает показываться."
         );
       } else {
         setNotice("Запрос обновлений отправлен. Во время показа компонент не будет перезапущен.");
@@ -118,6 +160,35 @@ function HelperDeviceControls({
       onSent();
     }
   });
+  useEffect(() => {
+    if (
+      waitingForShow &&
+      device.connected &&
+      device.status === "SHOWING" &&
+      Date.parse(device.lastSeenAt ?? "") >= waitingForShow
+    ) {
+      setWaitingForShow(null);
+      if (context) rememberNativeProjectionDevice(context.courseId, context.sessionId, device.id);
+      onProjectionReady?.();
+    }
+  }, [
+    waitingForShow,
+    device.connected,
+    device.status,
+    device.lastSeenAt,
+    device.id,
+    context,
+    onProjectionReady
+  ]);
+  useEffect(() => {
+    if (!waitingForShow) return;
+    const timeout = window.setTimeout(() => {
+      setWaitingForShow(null);
+      setStep("confirm");
+      setNotice("Помощник пока не подтвердил показ. Проверьте его окно и повторите запуск.");
+    }, 20000);
+    return () => window.clearTimeout(timeout);
+  }, [waitingForShow]);
   const changeTarget = (value: string) => {
     setTarget(value);
     setTest(null);
@@ -127,6 +198,23 @@ function HelperDeviceControls({
     command.reset();
   };
   if (device.revoked) return null;
+  if (wizard && (workspaceOutdated || device.updateRequired))
+    return (
+      <div className="projector-helper-controls">
+        <p role="status">
+          На компьютере установлена версия {device.version}. Для автоматической настройки экранов и
+          отдельного пульта нужен помощник 0.2.0 или новее, с учётом минимальной версии учреждения.
+        </p>
+        <Button onClick={onRequestUpgrade}>
+          <Download size={18} />
+          Обновить компонент
+        </Button>
+        <p>
+          Загрузите актуальный пакет, установите его поверх прежней версии и вернитесь сюда. Занятие
+          продолжится.
+        </p>
+      </div>
+    );
   return (
     <div className="projector-helper-controls">
       {!context ? (
@@ -136,50 +224,106 @@ function HelperDeviceControls({
           {!context.active && (
             <p>Занятие сейчас не идёт. Новый показ начнётся после его запуска.</p>
           )}
-          <div className="projector-helper-target">
-            <label htmlFor={targetId}>Экран для аудитории</label>
-            <Select
-              value={target || "__select_screen__"}
-              onValueChange={(value) => changeTarget(value === "__select_screen__" ? "" : value)}
-              disabled={command.isPending}
-            >
-              <SelectTrigger id={targetId} aria-describedby={`${targetId}-hint`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__select_screen__">Выберите экран явно</SelectItem>
-                {device.screens.map((screen) => (
-                  <SelectItem key={screen.id} value={screen.id}>
-                    {screen.label || "Экран"} · {screen.width} × {screen.height}
-                    {screen.isPrimary ? " · основной рабочий экран" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <small id={`${targetId}-hint`}>
-              {device.screens.length === 0
-                ? "Компонент ещё не сообщил о доступных экранах."
-                : selected?.isPrimary
-                  ? "Для автоматического показа нужен отдельный экран. Включите «Расширить» по инструкции выше."
-                  : "Название экрана не определяет проектор. Перед материалом покажем нейтральный код."}
-            </small>
-          </div>
-          <div className="projector-helper-actions">
-            <Button
-              variant="outline"
-              disabled={!canTest || command.isPending}
-              onClick={() => command.mutate({ type: "TEST_TARGET", targetScreenId: target })}
-            >
-              <Monitor size={18} aria-hidden="true" />
-              {command.isPending && command.variables?.type === "TEST_TARGET"
-                ? "Отправляем…"
-                : "Проверить этот экран"}
-            </Button>
-          </div>
+          {(!wizard || step === "prepare") && (
+            <>
+              <ol className="projector-helper-steps">
+                <li>Подготовьте отдельный рабочий стол для аудитории.</li>
+                <li>Покажите номера и выберите тот, который виден на проекторе.</li>
+                <li>Подтвердите код, затем помощник откроет материал и пульт.</li>
+              </ol>
+              <div className="projector-helper-actions">
+                <Button
+                  disabled={
+                    unavailable ||
+                    !allowed ||
+                    device.updateRequired ||
+                    workspaceOutdated ||
+                    !context.active ||
+                    command.isPending
+                  }
+                  onClick={() => command.mutate({ type: "PREPARE_DISPLAYS" })}
+                >
+                  <Monitor size={18} />
+                  Настроить экраны автоматически
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setStep("identify")}
+                  disabled={unavailable || device.screens.length < 2}
+                >
+                  Экраны уже раздельные
+                </Button>
+              </div>
+            </>
+          )}
+          {(!wizard || step === "identify") && (
+            <>
+              <p>Покажите номера на мониторах и посмотрите, какой номер виден на проекторе.</p>
+              <div className="projector-helper-actions">
+                <Button
+                  variant="outline"
+                  disabled={
+                    unavailable ||
+                    !allowed ||
+                    device.updateRequired ||
+                    workspaceOutdated ||
+                    !context.active ||
+                    command.isPending ||
+                    device.screens.length < 2
+                  }
+                  onClick={() => command.mutate({ type: "IDENTIFY_SCREENS" })}
+                >
+                  Показать номера 1–{device.screens.length}
+                </Button>
+              </div>
+              <div className="projector-helper-target">
+                <label htmlFor={targetId}>Экран для аудитории</label>
+                <Select
+                  value={target || "__select_screen__"}
+                  onValueChange={(value) =>
+                    changeTarget(value === "__select_screen__" ? "" : value)
+                  }
+                  disabled={command.isPending}
+                >
+                  <SelectTrigger id={targetId} aria-describedby={`${targetId}-hint`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__select_screen__">Выберите экран явно</SelectItem>
+                    {device.screens.map((screen, index) => (
+                      <SelectItem key={screen.id} value={screen.id}>
+                        Экран {index + 1} · {screen.label || "монитор"} · {screen.width} ×{" "}
+                        {screen.height}
+                        {screen.isPrimary ? " · основной рабочий экран" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <small id={`${targetId}-hint`}>
+                  {device.screens.length === 0
+                    ? "Компонент ещё не сообщил о доступных экранах."
+                    : selected?.isPrimary
+                      ? "Для автоматического показа нужен отдельный экран. Включите «Расширить» по инструкции выше."
+                      : "Название экрана не определяет проектор. Перед материалом покажем нейтральный код."}
+                </small>
+              </div>
+              <div className="projector-helper-actions">
+                <Button
+                  disabled={!canTest || command.isPending}
+                  onClick={() => command.mutate({ type: "TEST_TARGET", targetScreenId: target })}
+                >
+                  <Monitor size={18} aria-hidden="true" />
+                  {command.isPending && command.variables?.type === "TEST_TARGET"
+                    ? "Отправляем…"
+                    : "Проверить этот экран"}
+                </Button>
+              </div>
+            </>
+          )}
           {test && !testCurrent && (
             <p role="status">Состав экранов изменился. Выберите экран и повторите проверку.</p>
           )}
-          {testCurrent && (
+          {testCurrent && (!wizard || step === "confirm") && (
             <form
               className="projector-helper-physical-test"
               onSubmit={(event) => {
@@ -227,26 +371,78 @@ function HelperDeviceControls({
                   : "Показать материал"}
               </Button>
               <small>Если код не появился или окно открылось не там, повторите выбор экрана.</small>
+              {wizard && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => {
+                    changeTarget("");
+                    setStep("identify");
+                  }}
+                >
+                  Выбрать другой экран
+                </Button>
+              )}
             </form>
           )}
-          <div className="projector-helper-actions">
-            <Button
-              variant="outline"
-              disabled={device.revoked || command.isPending || !fresh}
-              onClick={() => command.mutate({ type: "STOP_PROJECTION" })}
-            >
-              <Square size={18} aria-hidden="true" />
-              Остановить показ на компьютере
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={unavailable || command.isPending}
-              onClick={() => command.mutate({ type: "CHECK_UPDATE" })}
-            >
-              <RefreshCw size={18} aria-hidden="true" />
-              Проверить обновления
-            </Button>
-          </div>
+          {(!wizard || step === "manage" || step === "stopped") && (
+            <>
+              <div className="projector-helper-actions">
+                <Button
+                  variant="outline"
+                  disabled={
+                    unavailable ||
+                    !allowed ||
+                    device.updateRequired ||
+                    workspaceOutdated ||
+                    command.isPending ||
+                    device.activeSessionId !== context.sessionId ||
+                    !["SHOWING", "PAUSED"].includes(device.status)
+                  }
+                  onClick={() => command.mutate({ type: "FOCUS_PRIVATE_REMOTE" })}
+                >
+                  Открыть отдельный пульт
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={device.revoked || command.isPending || !fresh}
+                  onClick={() => command.mutate({ type: "STOP_PROJECTION" })}
+                >
+                  <Square size={18} aria-hidden="true" />
+                  Остановить показ на компьютере
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={
+                    device.revoked ||
+                    command.isPending ||
+                    !fresh ||
+                    !allowed ||
+                    !device.connected ||
+                    workspaceOutdated ||
+                    device.status === "SHOWING" ||
+                    device.status === "PAUSED"
+                  }
+                  onClick={() => command.mutate({ type: "RESTORE_DISPLAYS" })}
+                >
+                  Вернуть режим экранов
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={unavailable || command.isPending}
+                  onClick={() => command.mutate({ type: "CHECK_UPDATE" })}
+                >
+                  <RefreshCw size={18} aria-hidden="true" />
+                  Проверить обновления
+                </Button>
+              </div>
+              {wizard && (
+                <Button variant="ghost" onClick={() => setStep("prepare")}>
+                  Настроить проектор заново
+                </Button>
+              )}
+            </>
+          )}
         </>
       )}
       {device.updateRequired && (
@@ -254,16 +450,41 @@ function HelperDeviceControls({
           Перед новым показом обновите компонент. Уже идущий показ продолжится до остановки.
         </p>
       )}
+      {!wizard && workspaceOutdated && (
+        <p>
+          Для автоматической настройки и отдельного пульта обновите помощник до 0.2.0 или новее.{" "}
+          <Button variant="link" onClick={onRequestUpgrade}>
+            Обновить компонент
+          </Button>
+        </p>
+      )}
       {!device.connected && (
         <p>Нет связи с компонентом. Откройте его на компьютере или продолжайте без установки.</p>
       )}
       {device.status === "ERROR" && (
-        <p role="alert">
-          Компонент сообщил об ошибке. Повторите проверку экрана или воспользуйтесь настройкой без
-          установки.
-        </p>
+        <div role="alert">
+          <p>
+            Компонент сообщил об ошибке. Повторите проверку экрана или воспользуйтесь настройкой без
+            установки.
+          </p>
+          {wizard && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setWaitingForShow(null);
+                changeTarget("");
+                setStep("prepare");
+              }}
+            >
+              Повторить настройку
+            </Button>
+          )}
+        </div>
       )}
       {notice && <p role="status">{notice}</p>}
+      {waitingForShow && (
+        <p role="status">Ждём подтверждения от помощника. Не закрывайте настройку.</p>
+      )}
       {command.isError && (
         <p role="alert">
           {userErrorMessage(command.error, "Не удалось отправить команду. Повторите попытку.")}
@@ -273,7 +494,13 @@ function HelperDeviceControls({
   );
 }
 
-export function ProjectorHelperSettings() {
+export function ProjectorHelperSettings({
+  wizard = false,
+  onProjectionReady
+}: {
+  wizard?: boolean;
+  onProjectionReady?: () => void;
+}) {
   const { user } = useAuth();
   const [query] = useSearchParams();
   const courseId = query.get("courseId");
@@ -304,6 +531,10 @@ export function ProjectorHelperSettings() {
   const [confirm, setConfirm] = useState(false);
   const [pair, setPair] = useState<ProjectionPairing | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [selectedDevice, setSelectedDevice] = useState("");
+  const [installationOpen, setInstallationOpen] = useState(false);
+  const computerSelectId = useId();
+  const installerOptions = useRef<HTMLDivElement>(null);
   const data = settings.data;
   useEffect(() => {
     if (!pair) return;
@@ -363,8 +594,20 @@ export function ProjectorHelperSettings() {
   };
   const staleDraft = draft !== null && draft.expectedRevision !== data.revision;
   const pairExpired = pair && Date.parse(pair.expiresAt) <= now;
+  const availableDevices = data.devices.filter((device) => !device.revoked && device.connected);
+  const deviceId = selectedDevice || (availableDevices.length === 1 ? availableDevices[0].id : "");
+  const visibleDevices = wizard
+    ? data.devices.filter((device) => device.id === deviceId)
+    : data.devices;
+  const showInstallation = !wizard || !deviceId || installationOpen;
+  const installers = data.installers.filter(
+    (installer) => !wizard || !workspaceNeedsUpdate(installer.version)
+  );
   return (
-    <section className="projector-helper" aria-labelledby="projector-helper-heading">
+    <section
+      className={`projector-helper${wizard ? " projector-helper--wizard" : ""}`}
+      aria-labelledby="projector-helper-heading"
+    >
       <div className="projector-helper-heading">
         <div>
           <h2 id="projector-helper-heading">Автоматическая настройка</h2>
@@ -380,7 +623,7 @@ export function ProjectorHelperSettings() {
           доступен.
         </p>
       )}
-      {user?.role === "ADMIN" && (
+      {user?.role === "ADMIN" && !wizard && (
         <form
           className="projector-policy"
           onSubmit={(event) => {
@@ -476,37 +719,64 @@ export function ProjectorHelperSettings() {
         </p>
       ) : (
         <>
-          {data.installers.length === 0 ? (
-            <p className="projector-helper-note">
-              Установочные пакеты пока не опубликованы. Используйте настройку без установки.
-            </p>
-          ) : (
-            <div className="projector-helper-actions projector-installer-options">
-              {data.installers.map((installer) => (
-                <Button
-                  asChild
-                  variant="outline"
-                  className="projector-installer-download"
-                  key={`${installer.platform}:${installer.version}`}
-                >
-                  <a href={installer.url} rel="noreferrer">
-                    <Download size={18} aria-hidden="true" />
-                    Установить · {platformLabels[installer.platform]} · ОС от{" "}
-                    {installer.minimumOsVersion}
-                  </a>
-                </Button>
+          <div ref={installerOptions}>
+            {showInstallation &&
+              (installers.length === 0 ? (
+                <p className="projector-helper-note">
+                  Установочные пакеты пока не опубликованы. Используйте настройку без установки.
+                </p>
+              ) : (
+                <>
+                  <p className="projector-helper-note">
+                    Версия для испытаний. Установите пакет для этого компьютера и запустите
+                    помощник. Системный запрос на запуск нужно подтвердить самостоятельно.
+                  </p>
+                  <div className="projector-helper-actions projector-installer-options">
+                    {installers
+                      .filter((installer) =>
+                        /mac/i.test(navigator.platform)
+                          ? installer.platform.startsWith("MACOS")
+                          : /win/i.test(navigator.platform)
+                            ? installer.platform.startsWith("WINDOWS")
+                            : true
+                      )
+                      .map((installer) => (
+                        <Button
+                          asChild
+                          variant="outline"
+                          className="projector-installer-download"
+                          key={`${installer.platform}:${installer.version}`}
+                        >
+                          <a href={installer.url} rel="noreferrer">
+                            <Download size={18} aria-hidden="true" />
+                            Установить · {platformLabels[installer.platform]} · ОС от{" "}
+                            {installer.minimumOsVersion}
+                          </a>
+                        </Button>
+                      ))}
+                  </div>
+                  <details className="projector-package-help">
+                    <summary>Как выбрать пакет для компьютера?</summary>
+                    <p>
+                      {/mac/i.test(navigator.platform)
+                        ? "Откройте меню Apple → «Об этом Mac». Если указана строка «Чип» (M1, M2 и новее), выберите Apple Silicon. Если указан процессор Intel, выберите Intel."
+                        : "Откройте «Параметры → Система → О системе» и найдите «Тип системы». Для x64 выберите x64, для процессора ARM выберите ARM64."}
+                    </p>
+                  </details>
+                </>
               ))}
-            </div>
+          </div>
+          {showInstallation && (
+            <Button
+              variant="outline"
+              disabled={pairing.isPending || settings.isError}
+              onClick={() => pairing.mutate()}
+            >
+              <Link2 size={18} aria-hidden="true" />
+              {pairing.isPending ? "Получаем код…" : "Подключить компонент"}
+            </Button>
           )}
-          <Button
-            variant="outline"
-            disabled={pairing.isPending || settings.isError}
-            onClick={() => pairing.mutate()}
-          >
-            <Link2 size={18} aria-hidden="true" />
-            {pairing.isPending ? "Получаем код…" : "Подключить компонент"}
-          </Button>
-          {pair && (
+          {pair && showInstallation && (
             <div className="projector-pairing" role="status">
               {pairExpired ? (
                 <>
@@ -523,6 +793,17 @@ export function ProjectorHelperSettings() {
                 <>
                   <p>Введите код в компоненте на этом компьютере:</p>
                   <strong>{pair.pairingCode}</strong>
+                  <Button asChild>
+                    <a
+                      href={`lecturer-projector://pair?${new URLSearchParams({ origin: window.location.origin, code: pair.pairingCode })}`}
+                    >
+                      Открыть установленный помощник
+                    </a>
+                  </Button>
+                  <small>
+                    Подтвердите подключение этого сайта в окне помощника. Если он ещё не установлен,
+                    сначала установите пакет выше.
+                  </small>
                   <p>
                     Действует до{" "}
                     {new Date(pair.expiresAt).toLocaleTimeString("ru-RU", {
@@ -539,8 +820,37 @@ export function ProjectorHelperSettings() {
       )}
       {data.devices.length > 0 && (
         <div className="projector-device-list">
-          <h3>Ваши компьютеры</h3>
-          {data.devices.map((device) => (
+          <h3>{wizard ? "Компьютер для показа" : "Ваши компьютеры"}</h3>
+          {wizard && availableDevices.length > 1 && (
+            <div className="projector-helper-target">
+              <label htmlFor={computerSelectId}>
+                Выберите компьютер, к которому подключён HDMI
+              </label>
+              <Select
+                value={deviceId || "__choose__"}
+                onValueChange={(value) => setSelectedDevice(value === "__choose__" ? "" : value)}
+              >
+                <SelectTrigger id={computerSelectId}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__choose__">Выберите компьютер</SelectItem>
+                  {availableDevices.map((device) => (
+                    <SelectItem key={device.id} value={device.id}>
+                      {device.name} · {platformLabels[device.platform]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {wizard && availableDevices.length === 0 && (
+            <p role="status">
+              Подключённый помощник пока не найден. Установите его и используйте код подключения
+              выше.
+            </p>
+          )}
+          {visibleDevices.map((device) => (
             <article className="projector-helper-device" key={device.id}>
               <div className="projector-device">
                 <span>
@@ -582,10 +892,23 @@ export function ProjectorHelperSettings() {
                 allowed={data.agentAllowed}
                 fresh={!settings.isError}
                 onSent={() => void client.invalidateQueries({ queryKey })}
+                onProjectionReady={onProjectionReady}
+                wizard={wizard}
+                onRequestUpgrade={() => {
+                  setInstallationOpen(true);
+                  requestAnimationFrame(() =>
+                    installerOptions.current?.scrollIntoView({ block: "start" })
+                  );
+                }}
               />
             </article>
           ))}
         </div>
+      )}
+      {wizard && deviceId && (
+        <Button variant="ghost" onClick={() => setInstallationOpen(!installationOpen)}>
+          {installationOpen ? "Скрыть установку" : "Установить на другом компьютере"}
+        </Button>
       )}
       <Dialog open={confirm} onOpenChange={(open) => !save.isPending && setConfirm(open)}>
         <DialogContent className="projector-policy-confirm">

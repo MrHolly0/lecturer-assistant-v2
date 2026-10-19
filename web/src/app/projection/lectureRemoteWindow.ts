@@ -56,7 +56,7 @@ export function fitLectureRemoteWindow(target: Window, panel: HTMLElement, force
       ? 420
       : previous && target.innerWidth === previous.measuredWidth
         ? previous.width
-        : target.innerWidth || 420;
+        : Math.min(420, target.innerWidth || 420);
   const chromeHeight = Math.max(0, target.outerHeight - target.innerHeight);
   const maxHeight = Math.max(64, Math.min(780, target.screen.availHeight - chromeHeight - 24));
   const parts = [".floating-remote-header", ".floating-remote-content", ".floating-remote-footer"];
@@ -67,6 +67,18 @@ export function fitLectureRemoteWindow(target: Window, panel: HTMLElement, force
     );
   }, 0);
   const height = Math.min(maxHeight, Math.max(60, Math.ceil(naturalHeight)));
+  if (target.lectureProjectorNative) {
+    if (force || previous?.width !== width || previous.height !== height)
+      target.lectureProjectorNative.postMessage({
+        type: "LECTURE_REMOTE",
+        action: "resize",
+        width,
+        height,
+        collapsed
+      });
+    lastSizes.set(target, { width, height, collapsed, measuredWidth: target.innerWidth });
+    return;
+  }
   if (!force && previous?.width === width && previous.height === height) {
     previous.measuredWidth = target.innerWidth;
     return;
@@ -114,6 +126,7 @@ export function observeLectureRemoteWindowSize(target: Window, panel: HTMLElemen
 
 /** Call directly from a click, before awaiting requests or mounting the panel. */
 export function openLectureRemoteWindow(options: LectureRemoteWindowOptions = {}): Promise<Window> {
+  if (window.lectureProjectorNative) return Promise.resolve(window);
   const key = options.windowKey ?? "default";
   const collapsed = options.collapsed ?? lectureRemoteCollapsed(key);
   rememberLectureRemoteCollapsed(key, collapsed);
@@ -193,6 +206,7 @@ export function prepareLectureRemoteWindow(target: Window): () => void {
   doc.title = "Lecturer Assistant · Пульт";
   doc.documentElement.lang = "ru";
   doc.body.classList.add("floating-remote-document");
+  if (target === window) return () => {};
   doc
     .querySelectorAll("[data-remote-pending], [data-remote-style], base[data-remote-base]")
     .forEach((node) => node.remove());

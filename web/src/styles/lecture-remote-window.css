@@ -16,3 +16,40 @@ html[data-lecture-remote="true"] {
 html[data-lecture-remote="true"] .floating-remote-document {
   min-height: 0;
 }
+.floating-remote-drag {
+  flex: none;
+  width: 24px;
+  height: 40px;
+  padding: 0;
+  color: var(--muted-foreground);
+  font-size: 24px;
+  cursor: grab;
+  touch-action: none;
+}
+.floating-remote-actions > .ui-button {
+  white-space: nowrap;
+}
+.floating-remote-actions > .floating-remote-stop {
+  color: var(--destructive);
+  border-color: var(--destructive);
+  background: var(--background);
+}
+.helper-remote-message {
+  padding: 24px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.helper-remote-message h1 {
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+.helper-remote-message button {
+  margin-top: 16px;
+}
+.screen-share-preview > img {
+  width: 100%;
+  max-height: 45vh;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #17191c;
+}

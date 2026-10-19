@@ -1,4 +1,4 @@
-import { useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useId, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   X
 } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { browserProjection, openProjectionWindow } from "../app/projection/browserProjection";
 import { canConfirmProjection } from "../app/projection/setupState";
 import { screenShare } from "../app/sharing/screenShare";
@@ -26,6 +26,7 @@ import {
   DialogTitle
 } from "../shared/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
+import { ProjectorHelperSettings } from "../widgets/ProjectorHelperSettings";
 
 type GuideOs = "windows" | "mac-modern" | "mac-monterey" | "mac-older" | "other";
 const osLabels: Record<GuideOs, string> = {
@@ -228,10 +229,11 @@ const phaseTitles: Record<string, string> = {
   invalidated: "Расположение экранов изменилось",
   stopped: "Окно проектора закрыто"
 };
-type SetupView = "connect" | "screens" | "helper";
+type SetupView = "connect" | "manual" | "screens" | "helper" | "ready";
 
-export function ProjectorSetupPage({ helperPanel }: { helperPanel?: ReactNode }) {
+export function ProjectorSetupPage() {
   const [query] = useSearchParams();
+  const navigate = useNavigate();
   const joinCode = query.get("joinCode") ?? "";
   const courseId = query.get("courseId");
   const sessionId = query.get("sessionId");
@@ -243,18 +245,21 @@ export function ProjectorSetupPage({ helperPanel }: { helperPanel?: ReactNode })
   const [os, setOs] = useState<GuideOs>(initialOs);
   const [view, setView] = useState<SetupView | null>(joinCode ? "connect" : null);
   const [reverseOpen, setReverseOpen] = useState(false);
-  const [neutral, setNeutral] = useState(false);
   const [selected, setSelected] = useState("");
   const [confirmationError, setConfirmationError] = useState(false);
   const [codeConfirmed, setCodeConfirmed] = useState(false);
+  const [numbers, setNumbers] = useState<{ opened: number; total: number } | null>(null);
   const [manualResult, setManualResult] = useState<"opened" | "blocked" | null>(null);
+  const [helperReady, setHelperReady] = useState(false);
   const trainingTrigger = useRef<HTMLButtonElement>(null);
   const active = state.phase === "showing";
   const busy = state.phase === "requesting" || state.phase === "opening";
   const selectedScreen = state.screens.find((screen) => screen.id === selected && !screen.current);
   const begin = () => {
+    setHelperReady(false);
     setView("screens");
     setSelected("");
+    setNumbers(null);
     setCodeConfirmed(false);
     setConfirmationError(false);
     void browserProjection.requestScreens();
@@ -264,125 +269,64 @@ export function ProjectorSetupPage({ helperPanel }: { helperPanel?: ReactNode })
     const channel = share.scope?.joinCode === joinCode ? share.localChannelId : null;
     setManualResult(openProjectionWindow(joinCode, channel ?? undefined) ? "opened" : "blocked");
   };
-  const finish = () => {
-    browserProjection.stop();
+  const backToLecture = () => {
     setView(null);
-    setNeutral(true);
-    setReverseOpen(true);
+    if (presenterPath) navigate(presenterPath);
   };
   const confirm = () => {
-    setConfirmationError(!browserProjection.confirmTest());
+    const accepted = browserProjection.confirmTest();
+    setConfirmationError(!accepted);
+    if (accepted) setView("ready");
   };
-  const manualOpening = joinCode && (
-    <div className="projector-manual-opening">
-      <Button variant="outline" onClick={openPublic}>
-        <ExternalLink size={18} />
-        Открыть окно проектора
-      </Button>
-      <p>
-        Откроется только материал занятия. Для ручного показа перенесите это окно на проектор после
-        включения «Расширить». Оно не переместится само.
-      </p>
-      {manualResult === "opened" && (
-        <p role="status">Окно открыто. Проверьте, что его видит аудитория.</p>
-      )}
-      {manualResult === "blocked" && (
-        <p role="alert">Разрешите всплывающие окна для сайта и нажмите кнопку ещё раз.</p>
-      )}
-    </div>
-  );
   return (
     <>
-      <div className={`page projector-setup${neutral ? " projector-setup--neutral" : ""}`}>
-        {neutral ? (
-          <div className="projector-finish">
-            <div className="projector-public-test__brand">
-              <BrandMark />
-              <strong>Lecturer Assistant</strong>
-            </div>
-            <Monitor size={52} />
-            <h1>Показ на проекторе закрыт</h1>
-            <p>Занятие продолжается. Перед дублированием экрана закройте служебные окна.</p>
-            <Button variant="outline" onClick={() => setReverseOpen(true)}>
-              <CircleHelp size={18} />
-              Как вернуть режим экрана?
-            </Button>
-            <Button variant="ghost" onClick={() => setNeutral(false)}>
-              Вернуться к настройке
-            </Button>
+      <div className="page projector-setup">
+        <header className="page-header projector-setup__header">
+          <div>
+            <h1>Проектор</h1>
+            <p className="muted">
+              Материал для аудитории на проекторе, вопросы и управление у вас.
+            </p>
           </div>
-        ) : (
-          <>
-            <header className="page-header projector-setup__header">
-              <div>
-                <h1>Настройка проектора</h1>
-                <p className="muted">Публичное окно для аудитории, управление на вашем экране.</p>
-              </div>
-              {presenterPath && (
-                <LinkButton variant="outline" to={presenterPath}>
-                  <ArrowLeft size={18} />К занятию
-                </LinkButton>
-              )}
-            </header>
-            <section className="projector-setup__summary" aria-labelledby="projector-status-title">
-              <p className="projector-status">
-                <Monitor size={20} />
-                {active ? "Экран проверен и подключён" : "Автоматическое размещение не настроено"}
-              </p>
-              <h2 id="projector-status-title">
-                {active ? "Проектор готов" : "Выберите способ показа"}
-              </h2>
-              <p>
-                Можно сразу открыть публичное окно и перенести его вручную или пройти настройку,
-                чтобы выбрать экран и проверить расположение.
-              </p>
-              <div className="projector-setup__actions">
-                {joinCode && (
-                  <Button variant="outline" onClick={openPublic}>
-                    <ExternalLink size={18} />
-                    Открыть окно проектора
-                  </Button>
-                )}
-                <Button
-                  ref={trainingTrigger}
-                  onClick={() => setView(active ? "screens" : "connect")}
-                >
-                  <Monitor size={18} />
-                  {active ? "Управлять проектором" : "Настроить экраны"}
-                </Button>
-              </div>
-              {manualResult && (
-                <p role={manualResult === "blocked" ? "alert" : "status"}>
-                  {manualResult === "blocked"
-                    ? "Окно заблокировано. Разрешите всплывающие окна для сайта и повторите открытие."
-                    : "Окно открыто. Перенесите его на проектор, если оно появилось на рабочем экране."}
-                </p>
-              )}
-              {!joinCode && (
-                <p className="projector-muted">
-                  Для показа материала откройте проектор из идущего занятия.
-                </p>
-              )}
-            </section>
-            <div className="projector-setup__secondary-actions">
-              <Button variant="ghost" onClick={() => setView("connect")}>
-                <CircleHelp size={18} />
-                Инструкция подключения
-              </Button>
-              {helperPanel && (
-                <Button variant="ghost" onClick={() => setView("helper")}>
-                  <ShieldCheck size={18} />
-                  Автоматическая настройка
-                </Button>
-              )}
-              <Button variant="ghost" onClick={() => setReverseOpen(true)}>
-                Как вернуть режим экрана?
-              </Button>
-            </div>
-          </>
-        )}
+          {presenterPath && (
+            <LinkButton variant="outline" to={presenterPath}>
+              <ArrowLeft size={18} />К занятию
+            </LinkButton>
+          )}
+        </header>
+        <section className="projector-setup__summary" aria-labelledby="projector-status-title">
+          <p className="projector-status">
+            <Monitor size={20} />
+            {active ? "Проектор подключён" : "Подключение и проверка экранов"}
+          </p>
+          <h2 id="projector-status-title">
+            {active ? "Материал показан аудитории" : "Начните с настройки проектора"}
+          </h2>
+          <p>
+            Подключите HDMI. Выберите автоматическую настройку с помощником или инструкцию без
+            установки, затем укажите экран аудитории.
+          </p>
+          <Button ref={trainingTrigger} onClick={() => setView(active ? "ready" : "connect")}>
+            <Monitor size={18} />
+            {active ? "Управлять проектором" : "Настроить проектор"}
+          </Button>
+          {!joinCode && (
+            <p className="projector-muted">
+              Откройте «Проектор» из идущего занятия, чтобы вывести его материал.
+            </p>
+          )}
+        </section>
+        {!joinCode && <ProjectorHelperSettings />}
+        <Button
+          className="projector-helper-link"
+          variant="ghost"
+          onClick={() => setReverseOpen(true)}
+        >
+          <CircleHelp size={18} />
+          Как вернуть режим экрана?
+        </Button>
       </div>
-      <Dialog open={view !== null && !neutral} onOpenChange={(open) => !open && setView(null)}>
+      <Dialog open={view !== null} onOpenChange={(open) => !open && setView(null)}>
         <DialogContent
           className="projector-tour projector-setup-dialog"
           onCloseAutoFocus={(event) => {
@@ -394,140 +338,182 @@ export function ProjectorSetupPage({ helperPanel }: { helperPanel?: ReactNode })
         >
           <DialogHeader>
             <p className="projector-eyebrow">
-              {view === "helper"
-                ? "Настройка проектора · необязательная установка"
-                : `Настройка проектора · шаг ${view === "connect" ? 1 : 2} из 2`}
+              {view === "ready"
+                ? "Подключение завершено"
+                : `Подключение проектора · ${view === "screens" ? "2 из 3" : view === "helper" ? "автоматическая настройка" : "1 из 3"}`}
             </p>
             <DialogTitle>
-              {view === "helper"
-                ? "Помощник для компьютера"
-                : view === "connect"
-                  ? "Подключите проектор"
-                  : phaseTitles[state.phase]}
+              {view === "ready"
+                ? "Проектор готов"
+                : view === "helper"
+                  ? "Установите или подключите помощник"
+                  : view === "manual"
+                    ? "Включите отдельный рабочий стол"
+                    : view === "screens"
+                      ? phaseTitles[state.phase]
+                      : "Как подключить проектор?"}
             </DialogTitle>
             <DialogDescription>
-              {view === "helper"
-                ? "Установка и использование зависят от разрешения учреждения. Показ без установки доступен всегда."
+              {view === "ready"
+                ? "Публичное окно уже на выбранном экране. Вернитесь к занятию и показывайте слайды или приложение."
                 : view === "connect"
-                  ? "Включите отдельный рабочий стол. Тогда аудитория увидит материал, а вопросы и ответы останутся у вас."
-                  : "Сначала нейтральный код на выбранном экране, затем ваше подтверждение и материал занятия."}
+                  ? "Помощник настроит экраны и откроет отдельный пульт. Без установки экраны можно настроить по инструкции."
+                  : view === "helper"
+                    ? "Установите компонент один раз, подключите этот компьютер и выберите экран по номеру."
+                    : view === "manual"
+                      ? "Аудитория увидит материал. Вопросы, заметки и ответы останутся на вашем экране."
+                      : "Посмотрите номер на физическом проекторе, выберите его здесь и подтвердите проверочный код."}
             </DialogDescription>
           </DialogHeader>
           <div className="projector-tour__body">
             {view === "connect" && (
               <>
                 <DisplayPair />
-                <div className="projector-show-destinations">
-                  <p>
-                    <strong>Куда показываем:</strong> публичное окно «Проектор» на отдельном
-                    физическом экране.
-                  </p>
-                  <p>
-                    <strong>Что показываем:</strong> слайды занятия или выбранное вами приложение.
-                    Для демонстрации выбирайте IDE, вкладку или рабочий экран, а не окно «Проектор».
-                  </p>
+                <div className="projector-methods">
+                  <Button onClick={() => setView("helper")}>
+                    <ShieldCheck size={20} />
+                    <span>
+                      <strong>С помощником</strong>
+                      <small>Установка, автоматическая настройка и отдельный пульт</small>
+                    </span>
+                    <ArrowRight size={18} />
+                  </Button>
+                  <Button variant="outline" onClick={() => setView("manual")}>
+                    <Monitor size={20} />
+                    <span>
+                      <strong>Без установки</strong>
+                      <small>Инструкция для вашей системы и проверка экранов</small>
+                    </span>
+                    <ArrowRight size={18} />
+                  </Button>
                 </div>
-                <p>Подключите HDMI, включите «Расширить» и вернитесь сюда.</p>
-                <GuideSystemSelect os={os} onChange={setOs} />
-                <Guide os={os} />
-                {helperPanel && (
-                  <div className="projector-helper-offer">
-                    <strong>Хотите запускать показ с помощником?</strong>
-                    <p>
-                      Здесь можно проверить доступность установки или подключить уже установленный
-                      компонент.
-                    </p>
-                    <Button variant="outline" onClick={() => setView("helper")}>
-                      Установка и подключение
-                    </Button>
-                  </div>
-                )}
+                <p className="projector-muted">
+                  Подключите проектор по HDMI. Во время настройки занятие продолжается.
+                </p>
               </>
             )}
-            {view === "helper" && helperPanel}
+            {view === "helper" && (
+              <ProjectorHelperSettings
+                wizard
+                onProjectionReady={() => {
+                  setHelperReady(true);
+                  setView("ready");
+                }}
+              />
+            )}
+            {view === "manual" && (
+              <>
+                <GuideSystemSelect os={os} onChange={setOs} />
+                <Guide os={os} />
+                <p className="projector-muted">
+                  После переключения вернитесь сюда и нажмите «Режим включён, проверить экраны».
+                </p>
+              </>
+            )}
             {view === "screens" && (
               <>
                 <div className="projector-check-result" role="status" aria-live="polite">
-                  {state.phase === "requesting" ? (
+                  {state.phase === "requesting" && (
                     <p>Подтвердите запрос «Управление окнами» в браузере.</p>
-                  ) : state.phase === "unsupported" ? (
+                  )}
+                  {state.phase === "unsupported" && (
                     <>
                       <p>
-                        Этот браузер не даёт сайту список мониторов и не позволяет выбрать проектор
+                        Safari и этот браузер не разрешают сайту перечислять и размещать экраны
                         автоматически.
                       </p>
                       <p>
-                        Откройте настройку в настольном Chrome или Edge либо перенесите публичное
-                        окно вручную.
+                        Помощник работает независимо от браузера. Можно установить его здесь или
+                        открыть материал вручную и перенести окно на проектор.
                       </p>
+                      <Button onClick={() => setView("helper")}>
+                        <ShieldCheck size={18} />
+                        Подключить помощник
+                      </Button>
                     </>
-                  ) : state.phase === "permission-denied" ? (
+                  )}
+                  {state.phase === "permission-denied" && (
+                    <p>Разрешите «Управление окнами» в настройках сайта и повторите проверку.</p>
+                  )}
+                  {state.phase === "single-screen" && (
                     <p>
-                      Разрешите «Управление окнами» в настройках сайта и повторите проверку. Отказ
-                      не означает, что HDMI отключён.
+                      Доступен один экран. Подключите HDMI, включите «Расширить» по инструкции и
+                      проверьте снова.
                     </p>
-                  ) : state.phase === "single-screen" ? (
-                    <p>
-                      Подключите HDMI и включите «Расширить». Один доступный экран также может
-                      означать ограничение браузера. После переключения вернитесь сюда и повторите
-                      проверку.
-                    </p>
-                  ) : state.phase === "popup-blocked" ? (
-                    <p>
-                      Разрешите всплывающие окна для сайта, затем нажмите «Открыть тест» ещё раз.
-                    </p>
-                  ) : state.phase === "choosing" ? (
-                    <p>
-                      Доступно экранов: {state.screens.length}. Выберите, где должен появиться тест.
-                    </p>
-                  ) : state.phase === "opening" ? (
-                    <p>Проверяем фактическое расположение окна. Материал занятия пока скрыт.</p>
-                  ) : null}
+                  )}
+                  {state.phase === "popup-blocked" && (
+                    <p>Разрешите всплывающие окна для сайта и повторите тест.</p>
+                  )}
+                  {state.phase === "opening" && (
+                    <p>Проверяем расположение. Материал пока не показывается.</p>
+                  )}
                   {state.message && <p>{state.message}</p>}
                 </div>
                 {state.screens.length > 1 && !active && (
-                  <fieldset className="projector-screen-choice" disabled={busy}>
-                    <legend>Доступные экраны</legend>
-                    <div>
-                      {state.screens.map((screen, index) => (
-                        <label
-                          key={screen.id}
-                          className={`projector-display-option${screen.current ? " is-current" : ""}${selected === screen.id ? " is-selected" : ""}`}
-                        >
-                          <div className="projector-display-option__drawing">
-                            <Monitor size={44} />
-                            <span>{index + 1}</span>
-                          </div>
-                          <strong>{screen.current ? "Ваш рабочий экран" : screen.label}</strong>
-                          <span>
-                            {screen.width} × {screen.height}
-                          </span>
-                          <span className="projector-display-option__select">
-                            <input
-                              type="radio"
-                              name="projector-screen"
-                              checked={selected === screen.id}
-                              disabled={screen.current || busy}
-                              onChange={() => {
-                                browserProjection.selectScreen();
-                                setSelected(screen.id);
-                                setCodeConfirmed(false);
-                              }}
-                            />
-                            {screen.current ? "Здесь управление" : "Выбрать"}
-                          </span>
-                        </label>
-                      ))}
+                  <>
+                    <div className="projector-identify">
+                      <Button
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => setNumbers(browserProjection.identifyScreens())}
+                      >
+                        <Monitor size={18} />
+                        Показать номера на всех экранах
+                      </Button>
+                      <p>
+                        Номера от 1 до {state.screens.length} появятся на 10 секунд. Запомните номер
+                        на проекторе.
+                      </p>
+                      {numbers && (
+                        <p role={numbers.opened < numbers.total ? "alert" : "status"}>
+                          {numbers.opened === numbers.total
+                            ? "Номера открыты. Выберите ниже номер проектора."
+                            : `Открыто ${numbers.opened} из ${numbers.total}. Разрешите несколько всплывающих окон или используйте помощник.`}
+                        </p>
+                      )}
                     </div>
-                    <p className="projector-muted">
-                      Название монитора не доказывает, что это физический проектор. Это подтвердит
-                      проверочный код.
-                    </p>
-                  </fieldset>
+                    <fieldset className="projector-screen-choice" disabled={busy}>
+                      <legend>Какой номер виден на проекторе?</legend>
+                      <div>
+                        {state.screens.map((screen, index) => (
+                          <label
+                            key={screen.id}
+                            className={`projector-display-option${screen.current ? " is-current" : ""}${selected === screen.id ? " is-selected" : ""}`}
+                          >
+                            <div className="projector-display-option__drawing">
+                              <Monitor size={44} />
+                              <span>{index + 1}</span>
+                            </div>
+                            <strong>
+                              Экран {index + 1}
+                              {screen.current ? " · управление" : ""}
+                            </strong>
+                            <span>
+                              {screen.label} · {screen.width} × {screen.height}
+                            </span>
+                            <span className="projector-display-option__select">
+                              <input
+                                type="radio"
+                                name="projector-screen"
+                                checked={selected === screen.id}
+                                disabled={screen.current || busy}
+                                onChange={() => {
+                                  browserProjection.selectScreen();
+                                  setSelected(screen.id);
+                                  setCodeConfirmed(false);
+                                }}
+                              />
+                              {screen.current ? "Ваш рабочий экран" : "Выбрать"}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  </>
                 )}
                 {state.phase === "testing" && (
                   <section className="projector-confirm">
-                    <p>Посмотрите на физический проектор.</p>
+                    <p>Убедитесь, что код виден именно на физическом проекторе.</p>
                     <p
                       className="projector-confirm__code"
                       aria-label={`Проверочный код ${state.testCode}`}
@@ -540,40 +526,25 @@ export function ProjectorSetupPage({ helperPanel }: { helperPanel?: ReactNode })
                         checked={codeConfirmed}
                         onChange={(event) => setCodeConfirmed(event.target.checked)}
                       />
-                      Вижу этот код именно на проекторе
+                      Вижу этот код на проекторе
                     </label>
                     <Button
                       disabled={!codeConfirmed || !canConfirmProjection(state)}
                       onClick={confirm}
                     >
                       <Check size={18} />
-                      {joinCode ? "Показать материал" : "Подтвердить экран"}
+                      Подтвердить и показать материал
                     </Button>
                     {confirmationError && (
                       <p role="alert">Экран изменился или потерял связь. Повторите тест.</p>
                     )}
                   </section>
                 )}
-                {active && (
-                  <div className="projector-connected">
-                    <ShieldCheck />
-                    <div>
-                      <strong>
-                        {joinCode ? "Материал на выбранном экране" : "Экран проверен"}
-                      </strong>
-                      <p>
-                        {joinCode
-                          ? "Вопросы, ответы и заметки остаются на рабочем экране. Для демонстрации выберите нужное приложение в управлении занятием, не окно проектора."
-                          : "Откройте занятие и запустите проектор из его инструментов."}
-                      </p>
-                    </div>
-                  </div>
-                )}
                 <div className="projector-setup__actions">
                   {!active && (
                     <Button variant="outline" disabled={busy} onClick={begin}>
                       <RefreshCw size={18} />
-                      {state.phase === "requesting" ? "Проверяем…" : "Проверить экраны"}
+                      {busy ? "Проверяем…" : "Проверить экраны снова"}
                     </Button>
                   )}
                   {!active && selectedScreen && state.phase !== "testing" && (
@@ -581,29 +552,11 @@ export function ProjectorSetupPage({ helperPanel }: { helperPanel?: ReactNode })
                       disabled={busy}
                       onClick={() => {
                         setCodeConfirmed(false);
-                        setConfirmationError(false);
                         browserProjection.openTest(selectedScreen.id, joinCode || "setup");
                       }}
                     >
                       <Monitor size={18} />
-                      {state.phase === "opening" ? "Открываем…" : "Открыть тест"}
-                    </Button>
-                  )}
-                  {state.phase === "testing" && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        browserProjection.selectScreen();
-                        setSelected("");
-                      }}
-                    >
-                      Другой экран
-                    </Button>
-                  )}
-                  {state.attemptId && (
-                    <Button variant="outline" onClick={finish}>
-                      <X size={18} />
-                      Закрыть проектор
+                      Открыть проверочный код
                     </Button>
                   )}
                 </div>
@@ -614,45 +567,104 @@ export function ProjectorSetupPage({ helperPanel }: { helperPanel?: ReactNode })
                   "popup-blocked",
                   "placement-failed",
                   "error"
-                ].includes(state.phase) && manualOpening}
-                {helperPanel && !active && (
+                ].includes(state.phase) &&
+                  joinCode && (
+                    <div className="projector-manual-opening">
+                      <strong>Ручной показ без помощника</strong>
+                      <p>
+                        Нажмите кнопку, затем перетащите открывшееся публичное окно на проектор.
+                        Если Safari открыл вкладку, выберите «Окно → Переместить вкладку в новое
+                        окно». Вернитесь сюда после проверки.
+                      </p>
+                      <Button variant="outline" onClick={openPublic}>
+                        <ExternalLink size={18} />
+                        Открыть публичное окно
+                      </Button>
+                      {manualResult === "blocked" && (
+                        <p role="alert">Разрешите всплывающие окна для сайта и повторите.</p>
+                      )}
+                      {manualResult === "opened" && (
+                        <>
+                          <p role="status">
+                            Окно открыто. Проверьте материал на физическом проекторе.
+                          </p>
+                          <Button onClick={() => setView("ready")}>
+                            Материал виден на проекторе
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
+              </>
+            )}
+            {view === "ready" && (
+              <>
+                <div className="projector-connected">
+                  <ShieldCheck />
+                  <div>
+                    <strong>Учебный материал для аудитории</strong>
+                    <p>Пульт, вопросы и заметки остаются у вас.</p>
+                  </div>
+                </div>
+                <ol className="projector-next-steps">
+                  <li>Вернитесь к занятию и переключайте слайды как обычно.</li>
+                  <li>
+                    Для другого приложения нажмите «Демонстрация» и выберите нужное окно. Окно
+                    «Проектор» получает этот материал, выбирать его источником не нужно.
+                  </li>
+                  <li>
+                    После занятия закройте показ и верните режим экранов в этой настройке. При
+                    ручном подключении используйте обратную инструкцию.
+                  </li>
+                </ol>
+                {helperReady && (
+                  <Button variant="outline" onClick={() => setView("helper")}>
+                    Управление помощником
+                  </Button>
+                )}
+                {state.attemptId && (
                   <Button
-                    className="projector-helper-link"
-                    variant="ghost"
-                    onClick={() => setView("helper")}
+                    variant="outline"
+                    onClick={() => {
+                      browserProjection.stop();
+                      setView(null);
+                      setReverseOpen(true);
+                    }}
                   >
-                    Установка и подключение помощника
+                    <X size={18} />
+                    Закрыть проектор
                   </Button>
                 )}
               </>
             )}
           </div>
           <DialogFooter className="projector-tour__footer">
-            {view !== "connect" && (
+            {view !== "connect" && view !== "ready" && (
               <Button variant="ghost" onClick={() => setView("connect")}>
-                <ArrowLeft size={16} />К подключению
+                <ArrowLeft size={16} />
+                Выбор способа
               </Button>
             )}
             <div>
-              <Button variant="outline" onClick={() => setView(null)}>
-                {active ? "Готово" : "Закрыть настройку"}
+              <Button variant="outline" onClick={backToLecture}>
+                {presenterPath ? "К занятию" : "Закрыть"}
               </Button>
-              {view === "connect" && (
+              {view === "manual" && (
                 <Button onClick={begin}>
-                  <Monitor size={18} />
-                  Проверить экраны
+                  Режим включён, проверить экраны
+                  <ArrowRight size={16} />
                 </Button>
               )}
               {view === "helper" && (
-                <Button variant="outline" onClick={begin}>
-                  Продолжить без установки
+                <Button variant="ghost" onClick={() => setView("manual")}>
+                  Без установки
                 </Button>
               )}
-              {view === "screens" && active && presenterPath && (
-                <LinkButton to={presenterPath}>
-                  К занятию
+              {view === "ready" && presenterPath && (
+                <Button onClick={backToLecture}>
+                  Продолжить занятие
                   <ArrowRight size={16} />
-                </LinkButton>
+                </Button>
               )}
             </div>
           </DialogFooter>
@@ -661,23 +673,20 @@ export function ProjectorSetupPage({ helperPanel }: { helperPanel?: ReactNode })
       <Dialog open={reverseOpen} onOpenChange={setReverseOpen}>
         <DialogContent className="projector-tour projector-tour--reverse">
           <DialogHeader>
-            <DialogTitle>Как использовать экраны дальше?</DialogTitle>
+            <DialogTitle>Вернуть режим экранов</DialogTitle>
             <DialogDescription>
-              Выберите нужный результат. Приложение не меняет режим экранов автоматически.
+              Сначала закройте публичное окно и служебный пульт. Затем выберите нужный режим.
             </DialogDescription>
           </DialogHeader>
           <div className="projector-tour__body">
             <GuideSystemSelect os={os} onChange={setOs} />
             <Guide os={os} reverse />
-            <p className="projector-muted">
-              Перед включением дублирования закройте служебные окна. Занятие продолжится.
-            </p>
           </div>
           <DialogFooter>
-            <Button onClick={() => setReverseOpen(false)}>
-              <Check size={18} />
-              Понятно
+            <Button variant="outline" onClick={() => setReverseOpen(false)}>
+              Закрыть
             </Button>
+            {presenterPath && <LinkButton to={presenterPath}>К занятию</LinkButton>}
           </DialogFooter>
         </DialogContent>
       </Dialog>

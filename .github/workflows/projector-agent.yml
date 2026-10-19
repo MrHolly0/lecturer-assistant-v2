@@ -80,7 +80,7 @@ jobs:
       - name: Verify real install, upgrade, downgrade refusal and removal without launching the helper
         shell: pwsh
         run: |
-          ./projector-agent/scripts/test-windows-install.ps1 -Installer 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.1.1-setup-unsigned.exe' -Platform '${{ matrix.platform }}' -UpgradeInstaller 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.0-setup-unsigned.exe' -UpgradeVersion '0.2.0'
+          ./projector-agent/scripts/test-windows-install.ps1 -Installer 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.1.1-setup-unsigned.exe' -Version '0.1.1' -Platform '${{ matrix.platform }}' -UpgradeInstaller 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.0-setup-unsigned.exe' -UpgradeVersion '0.2.0'
       - name: Verify native workspace bridge and capture exclusion API in isolated window
         timeout-minutes: 8
         shell: pwsh
@@ -159,6 +159,11 @@ jobs:
         run: sh projector-agent/scripts/build-macos.sh '${{ matrix.architecture }}' '0.2.0' development
       - name: Verify packaged seed and launcher without native UI or login registration
         run: python3 projector-agent/scripts/test-macos-package.py 'projector-agent/packages/${{ matrix.runtime }}/build-development/disk/Lecturer Projector.app'
+      - name: Verify native private panel typing and content sizes without screen access
+        timeout-minutes: 3
+        run: |
+          'projector-agent/packages/${{ matrix.runtime }}/build-development/host/Lecturer Projector Host.app/Contents/MacOS/ProjectorMac' --remote-self-test '${{ runner.temp }}/remote-ui.json'
+          python3 -c 'import json; r=json.load(open("${{ runner.temp }}/remote-ui.json")); assert r["success"]; print(json.dumps(r))'
       - uses: actions/upload-artifact@v4
         with:
           name: projector-${{ matrix.runtime }}-development
@@ -168,6 +173,7 @@ jobs:
             projector-agent/packages/${{ matrix.runtime }}/*-0.2.0-development.dmg
             projector-agent/packages/${{ matrix.runtime }}/*-0.2.0-development-update.zip
             projector-agent/packages/${{ matrix.runtime }}/*-0.2.0-development.json
+            ${{ runner.temp }}/remote-ui.json
 
 # Development artifacts stay distinct from OS-signed/notarized public installers.
 # Production publication requires the release procedure and physical display qualification.

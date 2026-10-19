@@ -98,6 +98,8 @@ class BrowserProjection {
   private permission: PermissionStatus | null = null;
   private screenListeners = new Set<DetailedScreen>();
   private requestGeneration = 0;
+  private identifiers: Window[] = [];
+  private identifierTimer: ReturnType<typeof setTimeout> | null = null;
 
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => {
@@ -119,6 +121,7 @@ class BrowserProjection {
   }
 
   private disconnectScreens() {
+    this.closeIdentifiers();
     this.details?.removeEventListener("screenschange", this.refresh);
     this.details?.removeEventListener("currentscreenchange", this.refresh);
     this.details = null;
@@ -127,6 +130,66 @@ class BrowserProjection {
     this.permission?.removeEventListener("change", this.permissionChanged);
     this.permission = null;
     this.topology = "";
+  }
+
+  /** Public numbers only. A separate click is required because browsers protect popup creation. */
+  identifyScreens(): { opened: number; total: number } {
+    this.refresh();
+    this.closeIdentifiers();
+    const total = this.snapshot.screens.length;
+    this.snapshot.screens.forEach((screen, index) => {
+      const marker = window.open(
+        "about:blank",
+        `lecturer-screen-number-${index + 1}`,
+        `popup,left=${screen.availableLeft + Math.max(0, (screen.availableWidth - 440) / 2)},top=${screen.availableTop + Math.max(0, (screen.availableHeight - 320) / 2)},width=440,height=320`
+      );
+      if (!marker) return;
+      this.identifiers.push(marker);
+      const doc = marker.document;
+      doc.documentElement.dataset.lectureScreenIdentifier = "true";
+      doc.title = `Экран ${index + 1} · Lecturer Assistant`;
+      const style = doc.createElement("style");
+      style.textContent =
+        "body{margin:0;min-height:100vh;display:grid;place-content:center;text-align:center;background:#f6f6f7;color:#17191c;font:18px system-ui}strong{font-size:120px;line-height:1.2}p{margin:12px}button{font:inherit;border:1px solid #d4d6dc;border-radius:8px;padding:10px;background:#fafafa;cursor:pointer}";
+      doc.head.append(style);
+      const number = doc.createElement("strong");
+      number.textContent = String(index + 1);
+      const label = doc.createElement("p");
+      label.textContent = screen.current ? "Ваш рабочий экран" : "Запомните номер на проекторе";
+      const close = doc.createElement("button");
+      close.textContent = "Закрыть номер";
+      close.addEventListener("click", () => marker.close());
+      doc.body.replaceChildren(number, label, close);
+      try {
+        marker.moveTo(
+          screen.availableLeft + Math.max(0, (screen.availableWidth - 440) / 2),
+          screen.availableTop + Math.max(0, (screen.availableHeight - 320) / 2)
+        );
+      } catch {
+        /* The user still confirms placement in the public test. */
+      }
+    });
+    const opened = this.identifiers.length;
+    this.identifierTimer = setTimeout(() => this.closeIdentifiers(), 10000);
+    window.focus();
+    return { opened, total };
+  }
+
+  private closeIdentifiers() {
+    if (this.identifierTimer) clearTimeout(this.identifierTimer);
+    this.identifierTimer = null;
+    this.identifiers.forEach((marker) => {
+      try {
+        if (
+          !marker.closed &&
+          marker.document.documentElement.dataset.lectureScreenIdentifier === "true"
+        )
+          marker.close();
+      } catch {
+        // A marker navigated elsewhere is no longer ours to close.
+      }
+    });
+    this.identifiers = [];
   }
 
   async requestScreens() {
@@ -249,6 +312,7 @@ class BrowserProjection {
 
   /** Must run directly in a click handler, after requestScreens has completed. */
   openTest(screenId: string, joinCode: string) {
+    this.closeIdentifiers();
     this.installListeners();
     this.refresh();
     const screen = selectProjectionScreen(this.snapshot, screenId);
@@ -402,7 +466,10 @@ class BrowserProjection {
     if (this.ticker) clearInterval(this.ticker);
     this.ticker = null;
   }
-  private closeForPageExit = () => this.closeWindow();
+  private closeForPageExit = () => {
+    this.closeIdentifiers();
+    this.closeWindow();
+  };
   selectScreen() {
     this.closeWindow();
     this.update({
@@ -415,6 +482,7 @@ class BrowserProjection {
     });
   }
   stop() {
+    this.closeIdentifiers();
     ++this.requestGeneration;
     this.closeWindow();
     this.update({

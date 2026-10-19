@@ -3958,7 +3958,7 @@ components:
       enum: [IDLE, TESTING, SHOWING, PAUSED, ERROR]
     ProjectionCommandType:
       type: string
-      enum: [TEST_TARGET, START_PUBLIC_PROJECTION, STOP_PROJECTION, CHECK_UPDATE]
+      enum: [PREPARE_DISPLAYS, IDENTIFY_SCREENS, RESTORE_DISPLAYS, FOCUS_PRIVATE_REMOTE, TEST_TARGET, START_PUBLIC_PROJECTION, STOP_PROJECTION, CHECK_UPDATE]
     ProjectionInstaller:
       type: object
       required: [platform, version, minimumOsVersion, url, sha256, size]
@@ -4037,6 +4037,11 @@ components:
         diagnosticCode:
           type: string
           nullable: true
+        activeSessionId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Current leased output session, present only while this device remains allowed and its lease is alive. The server still checks the exact active START before reopening a private remote.
     ProjectionSettings:
       type: object
       required: [agentAllowed, minimumVersion, revision, updatedAt, installers, devices]
@@ -4174,7 +4179,22 @@ components:
               type: string
               nullable: true
               pattern: '^[a-f0-9]{64}$'
-              description: START only; public media receiver grant. Put only in native public URL fragment, never a server URL query. Bound to exact device/session/output lease, max 8h.
+              description: START and FOCUS only; public media receiver grant. FOCUS reuses the current START credential without changing the output lease. Put only in native public URL fragment, never a server URL query. Bound to exact device/session/output lease, max 8h.
+            controlToken:
+              type: string
+              nullable: true
+              pattern: '^[a-f0-9-]{36}\.[a-f0-9]{64}$'
+              description: START and FOCUS only; private native lecture remote credential. FOCUS reuses the current START credential. Send as X-Lecture-Control-Token only for explicitly allowed HTTP operations in the exact course/session. Never use as a staff JWT, query parameter or public receiver credential. Bound to the current device output lease, policy, account and course membership; expires at most 8h after start.
+            courseId:
+              type: string
+              format: uuid
+              nullable: true
+              description: START and FOCUS only; exact course scope for the private lecture remote.
+            sessionId:
+              type: string
+              format: uuid
+              nullable: true
+              description: START and FOCUS only; exact session scope for the private lecture remote.
     ProjectionCommandAck:
       type: object
       required: [commandId, result]

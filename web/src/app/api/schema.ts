@@ -2715,6 +2715,10 @@ export interface components {
     ProjectionDeviceStatus: "IDLE" | "TESTING" | "SHOWING" | "PAUSED" | "ERROR";
     /** @enum {string} */
     ProjectionCommandType:
+      | "PREPARE_DISPLAYS"
+      | "IDENTIFY_SCREENS"
+      | "RESTORE_DISPLAYS"
+      | "FOCUS_PRIVATE_REMOTE"
       | "TEST_TARGET"
       | "START_PUBLIC_PROJECTION"
       | "STOP_PROJECTION"
@@ -2753,6 +2757,11 @@ export interface components {
       updateRequired: boolean;
       screens: components["schemas"]["ProjectionScreen"][];
       diagnosticCode?: string | null;
+      /**
+       * Format: uuid
+       * @description Current leased output session, present only while this device remains allowed and its lease is alive. The server still checks the exact active START before reopening a private remote.
+       */
+      activeSessionId?: string | null;
     };
     ProjectionSettings: {
       agentAllowed: boolean;
@@ -2818,8 +2827,20 @@ export interface components {
         joinCode?: string | null;
         targetScreenId?: string | null;
         testCode?: string | null;
-        /** @description START only; public media receiver grant. Put only in native public URL fragment, never a server URL query. Bound to exact device/session/output lease, max 8h. */
+        /** @description START and FOCUS only; public media receiver grant. FOCUS reuses the current START credential without changing the output lease. Put only in native public URL fragment, never a server URL query. Bound to exact device/session/output lease, max 8h. */
         projectionViewToken?: string | null;
+        /** @description START and FOCUS only; private native lecture remote credential. FOCUS reuses the current START credential. Send as X-Lecture-Control-Token only for explicitly allowed HTTP operations in the exact course/session. Never use as a staff JWT, query parameter or public receiver credential. Bound to the current device output lease, policy, account and course membership; expires at most 8h after start. */
+        controlToken?: string | null;
+        /**
+         * Format: uuid
+         * @description START and FOCUS only; exact course scope for the private lecture remote.
+         */
+        courseId?: string | null;
+        /**
+         * Format: uuid
+         * @description START and FOCUS only; exact session scope for the private lecture remote.
+         */
+        sessionId?: string | null;
       };
     };
     ProjectionCommandAck: {

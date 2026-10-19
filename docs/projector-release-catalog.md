@@ -107,11 +107,18 @@ lesson can download/stage a verified update; activation waits until public outpu
 The native updater verifies assets, protects rollback, uses safe slots and confirms
 health before accepting a replacement. Server metadata alone never executes an asset.
 
-## Release gate
+## Production release gate
 
 Publish offers only after installer/package signing, native embedded trust, notarization
 where required, hosted assets, install/update/recovery checks and the actual OS/display
 matrix have passed. Source/unit tests and Java-to-native signature compatibility do not
 prove physical projector behavior. This repository ships empty example catalog files and a native public trust anchor.
 The private release key stays outside Git and builds. Operators must publish and qualify
-real OS-signed releases explicitly; development EXE/DMG artifacts are not catalog offers.
+real OS-signed releases explicitly.
+
+An explicitly requested evaluation may use a separate GitHub prerelease and verified
+development installers. The website must identify these as test builds and explain
+the OS launch confirmation; never describe metadata signatures as Authenticode or
+Developer ID notarization. Keep the institution policy, pinned trust, actual artifact
+hashes, update safety checks and installer/native fixture checks in force. Such a test
+release does not satisfy the production OS/display qualification gate above.

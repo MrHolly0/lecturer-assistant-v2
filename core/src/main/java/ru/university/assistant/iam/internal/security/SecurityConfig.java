@@ -89,7 +89,8 @@ class SecurityConfig {
         configuration.setAllowedOrigins(OriginList.parse(allowedOrigins));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of(
-                "Authorization", "Content-Type", "X-Participant-Token", "X-Projection-View-Token"));
+                "Authorization", "Content-Type", "X-Participant-Token", "X-Projection-View-Token",
+                "X-Lecture-Control-Token"));
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

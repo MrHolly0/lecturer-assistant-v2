@@ -188,6 +188,11 @@ public class ProjectionService {
         if (device.revokedAt() != null) {
             throw conflict("Подключение помощника отозвано");
         }
+        if (List.of(CommandType.PREPARE_DISPLAYS, CommandType.IDENTIFY_SCREENS,
+                CommandType.RESTORE_DISPLAYS, CommandType.FOCUS_PRIVATE_REMOTE).contains(request.type())
+                && ProjectionVersion.older(device.version(), "0.2.0")) {
+            throw conflict("Для настройки экранов и отдельного пульта обновите помощник до версии 0.2.0 или новее");
+        }
         var existing = jdbc.sql("select * from projection.commands where device_id = ? and request_id = ?")
                 .params(device.id(), request.requestId()).query(this::commandRow).optional();
         if (existing.isPresent()) {
@@ -199,7 +204,8 @@ public class ProjectionService {
             }
             return wire(old, session);
         }
-        if (request.type() != CommandType.STOP_PROJECTION && request.type() != CommandType.CHECK_UPDATE) {
+        if (request.type() != CommandType.STOP_PROJECTION && request.type() != CommandType.CHECK_UPDATE
+                && request.type() != CommandType.RESTORE_DISPLAYS) {
             requireAllowed(policy);
             requireActive(session);
             if (device.lastSeenAt() == null || device.lastSeenAt().isBefore(clock.instant().minusSeconds(15))) {
@@ -208,8 +214,10 @@ public class ProjectionService {
             if (ProjectionVersion.older(device.version(), policy.minimumVersion())) {
                 throw conflict("Сначала обновите помощник");
             }
-            if (request.targetScreenId() == null || request.targetScreenId().isBlank()
-                    || device.screens().stream().noneMatch(screen -> screen.id().equals(request.targetScreenId()))) {
+            boolean targetsDisplay = request.type() == CommandType.TEST_TARGET
+                    || request.type() == CommandType.START_PUBLIC_PROJECTION;
+            if (targetsDisplay && (request.targetScreenId() == null || request.targetScreenId().isBlank()
+                    || device.screens().stream().noneMatch(screen -> screen.id().equals(request.targetScreenId())))) {
                 throw conflict("Выберите доступный экран");
             }
             if (request.type() == CommandType.START_PUBLIC_PROJECTION && !request.displayConfirmed()) {
@@ -218,9 +226,14 @@ public class ProjectionService {
             if (request.type() == CommandType.START_PUBLIC_PROJECTION) {
                 requireConfirmedTest(device, courseId, sessionId, request);
             }
+            if (request.type() == CommandType.FOCUS_PRIVATE_REMOTE) {
+                requireCurrentOutput(device, courseId, sessionId);
+            }
         }
         // Output intentions and update checks supersede only their own command lane.
-        String lane = request.type() == CommandType.CHECK_UPDATE ? "type = 'CHECK_UPDATE'" : "type <> 'CHECK_UPDATE'";
+        String lane = request.type() == CommandType.CHECK_UPDATE ? "type = 'CHECK_UPDATE'"
+                : request.type() == CommandType.FOCUS_PRIVATE_REMOTE ? "type = 'FOCUS_PRIVATE_REMOTE'"
+                : "type <> 'CHECK_UPDATE'";
         jdbc.sql("update projection.commands set acknowledged_at = ?, result = 'CANCELLED' "
                 + "where device_id = ? and acknowledged_at is null and " + lane)
                 .params(timestamp(clock.instant()), device.id()).update();
@@ -234,7 +247,7 @@ public class ProjectionService {
                 """).params(id, device.id(), request.requestId(), request.type().name(), courseId, sessionId,
                         request.targetScreenId(), fingerprint(device.screens()), testCode,
                         timestamp(now), timestamp(now.plusSeconds(60))).update();
-        if (request.type() == CommandType.STOP_PROJECTION) {
+        if (request.type() == CommandType.STOP_PROJECTION || request.type() == CommandType.RESTORE_DISPLAYS) {
             clearActive(device.id());
         }
         return wire(new CommandRow(id, request.type(), courseId, sessionId, request.targetScreenId(),
@@ -288,18 +301,34 @@ public class ProjectionService {
                 """).params(device.id(), timestamp(now)).query(this::commandRow).list();
         List<Command> outgoing = new ArrayList<>();
         for (CommandRow command : pending) {
-            if (command.type() == CommandType.CHECK_UPDATE || command.type() == CommandType.STOP_PROJECTION) {
+            if (command.type() == CommandType.CHECK_UPDATE || command.type() == CommandType.STOP_PROJECTION
+                    || command.type() == CommandType.RESTORE_DISPLAYS) {
                 outgoing.add(wire(command, null));
                 continue;
             }
+            if (command.type() == CommandType.FOCUS_PRIVATE_REMOTE) {
+                if (!allowed || !hasLease || !canShow(owner, command.courseId(), command.sessionId())
+                        || !command.courseId().equals(device.activeCourseId())
+                        || !command.sessionId().equals(device.activeSessionId())
+                        || !currentOutputCommand(device).map(row -> row.type() == CommandType.START_PUBLIC_PROJECTION)
+                                .orElse(false)) {
+                    cancel(command.id(), now);
+                    continue;
+                }
+                outgoing.add(wire(command, sessions.requireSessionInCourse(command.courseId(), command.sessionId())));
+                continue;
+            }
+            boolean setupCommand = command.type() == CommandType.PREPARE_DISPLAYS
+                    || command.type() == CommandType.IDENTIFY_SCREENS || command.type() == CommandType.RESTORE_DISPLAYS;
             if (!allowed || updateRequired || !canShow(owner, command.courseId(), command.sessionId())
-                    || !command.screenFingerprint().equals(fingerprint(request.screens()))
-                    || request.screens().stream().noneMatch(screen -> screen.id().equals(command.targetScreenId()))) {
+                    || (!setupCommand && (!command.screenFingerprint().equals(fingerprint(request.screens()))
+                    || request.screens().stream().noneMatch(screen -> screen.id().equals(command.targetScreenId()))))) {
                 cancel(command.id(), now);
                 continue;
             }
             LiveSession session = sessions.requireSessionInCourse(command.courseId(), command.sessionId());
             outgoing.add(wire(command, session));
+            if (setupCommand) continue;
             jdbc.sql("""
                     update projection.devices set active_course_id = ?, active_session_id = ?, active_command_id = ?
                     where id = ?
@@ -348,6 +377,65 @@ public class ProjectionService {
         }
         // A helper receives at most two media viewer connections, independently of its staff owner's identity.
         return new ViewerAccess(session, grant.id());
+    }
+
+    /** Independent native remote: current device lease, one lesson, and explicit HTTP capabilities only. */
+    @Transactional(readOnly = true)
+    public AuthenticatedUser requireLectureControl(String method, String path, String token) {
+        if (token == null || !token.matches("[a-f0-9-]{36}\\.[a-f0-9]{64}")) {
+            throw unauthorized("Требуется доступ к пульту занятия");
+        }
+        UUID id;
+        try { id = UUID.fromString(token.substring(0, 36)); }
+        catch (IllegalArgumentException invalid) { throw unauthorized("Доступ к пульту недействителен"); }
+        DeviceRow grant = jdbc.sql("select * from projection.devices where id = ?").param(id)
+                .query(this::deviceRow).optional()
+                .orElseThrow(() -> unauthorized("Доступ к пульту недействителен"));
+        Instant now = clock.instant();
+        if (!policy(false).agentAllowed() || grant.revokedAt() != null || grant.activeCommandId() == null
+                || grant.activeUntil() == null || !grant.activeUntil().isAfter(now)
+                || !MessageDigest.isEqual(token.getBytes(StandardCharsets.US_ASCII),
+                        lectureControlToken(id, grant.activeCommandId()).getBytes(StandardCharsets.US_ASCII))) {
+            throw unauthorized("Доступ к пульту истёк");
+        }
+        boolean activeStart = jdbc.sql("""
+                select exists(select 1 from projection.commands where id = ? and device_id = ?
+                    and type = 'START_PUBLIC_PROJECTION' and created_at > ?)
+                """).params(grant.activeCommandId(), id, timestamp(now.minusSeconds(8 * 3600)))
+                .query(Boolean.class).single();
+        AuthenticatedUser owner = currentStaff(grant.ownerId());
+        if (!activeStart || !canShow(owner, grant.activeCourseId(), grant.activeSessionId())) {
+            throw unauthorized("Доступ к занятию отозван");
+        }
+        LiveSession session = sessions.requireSessionInCourse(grant.activeCourseId(), grant.activeSessionId());
+        if (!allowedControlPath(method, path, grant.activeCourseId(), session)) {
+            throw denied("Действие не входит в доступ этого пульта");
+        }
+        return owner;
+    }
+
+    private boolean allowedControlPath(String method, String path, UUID courseId, LiveSession session) {
+        if (path.contains("%") || path.contains("..") || path.contains("//")) return false;
+        String course = "/api/v1/courses/" + courseId;
+        String base = course + "/sessions/" + session.id();
+        if (method.equals("GET") && path.equals(course + "/questions")) return true;
+        String deck = course + "/decks/" + session.deckId();
+        if (method.equals("GET") && path.equals(deck)) return true;
+        if ((method.equals("PUT") || method.equals("DELETE"))
+                && path.matches(java.util.regex.Pattern.quote(deck) + "/slides/[1-9][0-9]{0,5}/notes")) return true;
+        if (!path.startsWith(base)) return false;
+        String suffix = path.substring(base.length());
+        if (method.equals("GET") && List.of("", "/engagement", "/questions", "/participants",
+                "/polls", "/polls/active").contains(suffix)) return true;
+        if (method.equals("POST")
+                && List.of("/pause", "/resume", "/end", "/polls", "/polls/from-bank").contains(suffix)) return true;
+        if (method.equals("PUT") && suffix.equals("/slide")) return true;
+        if (method.equals("PUT") && suffix.matches("/questions/[a-f0-9-]{36}")) return true;
+        if (method.equals("POST") && suffix.matches("/participants/[a-f0-9-]{36}/(?:kick|request-name)")) return true;
+        if (method.equals("POST") && suffix.matches("/polls/[a-f0-9-]{36}/close")) return true;
+        if (method.equals("PUT") && suffix.matches("/polls/[a-f0-9-]{36}/correct-option")) return true;
+        return List.of("GET", "POST", "PUT", "DELETE").contains(method)
+                && suffix.matches("/screen-share(?:/[A-Za-z0-9._-]+){0,8}");
     }
 
     private void acknowledge(UUID deviceId, Ack ack, Instant now) {
@@ -420,7 +508,9 @@ public class ProjectionService {
                         device.status(), device.lastSeenAt(), device.revokedAt() == null && device.lastSeenAt() != null
                         && device.lastSeenAt().isAfter(clock.instant().minusSeconds(15)), device.revokedAt() != null,
                         ProjectionVersion.older(device.version(), policy.minimumVersion()), device.screens(),
-                        device.diagnosticCode())).toList();
+                        device.diagnosticCode(), policy.agentAllowed() && device.revokedAt() == null
+                        && device.activeUntil() != null && device.activeUntil().isAfter(clock.instant())
+                        ? device.activeSessionId() : null)).toList();
         return new Settings(policy.agentAllowed(), policy.minimumVersion(),
                 releases.latestVersion(policy.minimumVersion()),
                 policy.revision(), policy.updatedAt(),
@@ -457,10 +547,45 @@ public class ProjectionService {
     }
 
     private Command wire(CommandRow row, LiveSession session) {
+        boolean workspace = (row.type() == CommandType.START_PUBLIC_PROJECTION
+                || row.type() == CommandType.FOCUS_PRIVATE_REMOTE) && session != null;
+        UUID deviceId = workspace ? jdbc.sql("select device_id from projection.commands where id = ?")
+                .param(row.id()).query(UUID.class).single() : null;
+        CommandRow output = row.type() == CommandType.FOCUS_PRIVATE_REMOTE && workspace
+                ? requireCurrentOutput(device(deviceId), row.courseId(), row.sessionId()) : row;
         return new Command(row.id(), row.type(), row.expiresAt(), new CommandPayload(
-                row.type() == CommandType.START_PUBLIC_PROJECTION && session != null ? session.joinCode() : null,
-                row.targetScreenId(), row.testCode(),
-                row.type() == CommandType.START_PUBLIC_PROJECTION ? projectionViewToken(row.id()) : null));
+                workspace ? session.joinCode() : null,
+                output.targetScreenId(), row.testCode(),
+                workspace ? projectionViewToken(output.id()) : null,
+                workspace ? lectureControlToken(deviceId, output.id()) : null,
+                workspace ? row.courseId() : null, workspace ? row.sessionId() : null));
+    }
+
+    private java.util.Optional<CommandRow> currentOutputCommand(DeviceRow device) {
+        if (device.activeCommandId() == null) return java.util.Optional.empty();
+        return jdbc.sql("select * from projection.commands where id = ? and device_id = ? and created_at > ?")
+                .params(device.activeCommandId(), device.id(), timestamp(clock.instant().minusSeconds(8 * 3600)))
+                .query(this::commandRow).optional();
+    }
+
+    private CommandRow requireCurrentOutput(DeviceRow device, UUID courseId, UUID sessionId) {
+        if (!courseId.equals(device.activeCourseId()) || !sessionId.equals(device.activeSessionId())
+                || device.activeUntil() == null || !device.activeUntil().isAfter(clock.instant())) {
+            throw conflict("Сначала запустите показ этого занятия на выбранном компьютере");
+        }
+        return currentOutputCommand(device).filter(output -> output.type() == CommandType.START_PUBLIC_PROJECTION)
+                .orElseThrow(() -> conflict("Показ занятия ещё не запущен"));
+    }
+
+    private String lectureControlToken(UUID deviceId, UUID commandId) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(viewTokenKey, "HmacSHA256"));
+            return deviceId + "." + HexFormat.of().formatHex(mac.doFinal(
+                    ("lecture-control-v1:" + deviceId + ":" + commandId).getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.GeneralSecurityException exception) {
+            throw new IllegalStateException("Cannot issue lecture control grant", exception);
+        }
     }
 
     private String projectionViewToken(UUID commandId) {

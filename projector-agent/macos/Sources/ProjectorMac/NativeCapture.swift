@@ -161,7 +161,15 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
             let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
             let ownPID = ProcessInfo.processInfo.processIdentifier
             let ownApps = content.applications.filter { $0.processID == ownPID }
-            let choices: [(String, SCDisplay?, SCWindow?)] = content.displays.enumerated().map { ("Экран \($0.offset + 1) · \($0.element.width)×\($0.element.height)", $0.element, nil) }
+            let choices: [(String, SCDisplay?, SCWindow?)] = content.displays.map { display in
+                let matched = NSScreen.screens.firstIndex { screen in
+                    (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display.displayID
+                }
+                let label: String
+                if let matched { label = "Экран \(matched + 1) · " + NSScreen.screens[matched].localizedName }
+                else { label = "Дисплей без номера · \(display.width)×\(display.height)" }
+                return (String(label.prefix(120)), display, nil)
+            }
                 + content.windows.filter { $0.owningApplication?.processID != ownPID && $0.windowLayer == 0 && $0.frame.width >= 100 && $0.frame.height >= 100 }.prefix(100).map { (String((($0.owningApplication?.applicationName ?? "Окно") + " · " + ($0.title ?? "")).prefix(120)), nil, $0) }
             guard !choices.isEmpty else { throw HostError.code("CAPTURE_NO_SOURCES") }
             let alert = NSAlert(); alert.messageText = "Что показать аудитории?"
@@ -243,12 +251,14 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
               let value = attachments.first?[.status] as? Int, value == SCFrameStatus.complete.rawValue else { return }
         guard let buffer = sample.imageBuffer else { return }
+        // Keep the approved preview frame: SCK can stay idle on static code/slides,
+        // so publishing must not wait for a new screen change after confirmation.
+        latestBuffer = buffer
         let now = ProcessInfo.processInfo.systemUptime
         if publisher == nil {
             if now - lastPreview > 0.5, let jpeg = jpeg(buffer, quality: 0.65) { lastPreview = now; event?(["type": "preview", "phase": "preview", "frameUrl": "data:image/jpeg;base64," + jpeg.base64EncodedString(), "sourceName": sourceName, "captureExcludesRemote": true]) }
             return
         }
-        latestBuffer = buffer
     }
     private func encodeFrame() {
         guard !paused, let buffer = latestBuffer, let publisher else { return }

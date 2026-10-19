@@ -223,8 +223,14 @@ import Darwin
                 default: throw HostError.code("UNKNOWN_NATIVE_ACTION")
                 }
                 send(["id": id, "success": true]); rebuildMenu()
-            } catch HostError.code(let code) { projection.neutralize(); send(["id": id, "success": false, "diagnosticCode": code]) }
-            catch { projection.neutralize(); send(["id": id, "success": false, "diagnosticCode": "NATIVE_OPERATION_FAILED"]) }
+            } catch HostError.code(let code) {
+                if type != "FOCUS_PRIVATE_REMOTE" { projection.neutralize() }
+                send(["id": id, "success": false, "diagnosticCode": code])
+            }
+            catch {
+                if type != "FOCUS_PRIVATE_REMOTE" { projection.neutralize() }
+                send(["id": id, "success": false, "diagnosticCode": "NATIVE_OPERATION_FAILED"])
+            }
         }
     }
     private func preflightReady() -> Bool {
@@ -443,6 +449,8 @@ if CommandLine.arguments.contains("--journal-self-test") {
     try JournalSelfTest.run()
 } else if CommandLine.arguments.contains("--capture-self-test") {
     try CaptureSelfTest.run()
+} else if let index = CommandLine.arguments.firstIndex(of: "--remote-self-test"), CommandLine.arguments.count > index + 1 {
+    RemoteSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if CommandLine.arguments.contains("--preflight") {
     let data = try JSONSerialization.data(withJSONObject: ["platform": "macOS", "mutation": false, "screens": DisplayController.screens()], options: [.sortedKeys])
     print(String(decoding: data, as: UTF8.self))
