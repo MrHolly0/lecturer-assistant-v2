@@ -68,6 +68,9 @@ Name: "{autoprograms}\Lecturer Assistant\Удалить помощник про�
 [Registry]
 ; The value is written only after successful bootstrap and explicit checkbox selection.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "LecturerAssistantProjector"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\lecturer-projector"; ValueType: string; ValueData: "URL:Lecturer Assistant projector pairing"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\lecturer-projector"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\lecturer-projector\shell\open\command"; ValueType: string; ValueData: """{app}\launcher\Projector.Launcher.exe"" ""{app}"" ""%1"""
 
 [Run]
 Filename: "{app}\launcher\Projector.Launcher.exe"; Parameters: """{app}"""; Description: "Запустить помощник проектора"; Flags: postinstall nowait skipifsilent unchecked

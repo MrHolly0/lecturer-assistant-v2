@@ -13,6 +13,9 @@ enum BootstrapFailure: Error { case code(String) }
     static var userApplication: URL { files.homeDirectoryForCurrentUser.appendingPathComponent("Applications/" + name) }
     static var data: URL { files.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("LecturerProjector", isDirectory: true) }
     static var root: URL { data.appendingPathComponent("install", isDirectory: true) }
+    static func shouldActivateSeed(installedVersion: String?, seedVersion: String) -> Bool {
+        installedVersion == nil || installedVersion!.compare(seedVersion, options: .numeric) == .orderedAscending
+    }
     static func isStable(_ bundle: URL, home: URL = files.homeDirectoryForCurrentUser) -> Bool {
         let path = bundle.standardizedFileURL.path
         return path == home.appendingPathComponent("Applications/" + name).standardizedFileURL.path || path == "/Applications/" + name
@@ -91,6 +94,10 @@ enum BootstrapFailure: Error { case code(String) }
         let fixture = files.temporaryDirectory.appendingPathComponent("projector-bootstrap-" + UUID().uuidString, isDirectory: true)
         try files.createDirectory(at: fixture, withIntermediateDirectories: true)
         defer { try? files.removeItem(at: fixture) }
+        guard shouldActivateSeed(installedVersion: nil, seedVersion: "0.2.0"),
+              shouldActivateSeed(installedVersion: "0.1.1", seedVersion: "0.2.0"),
+              !shouldActivateSeed(installedVersion: "0.2.0", seedVersion: "0.2.0"),
+              !shouldActivateSeed(installedVersion: "0.3.0", seedVersion: "0.2.0") else { throw BootstrapFailure.code("SEED_UPGRADE_OR_DOWNGRADE_CHECK_FAILED") }
         let home = fixture.appendingPathComponent("home")
         guard isStable(home.appendingPathComponent("Applications/" + name), home: home),
               isStable(URL(fileURLWithPath: "/Applications/" + name), home: home),
@@ -104,13 +111,32 @@ enum BootstrapFailure: Error { case code(String) }
         try Data("{}".utf8).write(to: metadata)
         do { _ = try readMetadata(metadata); throw BootstrapFailure.code("METADATA_GUARD_MISSING") }
         catch BootstrapFailure.code(let code) { guard code == "INVALID_BOOTSTRAP_METADATA" else { throw BootstrapFailure.code(code) } }
-        print("PASS stable installation paths, symlink rejection and malformed metadata; only temporary fixtures; no UI/login/Keychain/display changes")
+        print("PASS stable installation paths, symlink/malformed metadata guards, newer manual seed activation and no login downgrade; only temporary fixtures; no UI/login/Keychain/display changes")
     }
 }
 
 @MainActor final class BootstrapDelegate: NSObject, NSApplicationDelegate {
     private var launcher: Process?
     private var startupLock: Int32 = -1
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard urls.count == 1, let url = urls.first, url.absoluteString.count <= 2048, url.scheme == "lecturer-projector", url.host == "pair", url.port == nil,
+              url.path.isEmpty || url.path == "/", url.user == nil, url.password == nil, url.fragment == nil,
+              let parts = URLComponents(url: url, resolvingAgainstBaseURL: false), let items = parts.queryItems,
+              items.count == 2, Set(items.map(\.name)) == ["origin", "code"],
+              let origin = items.first(where: { $0.name == "origin" })?.value,
+              let site = URLComponents(string: origin), site.scheme == "https", site.host != nil,
+              site.user == nil, site.password == nil, (site.path.isEmpty || site.path == "/"), site.query == nil, site.fragment == nil,
+              let code = items.first(where: { $0.name == "code" })?.value, code.count == 12,
+              code.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) }) else { return }
+        do {
+            try Installation.checkParents(Installation.data)
+            try Installation.files.createDirectory(at: Installation.data, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let file = Installation.data.appendingPathComponent("pending-pair.json")
+            if Installation.files.fileExists(atPath: file.path) { guard (try file.resourceValues(forKeys: [.isSymbolicLinkKey])).isSymbolicLink != true else { return } }
+            try JSONSerialization.data(withJSONObject: ["origin": origin, "code": code]).write(to: file, options: [.atomic])
+            try Installation.files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        } catch { Self.showError("PAIR_LINK_FAILED") }
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             let bundle = Bundle.main.bundleURL
@@ -121,14 +147,18 @@ enum BootstrapFailure: Error { case code(String) }
             startupLock = open(Installation.data.appendingPathComponent("bootstrap.lock").path, O_CREAT | O_RDWR, 0o600)
             guard startupLock >= 0, flock(startupLock, LOCK_EX | LOCK_NB) == 0 else { NSApp.terminate(nil); return }
             let resources = bundle.appendingPathComponent("Contents/Resources")
-            _ = try Installation.readMetadata(resources.appendingPathComponent("bootstrap.json"))
+            let seed = try Installation.readMetadata(resources.appendingPathComponent("bootstrap.json"))
             let executable = bundle.appendingPathComponent("Contents/MacOS/launcher/Projector.Launcher")
             var environment = ProcessInfo.processInfo.environment
             environment["LA_PROJECTOR_BOOTSTRAP_PATH"] = bundle.appendingPathComponent("Contents/MacOS/ProjectorBootstrap").path
             for key in ["LA_PROJECTOR_UPDATE_ID", "LA_PROJECTOR_UPDATE_NONCE", "LA_PROJECTOR_HEALTH_PATH", "LA_PROJECTOR_PREFLIGHT_ID", "LA_PROJECTOR_PREFLIGHT_NONCE", "LA_PROJECTOR_PREFLIGHT_PATH"] { environment.removeValue(forKey: key) }
-            // A normal login must open the existing recovery menu, even with a display journal.
-            // Only a first installation activates the sealed seed and changes current.json.
-            if !Installation.files.fileExists(atPath: Installation.root.appendingPathComponent("current.json").path) {
+            // A newer explicitly installed app may contain a newer sealed seed. Never downgrade
+            // an online-updated host, and never run installation guards during an unchanged login.
+            let pointer = Installation.root.appendingPathComponent("current.json")
+            let installed = (try? Data(contentsOf: pointer)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let oldVersion = installed?["version"] as? String
+            let newVersion = seed["version"] as! String
+            if Installation.shouldActivateSeed(installedVersion: oldVersion, seedVersion: newVersion) {
                 _ = try Installation.run(executable, ["bootstrap", Installation.root.path, resources.appendingPathComponent("seed.zip").path, resources.appendingPathComponent("bootstrap.json").path], environment: environment)
             }
             try Installation.verifyInstalledHost(stableBundle: bundle)
@@ -148,21 +178,35 @@ enum BootstrapFailure: Error { case code(String) }
     private func install(from bundle: URL) throws {
         let target = Installation.userApplication
         let exists = Installation.files.fileExists(atPath: target.path)
-        let alert = NSAlert(); alert.messageText = exists ? "Помощник уже установлен" : "Установить помощник проектора?"
-        alert.informativeText = exists ? "Откроется установленное приложение. Обновления проверяются отдельно и не прерывают показ." : "Приложение будет скопировано в «Приложения» вашей учётной записи. Сайт и MAX продолжат работать без него. Автозапуск можно включить отдельно в меню помощника."
-        alert.addButton(withTitle: exists ? "Открыть установленный" : "Установить в мои Приложения"); alert.addButton(withTitle: "Отмена")
+        let installedVersion = Bundle(url: target)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        let candidateVersion = Bundle(url: bundle)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        let upgrade = exists && installedVersion.compare(candidateVersion, options: .numeric) == .orderedAscending
+        let alert = NSAlert(); alert.messageText = upgrade ? "Обновить помощник до " + candidateVersion + "?" : (exists ? "Помощник уже установлен" : "Установить помощник проектора?")
+        alert.informativeText = upgrade ? "Сначала завершите показ и выйдите из LA в строке меню. Подключение учреждения и ваши настройки сохранятся; версия не заменяется во время занятия." : (exists ? "Откроется установленное приложение. Более новая версия не будет заменена старой." : "Приложение будет скопировано в «Приложения» вашей учётной записи. Сайт и MAX продолжат работать без него. Автозапуск можно включить отдельно в меню помощника.")
+        alert.addButton(withTitle: upgrade ? "Обновить" : (exists ? "Открыть установленный" : "Установить в мои Приложения")); alert.addButton(withTitle: "Отмена")
         guard alert.runModal() == .alertFirstButtonReturn else { NSApp.terminate(nil); return }
         if exists {
             try Installation.requirePlainDirectory(target)
             guard Bundle(url: target)?.bundleIdentifier == Installation.identifier else { throw BootstrapFailure.code("INSTALLATION_NAME_IN_USE") }
-        } else {
+        }
+        if !exists || upgrade {
             let parent = target.deletingLastPathComponent()
             try Installation.checkParents(parent)
             try Installation.files.createDirectory(at: parent, withIntermediateDirectories: true)
             let temporary = parent.appendingPathComponent(".LecturerProjector-" + UUID().uuidString + ".app")
             defer { try? Installation.files.removeItem(at: temporary) }
+            if upgrade {
+                let resources = bundle.appendingPathComponent("Contents/Resources")
+                _ = try Installation.run(bundle.appendingPathComponent("Contents/MacOS/launcher/Projector.Launcher"), ["bootstrap-check", Installation.root.path, resources.appendingPathComponent("bootstrap.json").path])
+            }
             try Installation.files.copyItem(at: bundle, to: temporary)
-            try Installation.files.moveItem(at: temporary, to: target)
+            if exists {
+                let backup = parent.appendingPathComponent(".LecturerProjector-previous-" + UUID().uuidString + ".app")
+                try Installation.files.moveItem(at: target, to: backup)
+                do { try Installation.files.moveItem(at: temporary, to: target) }
+                catch { try? Installation.files.moveItem(at: backup, to: target); throw error }
+                try? Installation.files.removeItem(at: backup)
+            } else { try Installation.files.moveItem(at: temporary, to: target) }
         }
         let configuration = NSWorkspace.OpenConfiguration(); configuration.activates = false
         configuration.allowsRunningApplicationSubstitution = false

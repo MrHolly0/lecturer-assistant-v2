@@ -28,6 +28,22 @@ Check("public scene origin and route stay isolated", () => {
     Reject(() => PublicScene.ValidateOrigin("http://lecturer.example/"), "ORIGIN_MUST_BE_HTTPS_ORIGIN");
     Reject(() => PublicScene.Build(origin, "../staff"), "INVALID_JOIN_CODE");
 });
+Check("lecture workspace URLs carry only a valid scoped grant and stay separate from public routes", () => {
+    var course = Guid.Parse("10000000-0000-4000-8000-000000000001");
+    var session = Guid.Parse("10000000-0000-4000-8000-000000000002");
+    var token = "10000000-0000-4000-8000-000000000003." + new string('a', 64);
+    var remote = LectureWorkspace.Build(origin, course, session, token);
+    Equal(true, LectureWorkspace.Allowed(origin, remote)); Equal(false, PublicScene.Allowed(origin, remote));
+    Equal(false, LectureWorkspace.Allowed(origin, PublicScene.Build(origin, "ABC123")));
+    foreach (var invalid in new[] {
+        new Uri("https://evil.example/" + remote.Fragment),
+        new Uri(origin, "/wrong" + remote.Fragment), new Uri(origin, "?staff=secret" + remote.Fragment),
+        new Uri(origin, remote.Fragment + "&staffToken=secret"), new Uri(origin, remote.Fragment + "&controlToken=" + token),
+        new Uri(origin, remote.Fragment.Replace(session.ToString(), Guid.Empty.ToString(), StringComparison.Ordinal)),
+        new Uri(origin, remote.Fragment[..^1] + "g") }) Equal(false, LectureWorkspace.Allowed(origin, invalid));
+    Reject(() => LectureWorkspace.Build(origin, Guid.Empty, session, token), "INVALID_LECTURE_CONTROL_GRANT");
+    Reject(() => LectureWorkspace.Build(origin, course, session, "staff-jwt"), "INVALID_LECTURE_CONTROL_GRANT");
+});
 var original = new DisplaySnapshot("original", ["laptop", "HDMI"], "opaque");
 var applied = new DisplaySnapshot("applied", ["laptop", "HDMI"], "opaque");
 Check("guarded restore preserves manual and hotplug changes", () => {
@@ -178,6 +194,45 @@ var screens = new[] { new ScreenInfo("laptop", "Laptop", 1440, 900, true), new S
 var host = new FakeHost(); var executor = new CommandExecutor(origin, host);
 var policy = new PollResponse(1, 3000, now.AddSeconds(12), false, new(true, "0.1.0"), false, null, []);
 AgentAck Execute(AgentCommand command, PollResponse? p = null) => executor.Execute(command, p ?? policy, screens, now, CancellationToken.None).GetAwaiter().GetResult();
+Check("display setup identifies and prepares before an output lease while preserving policy and local failure", () => {
+    var setupHost = new FakeHost(); var setup = new CommandExecutor(origin, setupHost);
+    AgentAck Run(string type, PollResponse poll) => setup.Execute(new(Guid.NewGuid(), type, now.AddSeconds(10), new()), poll, screens, now, CancellationToken.None).GetAwaiter().GetResult();
+    var idle = policy with { LeaseUntil = null };
+    Equal("COMPLETED", Run("IDENTIFY_SCREENS", idle).Result);
+    Equal("IDENTIFY_SCREENS", setupHost.Actions.Last().Type); Equal(1, setupHost.Executions); Equal("IDLE", setup.Status);
+    Equal("COMPLETED", Run("PREPARE_DISPLAYS", idle).Result);
+    Equal("NEUTRAL_STOP", setupHost.Actions[^2].Type); Equal("PREPARE_DISPLAYS", setupHost.Actions[^1].Type); Equal("IDLE", setup.Status);
+    var before = setupHost.Executions;
+    Equal("POLICY_DENIED", Run("PREPARE_DISPLAYS", idle with { Policy = new(false, "0.1.0") }).DiagnosticCode); Equal(before, setupHost.Executions);
+    Equal("COMPLETED", Run("RESTORE_DISPLAYS", idle with { Policy = new(false, "0.1.0"), MustStop = true }).Result);
+    Equal("RESTORE_DISPLAYS", setupHost.Actions.Last().Type);
+    setupHost.Failure = "LOCAL_PREPARATION_CANCELLED";
+    before = setupHost.Executions;
+    Equal("NATIVE_STOP_FAILED", Run("PREPARE_DISPLAYS", idle).DiagnosticCode); Equal(before + 1, setupHost.Executions);
+    Equal("NEUTRAL_STOP", setupHost.Actions.Last().Type);
+    setupHost.FailureType = "PREPARE_DISPLAYS";
+    Equal("LOCAL_PREPARATION_CANCELLED", Run("PREPARE_DISPLAYS", idle).DiagnosticCode);
+});
+Check("private remote focus preserves showing output and needs a scoped grant and lease without repeating screen test", () => {
+    var focusHost = new FakeHost(); var focus = new CommandExecutor(origin, focusHost);
+    var course = Guid.Parse("20000000-0000-4000-8000-000000000001");
+    var session = Guid.Parse("20000000-0000-4000-8000-000000000002");
+    var grant = "20000000-0000-4000-8000-000000000003." + new string('b', 64);
+    AgentAck Run(string type, CommandPayload payload, PollResponse? poll = null) => focus.Execute(new(Guid.NewGuid(), type, now.AddSeconds(10), payload), poll ?? policy, screens, now, CancellationToken.None).GetAwaiter().GetResult();
+    Equal("COMPLETED", Run("TEST_TARGET", new(null, "HDMI", "123456")).Result);
+    Equal("COMPLETED", Run("START_PUBLIC_PROJECTION", new("ABC123", "HDMI", ControlToken: grant, CourseId: course, SessionId: session)).Result);
+    Equal(true, PublicScene.Allowed(origin, new Uri(focusHost.Actions.Last().Url!)));
+    Equal(true, LectureWorkspace.Allowed(origin, new Uri(focusHost.Actions.Last().RemoteUrl!)));
+    var payload = new CommandPayload(ControlToken: grant, CourseId: course, SessionId: session);
+    var before = focusHost.Executions;
+    Equal("CONTROL_GRANT_REQUIRED", Run("FOCUS_PRIVATE_REMOTE", payload with { ControlToken = null }).DiagnosticCode);
+    Equal("LEASE_EXPIRED", Run("FOCUS_PRIVATE_REMOTE", payload, policy with { LeaseUntil = null }).DiagnosticCode); Equal(before, focusHost.Executions);
+    focus.TopologyChanged();
+    Equal("COMPLETED", Run("FOCUS_PRIVATE_REMOTE", payload).Result); Equal(before + 1, focusHost.Executions); Equal("SHOWING", focus.Status);
+    var action = focusHost.Actions.Last(); Equal("FOCUS_PRIVATE_REMOTE", action.Type); Equal<string?>(null, action.TargetScreenId); Equal<string?>(null, action.Url);
+    Equal(LectureWorkspace.Build(origin, course, session, grant).AbsoluteUri, action.RemoteUrl); Equal(grant, action.ControlToken);
+    Equal<Guid?>(course, action.CourseId); Equal<Guid?>(session, action.SessionId);
+});
 Check("CHECK_UPDATE acknowledges configured envelope request without claiming installation", () => {
     var configured = new CommandExecutor(origin, host, loadUpdateTrust: () => trust);
     var signal = new AgentCommand(Guid.NewGuid(), "CHECK_UPDATE", now.AddSeconds(10), new());
@@ -299,7 +354,10 @@ passed += BootstrapChecks.Run();
 Console.WriteLine($"{passed} checks passed. No OS display mutation, startup registration or production network request performed.");
 internal sealed class FakeHost : IProjectionHost {
     public int Executions { get; private set; }
-    public Task<HostResult> Execute(HostAction action, CancellationToken ct) { Executions++; return Task.FromResult(new HostResult(action.Id, true)); }
+    public List<HostAction> Actions { get; } = [];
+    public string? Failure { get; set; }
+    public string? FailureType { get; set; }
+    public Task<HostResult> Execute(HostAction action, CancellationToken ct) { Executions++; Actions.Add(action); var failure = FailureType is null || FailureType == action.Type ? Failure : null; return Task.FromResult(new HostResult(action.Id, failure is null, failure)); }
 }
 
 internal sealed class ControlledClock(DateTimeOffset utcNow) : TimeProvider {

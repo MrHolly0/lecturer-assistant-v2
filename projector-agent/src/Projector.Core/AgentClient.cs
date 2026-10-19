@@ -53,7 +53,7 @@ public sealed class CommandExecutor(Uri origin, IProjectionHost host, OutputActi
         try
         {
             if (command.ExpiresAt <= now) throw new InvalidDataException("COMMAND_EXPIRED");
-            if (command.Type != "CHECK_UPDATE" && (!poll.Policy.Allowed || poll.MustStop)) throw new InvalidDataException("POLICY_DENIED");
+            if (command.Type is not ("CHECK_UPDATE" or "STOP_PROJECTION" or "RESTORE_DISPLAYS") && (!poll.Policy.Allowed || poll.MustStop)) throw new InvalidDataException("POLICY_DENIED");
             if (command.Type == "CHECK_UPDATE")
             {
                 if (poll.Release is null || poll.Release.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
@@ -63,10 +63,34 @@ public sealed class CommandExecutor(Uri origin, IProjectionHost host, OutputActi
             }
             if (command.Type == "STOP_PROJECTION")
             {
-                await NeutralStop(ct); return Remember(new(command.Id, "COMPLETED", "NEUTRAL_STOPPED_RESTORE_REQUIRES_LOCAL_CONFIRMATION"));
+                await NeutralStop(ct);
+                if (Status != "IDLE") throw new InvalidDataException("NATIVE_STOP_FAILED");
+                return Remember(new(command.Id, "COMPLETED", "NEUTRAL_STOPPED_RESTORE_REQUIRES_LOCAL_CONFIRMATION"));
+            }
+            if (command.Type is "PREPARE_DISPLAYS" or "IDENTIFY_SCREENS" or "RESTORE_DISPLAYS")
+            {
+                if (command.Type != "IDENTIFY_SCREENS")
+                {
+                    await NeutralStop(ct);
+                    if (Status != "IDLE") throw new InvalidDataException("NATIVE_STOP_FAILED");
+                }
+                var setup = await host.Execute(new(command.Id.ToString(), command.Type), ct);
+                if (!setup.Success) throw new InvalidDataException(setup.DiagnosticCode ?? "DISPLAY_SETUP_FAILED");
+                return Remember(new(command.Id, "COMPLETED"));
             }
             if (poll.LeaseUntil is null || poll.LeaseUntil <= now) throw new InvalidDataException("LEASE_EXPIRED");
             if (poll.UpdateRequired) throw new InvalidDataException("UPDATE_REQUIRED");
+            if (command.Type == "FOCUS_PRIVATE_REMOTE")
+            {
+                var remote = LectureWorkspace.Build(origin,
+                    command.Payload.CourseId ?? throw new InvalidDataException("COURSE_REQUIRED"),
+                    command.Payload.SessionId ?? throw new InvalidDataException("SESSION_REQUIRED"),
+                    command.Payload.ControlToken ?? throw new InvalidDataException("CONTROL_GRANT_REQUIRED"));
+                var focused = await host.Execute(new(command.Id.ToString(), "FOCUS_PRIVATE_REMOTE", RemoteUrl: remote.AbsoluteUri,
+                    ControlToken: command.Payload.ControlToken, CourseId: command.Payload.CourseId, SessionId: command.Payload.SessionId), ct);
+                if (!focused.Success) throw new InvalidDataException(focused.DiagnosticCode ?? "REMOTE_OPEN_FAILED");
+                return Remember(new(command.Id, "COMPLETED"));
+            }
             var target = command.Payload.TargetScreenId ?? throw new InvalidDataException("TARGET_REQUIRED");
             if (!DisplaySafety.ValidTarget(screens, target)) throw new InvalidDataException(screens.Any(s => s.Id == target && s.IsPrimary) ? "PRIMARY_TARGET_REQUIRES_MANUAL_SETUP" : "TARGET_NOT_INDEPENDENT_EXTERNAL");
             HostAction action;
@@ -79,7 +103,11 @@ public sealed class CommandExecutor(Uri origin, IProjectionHost host, OutputActi
             else if (command.Type == "START_PUBLIC_PROJECTION")
             {
                 if (testedTarget != target) throw new InvalidDataException("PHYSICAL_TEST_REQUIRED");
-                action = new(command.Id.ToString(), "START_PUBLIC_PROJECTION", target, PublicScene.Build(origin, command.Payload.JoinCode ?? "", command.Payload.ProjectionViewToken).AbsoluteUri);
+                string? remoteUrl = command.Payload.ControlToken is null ? null : LectureWorkspace.Build(origin,
+                    command.Payload.CourseId ?? throw new InvalidDataException("COURSE_REQUIRED"),
+                    command.Payload.SessionId ?? throw new InvalidDataException("SESSION_REQUIRED"), command.Payload.ControlToken).AbsoluteUri;
+                action = new(command.Id.ToString(), "START_PUBLIC_PROJECTION", target, PublicScene.Build(origin, command.Payload.JoinCode ?? "", command.Payload.ProjectionViewToken).AbsoluteUri,
+                    RemoteUrl: remoteUrl, ControlToken: command.Payload.ControlToken, CourseId: command.Payload.CourseId, SessionId: command.Payload.SessionId);
             }
             else throw new InvalidDataException("UNKNOWN_COMMAND");
             if (activity is not null && !activity.TryEnter()) throw new InvalidDataException("UPDATE_INSTALLING");

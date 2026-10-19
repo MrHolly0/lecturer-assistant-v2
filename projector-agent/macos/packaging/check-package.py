@@ -37,6 +37,12 @@ with tempfile.TemporaryDirectory(prefix="projector-package-check-") as directory
         info = plistlib.loads(archive.read("Lecturer Projector Host.app/Contents/Info.plist"))
         assert info["CFBundleIdentifier"] == "ru.university.lecturer-projector.host"
         assert info["LSMinimumSystemVersion"] == "14.0"
+        assert info["NSScreenCaptureUsageDescription"]
+    bootstrap = root / "Lecturer Projector.app"
+    (bootstrap / "Contents").mkdir(parents=True)
+    package.write_plist(bootstrap, "0.2.0", "bootstrap", "development")
+    bootstrap_info = plistlib.loads((bootstrap / "Contents/Info.plist").read_bytes())
+    assert bootstrap_info["CFBundleURLTypes"][0]["CFBundleURLSchemes"] == ["lecturer-projector"]
     link = host / "Contents/unsafe-link"
     link.symlink_to(executable)
     try:

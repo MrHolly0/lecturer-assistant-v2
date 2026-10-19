@@ -6,6 +6,9 @@ import Darwin
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     private var item: NSStatusItem!
     private let projection = ProjectionWindow()
+    private let remote = RemoteWindow()
+    private let capture = NativeCapture()
+    private let identification = ScreenIdentification()
     private var display: DisplayController!
     private var process: Process?
     private var generation = UUID()
@@ -32,6 +35,23 @@ import Darwin
         instanceLock = open(directory.appendingPathComponent("instance.lock").path, O_CREAT | O_RDWR, 0o600)
         guard instanceLock >= 0, flock(instanceLock, LOCK_EX | LOCK_NB) == 0 else { NSApp.terminate(nil); return }
         display = DisplayController(directory: directory)
+        capture.event = { [weak self] event in self?.remote.emit(event) }
+        remote.closed = { [weak self] in Task { @MainActor in await self?.capture.stop() } }
+        remote.command = { [weak self] value in
+            guard let self, let action = value["action"] as? String else { return }
+            Task { @MainActor in
+                switch action {
+                case "chooseSource": await self.capture.chooseSource()
+                case "publish": await self.capture.startPublishing()
+                case "stopCapture": await self.capture.stop()
+                case "pause": await self.capture.setPaused(value["paused"] as? Bool ?? true)
+                case "focusProjection": self.projection.focus()
+                case "ready", "capabilities": self.remote.emit(["type": "capabilities", "platform": "MACOS", "nativeCapture": true, "captureExclusion": ["supported": true, "enabled": true]]); self.capture.status()
+                case "screenRecordingSettings": if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") { NSWorkspace.shared.open(url) }
+                default: break
+                }
+            }
+        }
         startupStatus = (try? bootstrapCommand("--login-status")) ?? "UNAVAILABLE"
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "LA"
@@ -39,6 +59,7 @@ import Darwin
         updateStopTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                self.consumePairingRequest()
                 if let updater = self.pendingUpdater {
                     if self.preflightReady() { self.pendingUpdater = nil; self.stop(); NSApp.terminate(nil); return }
                     if !updater.isRunning || ProcessInfo.processInfo.systemUptime - self.preflightStartedAt > 600 {
@@ -50,7 +71,7 @@ import Darwin
             }
         }
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.projection.neutralize(); self?.status = "Экраны изменились — повторите проверку"; self?.rebuildMenu() }
+            Task { @MainActor in self?.projection.neutralize(); await self?.capture.stop(); self?.identification.dismiss(); self?.status = "Экраны изменились — повторите проверку"; self?.rebuildMenu() }
         }
         let config = directory.appendingPathComponent("origin.txt")
         if let saved = try? String(contentsOf: config, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
@@ -112,9 +133,26 @@ import Darwin
               components.query == nil, components.fragment == nil else { return nil }
         return URL(string: components.string!.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/")
     }
+    private func consumePairingRequest() {
+        let file = directory.appendingPathComponent("pending-pair.json")
+        guard FileManager.default.fileExists(atPath: file.path) else { return }
+        defer { try? FileManager.default.removeItem(at: file) }
+        guard let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey]),
+              values.isRegularFile == true, values.isSymbolicLink != true, (values.fileSize ?? 99999) <= 4096,
+              abs((values.contentModificationDate ?? .distantPast).timeIntervalSinceNow) < 60,
+              let data = try? Data(contentsOf: file), let request = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+              let rawOrigin = request["origin"], let origin = Self.validOrigin(rawOrigin), let code = request["code"],
+              code.count == 12, code.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) }) else { return }
+        try? FileManager.default.removeItem(at: file)
+        let alert = NSAlert(); alert.messageText = "Подключить помощник к сайту?"
+        alert.informativeText = "Адрес учреждения: " + origin.absoluteString + "\n\nПодтвердите подключение, если только что нажали кнопку на этом сайте. Сайт сможет управлять только разрешённым показом; пароль аккаунта не передаётся."
+        alert.addButton(withTitle: "Подключить"); alert.addButton(withTitle: "Отмена")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        self.origin = origin; start(origin: origin, token: nil, pairingCode: code)
+    }
     private func start(origin: URL, token: String?, pairingCode: String?) {
         generation = UUID(); let currentGeneration = generation
-        process?.terminate(); projection.neutralize(); pending.removeAll()
+        process?.terminate(); projection.neutralize(); remote.close(); Task { await capture.stop() }; pending.removeAll()
         let coordinator = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/coordinator/Projector.Agent")
         guard FileManager.default.isExecutableFile(atPath: coordinator.path) else { status = "Компонент сборки отсутствует — используйте сайт"; rebuildMenu(); return }
         let process = Process(); let input = Pipe(); let output = Pipe()
@@ -124,7 +162,7 @@ import Darwin
             let data = handle.availableData
             Task { @MainActor in guard self?.generation == currentGeneration else { return }; self?.receive(data) }
         }
-        process.terminationHandler = { [weak self] _ in Task { @MainActor in guard self?.generation == currentGeneration else { return }; self?.projection.neutralize(); self?.status = "Связь остановлена — используйте сайт"; self?.rebuildMenu() } }
+        process.terminationHandler = { [weak self] _ in Task { @MainActor in guard self?.generation == currentGeneration else { return }; self?.projection.neutralize(); self?.remote.close(); await self?.capture.stop(); self?.status = "Связь остановлена — используйте сайт"; self?.rebuildMenu() } }
         do {
             try process.run(); self.process = process; self.input = input
             var bootstrap: [String: Any] = ["origin": origin.absoluteString, "name": Host.current().localizedName ?? "Mac", "platform": platform()]
@@ -160,13 +198,22 @@ import Darwin
             do {
                 switch type {
                 case "GET_SCREENS": send(["id": id, "success": true, "screens": DisplayController.screens(), "localStop": pendingLocalStop, "updateHandoffFailed": pendingUpdateHandoffFailed]); pendingLocalStop = false; pendingUpdateHandoffFailed = false; continue
+                case "PREPARE_DISPLAYS": try prepareFromSite()
+                case "IDENTIFY_SCREENS": identification.show()
+                case "RESTORE_DISPLAYS": try restoreFromSite()
+                case "FOCUS_PRIVATE_REMOTE":
+                    guard let origin else { throw HostError.code("REMOTE_ORIGIN_REQUIRED") }
+                    try showRemote(action, origin: origin)
                 case "TEST_TARGET":
                     try projection.test(screenID: action["targetScreenId"] as? String ?? "", code: action["testCode"] as? String ?? "")
                     status = "Проверка экрана"
                 case "START_PUBLIC_PROJECTION":
                     guard let raw = action["url"] as? String, let url = URL(string: raw), let origin else { throw HostError.code("PUBLIC_URL_REJECTED") }
-                    try projection.show(screenID: action["targetScreenId"] as? String ?? "", url: url, origin: origin); status = "Идёт показ"
-                case "NEUTRAL_STOP": projection.neutralize(); status = "Показ остановлен"
+                    identification.dismiss()
+                    try projection.show(screenID: action["targetScreenId"] as? String ?? "", url: url, origin: origin)
+                    if action["remoteUrl"] != nil { try showRemote(action, origin: origin) }
+                    status = "Идёт показ"
+                case "NEUTRAL_STOP": projection.neutralize(); remote.close(); identification.dismiss(); Task { await capture.stop() }; status = "Показ остановлен"
                 case "TARGET_HELP": status = "Основной экран: выберите проектор в браузерном мастере"
                 case "UPDATE_READY":
                     try beginUpdate(action)
@@ -186,7 +233,17 @@ import Darwin
               let receipt = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
         return receipt["id"] as? String == id && receipt["nonce"] as? String == nonce && receipt["ready"] as? Bool == true
     }
+    private func showRemote(_ action: [String: Any], origin: URL) throws {
+        guard let rawRemote = action["remoteUrl"] as? String, let remoteURL = URL(string: rawRemote),
+              let rawCourse = action["courseId"] as? String, let courseID = UUID(uuidString: rawCourse),
+              let rawSession = action["sessionId"] as? String, let sessionID = UUID(uuidString: rawSession),
+              let token = action["controlToken"] as? String, RemoteWindow.validToken(token),
+              RemoteWindow.matches(remoteURL, courseID: courseID, sessionID: sessionID, token: token) else { throw HostError.code("REMOTE_SCOPE_REJECTED") }
+        try remote.show(url: remoteURL, origin: origin)
+        capture.bind(NativeCaptureScope(origin: origin, courseID: courseID, sessionID: sessionID, token: token))
+    }
     private func beginUpdate(_ action: [String: Any]) throws {
+        guard !capture.isActive else { throw HostError.code("CAPTURE_ACTIVE_UPDATE_DEFERRED") }
         guard pendingUpdater == nil else { throw HostError.code("UPDATER_ALREADY_PREPARING") }
         guard let root = ProcessInfo.processInfo.environment["LA_PROJECTOR_INSTALL_ROOT"],
               let envelope = action["updateEnvelopePath"] as? String, let package = action["updatePackagePath"] as? String,
@@ -227,26 +284,33 @@ import Darwin
         do { try input.fileHandleForWriting.write(contentsOf: data + Data([10])) } catch { process?.terminate() }
     }
     @objc private func prepare() {
+        do { try prepareFromSite() } catch { status = "Подготовка не удалась — используйте инструкцию на сайте"; rebuildMenu() }
+    }
+    private func prepareFromSite() throws {
         let alert = NSAlert(); alert.messageText = "Подготовить отдельный экран?"
         alert.informativeText = "Подключённые зеркальные дисплеи временно станут отдельными. Проектор сначала покажет только проверочный код. Исходная настройка сохранится; возврат — отдельной кнопкой после скрытия служебного окна."
         alert.addButton(withTitle: "Подготовить"); alert.addButton(withTitle: "Отмена")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard alert.runModal() == .alertFirstButtonReturn else { throw HostError.code("LOCAL_CONFIRMATION_CANCELLED") }
         do { projection.neutralize(); try display.prepareIndependentOutput(); status = "Выберите и проверьте экран на сайте" }
         catch HostError.code(let code) {
             status = code == "DISPLAY_RECOVERY_JOURNAL_INVALID" ? "Сохранённая настройка повреждена — используйте инструкцию на сайте" : "Сначала проверьте возврат сохранённой настройки экранов"
+            rebuildMenu(); throw HostError.code(code)
         }
-        catch { status = "Подготовка не удалась — используйте инструкцию на сайте" }
+        catch { status = "Подготовка не удалась — используйте инструкцию на сайте"; rebuildMenu(); throw error }
         rebuildMenu()
     }
-    @objc private func stop() { pendingLocalStop = true; projection.neutralize(); status = "Показ остановлен локально"; rebuildMenu() }
+    @objc private func stop() { pendingLocalStop = true; projection.neutralize(); remote.close(); identification.dismiss(); Task { await capture.stop() }; status = "Показ остановлен локально"; rebuildMenu() }
     @objc private func restore() {
-        projection.neutralize()
+        do { try restoreFromSite() } catch { status = "Возврат не удался — используйте настройки macOS"; rebuildMenu() }
+    }
+    private func restoreFromSite() throws {
+        projection.neutralize(); remote.close(); Task { await capture.stop() }
         let alert = NSAlert(); alert.messageText = "Вернуть исходную настройку?"
         alert.informativeText = "Сначала скройте служебное окно преподавателя. При возврате дублирования аудитория снова увидит основной экран. Настройки, изменённые вами вручную, не будут перезаписаны."
         alert.addButton(withTitle: "Служебное окно скрыто — вернуть"); alert.addButton(withTitle: "Отмена")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard alert.runModal() == .alertFirstButtonReturn else { throw HostError.code("LOCAL_CONFIRMATION_CANCELLED") }
         do { let result = try display.restore(locallyConfirmed: true); status = result == "RESTORED" || result == "UNCHANGED" ? "Настройка возвращена" : "Настройка изменилась — возврат пропущен"; projection.close() }
-        catch { status = "Возврат не удался — используйте настройки macOS" }
+        catch { status = "Возврат не удался — используйте настройки macOS"; rebuildMenu(); throw error }
         rebuildMenu()
     }
     @objc private func toggleStartup() {
@@ -351,7 +415,7 @@ import Darwin
         } catch { status = "Удаление остановлено — отключите автозапуск в настройках macOS"; rebuildMenu() }
     }
     @objc private func quit() { stop(); NSApp.terminate(nil) }
-    func applicationWillTerminate(_ notification: Notification) { projection.neutralize(); process?.terminate(); if instanceLock >= 0 { close(instanceLock) } }
+    func applicationWillTerminate(_ notification: Notification) { projection.neutralize(); remote.close(); identification.dismiss(); process?.terminate(); if instanceLock >= 0 { close(instanceLock) } }
 }
 
 enum Keychain {
@@ -377,6 +441,8 @@ enum Keychain {
 
 if CommandLine.arguments.contains("--journal-self-test") {
     try JournalSelfTest.run()
+} else if CommandLine.arguments.contains("--capture-self-test") {
+    try CaptureSelfTest.run()
 } else if CommandLine.arguments.contains("--preflight") {
     let data = try JSONSerialization.data(withJSONObject: ["platform": "macOS", "mutation": false, "screens": DisplayController.screens()], options: [.sortedKeys])
     print(String(decoding: data, as: UTF8.self))

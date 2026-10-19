@@ -50,7 +50,8 @@ internal sealed class StdioHost : IProjectionHost
         try
         {
             Console.WriteLine(JsonSerializer.Serialize(action, Wire.Json));
-            var line = await Console.In.ReadLineAsync(ct).AsTask().WaitAsync(TimeSpan.FromSeconds(3), ct) ?? throw new InvalidDataException("NATIVE_HOST_CLOSED");
+            var timeout = action.Type is "PREPARE_DISPLAYS" or "RESTORE_DISPLAYS" ? 120 : 15;
+            var line = await Console.In.ReadLineAsync(ct).AsTask().WaitAsync(TimeSpan.FromSeconds(timeout), ct) ?? throw new InvalidDataException("NATIVE_HOST_CLOSED");
             if (line.Length > 65_536) throw new InvalidDataException("NATIVE_REPLY_TOO_LARGE");
             var result = JsonSerializer.Deserialize<HostResult>(line, Wire.Json) ?? throw new InvalidDataException("BAD_NATIVE_REPLY");
             if (result.Id != action.Id) throw new InvalidDataException("NATIVE_REPLY_MISMATCH");

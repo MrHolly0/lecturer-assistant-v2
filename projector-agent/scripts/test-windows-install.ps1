@@ -20,6 +20,9 @@ function Get-ProjectorStartupValue {
 }
 if ($env:GITHUB_ENV) { "PROJECTOR_INSTALL_SMOKE_ROOT=$TestRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
 $InitialStartup = Get-ProjectorStartupValue
+$PairProtocolKey = 'Software\Classes\lecturer-projector'
+$InitialPairProtocol = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($PairProtocolKey)
+if ($InitialPairProtocol) { $InitialPairProtocol.Dispose(); throw 'A projector URL protocol exists; use an isolated runner' }
 $InitialHosts = @(Get-Process Projector.Windows -ErrorAction SilentlyContinue).Id
 if ($InitialHosts) { throw 'Native helper is running; use an isolated runner' }
 if ($InitialStartup) { throw 'A projector autostart entry exists; use an isolated runner' }
@@ -55,6 +58,19 @@ try {
     if (Get-Process Projector.Windows -ErrorAction SilentlyContinue) { throw 'Silent installation launched native UI' }
     if (Get-ProjectorStartupValue) { throw 'Silent installation enabled autostart without opt-in' }
     Test-InstalledHost $Pointer $Version 'host-preflight.json'
+    $PairProtocol = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($PairProtocolKey)
+    if ($null -eq $PairProtocol) { throw 'Per-user browser pairing protocol was not registered' }
+    try {
+        if ($null -eq $PairProtocol.GetValue('URL Protocol', $null)) { throw 'Pairing URL protocol marker missing' }
+        $PairCommandKey = $PairProtocol.OpenSubKey('shell\open\command')
+        if ($null -eq $PairCommandKey) { throw 'Pairing URL protocol command missing' }
+        try {
+            $ExpectedPairCommand = '"' + [IO.Path]::Combine($InstallRoot, 'launcher', 'Projector.Launcher.exe') + '" "' + $InstallRoot + '" "%1"'
+            if ($PairCommandKey.GetValue('') -ne $ExpectedPairCommand) { throw 'Pairing URL protocol bypasses stable launcher or lacks quoted arguments' }
+        }
+        finally { $PairCommandKey.Dispose() }
+    }
+    finally { $PairProtocol.Dispose() }
 
     # Idempotent reinstallation must keep the same verified immutable slot.
     Run-Installer $Installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/TASKS=""', "/DIR=`"$InstallRoot`"", "/LOG=`"$(Join-Path $TestRoot 'reinstall.log')`"")
@@ -87,6 +103,8 @@ try {
     }
     if (Get-Process Projector.Windows -ErrorAction SilentlyContinue) { throw 'Installer smoke launched a native helper process' }
     if (Get-ProjectorStartupValue) { throw 'Unexpected autostart mutation' }
+    $RemainingPairProtocol = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($PairProtocolKey)
+    if ($RemainingPairProtocol) { $RemainingPairProtocol.Dispose(); throw 'Uninstaller left the browser pairing URL protocol' }
     Write-Output 'PASS: per-user install, native host runtime preflight, immutable slot, idempotent reinstall, optional version upgrade/downgrade refusal, locked-show refusal, silent uninstall; no UI, display or autostart mutation'
 }
 finally {

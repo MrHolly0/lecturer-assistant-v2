@@ -56,6 +56,10 @@ def write_plist(bundle, version, role, mode):
                  CFBundlePackageType="APPL", CFBundleShortVersionString=version, CFBundleVersion=version,
                  LSUIElement=True, LSMinimumSystemVersion="14.0", NSHighResolutionCapable=True,
                  LAReleaseMode=mode)
+    if not host:
+        value["CFBundleURLTypes"] = [dict(CFBundleURLName="Lecturer Projector pairing", CFBundleURLSchemes=["lecturer-projector"], CFBundleTypeRole="Viewer")]
+    else:
+        value["NSScreenCaptureUsageDescription"] = "Передача выбранного учебного окна или экрана студентам. Пульт и окно проектора исключаются из захвата."
     with (Path(bundle) / "Contents/Info.plist").open("wb") as stream:
         plistlib.dump(value, stream, sort_keys=True)
 

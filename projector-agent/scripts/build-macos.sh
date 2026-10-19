@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 DOTNET_GENERATE_ASPNET_CERTIFICATE=false DOTNET_NOLOGO=1
 projector_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 projector_arch=${1:-arm64}
 projector_version=${2:-0.1.0}
@@ -26,6 +27,7 @@ swift build --package-path "$projector_root/macos" -c release --arch "$projector
 projector_swift_bin=$(swift build --package-path "$projector_root/macos" -c release --arch "$projector_arch" --show-bin-path)
 if [ "$(uname -m)" = "$projector_arch" ]; then
     "$projector_swift_bin/ProjectorMac" --journal-self-test
+    "$projector_swift_bin/ProjectorMac" --capture-self-test
     "$projector_swift_bin/ProjectorBootstrap" --self-test
 fi
 cp "$projector_swift_bin/ProjectorMac" "$projector_host/Contents/MacOS/ProjectorMac"

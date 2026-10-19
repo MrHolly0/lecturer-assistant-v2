@@ -73,14 +73,48 @@ jobs:
           "PROJECTOR_ISCC=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Build per-user development installer and update package
         shell: pwsh
-        run: ./projector-agent/scripts/build-windows.ps1 -Runtime '${{ matrix.runtime }}' -Version '0.1.0' -InnoCompiler "$env:PROJECTOR_ISCC"
+        run: ./projector-agent/scripts/build-windows.ps1 -Runtime '${{ matrix.runtime }}' -Version '0.1.1' -InnoCompiler "$env:PROJECTOR_ISCC"
       - name: Build a second version for installer upgrade tests
         shell: pwsh
-        run: ./projector-agent/scripts/build-windows.ps1 -Runtime '${{ matrix.runtime }}' -Version '0.1.1' -InnoCompiler "$env:PROJECTOR_ISCC"
+        run: ./projector-agent/scripts/build-windows.ps1 -Runtime '${{ matrix.runtime }}' -Version '0.2.0' -InnoCompiler "$env:PROJECTOR_ISCC"
       - name: Verify real install, upgrade, downgrade refusal and removal without launching the helper
         shell: pwsh
         run: |
-          ./projector-agent/scripts/test-windows-install.ps1 -Installer 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.1.0-setup-unsigned.exe' -Platform '${{ matrix.platform }}' -UpgradeInstaller 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.1.1-setup-unsigned.exe' -UpgradeVersion '0.1.1'
+          ./projector-agent/scripts/test-windows-install.ps1 -Installer 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.1.1-setup-unsigned.exe' -Platform '${{ matrix.platform }}' -UpgradeInstaller 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.0-setup-unsigned.exe' -UpgradeVersion '0.2.0'
+      - name: Verify native workspace bridge and capture exclusion API in isolated window
+        timeout-minutes: 8
+        shell: pwsh
+        run: |
+          $fixtureRoot = Join-Path $env:RUNNER_TEMP ('projector-workspace-' + [Guid]::NewGuid().ToString('N'))
+          Expand-Archive -LiteralPath 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.0-update-unsigned.zip' -DestinationPath $fixtureRoot
+          $helper = Join-Path $fixtureRoot 'app/Projector.Windows.exe'
+          if (-not (Test-Path -LiteralPath $helper)) { throw 'Native helper executable missing from update package' }
+          if (-not $env:PROJECTOR_INSTALL_SMOKE_ROOT) { throw 'Installer smoke diagnostics directory missing' }
+          $preflight = Join-Path $env:PROJECTOR_INSTALL_SMOKE_ROOT 'workspace-runtime-before.json'
+          $probe = Start-Process -FilePath $helper -ArgumentList @('--preflight', "`"$preflight`"") -Wait -PassThru
+          if ($probe.ExitCode -ne 0) { throw 'Native runtime preflight failed' }
+          $runtime = (Get-Content -LiteralPath $preflight -Raw | ConvertFrom-Json).webView2
+          $runtimeVersion = $null
+          if ($runtime.status -ne 'AVAILABLE' -or -not [Version]::TryParse(($runtime.version -split ' ')[0], [ref]$runtimeVersion) -or $runtimeVersion.Major -lt 132) {
+            $bootstrapper = Join-Path $fixtureRoot 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrapper
+            $signature = Get-AuthenticodeSignature -LiteralPath $bootstrapper
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation(?:,|$)') { throw 'WebView2 bootstrapper is not signed by Microsoft' }
+            $installation = Start-Process -FilePath $bootstrapper -ArgumentList @('/silent', '/install') -Wait -PassThru
+            if ($installation.ExitCode -ne 0) { throw 'Microsoft WebView2 Runtime installation failed on isolated runner' }
+            $preflight = Join-Path $env:PROJECTOR_INSTALL_SMOKE_ROOT 'workspace-runtime-after.json'
+            $probe = Start-Process -FilePath $helper -ArgumentList @('--preflight', "`"$preflight`"") -Wait -PassThru
+            if ($probe.ExitCode -ne 0) { throw 'Installed WebView2 Runtime preflight failed' }
+            $runtime = (Get-Content -LiteralPath $preflight -Raw | ConvertFrom-Json).webView2
+            $runtimeVersion = $null
+            if ($runtime.status -ne 'AVAILABLE' -or -not [Version]::TryParse(($runtime.version -split ' ')[0], [ref]$runtimeVersion) -or $runtimeVersion.Major -lt 132) { throw 'WebView2 Runtime 132+ remains unavailable' }
+          }
+          $report = Join-Path $env:PROJECTOR_INSTALL_SMOKE_ROOT 'workspace-self-test.json'
+          $fixture = Start-Process -FilePath $helper -ArgumentList @('--workspace-self-test', "`"$report`"") -Wait -PassThru
+          if ($fixture.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $report)) { throw 'Native workspace fixture failed' }
+          $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+          if ($result.success -ne $true) { throw 'Native workspace fixture did not confirm success' }
+          Get-Content -LiteralPath $report
       - name: Save installer smoke diagnostics
         if: always() && env.PROJECTOR_INSTALL_SMOKE_ROOT != ''
         uses: actions/upload-artifact@v4
@@ -97,8 +131,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
           path: |
-            projector-agent/packages/${{ matrix.runtime }}/*-0.1.1-setup-unsigned.exe
-            projector-agent/packages/${{ matrix.runtime }}/*-0.1.1-update-unsigned.zip
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.0-setup-unsigned.exe
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.0-update-unsigned.zip
             projector-agent/packages/${{ matrix.runtime }}/bootstrap.json
             projector-agent/packages/${{ matrix.runtime }}/package-manifest.json
 
@@ -122,7 +156,7 @@ jobs:
         with:
           dotnet-version: "10.0.x"
       - name: Build development DMG and update package
-        run: sh projector-agent/scripts/build-macos.sh '${{ matrix.architecture }}' '0.1.1' development
+        run: sh projector-agent/scripts/build-macos.sh '${{ matrix.architecture }}' '0.2.0' development
       - name: Verify packaged seed and launcher without native UI or login registration
         run: python3 projector-agent/scripts/test-macos-package.py 'projector-agent/packages/${{ matrix.runtime }}/build-development/disk/Lecturer Projector.app'
       - uses: actions/upload-artifact@v4
@@ -131,9 +165,9 @@ jobs:
           retention-days: 1
           if-no-files-found: error
           path: |
-            projector-agent/packages/${{ matrix.runtime }}/*-0.1.1-development.dmg
-            projector-agent/packages/${{ matrix.runtime }}/*-0.1.1-development-update.zip
-            projector-agent/packages/${{ matrix.runtime }}/*-0.1.1-development.json
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.0-development.dmg
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.0-development-update.zip
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.0-development.json
 
 # Development artifacts stay distinct from OS-signed/notarized public installers.
 # Production publication requires the release procedure and physical display qualification.

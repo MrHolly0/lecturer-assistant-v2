@@ -78,6 +78,7 @@ struct DisplayJournal: Codable {
         try requireNoPersistedRecovery()
         let original = try snapshotProvider()
         guard original.count >= 2 else { throw HostError.code("NO_EXTERNAL_DISPLAY") }
+        guard original.contains(where: { $0.mirror != 0 }) else { return }
         var config: CGDisplayConfigRef?
         guard CGBeginDisplayConfiguration(&config) == .success, let config else { throw HostError.code("DISPLAY_CONFIGURATION_UNAVAILABLE") }
         var right = original.filter { $0.mirror == 0 }.map { CGDisplayBounds($0.id).maxX }.max() ?? 0

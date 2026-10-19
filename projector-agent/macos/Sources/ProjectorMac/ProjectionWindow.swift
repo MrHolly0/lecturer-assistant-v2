@@ -22,6 +22,8 @@ import WebKit
         neutralize(); allowedURL = url
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent() // Never inherit staff cookies or the normal browser's session.
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.allowsAirPlayForMediaPlayback = false
         let web = WKWebView(frame: .zero, configuration: configuration)
         web.navigationDelegate = self; web.uiDelegate = self
         let window = createWindow(screen)
@@ -40,6 +42,7 @@ import WebKit
         window.contentView?.addSubview(field)
     }
     func close() { neutralize(); window?.close(); window = nil }
+    func focus() { window?.orderFrontRegardless() }
     private func target(_ id: String) throws -> NSScreen {
         guard let screen = NSScreen.screens.first(where: { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber).map { DisplayController.screenID($0.uint32Value) } == id }),
               let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,

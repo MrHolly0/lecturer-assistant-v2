@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Lecturer.Projector;
 
-var interactive = args.Length == 1;
+var interactive = args.Length is 1 or 2;
 try
 {
     var platform = (OperatingSystem.IsWindows() ? "WINDOWS_" : OperatingSystem.IsMacOS() ? "MACOS_" : "UNSUPPORTED_") +
@@ -24,12 +24,14 @@ try
     {
         BootstrapInstallation.UninstallCheck(removeRoot); Console.WriteLine("UNINSTALL_READY"); return;
     }
-    if (args.Length != 1) throw new InvalidDataException("EXPECTED_INSTALL_ROOT_OR_BOOTSTRAP_COMMAND");
+    if (args.Length is not (1 or 2)) throw new InvalidDataException("EXPECTED_INSTALL_ROOT_OR_BOOTSTRAP_COMMAND");
+    if (args.Length == 2) _ = PairLink.Parse(args[1]);
     var root = Path.GetFullPath(args[0]);
     if (File.Exists(Path.Combine(root, "update-transaction.json"))) throw new InvalidDataException("UPDATE_RECOVERY_REQUIRED");
     var slot = UpdateTransaction.ReadCurrent(root) ?? throw new InvalidDataException("NO_SAFE_INSTALLED_VERSION");
     if (slot.Platform != platform) throw new InvalidDataException("WRONG_INSTALLED_PLATFORM");
     var start = new ProcessStartInfo(UpdateTransaction.EntryPoint(root, slot)) { UseShellExecute = false };
+    if (args.Length == 2) start.ArgumentList.Add(args[1]);
     start.Environment["LA_PROJECTOR_INSTALL_ROOT"] = root;
     var process = Process.Start(start) ?? throw new InvalidDataException("START_FAILED");
     using (process) { await process.WaitForExitAsync(); Environment.ExitCode = process.ExitCode; }

@@ -31,6 +31,16 @@ with tempfile.TemporaryDirectory(prefix='projector-package-') as fixture:
     pointer = (root / 'current.json').read_bytes()
     current = json.loads(pointer)
     assert current['platform'] == expected and current['version'] == metadata['version']
+    # A sealed newer installer can upgrade an older stopped fixture; it cannot downgrade it.
+    old_metadata = dict(metadata, version='0.0.1')
+    old_manifest = Path(fixture) / 'older-bootstrap.json'
+    old_manifest.write_text(json.dumps(old_metadata))
+    upgrade_root = Path(fixture) / 'manual-upgrade' / 'install'
+    assert json.loads(run('bootstrap', upgrade_root, resources / 'seed.zip', old_manifest))['state'] == 'INSTALLED'
+    assert json.loads(run('bootstrap', upgrade_root, resources / 'seed.zip', resources / 'bootstrap.json'))['state'] == 'UPGRADED'
+    upgrade_pointer = (upgrade_root / 'current.json').read_bytes()
+    run('bootstrap-check', upgrade_root, old_manifest, expected_code='INSTALLER_DOWNGRADE_OR_PLATFORM_MISMATCH')
+    assert (upgrade_root / 'current.json').read_bytes() == upgrade_pointer
     host = root / 'versions' / current['slot'] / 'Lecturer Projector Host.app'
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(host)], check=True)
     coordinator = host / 'Contents/MacOS/coordinator/Projector.Agent'

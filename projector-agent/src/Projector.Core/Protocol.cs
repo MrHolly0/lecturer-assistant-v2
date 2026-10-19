@@ -18,11 +18,32 @@ public sealed record PairResponse(Guid DeviceId, string DeviceToken, int Protoco
 public sealed record AgentAck(Guid CommandId, string Result, string? DiagnosticCode = null);
 public sealed record AgentPoll(string Version, int ProtocolVersion, string Status, ScreenInfo[] Screens, AgentAck? Ack = null, string? OsVersion = null);
 public sealed record AgentPolicy(bool Allowed, string MinimumVersion);
-public sealed record CommandPayload(string? JoinCode = null, string? TargetScreenId = null, string? TestCode = null, string? ProjectionViewToken = null);
+public sealed record CommandPayload(string? JoinCode = null, string? TargetScreenId = null, string? TestCode = null, string? ProjectionViewToken = null, string? ControlToken = null, Guid? CourseId = null, Guid? SessionId = null);
 public sealed record AgentCommand(Guid Id, string Type, DateTimeOffset ExpiresAt, CommandPayload Payload);
 public sealed record PollResponse(int ProtocolVersion, int PollAfterMs, DateTimeOffset? LeaseUntil, bool MustStop,
     AgentPolicy Policy, bool UpdateRequired, JsonElement? Release, AgentCommand[] Commands);
-public sealed record HostAction(string Id, string Type, string? TargetScreenId = null, string? Url = null, string? TestCode = null, string? UpdateEnvelopePath = null, string? UpdatePackagePath = null, string? MinimumVersion = null);
+public sealed record HostAction(string Id, string Type, string? TargetScreenId = null, string? Url = null, string? TestCode = null, string? UpdateEnvelopePath = null, string? UpdatePackagePath = null, string? MinimumVersion = null, string? RemoteUrl = null, string? ControlToken = null, Guid? CourseId = null, Guid? SessionId = null);
+
+public static class LectureWorkspace
+{
+    public static Uri Build(Uri origin, Guid courseId, Guid sessionId, string token)
+    {
+        PublicScene.ValidateOrigin(origin.AbsoluteUri);
+        if (courseId == Guid.Empty || sessionId == Guid.Empty || !ValidToken(token))
+            throw new InvalidDataException("INVALID_LECTURE_CONTROL_GRANT");
+        return new Uri(origin, $"/#/helper/remote?courseId={courseId:D}&sessionId={sessionId:D}&controlToken={token}");
+    }
+    public static bool Allowed(Uri origin, Uri candidate)
+    {
+        if (candidate.Scheme != origin.Scheme || candidate.Authority != origin.Authority || candidate.UserInfo.Length != 0 || candidate.AbsolutePath != "/" || candidate.Query.Length != 0) return false;
+        const string prefix = "#/helper/remote?";
+        if (!candidate.Fragment.StartsWith(prefix, StringComparison.Ordinal)) return false;
+        var parts = candidate.Fragment[prefix.Length..].Split('&');
+        if (parts.Length != 3 || !parts[0].StartsWith("courseId=", StringComparison.Ordinal) || !parts[1].StartsWith("sessionId=", StringComparison.Ordinal) || !parts[2].StartsWith("controlToken=", StringComparison.Ordinal)) return false;
+        return Guid.TryParseExact(parts[0][9..], "D", out var course) && course != Guid.Empty && Guid.TryParseExact(parts[1][10..], "D", out var session) && session != Guid.Empty && ValidToken(parts[2][13..]);
+    }
+    private static bool ValidToken(string token) => token.Length == 101 && Guid.TryParseExact(token[..36], "D", out var id) && id != Guid.Empty && token[36] == '.' && token[37..].All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+}
 public sealed record HostResult(string Id, bool Success, string? DiagnosticCode = null, ScreenInfo[]? Screens = null, bool LocalStop = false, bool UpdateHandoffFailed = false);
 
 public static class PublicScene
