@@ -1278,6 +1278,10 @@ textarea {
   letter-spacing: 0.12em;
 }
 
+.presenter-connection-dialog .qr-card {
+  justify-self: center;
+}
+
 .presenter-connection-dialog .qr-card img,
 .presenter-connection-dialog .qr-placeholder {
   height: min(50vw, 224px);
