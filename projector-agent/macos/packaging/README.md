@@ -66,6 +66,7 @@ Private keys, PAT и секреты Apple не входят в bundle. Нали�
 ~/Library/Application Support/LecturerProjector/
   instance.lock
   origin.txt                         # адрес учреждения, не credential
+  device-credentials/                # 0700; revocable token files 0600
   display-recovery.json              # сохраняется до проверенного возврата
   install/
     current.json
@@ -73,7 +74,8 @@ Private keys, PAT и секреты Apple не входят в bundle. Нали�
     staging/ health/ update-transaction.json …
 ```
 
-Пароль устройства хранит host в Keychain. В bootstrap и URL его нет. Stable bundle
+Ключ подключения хранит host в отдельном файле с доступом только текущего пользователя.
+В bootstrap и URL его нет. Stable bundle
 никогда не перезаписывается текущими online host updates и не регистрирует version slot
 в Login Items. Host вызывает его ограниченные CLI `--login-status`, `--enable-login`,
 `--disable-login`. Внутри стабильного bundle выполняется `SMAppService.mainApp`.

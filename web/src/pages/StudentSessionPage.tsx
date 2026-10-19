@@ -55,6 +55,7 @@ const STATUS_LABELS: Record<StudentSessionSnapshot["status"], string> = {
 };
 
 export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
+  const slideImageRef = useRef<HTMLImageElement>(null);
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const normalizedCode = joinCode.trim().toUpperCase();
@@ -569,10 +570,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             {current.currentSlide ? (
               <div className="student-slide-viewport">
                 <img
+                  ref={slideImageRef}
                   src={current.currentSlide.imageUrl}
                   alt={`Слайд ${current.currentSlide.idx}`}
                 />
                 <DrawingOverlay
+                  imageRef={slideImageRef}
                   slideIdx={current.currentSlide.idx}
                   annotations={(current.annotations ?? {}) as LiveAnnotations}
                   active={false}

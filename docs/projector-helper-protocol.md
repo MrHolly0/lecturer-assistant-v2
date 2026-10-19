@@ -45,8 +45,15 @@ metadata and a caller's confirmation are not hardware attestation.
 
 Platforms: `WINDOWS_X64`, `WINDOWS_ARM64`, `MACOS_X64`, `MACOS_ARM64`. The response contains
 `deviceId`, `deviceToken`, `protocolVersion`. The 256-bit opaque token is returned once.
-Store it in the OS protected credential store. The server stores only SHA-256. Pairing is
-atomic, one-time and rate limited. Supported platform metadata does not claim a tested OS matrix.
+The server stores only SHA-256. Windows protects the local token with user-scoped DPAPI
+with UI forbidden. macOS 0.2.7 stores this revocable device token in a private user directory
+(0700) and owner-only file (0600), with ownership/link checks and atomic replacement.
+This protects against other local users, not root or processes running as the same user.
+It does not contain a staff password or staff JWT. A stolen token can impersonate that
+device and obtain grants for its assigned projection until revoked.
+Legacy macOS Keychain migration is noninteractive; if unavailable, pairing again with the
+same installation ID rotates the existing device credential without adding a device.
+Pairing is atomic, one-time and rate limited. Supported platform metadata does not claim a tested OS matrix.
 
 `POST /api/v1/projection/agent/poll`, `Authorization: Bearer <deviceToken>`:
 

@@ -76,11 +76,11 @@ jobs:
         run: ./projector-agent/scripts/build-windows.ps1 -Runtime '${{ matrix.runtime }}' -Version '0.1.1' -InnoCompiler "$env:PROJECTOR_ISCC"
       - name: Build a second version for installer upgrade tests
         shell: pwsh
-        run: ./projector-agent/scripts/build-windows.ps1 -Runtime '${{ matrix.runtime }}' -Version '0.2.6' -InnoCompiler "$env:PROJECTOR_ISCC"
+        run: ./projector-agent/scripts/build-windows.ps1 -Runtime '${{ matrix.runtime }}' -Version '0.2.7' -InnoCompiler "$env:PROJECTOR_ISCC"
       - name: Verify real install, upgrade, downgrade refusal and removal without launching the helper
         shell: pwsh
         run: |
-          ./projector-agent/scripts/test-windows-install.ps1 -Installer 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.1.1-setup-unsigned.exe' -Version '0.1.1' -Platform '${{ matrix.platform }}' -UpgradeInstaller 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.6-setup-unsigned.exe' -UpgradeVersion '0.2.6'
+          ./projector-agent/scripts/test-windows-install.ps1 -Installer 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.1.1-setup-unsigned.exe' -Version '0.1.1' -Platform '${{ matrix.platform }}' -UpgradeInstaller 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.7-setup-unsigned.exe' -UpgradeVersion '0.2.7'
       - name: Verify native workspace bridge and capture exclusion API in isolated window
         timeout-minutes: 8
         shell: pwsh
@@ -99,7 +99,7 @@ jobs:
             finally { $created.Dispose() }
           }
           $fixtureRoot = Join-Path $env:RUNNER_TEMP ('projector-workspace-' + [Guid]::NewGuid().ToString('N'))
-          Expand-Archive -LiteralPath 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.6-update-unsigned.zip' -DestinationPath $fixtureRoot
+          Expand-Archive -LiteralPath 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.7-update-unsigned.zip' -DestinationPath $fixtureRoot
           $helper = Join-Path $fixtureRoot 'app/Projector.Windows.exe'
           if (-not (Test-Path -LiteralPath $helper)) { throw 'Native helper executable missing from update package' }
           if (-not $env:PROJECTOR_INSTALL_SMOKE_ROOT) { throw 'Installer smoke diagnostics directory missing' }
@@ -144,8 +144,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
           path: |
-            projector-agent/packages/${{ matrix.runtime }}/*-0.2.6-setup-unsigned.exe
-            projector-agent/packages/${{ matrix.runtime }}/*-0.2.6-update-unsigned.zip
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.7-setup-unsigned.exe
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.7-update-unsigned.zip
             projector-agent/packages/${{ matrix.runtime }}/bootstrap.json
             projector-agent/packages/${{ matrix.runtime }}/package-manifest.json
 
@@ -169,7 +169,7 @@ jobs:
         with:
           dotnet-version: "10.0.x"
       - name: Build development DMG and update package
-        run: sh projector-agent/scripts/build-macos.sh '${{ matrix.architecture }}' '0.2.6' development
+        run: sh projector-agent/scripts/build-macos.sh '${{ matrix.architecture }}' '0.2.7' development
       - name: Verify packaged seed and launcher without native UI or login registration
         run: python3 projector-agent/scripts/test-macos-package.py 'projector-agent/packages/${{ matrix.runtime }}/.build-development.noindex/bootstrap/Lecturer Projector.app'
       - name: Verify native private panel typing and content sizes without screen access
@@ -218,7 +218,7 @@ jobs:
               assert report[key] is False, key
           print(json.dumps(report))
           PY
-      - name: Verify Keychain recovery preserves existing connection without credential access
+      - name: Verify file credentials and silent migration preserve the saved connection
         timeout-minutes: 2
         run: |
           'projector-agent/packages/${{ matrix.runtime }}/.build-development.noindex/host/Lecturer Projector Host.app/Contents/MacOS/ProjectorMac' --keychain-recovery-self-test '${{ runner.temp }}/keychain-recovery.json'
@@ -226,13 +226,27 @@ jobs:
           import json
           with open("${{ runner.temp }}/keychain-recovery.json") as source:
               report = json.load(source)
-          for key in ("success", "savedOriginPreserved", "quietStartupDoesNotRequestAuthentication", "cancelPreservesConnection", "explicitRetryResumesWithoutPairing", "typedStatusPreserved", "deniedUpdatePreservesPrevious", "existingItemUpdatedWithoutDelete", "addOnlyWhenMissing"):
+          for key in ("success", "savedOriginPreserved", "quietStartupDoesNotRequestAuthentication", "storageFailurePreservesConnection", "fileCredentialResumesWithoutPairing", "typedStatusPreserved", "silentMigrationDoesNotRequestAuthentication", "blockedMigrationRequiresCode", "blockedMigrationPreservesInstallationId", "blockedMigrationNotRetried", "normalPairingUsesFileStore", "unpairDoesNotUseKeychain"):
+              assert report[key] is True, key
+          for key in ("interactiveKeychainUsed", "keychainUsed", "userInstallationChanged", "networkUsed"):
+              assert report[key] is False, key
+          print(json.dumps(report))
+          PY
+      - name: Verify private credential storage and silent legacy migration without user credentials
+        timeout-minutes: 1
+        run: |
+          'projector-agent/packages/${{ matrix.runtime }}/.build-development.noindex/host/Lecturer Projector Host.app/Contents/MacOS/ProjectorMac' --credential-storage-self-test '${{ runner.temp }}/credential-storage.json'
+          python3 - <<'PY'
+          import json
+          with open("${{ runner.temp }}/credential-storage.json") as source:
+              report = json.load(source)
+          for key in ("success", "ownerOnlyDirectory", "ownerOnlyFile", "atomicReplacement", "concurrentReadersSeeCompleteTokens", "directorySymlinkRejected", "ancestorSymlinkRejected", "tokenSymlinkRejected", "hardLinkRejected", "unsafePermissionsRejected", "extendedACLRejected", "foreignOwnerRejected", "malformedRecordRejected", "originIsolation", "failedWritePreservesPrevious", "silentLegacyMigration", "inaccessibleLegacyRequiresOnePairing", "legacyNotRetriedAfterDecision", "unpairPreventsLegacyResurrection", "installationIdentityPreserved"):
               assert report[key] is True, key
           for key in ("keychainUsed", "userInstallationChanged", "networkUsed"):
               assert report[key] is False, key
           print(json.dumps(report))
           PY
-      - name: Save capture dialog diagnostics
+      - name: Save capture and credential diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -242,6 +256,7 @@ jobs:
           path: |
             ${{ runner.temp }}/capture-dialog.json
             ${{ runner.temp }}/keychain-recovery.json
+            ${{ runner.temp }}/credential-storage.json
       - name: Verify exact process identity across Swift and managed updater
         timeout-minutes: 3
         run: |
@@ -254,15 +269,16 @@ jobs:
           retention-days: 1
           if-no-files-found: error
           path: |
-            projector-agent/packages/${{ matrix.runtime }}/*-0.2.6-development.dmg
-            projector-agent/packages/${{ matrix.runtime }}/*-0.2.6-development-update.zip
-            projector-agent/packages/${{ matrix.runtime }}/*-0.2.6-development.json
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.7-development.dmg
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.7-development-update.zip
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.7-development.json
             ${{ runner.temp }}/remote-ui.json
             ${{ runner.temp }}/workspace-behavior.json
             ${{ runner.temp }}/installation-identity.json
             ${{ runner.temp }}/process-start-identity.json
             ${{ runner.temp }}/capture-dialog.json
             ${{ runner.temp }}/keychain-recovery.json
+            ${{ runner.temp }}/credential-storage.json
             ${{ runner.temp }}/connection-ui.json
             ${{ runner.temp }}/bootstrap-handoff.json
             ${{ runner.temp }}/installer-payload.json

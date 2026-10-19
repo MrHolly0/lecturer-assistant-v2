@@ -16,38 +16,26 @@ enum Keychain {
         guard let data, let token = String(data: data, encoding: .utf8), !token.isEmpty else { return .unavailable(errSecDecode) }
         return .token(token)
     }
-    static func readResult(account: String, allowInteraction: Bool) -> SavedKeychainResult {
-        let context = LAContext(); context.interactionNotAllowed = !allowInteraction
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+    // Legacy migration only: no interactive access, writes or deletion.
+    static func silentQuery(account: String) -> [String: Any] {
+        let context = LAContext(); context.interactionNotAllowed = true
+        return [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                    kSecAttrAccount as String: account, kSecReturnData as String: true,
+                                   kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
                                    kSecUseAuthenticationContext as String: context]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        return decode(status: status, data: item as? Data)
     }
-    static func readForPairing(account: String) throws -> String? {
-        switch readResult(account: account, allowInteraction: true) {
-        case .token(let token): return token
-        case .missing: return nil
-        case .unavailable: throw HostError.code("KEYCHAIN_ACCESS_REQUIRED")
+    static func readSilently(account: String) -> SavedKeychainResult {
+        readSilently(account: account) { query in
+            var item: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &item)
+            return decode(status: status, data: item as? Data)
         }
     }
-    static func store(_ token: String, account: String) throws {
-        try store(token, account: account, update: { SecItemUpdate($0 as CFDictionary, $1 as CFDictionary) }, add: { SecItemAdd($0 as CFDictionary, nil) })
-    }
-    static func store(_ token: String, account: String,
-                      update: ([String: Any], [String: Any]) -> OSStatus, add: ([String: Any]) -> OSStatus) throws {
-        let match: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
-        let data = Data(token.utf8)
-        var status = update(match, [kSecValueData as String: data])
-        if status == errSecItemNotFound {
-            var query = match; query[kSecValueData as String] = data
-            query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            status = add(query)
-        }
-        guard status == errSecSuccess else { throw HostError.code("KEYCHAIN_WRITE_FAILED") }
-    }
-    static func remove(account: String) {
-        SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account] as CFDictionary)
+    static func readSilently(account: String, copy: ([String: Any]) -> SavedKeychainResult) -> SavedKeychainResult {
+        let query = silentQuery(account: account)
+        // If configuring the authentication service failed, do not issue a query.
+        guard let context = query[kSecUseAuthenticationContext as String] as? LAContext,
+              context.interactionNotAllowed else { return .unavailable(errSecInteractionNotAllowed) }
+        return copy(query)
     }
 }

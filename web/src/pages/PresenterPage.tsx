@@ -34,6 +34,7 @@ export function PresenterPage(props: { courseId: string; sessionId: string }) {
 }
 
 function PresenterWorkspace({ courseId, sessionId }: { courseId: string; sessionId: string }) {
+  const slideImageRef = useRef<HTMLImageElement>(null);
   const slideInFlightRef = useRef(false);
   const [drawing, setDrawing] = useState(false);
   const [slideErrorTarget, setSlideErrorTarget] = useState<number | null>(null);
@@ -267,8 +268,9 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
       <main id="main-content" className="presenter-grid">
         <section className="presenter-main">
           <div className="presenter-stage">
-            <img src={slideImageUrl(slide)} alt={`Слайд ${slide.idx}`} />
+            <img ref={slideImageRef} src={slideImageUrl(slide)} alt={`Слайд ${slide.idx}`} />
             <DrawingOverlay
+              imageRef={slideImageRef}
               slideIdx={slide.idx}
               active={drawing && !paused && !commandsBlocked}
               toolsVisible={drawing}

@@ -633,6 +633,12 @@ export function ProjectorSetup({
                     ручном подключении используйте обратную инструкцию.
                   </li>
                 </ol>
+              </>
+            )}
+          </div>
+          <DialogFooter className="projector-tour__footer">
+            {view === "ready" ? (
+              <div className="projector-tour__completed-actions">
                 {helperReady && (
                   <Button variant="outline" onClick={() => setView("helper")}>
                     Управление помощником
@@ -651,38 +657,37 @@ export function ProjectorSetup({
                     Закрыть проектор
                   </Button>
                 )}
+                <Button onClick={backToLecture}>
+                  {presenterPath ? "Вернуться к занятию" : "Закрыть"}
+                  {presenterPath && <ArrowRight size={16} />}
+                </Button>
+              </div>
+            ) : (
+              <>
+                {view !== "connect" && (
+                  <Button variant="ghost" onClick={() => setView("connect")}>
+                    <ArrowLeft size={16} />
+                    Выбор способа
+                  </Button>
+                )}
+                <div>
+                  <Button variant="outline" onClick={backToLecture}>
+                    {presenterPath ? "К занятию" : "Закрыть"}
+                  </Button>
+                  {view === "manual" && (
+                    <Button onClick={begin}>
+                      Режим включён, проверить экраны
+                      <ArrowRight size={16} />
+                    </Button>
+                  )}
+                  {view === "helper" && (
+                    <Button variant="ghost" onClick={() => setView("manual")}>
+                      Без установки
+                    </Button>
+                  )}
+                </div>
               </>
             )}
-          </div>
-          <DialogFooter className="projector-tour__footer">
-            {view !== "connect" && view !== "ready" && (
-              <Button variant="ghost" onClick={() => setView("connect")}>
-                <ArrowLeft size={16} />
-                Выбор способа
-              </Button>
-            )}
-            <div>
-              <Button variant="outline" onClick={backToLecture}>
-                {presenterPath ? "К занятию" : "Закрыть"}
-              </Button>
-              {view === "manual" && (
-                <Button onClick={begin}>
-                  Режим включён, проверить экраны
-                  <ArrowRight size={16} />
-                </Button>
-              )}
-              {view === "helper" && (
-                <Button variant="ghost" onClick={() => setView("manual")}>
-                  Без установки
-                </Button>
-              )}
-              {view === "ready" && presenterPath && (
-                <Button onClick={backToLecture}>
-                  Продолжить занятие
-                  <ArrowRight size={16} />
-                </Button>
-              )}
-            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

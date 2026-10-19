@@ -1,9 +1,15 @@
 import { Eraser, Grip, Pencil, Redo2, Trash2, Undo2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useViewportDrag } from "./useViewportDrag";
 
 type Point = { x: number; y: number };
-type DrawAction = { color: string; size: number; points: Point[]; erase?: boolean };
+type DrawAction = {
+  color: string;
+  size: number;
+  relativeSize?: number;
+  points: Point[];
+  erase?: boolean;
+};
 export type LiveAnnotations = Record<string, DrawAction[]>;
 type DrawingHistory = { past: DrawAction[][]; future: DrawAction[][]; signature: string };
 
@@ -19,6 +25,7 @@ const PEN_SIZES = [2, 5, 9];
 const ERASER_SIZES = [12, 24, 36];
 
 interface DrawingOverlayProps {
+  imageRef: RefObject<HTMLImageElement>;
   slideIdx: number;
   annotations: LiveAnnotations;
   active: boolean;
@@ -31,6 +38,7 @@ interface DrawingOverlayProps {
 }
 
 export function DrawingOverlay({
+  imageRef,
   slideIdx,
   annotations,
   active,
@@ -64,22 +72,55 @@ export function DrawingOverlay({
   useEffect(() => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
-    if (!canvas || !wrap) return;
+    const image = imageRef.current;
+    if (!canvas || !wrap || !image) return;
     const resize = () => {
-      const rect = wrap.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
+      const imageRect = image.getBoundingClientRect();
+      const wrapRect = wrap.getBoundingClientRect();
+      const scale = Math.min(
+        imageRect.width / image.naturalWidth,
+        imageRect.height / image.naturalHeight
+      );
+      const width = image.naturalWidth * scale;
+      const height = image.naturalHeight * scale;
+      const visible = image.complete && Number.isFinite(scale) && width > 0 && height > 0;
+      canvas.hidden = !visible;
+      if (!visible) return;
+      // Match the image's object-fit: contain rectangle, excluding its letterbox bars.
+      canvas.style.left = `${imageRect.left - wrapRect.left + (imageRect.width - width) / 2}px`;
+      canvas.style.top = `${imageRect.top - wrapRect.top + (imageRect.height - height) / 2}px`;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round(width * ratio));
+      canvas.height = Math.max(1, Math.round(height * ratio));
       redraw(canvas, actions);
     };
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(wrap);
+    observer.observe(image);
+    image.addEventListener("load", resize);
+    image.addEventListener("error", resize);
     window.addEventListener("resize", resize);
     return () => {
       observer.disconnect();
+      image.removeEventListener("load", resize);
+      image.removeEventListener("error", resize);
       window.removeEventListener("resize", resize);
     };
-  }, [actions]);
+  }, [actions, imageRef, slideIdx]);
+
+  function stroke(points: Point[]): DrawAction {
+    const strokeSize = erase ? eraserSize : size;
+    return {
+      color,
+      size: strokeSize,
+      relativeSize: strokeSize / (canvasRef.current?.getBoundingClientRect().width || 1),
+      points,
+      erase
+    };
+  }
 
   function commit(next: DrawAction[]) {
     setHistories((current) => ({
@@ -155,16 +196,12 @@ export function DrawingOverlay({
           const next = [...points, pos(event)];
           setPoints(next);
           const canvas = canvasRef.current;
-          if (canvas)
-            redraw(canvas, [
-              ...actions,
-              { color, size: erase ? eraserSize : size, points: next, erase }
-            ]);
+          if (canvas) redraw(canvas, [...actions, stroke(next)]);
         }}
         onPointerUp={() => {
           if (!active || !drawing) return;
           if (points.length >= 2) {
-            commit([...actions, { color, size: erase ? eraserSize : size, points, erase }]);
+            commit([...actions, stroke(points)]);
           }
           setDrawing(false);
           setPoints([]);
@@ -430,17 +467,21 @@ export function DrawingOverlay({
 function redraw(canvas: HTMLCanvasElement, actions: DrawAction[]) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
+  const { width, height } = canvas.getBoundingClientRect();
+  if (!width || !height) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
   for (const action of actions) {
     ctx.strokeStyle = action.color;
-    ctx.lineWidth = action.size;
+    ctx.lineWidth = action.relativeSize ? action.relativeSize * width : action.size;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.globalCompositeOperation = action.erase ? "destination-out" : "source-over";
     ctx.beginPath();
     action.points.forEach((point, index) => {
-      const x = point.x * canvas.width;
-      const y = point.y * canvas.height;
+      const x = point.x * width;
+      const y = point.y * height;
       if (index === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });

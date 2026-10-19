@@ -1,5 +1,5 @@
 import { useSearchParams } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CirclePause, CircleStop } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -18,6 +18,7 @@ import { ScreenShareViewer } from "../widgets/ScreenShareViewer";
 
 /** Экран показа использует только доступное студентам состояние лекции. */
 export function ProjectionPage({ joinCode }: { joinCode: string }) {
+  const slideImageRef = useRef<HTMLImageElement>(null);
   const code = joinCode.trim().toUpperCase();
   const [query] = useSearchParams();
   const localChannelId = query.get("attempt") ?? query.get("shareAttempt");
@@ -125,11 +126,16 @@ export function ProjectionPage({ joinCode }: { joinCode: string }) {
         ) : (
           <>
             {session.currentSlide ? (
-              <img src={session.currentSlide.imageUrl} alt={`Слайд ${session.currentSlideIdx}`} />
+              <img
+                ref={slideImageRef}
+                src={session.currentSlide.imageUrl}
+                alt={`Слайд ${session.currentSlideIdx}`}
+              />
             ) : (
               <p>Ожидаем слайд</p>
             )}
             <DrawingOverlay
+              imageRef={slideImageRef}
               slideIdx={session.currentSlideIdx}
               annotations={session.annotations as LiveAnnotations}
               active={false}

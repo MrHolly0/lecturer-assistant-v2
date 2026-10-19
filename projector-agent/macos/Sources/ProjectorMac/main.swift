@@ -34,7 +34,7 @@ import Darwin
     private var pairingDraft: String?
     private var pairingError: String?
     private var savedConnectionAccount: String?
-    private var savedKeychainStatus: OSStatus?
+    private var savedCredentialError: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("LecturerProjector", isDirectory: true)
@@ -78,7 +78,7 @@ import Darwin
         let config = directory.appendingPathComponent("origin.txt")
         if let saved = try? String(contentsOf: config, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
            let url = Self.validOrigin(saved) {
-            origin = url; savedConnectionAccount = saved; resumeSavedConnection(allowInteraction: false)
+            origin = url; savedConnectionAccount = saved; resumeSavedConnection()
         }
         // Recovery journal is never applied silently at login: the teacher may have changed the display setup meanwhile.
         if FileManager.default.fileExists(atPath: directory.appendingPathComponent("display-recovery.json").path) {
@@ -135,33 +135,39 @@ import Darwin
             }
         }
     }
-    static func exerciseSavedConnectionFixture() throws -> [String: Any] {
+    static func exerciseSavedConnectionFixture(directory: URL) throws -> [String: Any] {
         let delegate = AppDelegate(), site = URL(string: "https://fixture.invalid/")!
-        delegate.origin = site; delegate.savedConnectionAccount = site.absoluteString
-        var interactions: [Bool] = [], resumed = false
-        delegate.resumeSavedConnection(allowInteraction: false, read: { _, allowed in interactions.append(allowed); return .unavailable(errSecInteractionNotAllowed) })
+        delegate.directory = directory; delegate.origin = site; delegate.savedConnectionAccount = site.absoluteString
+        var reads = 0, resumed = false
+        delegate.resumeSavedConnection(load: { _ in reads += 1; return .reconnect })
         guard delegate.origin == site, delegate.savedConnectionAccount == site.absoluteString,
-              delegate.savedKeychainStatus == errSecInteractionNotAllowed, delegate.process == nil else { throw HostError.code("KEYCHAIN_STARTUP_LOST_CONNECTION") }
-        delegate.resumeSavedConnection(allowInteraction: true, read: { _, allowed in interactions.append(allowed); return .unavailable(errSecUserCanceled) })
-        guard delegate.origin == site, delegate.savedKeychainStatus == errSecUserCanceled else { throw HostError.code("KEYCHAIN_CANCEL_LOST_CONNECTION") }
-        delegate.resumeSavedConnection(allowInteraction: true, read: { _, allowed in interactions.append(allowed); return .token("fixture-resume-token") }, begin: { origin, token in
-            resumed = origin == site && token == "fixture-resume-token"
+              delegate.savedCredentialError == "DEVICE_RECONNECT_REQUIRED", delegate.process == nil else { throw HostError.code("CREDENTIAL_STARTUP_LOST_CONNECTION") }
+        delegate.resumeSavedConnection(load: { _ in throw HostError.code("DEVICE_CREDENTIAL_ACCESS_REJECTED") })
+        guard delegate.origin == site, delegate.savedCredentialError == "DEVICE_CREDENTIAL_ACCESS_REJECTED" else { throw HostError.code("CREDENTIAL_FAILURE_LOST_CONNECTION") }
+        delegate.resumeSavedConnection(load: { _ in reads += 1; return .token(String(repeating: "a", count: 64)) }, begin: { origin, token in
+            resumed = origin == site && token == String(repeating: "a", count: 64)
         })
-        guard interactions == [false, true, true], resumed, delegate.savedKeychainStatus == nil else { throw HostError.code("KEYCHAIN_EXPLICIT_RETRY_DID_NOT_RESUME") }
+        guard reads == 2, resumed, delegate.savedCredentialError == nil else { throw HostError.code("CREDENTIAL_RETRY_DID_NOT_RESUME") }
         return ["savedOriginPreserved": true, "quietStartupDoesNotRequestAuthentication": true,
-                "cancelPreservesConnection": true, "explicitRetryResumesWithoutPairing": true]
+                "storageFailurePreservesConnection": true, "fileCredentialResumesWithoutPairing": true]
     }
-    private func resumeSavedConnection(allowInteraction: Bool, read: (String, Bool) -> SavedKeychainResult = Keychain.readResult,
+    private func resumeSavedConnection(load: ((String) throws -> SavedDeviceCredential)? = nil,
                                        begin: ((URL, String) -> Void)? = nil) {
         guard let account = savedConnectionAccount, let origin else { return }
-        switch read(account, allowInteraction) {
-        case .token(let token):
-            savedKeychainStatus = nil
-            if let begin { begin(origin, token) } else { start(origin: origin, token: token, pairingCode: nil) }
-        case .missing:
-            savedKeychainStatus = errSecItemNotFound; status = "Сохранённый ключ не найден — откройте помощник"
-        case .unavailable(let code):
-            savedKeychainStatus = code; status = "Разрешите доступ к Связке ключей — откройте помощник"
+        do {
+            let credential = try load?(account) ?? DeviceCredentialStore(directory: directory).loadOrMigrate(account: account)
+            switch credential {
+            case .token(let token):
+                savedCredentialError = nil
+                if let begin { begin(origin, token) } else { start(origin: origin, token: token, pairingCode: nil) }
+            case .reconnect:
+                savedCredentialError = "DEVICE_RECONNECT_REQUIRED"
+                status = "Нужно один раз подключить помощник по коду — откройте LA"
+            }
+        } catch HostError.code(let code) {
+            savedCredentialError = code; status = "Не удалось прочитать локальное подключение — откройте LA"
+        } catch {
+            savedCredentialError = "DEVICE_CREDENTIAL_READ_FAILED"; status = "Не удалось прочитать локальное подключение — откройте LA"
         }
         rebuildMenu()
     }
@@ -217,14 +223,16 @@ import Darwin
         if let origin, let action = lastRemoteAction, (try? showRemote(action, origin: origin)) != nil { return }
         if process?.isRunning != true, savedConnectionAccount != nil {
             localDialogOpen = true
-            let alert = NSAlert(); alert.messageText = "Восстановить сохранённое подключение"
-            alert.informativeText = savedKeychainStatus == errSecItemNotFound
-                ? "Адрес учреждения сохранён, но ключ подключения не найден. Можно повторить проверку или подключить помощник по новому коду."
-                : "Подключение к учреждению сохранено. Разрешите помощнику доступ к Связке ключей в системном запросе — повторное подключение по коду не требуется."
-            alert.addButton(withTitle: "Повторить доступ"); alert.addButton(withTitle: "Подключить по коду…"); alert.addButton(withTitle: "Закрыть")
+            let reconnect = savedCredentialError == "DEVICE_RECONNECT_REQUIRED"
+            let alert = NSAlert(); alert.messageText = reconnect ? "Обновите подключение" : "Не удалось восстановить подключение"
+            alert.informativeText = reconnect
+                ? "После обновления нужно один раз подключить этот компьютер заново. Получите код в настройке проектора на сайте и введите его здесь. Повторно устанавливать помощник не нужно."
+                : "Адрес учреждения сохранён. Нажмите «Повторить проверку». Если ошибка остаётся, сохраните диагностику через меню LA и обратитесь в поддержку."
+            alert.addButton(withTitle: reconnect ? "Ввести код…" : "Повторить проверку")
+            alert.addButton(withTitle: reconnect ? "Повторить проверку" : "Подключить по коду…"); alert.addButton(withTitle: "Закрыть")
             NSApp.activate(ignoringOtherApps: true); let response = alert.runModal(); localDialogOpen = false
-            if response == .alertFirstButtonReturn { resumeSavedConnection(allowInteraction: true) }
-            else if response == .alertSecondButtonReturn { pair() }
+            if response == .alertFirstButtonReturn { if reconnect { pair() } else { resumeSavedConnection() } }
+            else if response == .alertSecondButtonReturn { if reconnect { resumeSavedConnection() } else { pair() } }
             return
         }
         if origin == nil || process?.isRunning != true { pair(); return }
@@ -282,14 +290,13 @@ import Darwin
         do {
             bootstrap = try CoordinatorBootstrap.make(origin: origin, name: Host.current().localizedName ?? "Mac", platform: platform(),
                                                       deviceToken: token, pairingCode: pairingCode, directory: directory,
-                                                      previousToken: { try Keychain.readForPairing(account: $0) })
-        } catch HostError.code(let code) where code == "KEYCHAIN_ACCESS_REQUIRED" {
-            status = "Разрешите доступ к Связке ключей"; rebuildMenu()
-            pairingFailedIfNeeded("Разрешите помощнику доступ к Связке ключей в системном запросе и повторите подключение. Сохранённый ключ не удалён.")
-            return
+                                                      previousToken: { account in
+                                                          if case .token(let previous) = try DeviceCredentialStore(directory: self.directory).loadOrMigrate(account: account) { return previous }
+                                                          return nil
+                                                      })
         } catch {
-            status = "Не удалось прочитать ID этой установки"; rebuildMenu()
-            pairingFailedIfNeeded("Не удалось прочитать постоянный ID этой установки. Подключение не изменено. Сохраните диагностику и обратитесь в поддержку.")
+            status = "Не удалось прочитать локальное подключение"; rebuildMenu()
+            pairingFailedIfNeeded("Не удалось прочитать ID установки или защищённый файл подключения. Подключение не изменено. Сохраните диагностику и обратитесь в поддержку.")
             return
         }
         self.origin = origin
@@ -343,12 +350,12 @@ import Darwin
             if type == "PAIR_RESULT" {
                 guard let token = action["deviceToken"] as? String, let origin else { process?.terminate(); return }
                 do {
-                    try Keychain.store(token, account: origin.absoluteString)
+                    try DeviceCredentialStore(directory: directory).store(token, account: origin.absoluteString)
                     try origin.absoluteString.write(to: directory.appendingPathComponent("origin.txt"), atomically: true, encoding: .utf8)
-                    savedConnectionAccount = origin.absoluteString; savedKeychainStatus = nil
+                    savedConnectionAccount = origin.absoluteString; savedCredentialError = nil
                     status = "Готов — управление на сайте"; rebuildMenu()
                     pairingSucceededIfNeeded()
-                } catch { process?.terminate(); status = "Не удалось сохранить устройство в Связке ключей"; rebuildMenu(); pairingFailedIfNeeded() }
+                } catch { process?.terminate(); status = "Не удалось сохранить локальное подключение"; rebuildMenu(); pairingFailedIfNeeded() }
                 continue
             }
             do {
@@ -514,8 +521,10 @@ import Darwin
     }
     @objc private func unpair() {
         stop(); generation = UUID(); process?.terminate()
-        if let origin { Keychain.remove(account: origin.absoluteString) }
-        try? FileManager.default.removeItem(at: directory.appendingPathComponent("origin.txt")); origin = nil; savedConnectionAccount = nil; savedKeychainStatus = nil
+        do {
+            if let origin { try DeviceCredentialStore(directory: directory).disconnect(account: origin.absoluteString) }
+        } catch { status = "Не удалось удалить локальный ключ — отзовите устройство на сайте"; rebuildMenu(); return }
+        try? FileManager.default.removeItem(at: directory.appendingPathComponent("origin.txt")); origin = nil; savedConnectionAccount = nil; savedCredentialError = nil
         status = "Устройство отключено. Отзовите его также на сайте."; rebuildMenu()
     }
     @objc private func help() {
@@ -530,6 +539,7 @@ import Darwin
         var report: [String: Any] = ["version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
                                     "platform": platform(), "osVersion": ProcessInfo.processInfo.operatingSystemVersionString,
                                     "startup": startupStatus, "installed": bootstrapExecutable() != nil,
+                                    "credentialStorage": "OWNER_ONLY_FILE", "connectionRecovery": savedCredentialError ?? "NONE",
                                     "displayRecoveryPending": FileManager.default.fileExists(atPath: directory.appendingPathComponent("display-recovery.json").path)]
         if let root = ProcessInfo.processInfo.environment["LA_PROJECTOR_INSTALL_ROOT"] {
             report["updateRecoveryPending"] = FileManager.default.fileExists(atPath: URL(fileURLWithPath: root).appendingPathComponent("update-transaction.json").path)
@@ -547,7 +557,7 @@ import Darwin
             alert.runModal(); return
         }
         let alert = NSAlert(); alert.messageText = "Удалить помощник проектора?"
-        alert.informativeText = "Показ будет остановлен, автозапуск отключён, ключ устройства удалён из Связки ключей. Приложение и установленные версии переместятся в Корзину. Отзовите устройство также на сайте. Сайт и MAX продолжат работать."
+        alert.informativeText = "Показ будет остановлен, автозапуск отключён, локальный ключ устройства удалён. Приложение и установленные версии переместятся в Корзину. Отзовите устройство также на сайте. Сайт и MAX продолжат работать."
         alert.addButton(withTitle: "Удалить помощник"); alert.addButton(withTitle: "Отмена")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         do {
@@ -569,6 +579,7 @@ import Darwin
                 throw error
             }
             unpair()
+            guard origin == nil else { throw HostError.code("DEVICE_CREDENTIAL_DELETE_FAILED") }
             NSWorkspace.shared.recycle([bundle, root], completionHandler: Self.recycleCompletion(for: self))
         } catch { status = "Удаление остановлено — отключите автозапуск в настройках macOS"; rebuildMenu() }
     }
@@ -587,7 +598,9 @@ import Darwin
     func applicationWillTerminate(_ notification: Notification) { projection.neutralize(); remote.close(); identification.dismiss(); process?.terminate(); if instanceLock >= 0 { close(instanceLock) } }
 }
 
-if let index = CommandLine.arguments.firstIndex(of: "--keychain-recovery-self-test"), CommandLine.arguments.count > index + 1 {
+if let index = CommandLine.arguments.firstIndex(of: "--credential-storage-self-test"), CommandLine.arguments.count > index + 1 {
+    try CredentialStorageSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if let index = CommandLine.arguments.firstIndex(of: "--keychain-recovery-self-test"), CommandLine.arguments.count > index + 1 {
     try KeychainRecoverySelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if let index = CommandLine.arguments.firstIndex(of: "--capture-dialog-self-test"), CommandLine.arguments.count > index + 1 {
     CaptureDialogSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))

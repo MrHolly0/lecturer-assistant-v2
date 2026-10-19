@@ -28,7 +28,7 @@ try
             Environment.OSVersion.Version.ToString(), InstallationId: bootstrap.InstallationId, PreviousDeviceToken: bootstrap.PreviousDeviceToken), CancellationToken.None);
         if (paired.ProtocolVersion != 1 || paired.DeviceToken.Length is < 20 or > 4096) throw new InvalidDataException("BAD_PAIR_RESPONSE");
         token = paired.DeviceToken;
-        // Anonymous pipe to the native host, which stores the token in Keychain/DPAPI. Never log it.
+        // Anonymous pipe to the native host: private user file on Mac, DPAPI on Windows. Never log it.
         Console.WriteLine(JsonSerializer.Serialize(new { id = "pair", type = "PAIR_RESULT", deviceToken = token, deviceId = paired.DeviceId }, Wire.Json));
     }
     var host = new StdioHost();
