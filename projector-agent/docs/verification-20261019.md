@@ -1,4 +1,32 @@
-# Проверка исходников помощника — 19.10.2026
+# Проверка помощника — 19.10.2026
+
+## Установочные development-пакеты
+
+Дополнение после начального source-протокола ниже:
+
+- Общие политики, updater и bootstrap: **41 check PASS** на macOS ARM64; Windows
+  cross-build после добавления host preflight: 0 ошибок / 0 предупреждений.
+- macOS 0.1.1 ARM64 и Intel: реальные DMG, `hdiutil verify`, `codesign --verify --deep --strict`,
+  проверка отсутствия внешних package-manager dylib dependencies — PASS.
+- ARM64: реальная распаковка self-contained launcher/seed во временную папку, coordinator,
+  повторная установка, совместимость .NET FileShare и native flock, active-show/recovery guards,
+  сохранение journal и подпись уже распакованного host — PASS.
+- Windows install/reinstall/upgrade/downgrade/uninstall и runtime preflight, а также Mac Intel
+  runtime execution включены в CI. Результаты конкретного CI запуска записываются отдельно;
+  наличие workflow само по себе не означает его успеха.
+- Java verify266/266, web66/66, MAX adapter25/25, real isolated API8групп, public MAX
+  resume9/9 — PASS перед упаковкой. Custom Select в мастере и helper controls:
+  desktop/mobile, keyboard и light/dark fixture19/19 — PASS.
+
+В этой машине не выполнялись: установка в пользовательские Applications/Programs,
+регистрация автозапуска, Keychain/DPAPI запись или смена конфигурации экранов.
+Developer ID/notarization, Windows Authenticode и физическая HDMI-матрица остаются
+проверками публичного выпуска. Public release catalog пуст. В Git только публичный
+metadata trust; закрытый ключ в приложение не входит.
+
+## Начальная проверка исходников (история)
+
+Сведения о пустом trust и отсутствующей упаковке ниже относятся к исходной сборке до дополнения.
 
 Среда: macOS ARM64, .NET SDK 10.0.401, Swift 6.4 / текущий Xcode SDK.
 

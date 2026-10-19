@@ -54,6 +54,7 @@
 .projector-helper-target,
 .projector-helper-physical-test > label:first-child {
   display: grid;
+  min-width: 0;
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
@@ -62,7 +63,10 @@
 .projector-helper-physical-test small {
   font-weight: 400;
 }
-.projector-helper-target select,
+.projector-helper-target [data-slot="select-trigger"] {
+  min-height: 48px;
+  font-weight: 400;
+}
 .projector-helper-physical-test input:not([type="checkbox"]) {
   min-height: 48px;
   width: 100%;
@@ -73,7 +77,6 @@
   color: var(--foreground);
   font: inherit;
 }
-.projector-helper-target select:focus-visible,
 .projector-helper-physical-test input:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 3px;

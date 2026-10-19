@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Link2, Monitor, Play, RefreshCw, Shield, Square, Unplug } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -27,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "../shared/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 
 const platformLabels: Record<ProjectionDevice["platform"], string> = {
   WINDOWS_X64: "Windows · x64",
@@ -59,6 +60,7 @@ function HelperDeviceControls({
   fresh: boolean;
   onSent: () => void;
 }) {
+  const targetId = useId();
   const [target, setTarget] = useState("");
   const [test, setTest] = useState<{
     command: ProjectionCommand;
@@ -134,30 +136,34 @@ function HelperDeviceControls({
           {!context.active && (
             <p>Занятие сейчас не идёт. Новый показ начнётся после его запуска.</p>
           )}
-          <label className="projector-helper-target">
-            <span>Экран для аудитории</span>
-            <select
-              aria-label="Экран для аудитории"
-              value={target}
-              onChange={(event) => changeTarget(event.target.value)}
+          <div className="projector-helper-target">
+            <label htmlFor={targetId}>Экран для аудитории</label>
+            <Select
+              value={target || "__select_screen__"}
+              onValueChange={(value) => changeTarget(value === "__select_screen__" ? "" : value)}
               disabled={command.isPending}
             >
-              <option value="">Выберите экран явно</option>
-              {device.screens.map((screen) => (
-                <option key={screen.id} value={screen.id}>
-                  {screen.label || "Экран"} · {screen.width} × {screen.height}
-                  {screen.isPrimary ? " · основной рабочий экран" : ""}
-                </option>
-              ))}
-            </select>
-            <small>
+              <SelectTrigger id={targetId} aria-describedby={`${targetId}-hint`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__select_screen__">Выберите экран явно</SelectItem>
+                {device.screens.map((screen) => (
+                  <SelectItem key={screen.id} value={screen.id}>
+                    {screen.label || "Экран"} · {screen.width} × {screen.height}
+                    {screen.isPrimary ? " · основной рабочий экран" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <small id={`${targetId}-hint`}>
               {device.screens.length === 0
                 ? "Компонент ещё не сообщил о доступных экранах."
                 : selected?.isPrimary
                   ? "Для автоматического показа нужен отдельный экран. Включите «Расширить» по инструкции выше."
                   : "Название экрана не определяет проектор. Перед материалом покажем нейтральный код."}
             </small>
-          </label>
+          </div>
           <div className="projector-helper-actions">
             <Button
               variant="outline"

@@ -1,6 +1,6 @@
 # Выпуск помощника: текущие границы и обязательные gates
 
-19 октября 2026. Это проект прототипа, **не готовая установка**.
+19 октября 2026. Есть установочные development-пакеты; **публичный подписанный выпуск ещё не открыт**.
 
 ## Стек
 
@@ -39,16 +39,18 @@ macOS — Swift AppKit+WKWebView с приватными pipes до coordinator.
 Алгоритм подписи — ECDSA P-256/SHA-256, SPKI public key base64, IEEE P1363 signature64bytes.
 Подписаны **исходные байты** payload base64, повторная сериализация не используется.
 
-`trusted-keys.json` в исходниках намеренно пуст. Без настоящего release public key
-встроенная проверка возвращает RELEASE_SIGNING_NOT_PROVISIONED. Без настроенного оператором каталога backend выдаёт
+`trusted-keys.json` содержит публичный P-256 anchor для закреплённого GitHub-репозитория.
+Private key хранится отдельно от Git, backend и приложений. Сборка с пустым trust
+по-прежнему возвращает RELEASE_SIGNING_NOT_PROVISIONED. Без настроенного оператором каталога backend выдаёт
 release:null. CHECK_UPDATE при nonnull envelope и embedded trust подтверждает лишь
 UPDATE_CHECK_REQUESTED; отсутствующая metadata — RELEASE_FEED_NOT_PUBLISHED.
 Установка подтверждается отдельным health, не ACK команды. Версия и updater
 присутствуют с первого исходного пакета. Автоматический source path включается только при
 реальном signed envelope в `release` и запуске из установленного stable launcher.
-В текущем каталоге такого релиза нет, поэтому установки/скачивания сейчас нет.
+В текущем каталоге такого релиза нет, поэтому сайт не предлагает скачивание и online
+update. Development EXE/DMG доступны отдельно для испытаний.
 
-Недостаёт перед первым installable release:
+Недостаёт перед первым публичным подписанным release:
 
 1. Отдельный доверенный signing build с публичным GitHub Releases репозиторием,
    embedded public keys и OS-signing. Private keys живут у release operator/secret store,
@@ -105,12 +107,16 @@ metadata внутри verified version slot. Production agent пишет receipt
 через `Projector.Launcher <root>` не считается успешным обновлением сам по себе.
 
 Native Windows startup ссылается на stable launcher, а не путь старого version slot.
-macOS release installer должен зарегистрировать стабильный launcher/LoginItem и
-привязать SMAppService к этому bundle: standalone source app menu ещё требует этой
-packaging-интеграции перед обновляемым автозапуском. Нельзя объявлять её испытанной.
+macOS bootstrap — стабильный `Lecturer Projector.app`, к которому привязан SMAppService.
+Host вызывает только ограниченные команды управления login item этого bundle.
+Регистрация включается человеком; build и package smoke не меняют Login Items.
+Фактический reboot/login на подписанном пакете остаётся отдельной проверкой.
 
-CI создаёт только `*-unsigned.zip` как Actions artifacts, без GitHub Release publication.
-Это полезные воспроизводимые исходные сборки, не каталожные installers.
+CI создаёт Windows `*-setup-unsigned.exe`, отдельный update ZIP и Mac
+`*-development.dmg` / update ZIP как Actions artifacts, без GitHub Release publication.
+На Windows проверяются install/reinstall/upgrade, отказ downgrade, show lock и uninstall;
+на Mac — реальная временная seed-установка, coordinator, flock и подпись извлечённого host.
+Тесты не открывают native UI и не меняют автозапуск, credentials или конфигурацию экранов.
 
 ## Ротация и rollback
 
@@ -137,7 +143,7 @@ checkpoint сохраняет максимальные принятые sequence
   "url": "https://github.com/OWNER/REPOSITORY/releases/download/projector-v0.2.0/mac-arm64.zip",
   "size": 12345,
   "sha256": "64_HEX_CHARACTERS",
-  "entryPoint": "Lecturer Projector.app/Contents/MacOS/ProjectorMac",
+  "entryPoint": "Lecturer Projector Host.app/Contents/MacOS/ProjectorMac",
   "artifactType": "UPDATE"
 }
 ```
@@ -170,3 +176,13 @@ P-256 SPKI public key, exact base64 UTF8 payload, 64-byte signature — PASS.
 пользовательский public-key config и продолжает использовать только embedded trust.
 Подписанный `artifactType: INSTALLER` не допускается в updater (UPDATE default для
 совместимости payload первого формата). Каталожный installer имеет отдельный путь.
+
+
+## Подготовка ключа выпуска
+
+Оператор один раз выполняет `scripts/provision-release-key.mjs PRIVATE.pem PUBLIC-TRUST.json OWNER/REPOSITORY KEY_ID`.
+Private PEM хранится вне репозитория с правами 0600; публичный trust можно включить в
+сборку через `PROJECTOR_TRUST_FILE`. Инструмент отказывается молча заменять существующий
+anchor при потере private key. Нужна отдельная резервная копия ключа у оператора.
+`sign-release.mjs` подписывает готовые байты metadata. Это подпись обновления, она
+не заменяет Authenticode, Developer ID или notarization. Не передавать private key PR/CI runner.

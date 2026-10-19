@@ -91,7 +91,13 @@ Check("expiry, replay, platform, protocol, downgrade and asset origin denied", (
     Reject(() => Verify(Sign(manifest with { Version = "0.0.9" })), "ROLLBACK_OR_NOT_NEWER");
     Reject(() => Verify(Sign(manifest with { Url = "https://github.com/attacker/repo/releases/download/tag/agent.zip" })), "UNTRUSTED_ASSET_ORIGIN");
     Reject(() => Verify(Sign(manifest with { MinimumOsVersion = "15.0" })), "OS_TOO_OLD");
-    Reject(() => EmbeddedTrust.Load(), "RELEASE_SIGNING_NOT_PROVISIONED");
+    var embedded = EmbeddedTrust.Load();
+    Equal("MrHolly0/lecturer-assistant-v2", embedded.Repository);
+    Equal(true, embedded.Keys.Count > 0);
+    var forged = JsonSerializer.Deserialize<SignedEnvelope>(Sign(manifest), Wire.Json)!;
+    forged = forged with { KeyId = embedded.Keys.Keys.First() };
+    Reject(() => ReleaseVerifier.Verify(JsonSerializer.SerializeToUtf8Bytes(forged, Wire.Json), embedded,
+        "MACOS_ARM64", new(14, 0), "0.1.0", new(0, "0.1.0"), now), "BAD_MANIFEST_SIGNATURE");
 });
 Check("package size and digest before extraction", () => {
     using var correct = new MemoryStream([1,2,3]); ReleaseVerifier.VerifyPackage(correct, manifest);
@@ -289,6 +295,7 @@ if (!OperatingSystem.IsWindows())
     }
     finally { Directory.Delete(installSandbox, true); }
 }
+passed += BootstrapChecks.Run();
 Console.WriteLine($"{passed} checks passed. No OS display mutation, startup registration or production network request performed.");
 internal sealed class FakeHost : IProjectionHost {
     public int Executions { get; private set; }

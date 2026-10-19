@@ -2,8 +2,10 @@
 
 Это исходники отдельного пользовательского компонента. Основной продукт остаётся
 сайтом и MAX mini-app. Помощник не заменяет кабинет преподавателя и не требует телефона.
-**Пока нет подписанного установщика и испытаний физического HDMI: предлагать установку
-пользователям нельзя.** Браузерный мастер остаётся рабочим запасным сценарием.
+**Есть установочные сборки для испытаний: Windows EXE и macOS DMG, отдельно x64 и ARM64.**
+Они ещё не имеют Windows Authenticode / Apple Developer ID и notarization. Публичный
+каталог загрузок остаётся отключён до этих проверок и испытаний физического HDMI.
+Браузерный мастер работает без установки.
 
 ## Что реализовано
 
@@ -25,8 +27,15 @@
   show lock откладывает replacement; отозванная предыдущая версия quarantined.
   Ошибки загрузки повторяются с задержкой 30 секунд → 5 минут. Старый host выходит
   только после отдельного authenticated preflight receipt: metadata/ZIP/journal готовы. Без встроенных
-  production-ключей он **отказывает**. Backend release:null не изображает готовый релиз.
-- CI собирает неподписанные пакеты по архитектурам; не публикует их как готовый продукт.
+  release-ключей он **отказывает**. В сборке закреплён публичный P-256 ключ; private key
+  остаётся у оператора. Backend release:null не изображает опубликованное обновление.
+- Windows: пользовательский Inno Setup, стабильный launcher, установка/обновление/удаление
+  без системной службы. Автозапуск — отдельный выключенный по умолчанию флажок.
+- macOS: DMG со стабильным AppKit bootstrap в `~/Applications`, версионируемый host,
+  явный SMAppService login item, безопасное удаление и экспорт диагностики.
+- CI проверяет установку двух версий и native preflight на Windows x64/ARM64,
+  распаковку настоящего seed и запуск coordinator на macOS Apple Silicon/Intel.
+  Development artifacts не публикуются как подписанный продукт.
 
 ## Сборка и проверки
 
@@ -47,13 +56,13 @@ projector-agent/macos/.build/debug/ProjectorMac --journal-self-test
 На соответствующем runner:
 
 ```sh
-sh projector-agent/scripts/build-macos.sh arm64
-sh projector-agent/scripts/build-macos.sh x86_64
+sh projector-agent/scripts/build-macos.sh arm64 0.1.1 development
+sh projector-agent/scripts/build-macos.sh x86_64 0.1.1 development
 ```
 
 ```powershell
-./projector-agent/scripts/build-windows.ps1 -Runtime win-x64
-./projector-agent/scripts/build-windows.ps1 -Runtime win-arm64
+./projector-agent/scripts/build-windows.ps1 -Runtime win-x64 -Version 0.1.1
+./projector-agent/scripts/build-windows.ps1 -Runtime win-arm64 -Version 0.1.1
 ```
 
 Не запускать приложение автоматически в проверках. Подготовка экрана и автозапуск
@@ -80,7 +89,7 @@ original остаётся на диске, а автоматический во�
 
 ## Совместимость
 
-В 34 checks включены настоящие subprocess двух синтетических пакетов: 0.1→0.2,
+В общем наборе checks есть настоящие subprocess двух синтетических пакетов: 0.1→0.2,
 неверный nonce/rollback и quarantine отозванного предыдущего пакета. Это проверка
 транзакции файлов/процессов, не замена испытанию OS installer на реальном компьютере.
 
@@ -92,3 +101,6 @@ macOS 14/15/26 Intel и Apple Silicon. WebView2 Evergreen может отсут�
 
 Связь: [контракт сервера](../docs/projector-helper-protocol.md).
 Выпуск и недостающие gates: [release.md](docs/release.md).
+
+Установочные инструкции: [Windows](docs/windows-installation.md),
+[macOS](macos/packaging/README.md). Результаты: [протокол](docs/verification-20261019.md).

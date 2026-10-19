@@ -1,16 +1,53 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Diagnostics;
 using Lecturer.Projector;
 using Microsoft.Win32;
 
 namespace Lecturer.Projector.Windows;
 internal static class Program
 {
-    [STAThread] private static void Main()
+    [STAThread] private static int Main(string[] args)
     {
+        if (args.Length > 0) return Preflight(args);
         using var singleton = new Mutex(true, "Local\\LecturerAssistantProjector", out var first);
-        if (!first) return;
+        if (!first) return 0;
+        foreach (var maintenanceName in new[] { "Local\\LecturerAssistantProjectorSetup", "Local\\LecturerAssistantProjectorMaintenance" })
+        {
+            if (Mutex.TryOpenExisting(maintenanceName, out var maintenance)) { maintenance.Dispose(); return 0; }
+        }
         ApplicationConfiguration.Initialize(); Application.Run(new TrayApplication());
+        return 0;
+    }
+    private static int Preflight(string[] args)
+    {
+        if (args.Length != 2 || args[0] != "--preflight" || !Path.IsPathFullyQualified(args[1])) return 1;
+        try
+        {
+            var runtime = ProjectionForm.RuntimeVersion();
+            var report = new
+            {
+                mode = "PREFLIGHT",
+                version = ReleaseInfo.Version,
+                operatingSystem = RuntimeInformation.OSDescription,
+                osVersion = Environment.OSVersion.Version.ToString(),
+                osArchitecture = RuntimeInformation.OSArchitecture.ToString().ToUpperInvariant(),
+                processArchitecture = RuntimeInformation.ProcessArchitecture.ToString().ToUpperInvariant(),
+                platform = "WINDOWS_" + RuntimeInformation.ProcessArchitecture.ToString().ToUpperInvariant(),
+                framework = RuntimeInformation.FrameworkDescription,
+                webView2 = new { status = runtime is null ? "MISSING_OR_UNAVAILABLE" : "AVAILABLE", version = runtime },
+                displayMutation = false,
+                startupChanged = false,
+                uiOpened = false,
+                networkRequested = false,
+                pairingChanged = false
+            };
+            // The only preflight write is the explicitly requested, previously absent report.
+            using var output = new FileStream(args[1], FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            JsonSerializer.Serialize(output, report, Wire.Json);
+            return 0;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return 1; }
     }
 }
 internal sealed class TrayApplication : ApplicationContext, IProjectionHost
@@ -56,6 +93,7 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
     private void UpdateMenu()
     {
         var menu = new ContextMenuStrip(); menu.Items.Add(status).Enabled = false;
+        if (!ProjectionForm.RuntimeAvailable()) menu.Items.Add("Для показа нужен Microsoft WebView2…", null, (_, _) => WebViewHelp());
         menu.Items.Add("Подключить к учреждению…", null, async (_, _) => await Pair());
         menu.Items.Add("Подготовить отдельный экран…", null, (_, _) => Prepare());
         menu.Items.Add("Остановить показ", null, (_, _) => { pendingLocalStop = true; projection?.Neutral(); status = "Показ остановлен локально"; UpdateMenu(); });
@@ -64,7 +102,8 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
         var startup = new ToolStripMenuItem("Запускать при входе") { Checked = key?.GetValue(StartupName) is string, CheckOnClick = false };
         startup.Click += (_, _) => ToggleStartup(); menu.Items.Add(startup);
         menu.Items.Add("Отключить устройство", null, (_, _) => { Stop(); foreach (var file in new[] { "device.dpapi", "origin.txt" }) File.Delete(Path.Combine(directory, file)); origin = null; status = "Отключено. Отзовите устройство также на сайте."; UpdateMenu(); });
-        menu.Items.Add("Удаление и помощь", null, (_, _) => MessageBox.Show("Остановите показ, верните экраны, отключите автозапуск и устройство, затем удалите установленное приложение. Для MSI/MSIX используйте «Установленные приложения». Этот исходный прототип ещё не является установщиком. При отсутствии WebView2 используйте браузерный мастер.", "Помощник проектора"));
+        menu.Items.Add("Microsoft WebView2 и помощь…", null, (_, _) => WebViewHelp());
+        menu.Items.Add("Удалить помощник…", null, (_, _) => Uninstall());
         menu.Items.Add("Выйти", null, (_, _) => { Stop(); ExitThread(); });
         var old = tray.ContextMenuStrip; tray.ContextMenuStrip = menu; old?.Dispose();
     }
@@ -144,7 +183,12 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
                 }
                 UpdateMenu(); completion.TrySetResult(new(action.Id, true));
             }
-            catch (Exception ex) { projection?.Neutral(); completion.TrySetResult(new(action.Id, false, ex is InvalidDataException ? ex.Message : "NATIVE_OPERATION_FAILED")); }
+            catch (Exception ex)
+            {
+                projection?.Neutral();
+                if (ex is InvalidDataException { Message: "WEBVIEW2_RUNTIME_MISSING" }) { status = "Для показа нужен Microsoft WebView2 — откройте помощь в меню"; UpdateMenu(); }
+                completion.TrySetResult(new(action.Id, false, ex is InvalidDataException ? ex.Message : "NATIVE_OPERATION_FAILED"));
+            }
         });
         return completion.Task.WaitAsync(ct);
     }
@@ -176,6 +220,35 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
             else key.SetValue(StartupName, '"' + launcher + "\" \"" + installedRoot + '"');
         }
         UpdateMenu();
+    }
+    private static void WebViewHelp()
+    {
+        var message = ProjectionForm.RuntimeAvailable()
+            ? "Microsoft WebView2 доступен. Помощник использует отдельное окно и не требует входа в браузер. Открыть официальную страницу Microsoft с описанием и установщиком?"
+            : "Для показа нужен Microsoft Edge WebView2 Runtime. Откройте официальную страницу Microsoft и установите Evergreen Runtime. Если установка запрещена учреждением, обратитесь к администратору или используйте браузерный мастер.\n\nОткрыть страницу Microsoft?";
+        if (MessageBox.Show(message, "Microsoft WebView2", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+        {
+            try { Process.Start(new ProcessStartInfo("https://developer.microsoft.com/microsoft-edge/webview2/") { UseShellExecute = true }); }
+            catch { MessageBox.Show("Не удалось открыть браузер. Страница Microsoft: https://developer.microsoft.com/microsoft-edge/webview2/", "Microsoft WebView2"); }
+        }
+    }
+    private void Uninstall()
+    {
+        if (File.Exists(Path.Combine(directory, "display-recovery.json")))
+        {
+            MessageBox.Show("Сначала выберите «Вернуть настройку экранов…». Скрывайте служебное окно перед возвратом дублирования. Если конфигурация изменилась, проверьте её в настройках Windows: журнал восстановления не удаляется автоматически.", "Удаление помощника", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        var installedRoot = Environment.GetEnvironmentVariable("LA_PROJECTOR_INSTALL_ROOT");
+        var uninstaller = installedRoot is null ? null : Path.Combine(installedRoot, "uninstall", "unins000.exe");
+        if (uninstaller is null || !File.Exists(uninstaller))
+        {
+            MessageBox.Show("Установщик не найден. Установите актуальный пакет заново для восстановления удаления. Исходную сборку можно удалить после выхода из помощника. Подключение к учреждению отключается отдельно в этом меню и на сайте.", "Удаление помощника");
+            return;
+        }
+        if (MessageBox.Show("Помощник остановит показ, завершит работу и откроет удаление. Для удаления сохранённого подключения сначала выберите «Отключить устройство» и отзовите его на сайте.\n\nОткрыть удаление?", "Удаление помощника", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        try { Process.Start(new ProcessStartInfo(uninstaller) { UseShellExecute = true }); Stop(); ExitThread(); }
+        catch { MessageBox.Show("Не удалось открыть удаление. Выйдите из помощника и откройте «Установленные приложения» в настройках Windows.", "Удаление помощника"); }
     }
     private void Stop() { generation++; cancellation?.Cancel(); projection?.Neutral(); status = "Показ остановлен локально"; UpdateMenu(); }
     private sealed class GenerationHost(TrayApplication owner, long expectedGeneration) : IProjectionHost

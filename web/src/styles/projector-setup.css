@@ -168,16 +168,11 @@
   margin-bottom: 24px;
   font-size: 14px;
 }
-.projector-os-select > span {
+.projector-os-select > label {
   color: var(--muted-foreground);
 }
-.projector-os-select select {
-  color: var(--foreground);
-  background: var(--background);
-  border: 1px solid var(--input);
-  border-radius: 8px;
-  min-height: 44px;
-  padding: 8px 34px 8px 12px;
+.projector-os-select [data-slot="select-trigger"] {
+  width: 240px;
   max-width: 100%;
 }
 .projector-inline-guide {
@@ -562,6 +557,9 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
+  }
+  .projector-os-select [data-slot="select-trigger"] {
+    width: 100%;
   }
   .projector-mac-guide {
     padding: 14px;

@@ -5,6 +5,20 @@ namespace Lecturer.Projector.Windows;
 
 internal sealed class ProjectionForm : Form
 {
+    public static bool RuntimeAvailable() => RuntimeVersion() is not null;
+    public static string? RuntimeVersion()
+    {
+        try
+        {
+            var version = CoreWebView2Environment.GetAvailableBrowserVersionString();
+            return string.IsNullOrWhiteSpace(version) ? null : version;
+        }
+        catch (WebView2RuntimeNotFoundException) { return null; }
+        catch (System.Runtime.InteropServices.COMException) { return null; }
+        catch (DllNotFoundException) { return null; }
+        catch (FileNotFoundException) { return null; }
+        catch (BadImageFormatException) { return null; }
+    }
     private WebView2? web;
     private readonly Uri origin;
     private readonly string profileRoot = Path.Combine(Path.GetTempPath(), "LecturerProjector", Guid.NewGuid().ToString("N"));
@@ -22,6 +36,7 @@ internal sealed class ProjectionForm : Form
     public async Task ShowScene(Uri scene)
     {
         if (!PublicScene.Allowed(origin, scene)) throw new InvalidDataException("PUBLIC_URL_REJECTED");
+        if (!RuntimeAvailable()) throw new InvalidDataException("WEBVIEW2_RUNTIME_MISSING");
         Neutral("Подключение…");
         var control = new WebView2 { Dock = DockStyle.Fill }; web = control; Controls.Clear(); Controls.Add(control);
         var environment = await CoreWebView2Environment.CreateAsync(null, profileRoot);

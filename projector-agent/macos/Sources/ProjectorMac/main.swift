@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Security
-import ServiceManagement
 import Darwin
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -24,6 +23,7 @@ import Darwin
     private var status = "Не подключён"
     private var updateStopTimer: Timer?
     private var instanceLock: Int32 = -1
+    private var startupStatus = "UNAVAILABLE"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("LecturerProjector", isDirectory: true)
@@ -32,6 +32,7 @@ import Darwin
         instanceLock = open(directory.appendingPathComponent("instance.lock").path, O_CREAT | O_RDWR, 0o600)
         guard instanceLock >= 0, flock(instanceLock, LOCK_EX | LOCK_NB) == 0 else { NSApp.terminate(nil); return }
         display = DisplayController(directory: directory)
+        startupStatus = (try? bootstrapCommand("--login-status")) ?? "UNAVAILABLE"
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "LA"
         rebuildMenu()
@@ -69,8 +70,12 @@ import Darwin
         add(menu, "Остановить показ", #selector(stop))
         add(menu, "Вернуть настройку экранов…", #selector(restore))
         let startup = NSMenuItem(title: "Запускать при входе", action: #selector(toggleStartup), keyEquivalent: "")
-        startup.target = self; startup.state = SMAppService.mainApp.status == .enabled ? .on : .off; menu.addItem(startup)
+        startup.target = self; startup.state = startupStatus == "ENABLED" ? .on : .off
+        startup.isEnabled = bootstrapExecutable() != nil; menu.addItem(startup)
+        if startupStatus == "REQUIRES_APPROVAL" { add(menu, "Разрешить автозапуск в настройках macOS…", #selector(startupHelp)) }
         add(menu, "Отключить устройство…", #selector(unpair))
+        add(menu, "Сохранить диагностику…", #selector(diagnostics))
+        add(menu, "Удалить помощник…", #selector(uninstall))
         add(menu, "Удаление и помощь", #selector(help))
         add(menu, "Выйти", #selector(quit))
         item.menu = menu
@@ -245,9 +250,36 @@ import Darwin
         rebuildMenu()
     }
     @objc private func toggleStartup() {
-        do { if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() } else { try SMAppService.mainApp.register() } }
+        do { startupStatus = try bootstrapCommand(startupStatus == "ENABLED" || startupStatus == "REQUIRES_APPROVAL" ? "--disable-login" : "--enable-login") }
         catch { status = "Автозапуск требует разрешения macOS" }
         rebuildMenu()
+    }
+    private func bootstrapExecutable() -> URL? {
+        guard let path = ProcessInfo.processInfo.environment["LA_PROJECTOR_BOOTSTRAP_PATH"] else { return nil }
+        let executable = URL(fileURLWithPath: path).standardizedFileURL
+        let bundle = executable.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        guard [home.appendingPathComponent("Applications/Lecturer Projector.app").path, "/Applications/Lecturer Projector.app"].contains(bundle.path),
+              executable.path == bundle.appendingPathComponent("Contents/MacOS/ProjectorBootstrap").path,
+              Bundle(url: bundle)?.bundleIdentifier == "ru.university.lecturer-projector",
+              FileManager.default.isExecutableFile(atPath: executable.path),
+              (try? bundle.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { return nil }
+        return executable
+    }
+    private func bootstrapCommand(_ argument: String) throws -> String {
+        guard let executable = bootstrapExecutable() else { throw HostError.code("STABLE_INSTALL_REQUIRED") }
+        let process = Process(); let output = Pipe()
+        process.executableURL = executable; process.arguments = [argument]
+        process.standardOutput = output; process.standardError = FileHandle.nullDevice
+        try process.run(); let data = output.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
+        guard process.terminationStatus == 0, data.count <= 128 else { throw HostError.code("LOGIN_PERMISSION_REQUIRED") }
+        return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    @objc private func startupHelp() {
+        let alert = NSAlert(); alert.messageText = "Разрешить автозапуск"
+        alert.informativeText = "Откройте Системные настройки → Основные → Объекты входа и расширения и разрешите Lecturer Projector. В macOS 14/15 раздел называется «Объекты входа». Это требуется только для запуска после входа в Mac."
+        alert.runModal()
+        startupStatus = (try? bootstrapCommand("--login-status")) ?? "UNAVAILABLE"; rebuildMenu()
     }
     @objc private func unpair() {
         stop(); generation = UUID(); process?.terminate()
@@ -257,8 +289,66 @@ import Darwin
     }
     @objc private func help() {
         let alert = NSAlert(); alert.messageText = "Помощник проектора"
-        alert.informativeText = "Для удаления: остановите показ, верните экраны, отключите «Запускать при входе», отключите устройство и переместите приложение в Корзину. Минимум macOS 14. Браузерный мастер работает без помощника. Сборка прототипа пока не является подписанным установщиком."
+        alert.informativeText = "Помощник выводит публичную сцену и управляется сайтом/MAX. Он не захватывает экран в простое. Для удаления остановите показ, верните исходную настройку экранов и выберите «Удалить помощник…». Устройство также можно отозвать на сайте. Минимум macOS 14. Браузерный мастер работает без установки."
         alert.runModal()
+    }
+    @objc private func diagnostics() {
+        let panel = NSSavePanel(); panel.nameFieldStringValue = "lecturer-projector-diagnostics.json"
+        panel.title = "Сохранить диагностику без данных аккаунта"
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        var report: [String: Any] = ["version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
+                                    "platform": platform(), "osVersion": ProcessInfo.processInfo.operatingSystemVersionString,
+                                    "startup": startupStatus, "installed": bootstrapExecutable() != nil,
+                                    "displayRecoveryPending": FileManager.default.fileExists(atPath: directory.appendingPathComponent("display-recovery.json").path)]
+        if let root = ProcessInfo.processInfo.environment["LA_PROJECTOR_INSTALL_ROOT"] {
+            report["updateRecoveryPending"] = FileManager.default.fileExists(atPath: URL(fileURLWithPath: root).appendingPathComponent("update-transaction.json").path)
+        }
+        do { try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys, .prettyPrinted]).write(to: destination, options: .atomic) }
+        catch { status = "Не удалось сохранить диагностику"; rebuildMenu() }
+    }
+    @objc private func uninstall() {
+        guard pendingUpdater == nil, !FileManager.default.fileExists(atPath: directory.appendingPathComponent("display-recovery.json").path),
+              let executable = bootstrapExecutable(), let rootPath = ProcessInfo.processInfo.environment["LA_PROJECTOR_INSTALL_ROOT"],
+              URL(fileURLWithPath: rootPath).standardizedFileURL.path == directory.appendingPathComponent("install").standardizedFileURL.path,
+              !FileManager.default.fileExists(atPath: URL(fileURLWithPath: rootPath).appendingPathComponent("update-transaction.json").path) else {
+            let alert = NSAlert(); alert.messageText = "Сначала завершите подготовку"
+            alert.informativeText = "Остановите показ и верните сохранённую настройку экранов. Если обновление не завершилось или приложение запущено не из установленного пакета, сохраните диагностику и обратитесь в поддержку. Нужные для восстановления файлы не удаляются."
+            alert.runModal(); return
+        }
+        let alert = NSAlert(); alert.messageText = "Удалить помощник проектора?"
+        alert.informativeText = "Показ будет остановлен, автозапуск отключён, ключ устройства удалён из Связки ключей. Приложение и установленные версии переместятся в Корзину. Отзовите устройство также на сайте. Сайт и MAX продолжат работать."
+        alert.addButton(withTitle: "Удалить помощник"); alert.addButton(withTitle: "Отмена")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            _ = try bootstrapCommand("--disable-login")
+            let root = URL(fileURLWithPath: rootPath).standardizedFileURL
+            guard (try root.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { throw HostError.code("UNSAFE_INSTALL_DIRECTORY") }
+            let bundle = executable.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            stop(); generation = UUID(); process?.terminate(); process?.waitUntilExit(); process = nil
+            if instanceLock >= 0 { flock(instanceLock, LOCK_UN) }
+            do {
+                let check = Process(); let output = Pipe()
+                check.executableURL = bundle.appendingPathComponent("Contents/MacOS/launcher/Projector.Launcher")
+                check.arguments = ["uninstall-check", root.path]; check.standardOutput = output; check.standardError = output
+                try check.run(); _ = output.fileHandleForReading.readDataToEndOfFile(); check.waitUntilExit()
+                guard check.terminationStatus == 0 else { throw HostError.code("UNINSTALL_RECOVERY_REQUIRED") }
+                guard instanceLock >= 0, flock(instanceLock, LOCK_EX | LOCK_NB) == 0 else { throw HostError.code("ANOTHER_HELPER_STARTED") }
+            } catch {
+                if instanceLock >= 0 { _ = flock(instanceLock, LOCK_EX | LOCK_NB) }
+                throw error
+            }
+            unpair()
+            NSWorkspace.shared.recycle([bundle, root]) { [weak self] _, error in
+                let failed = error != nil
+                Task { @MainActor [weak self] in
+                    if failed {
+                        if let self, self.instanceLock >= 0 { _ = flock(self.instanceLock, LOCK_EX | LOCK_NB) }
+                        self?.status = "Удаление не завершено — переместите приложение в Корзину"; self?.rebuildMenu()
+                    }
+                    else { NSApp.terminate(nil) }
+                }
+            }
+        } catch { status = "Удаление остановлено — отключите автозапуск в настройках macOS"; rebuildMenu() }
     }
     @objc private func quit() { stop(); NSApp.terminate(nil) }
     func applicationWillTerminate(_ notification: Notification) { projection.neutralize(); process?.terminate(); if instanceLock >= 0 { close(instanceLock) } }

@@ -2,9 +2,10 @@ using System.Reflection;
 using System.Text.Json;
 using Lecturer.Projector;
 
+var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
 if (args.SequenceEqual(["--self-test"]))
 {
-    Console.WriteLine("Projector coordinator 0.1.0 protocol 1; no display, network or startup changes performed.");
+    Console.WriteLine($"Projector coordinator {version} protocol 1; no display, network or startup changes performed.");
     return;
 }
 if (!args.SequenceEqual(["--native-stdio"]))
@@ -18,7 +19,6 @@ try
     if (line.Length > 8192) throw new InvalidDataException("BOOTSTRAP_TOO_LARGE");
     var bootstrap = JsonSerializer.Deserialize<Bootstrap>(line, Wire.Json) ?? throw new InvalidDataException("BAD_BOOTSTRAP");
     var origin = PublicScene.ValidateOrigin(bootstrap.Origin);
-    var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
     using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { Timeout = TimeSpan.FromSeconds(10) };
     var token = bootstrap.DeviceToken;
     if (string.IsNullOrEmpty(token))

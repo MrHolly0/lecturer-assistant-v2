@@ -112,5 +112,6 @@ health before accepting a replacement. Server metadata alone never executes an a
 Publish offers only after installer/package signing, native embedded trust, notarization
 where required, hosted assets, install/update/recovery checks and the actual OS/display
 matrix have passed. Source/unit tests and Java-to-native signature compatibility do not
-prove physical projector behavior. This repository currently ships empty example files
-and empty native trust; operators must provision real releases explicitly.
+prove physical projector behavior. This repository ships empty example catalog files and a native public trust anchor.
+The private release key stays outside Git and builds. Operators must publish and qualify
+real OS-signed releases explicitly; development EXE/DMG artifacts are not catalog offers.

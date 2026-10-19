@@ -1,4 +1,4 @@
-import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "../shared/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 
 type GuideOs = "windows" | "mac-modern" | "mac-monterey" | "mac-older" | "other";
 const osLabels: Record<GuideOs, string> = {
@@ -39,6 +40,26 @@ function initialOs(): GuideOs {
     : /win/i.test(navigator.platform)
       ? "windows"
       : "other";
+}
+function GuideSystemSelect({ os, onChange }: { os: GuideOs; onChange: (os: GuideOs) => void }) {
+  const id = useId();
+  return (
+    <div className="projector-os-select">
+      <label htmlFor={id}>Ваша система</label>
+      <Select value={os} onValueChange={(value) => onChange(value as GuideOs)}>
+        <SelectTrigger id={id}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {Object.entries(osLabels).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
 }
 function hasSeenTraining() {
   try {
@@ -235,18 +256,7 @@ export function ProjectorSetupPage({ helperPanel }: { helperPanel?: ReactNode })
   const trainingTrigger = useRef<HTMLButtonElement>(null);
   const active = state.phase === "showing";
   const busy = state.phase === "requesting" || state.phase === "opening";
-  const guideSelect = (
-    <label className="projector-os-select">
-      <span>Ваша система</span>
-      <select value={os} onChange={(event) => setOs(event.target.value as GuideOs)}>
-        {Object.entries(osLabels).map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+  const guideSelect = <GuideSystemSelect os={os} onChange={setOs} />;
   const begin = () => {
     setTour(null);
     setCodeConfirmed(false);
