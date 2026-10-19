@@ -2,10 +2,13 @@ import Foundation
 
 /// Injectable permission checks keep isolated tests away from the user's TCC database.
 @MainActor enum CaptureAuthorization {
-    static func request(preflight: () -> Bool, activate: () -> Void, prompt: () -> Bool) -> Bool {
+    static func request(preflight: () -> Bool, activate: () -> Void, prompt: () async -> Bool) async -> Bool {
         if preflight() { return true }
         activate()
-        return prompt() || preflight()
+        return await prompt() || preflight()
+    }
+    nonisolated static func offMainPrompt(_ prompt: @escaping @Sendable () -> Bool) async -> Bool {
+        await Task.detached(priority: .userInitiated) { prompt() }.value
     }
     static func waitForGrant(attempts: Int, preflight: () -> Bool, cancelled: () -> Bool, pause: () async throws -> Void) async -> Bool {
         for _ in 0..<attempts {

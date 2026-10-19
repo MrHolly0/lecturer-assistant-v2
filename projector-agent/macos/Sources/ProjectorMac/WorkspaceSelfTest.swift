@@ -31,12 +31,12 @@ import Darwin
     }
     private func permissionFixture() async throws -> [String: Any] {
         var prompts = 0, activations = 0
-        let existing = CaptureAuthorization.request(preflight: { true }, activate: { activations += 1 }, prompt: { prompts += 1; return false })
+        let existing = await CaptureAuthorization.request(preflight: { true }, activate: { activations += 1 }, prompt: { prompts += 1; return false })
         guard existing, prompts == 0 else { throw HostError.code("WORKSPACE_PERMISSION_REPROMPTED") }
-        let requested = CaptureAuthorization.request(preflight: { false }, activate: { activations += 1 }, prompt: { prompts += 1; return true })
+        let requested = await CaptureAuthorization.request(preflight: { false }, activate: { activations += 1 }, prompt: { prompts += 1; return true })
         guard requested, prompts == 1, activations == 1 else { throw HostError.code("WORKSPACE_PERMISSION_NOT_REQUESTED") }
         var granted = false, pauses = 0
-        let denied = CaptureAuthorization.request(preflight: { granted }, activate: {}, prompt: { prompts += 1; return false })
+        let denied = await CaptureAuthorization.request(preflight: { granted }, activate: {}, prompt: { prompts += 1; return false })
         guard !denied else { throw HostError.code("WORKSPACE_PERMISSION_DENIAL_IGNORED") }
         let resumed = await CaptureAuthorization.waitForGrant(attempts: 4, preflight: { granted }, cancelled: { false }, pause: { pauses += 1; if pauses == 2 { granted = true } })
         guard resumed, prompts == 2, pauses == 2 else { throw HostError.code("WORKSPACE_PERMISSION_CONTINUATION") }

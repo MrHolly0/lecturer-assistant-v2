@@ -56,7 +56,7 @@ enum InstallationIdentity {
 
 enum CoordinatorBootstrap {
     static func make(origin: URL, name: String, platform: String, deviceToken: String?, pairingCode: String?,
-                     directory: URL, previousToken: (String) -> String?) throws -> [String: Any] {
+                     directory: URL, previousToken: (String) throws -> String?) throws -> [String: Any] {
         var value: [String: Any] = ["origin": origin.absoluteString, "name": name, "platform": platform]
         if let pairingCode {
             value["pairingCode"] = pairingCode
@@ -70,7 +70,7 @@ enum CoordinatorBootstrap {
             }
             let account = origin.absoluteString
             let alias = account.hasSuffix("/") ? String(account.dropLast()) : account + "/"
-            if let token = previousToken(account) ?? previousToken(alias) { value["previousDeviceToken"] = token }
+            if let token = try previousToken(account) ?? previousToken(alias) { value["previousDeviceToken"] = token }
         } else if let deviceToken { value["deviceToken"] = deviceToken }
         return value
     }

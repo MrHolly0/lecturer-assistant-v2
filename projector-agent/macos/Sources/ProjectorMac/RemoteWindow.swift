@@ -16,6 +16,7 @@ import WebKit
     var command: (([String: Any]) -> Void)?
     var closed: (() -> Void)?
     var isPresented: Bool { panel != nil }
+    var presentationWindow: NSWindow? { panel }
 
     static func allowed(_ candidate: URL, origin: URL) -> Bool {
         guard candidate.scheme == "https", candidate.host == origin.host, candidate.port == origin.port,
@@ -85,6 +86,14 @@ import WebKit
         panel.contentView?.addSubview(web)
         if let bounds = NSScreen.main?.visibleFrame { panel.setFrameTopLeftPoint(NSPoint(x: bounds.maxX - 440, y: bounds.maxY - 20)) }
         return panel
+    }
+    static func captureParentFixture() -> RemoteWindow {
+        let remote = RemoteWindow()
+        let web = WKWebView(frame: .zero, configuration: remote.configuration())
+        let panel = remote.makePanel(web: web); remote.web = web; remote.panel = panel
+        panel.alphaValue = 0; panel.setFrameOrigin(NSPoint(x: 50_000, y: 50_000))
+        web.loadHTMLString("<!doctype html><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'\"><p>Isolated capture dialog parent</p>", baseURL: nil)
+        return remote
     }
     static func exerciseHiddenThemeFixture() async throws -> [String: Any] {
         let remote = RemoteWindow(); try remote.setTheme("dark")

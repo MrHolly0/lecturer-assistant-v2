@@ -33,6 +33,8 @@ import Darwin
     private var userInitiatedPairing = false
     private var pairingDraft: String?
     private var pairingError: String?
+    private var savedConnectionAccount: String?
+    private var savedKeychainStatus: OSStatus?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("LecturerProjector", isDirectory: true)
@@ -42,6 +44,7 @@ import Darwin
         guard instanceLock >= 0, flock(instanceLock, LOCK_EX | LOCK_NB) == 0 else { NSApp.terminate(nil); return }
         display = DisplayController(directory: directory)
         capture.event = { [weak self] event in self?.remote.emit(event) }
+        capture.presentationWindow = { [weak self] in self?.remote.presentationWindow }
         remote.closed = { [weak self] in Task { @MainActor in await self?.capture.stop() } }
         remote.command = { [weak self] value in Task { @MainActor in await self?.applyRemoteCommand(value) } }
         startupStatus = (try? bootstrapCommand("--login-status")) ?? "UNAVAILABLE"
@@ -74,8 +77,8 @@ import Darwin
         }
         let config = directory.appendingPathComponent("origin.txt")
         if let saved = try? String(contentsOf: config, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
-           let url = Self.validOrigin(saved), let token = Keychain.read(account: saved) {
-            origin = url; start(origin: url, token: token, pairingCode: nil)
+           let url = Self.validOrigin(saved) {
+            origin = url; savedConnectionAccount = saved; resumeSavedConnection(allowInteraction: false)
         }
         // Recovery journal is never applied silently at login: the teacher may have changed the display setup meanwhile.
         if FileManager.default.fileExists(atPath: directory.appendingPathComponent("display-recovery.json").path) {
@@ -111,6 +114,56 @@ import Darwin
         guard delegate.pendingLocalStop, delegate.lastRemoteAction == nil, !delegate.capture.isActive else { throw HostError.code("WORKSPACE_FOOTER_STOP_NOT_LOCAL_STOP") }
         return ["projectorPreparationKeepsRemoteClosed": true, "manualRemoteScopePreserved": true,
                 "sourceStopKeepsProjectionScope": true, "footerStopSetsLocalStop": true]
+    }
+    static func makeScreenReplyFixture() -> @MainActor () async throws -> Void {
+        let delegate = AppDelegate(), pipe = Pipe(); delegate.input = pipe
+        return {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                DispatchQueue.global().async {
+                    Task { @MainActor in
+                        do {
+                            let id = UUID().uuidString
+                            let data = try JSONSerialization.data(withJSONObject: ["id": id, "type": "GET_SCREENS"])
+                            delegate.receive(data + Data([10]))
+                            let reply = pipe.fileHandleForReading.availableData
+                            guard let value = try JSONSerialization.jsonObject(with: reply) as? [String: Any],
+                                  value["id"] as? String == id, value["success"] as? Bool == true else { throw HostError.code("CAPTURE_DIALOG_BAD_NATIVE_REPLY") }
+                            continuation.resume()
+                        } catch { continuation.resume(throwing: error) }
+                    }
+                }
+            }
+        }
+    }
+    static func exerciseSavedConnectionFixture() throws -> [String: Any] {
+        let delegate = AppDelegate(), site = URL(string: "https://fixture.invalid/")!
+        delegate.origin = site; delegate.savedConnectionAccount = site.absoluteString
+        var interactions: [Bool] = [], resumed = false
+        delegate.resumeSavedConnection(allowInteraction: false, read: { _, allowed in interactions.append(allowed); return .unavailable(errSecInteractionNotAllowed) })
+        guard delegate.origin == site, delegate.savedConnectionAccount == site.absoluteString,
+              delegate.savedKeychainStatus == errSecInteractionNotAllowed, delegate.process == nil else { throw HostError.code("KEYCHAIN_STARTUP_LOST_CONNECTION") }
+        delegate.resumeSavedConnection(allowInteraction: true, read: { _, allowed in interactions.append(allowed); return .unavailable(errSecUserCanceled) })
+        guard delegate.origin == site, delegate.savedKeychainStatus == errSecUserCanceled else { throw HostError.code("KEYCHAIN_CANCEL_LOST_CONNECTION") }
+        delegate.resumeSavedConnection(allowInteraction: true, read: { _, allowed in interactions.append(allowed); return .token("fixture-resume-token") }, begin: { origin, token in
+            resumed = origin == site && token == "fixture-resume-token"
+        })
+        guard interactions == [false, true, true], resumed, delegate.savedKeychainStatus == nil else { throw HostError.code("KEYCHAIN_EXPLICIT_RETRY_DID_NOT_RESUME") }
+        return ["savedOriginPreserved": true, "quietStartupDoesNotRequestAuthentication": true,
+                "cancelPreservesConnection": true, "explicitRetryResumesWithoutPairing": true]
+    }
+    private func resumeSavedConnection(allowInteraction: Bool, read: (String, Bool) -> SavedKeychainResult = Keychain.readResult,
+                                       begin: ((URL, String) -> Void)? = nil) {
+        guard let account = savedConnectionAccount, let origin else { return }
+        switch read(account, allowInteraction) {
+        case .token(let token):
+            savedKeychainStatus = nil
+            if let begin { begin(origin, token) } else { start(origin: origin, token: token, pairingCode: nil) }
+        case .missing:
+            savedKeychainStatus = errSecItemNotFound; status = "Сохранённый ключ не найден — откройте помощник"
+        case .unavailable(let code):
+            savedKeychainStatus = code; status = "Разрешите доступ к Связке ключей — откройте помощник"
+        }
+        rebuildMenu()
     }
     private func rebuildMenu() {
         guard item != nil else { return }
@@ -162,6 +215,18 @@ import Darwin
     @objc private func revealFromUser() {
         guard !localDialogOpen else { connectionForm?.alert.window.makeKeyAndOrderFront(nil); return }
         if let origin, let action = lastRemoteAction, (try? showRemote(action, origin: origin)) != nil { return }
+        if process?.isRunning != true, savedConnectionAccount != nil {
+            localDialogOpen = true
+            let alert = NSAlert(); alert.messageText = "Восстановить сохранённое подключение"
+            alert.informativeText = savedKeychainStatus == errSecItemNotFound
+                ? "Адрес учреждения сохранён, но ключ подключения не найден. Можно повторить проверку или подключить помощник по новому коду."
+                : "Подключение к учреждению сохранено. Разрешите помощнику доступ к Связке ключей в системном запросе — повторное подключение по коду не требуется."
+            alert.addButton(withTitle: "Повторить доступ"); alert.addButton(withTitle: "Подключить по коду…"); alert.addButton(withTitle: "Закрыть")
+            NSApp.activate(ignoringOtherApps: true); let response = alert.runModal(); localDialogOpen = false
+            if response == .alertFirstButtonReturn { resumeSavedConnection(allowInteraction: true) }
+            else if response == .alertSecondButtonReturn { pair() }
+            return
+        }
         if origin == nil || process?.isRunning != true { pair(); return }
         localDialogOpen = true
         let alert = NSAlert(); alert.messageText = "Помощник проектора готов"
@@ -217,7 +282,11 @@ import Darwin
         do {
             bootstrap = try CoordinatorBootstrap.make(origin: origin, name: Host.current().localizedName ?? "Mac", platform: platform(),
                                                       deviceToken: token, pairingCode: pairingCode, directory: directory,
-                                                      previousToken: { Keychain.read(account: $0) })
+                                                      previousToken: { try Keychain.readForPairing(account: $0) })
+        } catch HostError.code(let code) where code == "KEYCHAIN_ACCESS_REQUIRED" {
+            status = "Разрешите доступ к Связке ключей"; rebuildMenu()
+            pairingFailedIfNeeded("Разрешите помощнику доступ к Связке ключей в системном запросе и повторите подключение. Сохранённый ключ не удалён.")
+            return
         } catch {
             status = "Не удалось прочитать ID этой установки"; rebuildMenu()
             pairingFailedIfNeeded("Не удалось прочитать постоянный ID этой установки. Подключение не изменено. Сохраните диагностику и обратитесь в поддержку.")
@@ -276,6 +345,7 @@ import Darwin
                 do {
                     try Keychain.store(token, account: origin.absoluteString)
                     try origin.absoluteString.write(to: directory.appendingPathComponent("origin.txt"), atomically: true, encoding: .utf8)
+                    savedConnectionAccount = origin.absoluteString; savedKeychainStatus = nil
                     status = "Готов — управление на сайте"; rebuildMenu()
                     pairingSucceededIfNeeded()
                 } catch { process?.terminate(); status = "Не удалось сохранить устройство в Связке ключей"; rebuildMenu(); pairingFailedIfNeeded() }
@@ -445,7 +515,7 @@ import Darwin
     @objc private func unpair() {
         stop(); generation = UUID(); process?.terminate()
         if let origin { Keychain.remove(account: origin.absoluteString) }
-        try? FileManager.default.removeItem(at: directory.appendingPathComponent("origin.txt")); origin = nil
+        try? FileManager.default.removeItem(at: directory.appendingPathComponent("origin.txt")); origin = nil; savedConnectionAccount = nil; savedKeychainStatus = nil
         status = "Устройство отключено. Отзовите его также на сайте."; rebuildMenu()
     }
     @objc private func help() {
@@ -517,28 +587,11 @@ import Darwin
     func applicationWillTerminate(_ notification: Notification) { projection.neutralize(); remote.close(); identification.dismiss(); process?.terminate(); if instanceLock >= 0 { close(instanceLock) } }
 }
 
-enum Keychain {
-    static let service = "ru.university.lecturer-projector"
-    static func read(account: String) -> String? {
-        var query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
-        query[kSecReturnData as String] = true
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-    static func store(_ token: String, account: String) throws {
-        remove(account: account)
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                  kSecAttrAccount as String: account, kSecValueData as String: Data(token.utf8),
-                                  kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
-        guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else { throw HostError.code("KEYCHAIN_WRITE_FAILED") }
-    }
-    static func remove(account: String) {
-        SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account] as CFDictionary)
-    }
-}
-
-if let index = CommandLine.arguments.firstIndex(of: "--process-identity-self-test"), CommandLine.arguments.count > index + 2 {
+if let index = CommandLine.arguments.firstIndex(of: "--keychain-recovery-self-test"), CommandLine.arguments.count > index + 1 {
+    try KeychainRecoverySelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if let index = CommandLine.arguments.firstIndex(of: "--capture-dialog-self-test"), CommandLine.arguments.count > index + 1 {
+    CaptureDialogSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if let index = CommandLine.arguments.firstIndex(of: "--process-identity-self-test"), CommandLine.arguments.count > index + 2 {
     try ProcessIdentitySelfTest.run(checksURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]),
                                     reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 2]))
 } else if let index = CommandLine.arguments.firstIndex(of: "--identity-self-test"), CommandLine.arguments.count > index + 1 {

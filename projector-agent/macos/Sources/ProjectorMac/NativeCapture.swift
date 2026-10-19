@@ -128,6 +128,7 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
 
 @MainActor final class NativeCapture: NSObject, SCStreamOutput, SCStreamDelegate, AVAssetWriterDelegate {
     var event: (([String: Any]) -> Void)?
+    var presentationWindow: (() -> NSWindow?)?
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var writerInput: AVAssetWriterInput?
@@ -147,7 +148,7 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
     private var lastFrame = -Double.infinity
     private var pollTimer: Timer?
     private var choosingSource = false
-    private var selectionAlert: NSAlert?
+    private let selectionDialog = CaptureDialog()
     private let imageContext = CIContext(options: [.cacheIntermediates: false])
     private let sampleQueue = DispatchQueue(label: "ru.university.lecturer.capture", qos: .userInitiated)
     var isActive: Bool { choosingSource || stream != nil || publisher != nil }
@@ -182,7 +183,7 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
             alert.informativeText = "Выберите учебное окно или экран. Нативный пульт и окно проектора исключаются из захвата. Сначала появится предпросмотр; показ студентам начнётся после подтверждения."
             let select = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 460, height: 32)); choices.forEach { select.addItem(withTitle: $0.0) }; alert.accessoryView = select
             alert.addButton(withTitle: "Проверить кадр"); alert.addButton(withTitle: "Отмена")
-            guard presentSelectionAlert(alert) == .alertFirstButtonReturn, generation == selection else { status(); return }
+            guard await presentSelectionAlert(alert) == .alertFirstButtonReturn, generation == selection else { status(); return }
             let choice = choices[select.indexOfSelectedItem]
             let filter: SCContentFilter
             let width: Int, height: Int
@@ -216,24 +217,25 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
     }
     private func authorizeScreenCapture(selection: UUID) async -> Bool {
         event?(["type": "capture-state", "phase": "permission", "permissionPending": true])
-        let granted = CaptureAuthorization.request(preflight: { CGPreflightScreenCaptureAccess() }, activate: { NSApp.activate(ignoringOtherApps: true) }, prompt: { CGRequestScreenCaptureAccess() })
+        let granted = await CaptureAuthorization.request(preflight: { CGPreflightScreenCaptureAccess() }, activate: { NSApp.activate(ignoringOtherApps: true) }, prompt: {
+            await CaptureAuthorization.offMainPrompt { CGRequestScreenCaptureAccess() }
+        })
         if granted { return true }
         guard generation == selection else { return false }
         let alert = NSAlert(); alert.messageText = "Разрешить запись экрана"
         alert.informativeText = "macOS пока не разрешила помощнику показывать учебные окна. Откройте настройки и включите Lecturer Projector в разделе «Запись экрана». После разрешения выбор окна продолжится автоматически. Если macOS предложит закрыть и открыть помощник, согласитесь, затем выберите источник снова."
         alert.addButton(withTitle: "Открыть настройки"); alert.addButton(withTitle: "Отмена")
-        guard presentSelectionAlert(alert) == .alertFirstButtonReturn, generation == selection else { status(); return false }
+        guard await presentSelectionAlert(alert) == .alertFirstButtonReturn, generation == selection else { status(); return false }
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"), NSWorkspace.shared.open(url) else { emitError("SCREEN_RECORDING_PERMISSION_REQUIRED"); return false }
         let allowed = await CaptureAuthorization.waitForGrant(attempts: 240, preflight: { CGPreflightScreenCaptureAccess() }, cancelled: { self.generation != selection }, pause: { try await Task.sleep(for: .milliseconds(500)) })
         guard generation == selection else { return false }
         if !allowed { emitError("SCREEN_RECORDING_PERMISSION_REQUIRED") }
         return allowed
     }
-    private func presentSelectionAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
-        selectionAlert = alert
-        defer { if selectionAlert === alert { selectionAlert = nil }; alert.window.close() }
+    private func presentSelectionAlert(_ alert: NSAlert) async -> NSApplication.ModalResponse {
+        guard let parent = presentationWindow?() else { emitError("CAPTURE_REMOTE_REQUIRED"); return .cancel }
         NSApp.activate(ignoringOtherApps: true)
-        return alert.runModal()
+        return await selectionDialog.present(alert, for: parent)
     }
     func startPublishing() async {
         guard stream != nil, publisher == nil, let scope = currentScope else { emitError("CAPTURE_SELECT_SOURCE_FIRST"); return }
@@ -330,10 +332,7 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
     }
     func stop() async {
         generation = UUID(); choosingSource = false; pollTimer?.invalidate(); pollTimer = nil
-        if let selectionAlert {
-            if NSApp.modalWindow === selectionAlert.window { NSApp.abortModal() }
-            selectionAlert.window.close(); self.selectionAlert = nil
-        }
+        selectionDialog.cancel()
         let active = stream; stream = nil; latestBuffer = nil
         frameTimer?.invalidate(); frameTimer = nil; writerInput?.markAsFinished(); writer?.cancelWriting(); writerInput = nil; adaptor = nil; writer = nil; firstPTS = nil
         let previous = publisher; publisher = nil; paused = false
