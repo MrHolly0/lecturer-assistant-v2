@@ -265,10 +265,15 @@
   display: grid;
   place-content: center;
 }
-.floating-remote-content {
-  padding: 0 16px 16px;
+.floating-remote-scroll {
   overflow-y: auto;
   min-height: 0;
+}
+.floating-remote-scroll[hidden] {
+  display: none;
+}
+.floating-remote-content {
+  padding: 0 16px 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -431,6 +436,7 @@
   min-width: 0;
   font-size: 13px;
   padding-inline: 10px;
+  white-space: normal;
 }
 .floating-remote-detach {
   width: 100%;
@@ -444,7 +450,7 @@
 .floating-remote-document .floating-lecture-remote.is-detached {
   position: static;
   width: 100%;
-  height: 100dvh;
+  height: auto;
   max-height: 100dvh;
   border: none;
   border-radius: 0;

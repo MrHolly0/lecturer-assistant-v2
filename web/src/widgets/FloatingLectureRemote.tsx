@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
+import { createPortal, flushSync } from "react-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   GripVertical,
@@ -30,6 +30,10 @@ import { browserProjection } from "../app/projection/browserProjection";
 import {
   openLectureRemoteWindow,
   prepareLectureRemoteWindow,
+  fitLectureRemoteWindow,
+  observeLectureRemoteWindowSize,
+  lectureRemoteCollapsed,
+  rememberLectureRemoteCollapsed,
   supportsPinnedLectureRemote
 } from "../app/projection/lectureRemoteWindow";
 import "../styles/lecture-remote-window.css";
@@ -51,7 +55,7 @@ export function FloatingLectureRemote({
   onClose: () => void;
   initialWindow?: Window | null;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => lectureRemoteCollapsed(session.id));
   const [external, setExternal] = useState<Window | null>(() =>
     initialWindow && !initialWindow.closed ? initialWindow : null
   );
@@ -151,7 +155,7 @@ export function FloatingLectureRemote({
       });
     };
   }, []);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!external || external.closed) return;
     externalRef.current = external;
     const stopThemeSync = prepareLectureRemoteWindow(external);
@@ -169,6 +173,10 @@ export function FloatingLectureRemote({
       unsubscribe();
     };
   }, [external]);
+  useLayoutEffect(() => {
+    if (!external || external.closed || !panel.current) return;
+    return observeLectureRemoteWindowSize(external, panel.current);
+  }, [external]);
   function returnToBrowser() {
     const target = external;
     externalRef.current = null;
@@ -185,17 +193,10 @@ export function FloatingLectureRemote({
     }
   }
   function changeCollapsed(next: boolean) {
-    setCollapsed(next);
-    if (external) {
-      try {
-        external.resizeTo(
-          (next ? 264 : 420) + Math.max(0, external.outerWidth - external.innerWidth),
-          (next ? 72 : 820) + Math.max(0, external.outerHeight - external.innerHeight)
-        );
-      } catch {
-        /* The browser owns PiP geometry; the content still remains scrollable. */
-      }
-    }
+    rememberLectureRemoteCollapsed(session.id, next);
+    // Commit before resizing while the click's PiP user activation is still available.
+    flushSync(() => setCollapsed(next));
+    if (external && panel.current) fitLectureRemoteWindow(external, panel.current, true);
   }
   function drag(event: PointerEvent<HTMLButtonElement>) {
     if (external) return;
@@ -309,190 +310,192 @@ export function FloatingLectureRemote({
           </Button>
         )}
       </header>
-      <div className="floating-remote-content" hidden={collapsed}>
-        <div className="floating-remote-context">
-          <span>{session.status === "PAUSED" ? "Пауза" : "Демонстрация"}</span>
-          <Button
-            variant="link"
-            onClick={() => {
-              const channelId = screenShare.getSnapshot().localChannelId;
-              const url = `${window.location.origin}${window.location.pathname}#/projection/${encodeURIComponent(session.joinCode)}${channelId ? `?shareAttempt=${encodeURIComponent(channelId)}` : ""}`;
-              window.open(url, "lecturer-public-preview", "popup,width=960,height=600");
-            }}
-          >
-            Что видит аудитория <ExternalLink size={14} />
-          </Button>
-        </div>
-        <div className="floating-remote-signals" aria-label="Понимание">
-          <div className="is-green">
-            <strong>{signals?.green ?? "—"}</strong>
-            <span>Понятно</span>
-          </div>
-          <div className="is-yellow">
-            <strong>{signals?.yellow ?? "—"}</strong>
-            <span>Есть вопрос</span>
-          </div>
-          <div className="is-red">
-            <strong>{signals?.red ?? "—"}</strong>
-            <span>Не понимаю</span>
-          </div>
-        </div>
-        {(feedback.isError || questions.isError || disabled) && (
-          <p className="floating-remote-error" role="alert">
-            {disabled
-              ? "Связь сверяется. Отправка временно недоступна."
-              : "Не удалось обновить данные. Показаны последние значения."}
-          </p>
-        )}
-        <div className="floating-remote-filters" role="group" aria-label="Вопросы">
-          {(
-            [
-              { status: "OPEN", label: "Новые", count: counts?.open },
-              { status: "ANSWERED", label: "Отвеченные", count: counts?.answered },
-              { status: "DISMISSED", label: "Скрытые", count: counts?.dismissed }
-            ] as const
-          ).map((item) => (
+      <div className="floating-remote-scroll" hidden={collapsed}>
+        <div className="floating-remote-content">
+          <div className="floating-remote-context">
+            <span>{session.status === "PAUSED" ? "Пауза" : "Демонстрация"}</span>
             <Button
-              variant={filter === item.status ? "secondary" : "ghost"}
-              key={item.status}
-              aria-pressed={filter === item.status}
+              variant="link"
               onClick={() => {
-                setFilter(item.status);
-                setSelected(null);
-                setPublishing(false);
+                const channelId = screenShare.getSnapshot().localChannelId;
+                const url = `${window.location.origin}${window.location.pathname}#/projection/${encodeURIComponent(session.joinCode)}${channelId ? `?shareAttempt=${encodeURIComponent(channelId)}` : ""}`;
+                window.open(url, "lecturer-public-preview", "popup,width=960,height=600");
               }}
             >
-              {item.label} ({item.count ?? 0})
+              Что видит аудитория <ExternalLink size={14} />
             </Button>
-          ))}
-        </div>
-        <div className="floating-remote-questions">
-          {questions.isLoading && <p role="status">Загружаем вопросы…</p>}
-          {!questions.isLoading && !questions.isError && questionItems.length === 0 && (
-            <p className="muted">Здесь пока нет вопросов.</p>
+          </div>
+          <div className="floating-remote-signals" aria-label="Понимание">
+            <div className="is-green">
+              <strong>{signals?.green ?? "—"}</strong>
+              <span>Понятно</span>
+            </div>
+            <div className="is-yellow">
+              <strong>{signals?.yellow ?? "—"}</strong>
+              <span>Есть вопрос</span>
+            </div>
+            <div className="is-red">
+              <strong>{signals?.red ?? "—"}</strong>
+              <span>Не понимаю</span>
+            </div>
+          </div>
+          {(feedback.isError || questions.isError || disabled) && (
+            <p className="floating-remote-error" role="alert">
+              {disabled
+                ? "Связь сверяется. Отправка временно недоступна."
+                : "Не удалось обновить данные. Показаны последние значения."}
+            </p>
           )}
-          {questionItems.map((item) => (
-            <article
-              className={`floating-remote-question${selected === item.id ? " is-selected" : ""}`}
-              key={item.id}
-            >
-              <small>
-                {item.anonymous ? "Анонимный вопрос" : item.displayName || "Вопрос студента"} ·{" "}
-                {new Date(item.createdAt).toLocaleTimeString("ru-RU", {
-                  hour: "2-digit",
-                  minute: "2-digit"
-                })}
-              </small>
-              <button
-                className="floating-remote-question-title"
-                aria-expanded={selected === item.id}
+          <div className="floating-remote-filters" role="group" aria-label="Вопросы">
+            {(
+              [
+                { status: "OPEN", label: "Новые", count: counts?.open },
+                { status: "ANSWERED", label: "Отвеченные", count: counts?.answered },
+                { status: "DISMISSED", label: "Скрытые", count: counts?.dismissed }
+              ] as const
+            ).map((item) => (
+              <Button
+                variant={filter === item.status ? "secondary" : "ghost"}
+                key={item.status}
+                aria-pressed={filter === item.status}
                 onClick={() => {
-                  setSelected(selected === item.id ? null : item.id);
+                  setFilter(item.status);
+                  setSelected(null);
                   setPublishing(false);
                 }}
               >
-                {item.text}
-              </button>
-              {selected === item.id &&
-                (item.status === "OPEN" ? (
-                  <div className="floating-remote-composer">
-                    <label>
-                      Ваш ответ
-                      <textarea
-                        rows={3}
-                        maxLength={4000}
-                        value={answer}
-                        onChange={(event) =>
-                          setDrafts((value) => ({ ...value, [item.id]: event.target.value }))
-                        }
-                      />
-                    </label>
-                    {publishing ? (
-                      <div
-                        className="floating-remote-publish"
-                        role="group"
-                        aria-label="Подтверждение публикации"
-                      >
-                        <strong>Опубликовать для участников?</strong>
-                        <p>Вопрос и ответ будут видны всем без имени автора.</p>
-                        <p>{answer}</p>
-                        <div>
-                          <Button variant="outline" onClick={() => setPublishing(false)}>
-                            К ответу
-                          </Button>
+                {item.label} ({item.count ?? 0})
+              </Button>
+            ))}
+          </div>
+          <div className="floating-remote-questions">
+            {questions.isLoading && <p role="status">Загружаем вопросы…</p>}
+            {!questions.isLoading && !questions.isError && questionItems.length === 0 && (
+              <p className="muted">Здесь пока нет вопросов.</p>
+            )}
+            {questionItems.map((item) => (
+              <article
+                className={`floating-remote-question${selected === item.id ? " is-selected" : ""}`}
+                key={item.id}
+              >
+                <small>
+                  {item.anonymous ? "Анонимный вопрос" : item.displayName || "Вопрос студента"} ·{" "}
+                  {new Date(item.createdAt).toLocaleTimeString("ru-RU", {
+                    hour: "2-digit",
+                    minute: "2-digit"
+                  })}
+                </small>
+                <button
+                  className="floating-remote-question-title"
+                  aria-expanded={selected === item.id}
+                  onClick={() => {
+                    setSelected(selected === item.id ? null : item.id);
+                    setPublishing(false);
+                  }}
+                >
+                  {item.text}
+                </button>
+                {selected === item.id &&
+                  (item.status === "OPEN" ? (
+                    <div className="floating-remote-composer">
+                      <label>
+                        Ваш ответ
+                        <textarea
+                          rows={3}
+                          maxLength={4000}
+                          value={answer}
+                          onChange={(event) =>
+                            setDrafts((value) => ({ ...value, [item.id]: event.target.value }))
+                          }
+                        />
+                      </label>
+                      {publishing ? (
+                        <div
+                          className="floating-remote-publish"
+                          role="group"
+                          aria-label="Подтверждение публикации"
+                        >
+                          <strong>Опубликовать для участников?</strong>
+                          <p>Вопрос и ответ будут видны всем без имени автора.</p>
+                          <p>{answer}</p>
+                          <div>
+                            <Button variant="outline" onClick={() => setPublishing(false)}>
+                              К ответу
+                            </Button>
+                            <Button
+                              disabled={disabled || update.isPending || !answer.trim()}
+                              onClick={() => update.mutate({ visibility: "SESSION" })}
+                            >
+                              Опубликовать
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
                           <Button
                             disabled={disabled || update.isPending || !answer.trim()}
-                            onClick={() => update.mutate({ visibility: "SESSION" })}
+                            onClick={() => update.mutate({ visibility: "AUTHOR" })}
                           >
-                            Опубликовать
+                            <LockKeyhole size={18} />
+                            Ответить автору
                           </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <Button
-                          disabled={disabled || update.isPending || !answer.trim()}
-                          onClick={() => update.mutate({ visibility: "AUTHOR" })}
-                        >
-                          <LockKeyhole size={18} />
-                          Ответить автору
-                        </Button>
-                        <Button
-                          variant="outline"
-                          disabled={disabled || update.isPending || !answer.trim()}
-                          onClick={() => setPublishing(true)}
-                        >
-                          <Globe2 size={18} />
-                          Опубликовать…
-                        </Button>
-                        <small>Без имени автора</small>
-                        <Button
-                          variant="ghost"
-                          disabled={disabled || update.isPending}
-                          onClick={() => update.mutate({ dismiss: true })}
-                        >
-                          Скрыть вопрос
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <div className="floating-remote-record">
-                    <p>{item.answerText || "Вопрос скрыт"}</p>
-                    <small>
-                      {item.answerVisibility === "AUTHOR"
-                        ? "Личный ответ"
-                        : item.answerVisibility === "SESSION"
-                          ? "Опубликован без имени автора"
-                          : ""}
-                    </small>
-                  </div>
-                ))}
-            </article>
-          ))}
+                          <Button
+                            variant="outline"
+                            disabled={disabled || update.isPending || !answer.trim()}
+                            onClick={() => setPublishing(true)}
+                          >
+                            <Globe2 size={18} />
+                            Опубликовать…
+                          </Button>
+                          <small>Без имени автора</small>
+                          <Button
+                            variant="ghost"
+                            disabled={disabled || update.isPending}
+                            onClick={() => update.mutate({ dismiss: true })}
+                          >
+                            Скрыть вопрос
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="floating-remote-record">
+                      <p>{item.answerText || "Вопрос скрыт"}</p>
+                      <small>
+                        {item.answerVisibility === "AUTHOR"
+                          ? "Личный ответ"
+                          : item.answerVisibility === "SESSION"
+                            ? "Опубликован без имени автора"
+                            : ""}
+                      </small>
+                    </div>
+                  ))}
+              </article>
+            ))}
+          </div>
+          {questions.isError && (
+            <Button
+              variant="outline"
+              onClick={() =>
+                void (questions.hasNextPage && questionItems.length > 0
+                  ? questions.fetchNextPage()
+                  : questions.refetch())
+              }
+              disabled={questions.isFetching}
+            >
+              {questions.isFetching ? "Загружаем…" : "Повторить загрузку вопросов"}
+            </Button>
+          )}
+          {questions.hasNextPage && !questions.isError && (
+            <Button
+              variant="outline"
+              disabled={questions.isFetchingNextPage}
+              onClick={() => void questions.fetchNextPage()}
+            >
+              {questions.isFetchingNextPage ? "Загружаем…" : "Показать ещё вопросы"}
+            </Button>
+          )}
         </div>
-        {questions.isError && (
-          <Button
-            variant="outline"
-            onClick={() =>
-              void (questions.hasNextPage && questionItems.length > 0
-                ? questions.fetchNextPage()
-                : questions.refetch())
-            }
-            disabled={questions.isFetching}
-          >
-            {questions.isFetching ? "Загружаем…" : "Повторить загрузку вопросов"}
-          </Button>
-        )}
-        {questions.hasNextPage && !questions.isError && (
-          <Button
-            variant="outline"
-            disabled={questions.isFetchingNextPage}
-            onClick={() => void questions.fetchNextPage()}
-          >
-            {questions.isFetchingNextPage ? "Загружаем…" : "Показать ещё вопросы"}
-          </Button>
-        )}
       </div>
       <footer className="floating-remote-footer" hidden={collapsed}>
         <div className="floating-remote-actions">

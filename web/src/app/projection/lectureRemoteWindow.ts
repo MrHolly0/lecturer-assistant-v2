@@ -5,12 +5,22 @@ export type LectureRemoteWindowOptions = {
 };
 type PictureInPictureHost = Window & {
   documentPictureInPicture?: {
-    requestWindow: (options: { width: number; height: number }) => Promise<Window>;
+    requestWindow: (options: {
+      width: number;
+      height: number;
+      disallowReturnToOpener: boolean;
+      preferInitialWindowPlacement: boolean;
+    }) => Promise<Window>;
   };
 };
 const windows = new Map<string, Window>();
 const pending = new Map<string, Promise<Window>>();
 const modes = new WeakMap<Window, "pip" | "popup">();
+const collapsedViews = new Map<string, boolean>();
+const lastSizes = new WeakMap<
+  Window,
+  { width: number; height: number; collapsed: boolean; measuredWidth: number }
+>();
 let pipRejected = false;
 const pinFailure =
   "Не удалось закрепить пульт. Нажмите «Вынести пульт» ещё раз, чтобы открыть обычное отдельное окно.";
@@ -27,9 +37,86 @@ export function lectureRemoteWindowMode(target: Window): "pip" | "popup" | null 
   return modes.get(target) ?? null;
 }
 
+export function lectureRemoteCollapsed(windowKey: string): boolean {
+  return collapsedViews.get(windowKey) ?? false;
+}
+
+export function rememberLectureRemoteCollapsed(windowKey: string, collapsed: boolean): void {
+  collapsedViews.set(windowKey, collapsed);
+}
+
+/** Measure natural content, independently of the scroll viewport and browser window chrome. */
+export function fitLectureRemoteWindow(target: Window, panel: HTMLElement, force = false): void {
+  if (target.closed) return;
+  const collapsed = panel.classList.contains("is-collapsed");
+  const previous = lastSizes.get(target);
+  const width = collapsed
+    ? 264
+    : force || previous?.collapsed
+      ? 420
+      : previous && target.innerWidth === previous.measuredWidth
+        ? previous.width
+        : target.innerWidth || 420;
+  const chromeHeight = Math.max(0, target.outerHeight - target.innerHeight);
+  const maxHeight = Math.max(64, Math.min(780, target.screen.availHeight - chromeHeight - 24));
+  const parts = [".floating-remote-header", ".floating-remote-content", ".floating-remote-footer"];
+  const naturalHeight = parts.reduce((height, selector, index) => {
+    if (collapsed && index > 0) return height;
+    return (
+      height + (panel.querySelector<HTMLElement>(selector)?.getBoundingClientRect().height ?? 0)
+    );
+  }, 0);
+  const height = Math.min(maxHeight, Math.max(60, Math.ceil(naturalHeight)));
+  if (!force && previous?.width === width && previous.height === height) {
+    previous.measuredWidth = target.innerWidth;
+    return;
+  }
+  try {
+    target.resizeTo(
+      width + Math.max(0, target.outerWidth - target.innerWidth),
+      height + chromeHeight
+    );
+    lastSizes.set(target, { width, height, collapsed, measuredWidth: target.innerWidth });
+  } catch {
+    // PiP can require a user gesture. The scroll viewport keeps every action accessible.
+  }
+}
+
+/** Observe the natural inner content, never a height tied to the window being resized. */
+export function observeLectureRemoteWindowSize(target: Window, panel: HTMLElement): () => void {
+  let disposed = false;
+  const fit = () => {
+    if (!disposed) fitLectureRemoteWindow(target, panel);
+  };
+  const observer = new (target as Window & typeof globalThis).ResizeObserver(fit);
+  let interactionFrame = 0;
+  const afterInteraction = () => {
+    target.cancelAnimationFrame(interactionFrame);
+    interactionFrame = target.requestAnimationFrame(fit);
+  };
+  for (const part of panel.querySelectorAll<HTMLElement>(
+    ".floating-remote-header, .floating-remote-content, .floating-remote-footer"
+  ))
+    observer.observe(part);
+  const styles = target.document.querySelectorAll('link[rel="stylesheet"]');
+  styles.forEach((style) => style.addEventListener("load", fit));
+  target.document.addEventListener("click", afterInteraction);
+  void target.document.fonts.ready.then(fit);
+  fit();
+  return () => {
+    disposed = true;
+    observer.disconnect();
+    target.cancelAnimationFrame(interactionFrame);
+    target.document.removeEventListener("click", afterInteraction);
+    styles.forEach((style) => style.removeEventListener("load", fit));
+  };
+}
+
 /** Call directly from a click, before awaiting requests or mounting the panel. */
 export function openLectureRemoteWindow(options: LectureRemoteWindowOptions = {}): Promise<Window> {
   const key = options.windowKey ?? "default";
+  const collapsed = options.collapsed ?? lectureRemoteCollapsed(key);
+  rememberLectureRemoteCollapsed(key, collapsed);
   const existing = windows.get(key);
   if (existing && !existing.closed) {
     existing.focus();
@@ -37,7 +124,7 @@ export function openLectureRemoteWindow(options: LectureRemoteWindowOptions = {}
   }
   const opening = pending.get(key);
   if (opening) return opening;
-  const size = { width: options.collapsed ? 264 : 420, height: options.collapsed ? 96 : 820 };
+  const size = { width: collapsed ? 264 : 420, height: collapsed ? 60 : 400 };
   const register = (target: Window, mode: "pip" | "popup") => {
     modes.set(target, mode);
     windows.set(key, target);
@@ -64,7 +151,11 @@ export function openLectureRemoteWindow(options: LectureRemoteWindowOptions = {}
     // requestWindow runs synchronously in the initiating user gesture.
     let request: Promise<Window>;
     try {
-      request = (window as PictureInPictureHost).documentPictureInPicture!.requestWindow(size);
+      request = (window as PictureInPictureHost).documentPictureInPicture!.requestWindow({
+        ...size,
+        disallowReturnToOpener: true,
+        preferInitialWindowPlacement: true
+      });
     } catch {
       pipRejected = true;
       return Promise.reject(new Error(pinFailure));
@@ -98,6 +189,7 @@ export function openLectureRemoteWindow(options: LectureRemoteWindowOptions = {}
 /** Returns cleanup for live theme synchronization. Never closes the target window. */
 export function prepareLectureRemoteWindow(target: Window): () => void {
   const doc = target.document;
+  doc.documentElement.dataset.lectureRemote = "true";
   doc.title = "Lecturer Assistant · Пульт";
   doc.documentElement.lang = "ru";
   doc.body.classList.add("floating-remote-document");

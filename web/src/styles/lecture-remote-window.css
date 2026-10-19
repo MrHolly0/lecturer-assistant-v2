@@ -9,3 +9,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+html[data-lecture-remote="true"] {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+html[data-lecture-remote="true"] .floating-remote-document {
+  min-height: 0;
+}

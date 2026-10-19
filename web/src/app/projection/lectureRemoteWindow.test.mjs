@@ -54,10 +54,13 @@ test("popup opening happens in the initiating call and a closed lifecycle can op
     assert.equal(await api.openLectureRemoteWindow({ windowKey: "session" }), target);
     assert.equal(calls.length, 1, "repeated click focuses the existing remote");
     target.dispatchEvent(new Event("pagehide"));
-    await api.openLectureRemoteWindow({ windowKey: "session", collapsed: true });
+    api.rememberLectureRemoteCollapsed("session", true);
+    await api.openLectureRemoteWindow({ windowKey: "session" });
     assert.equal(calls.length, 2);
     assert.notEqual(calls[0][1], calls[1][1], "never navigate an unrelated named window");
-    assert.match(calls[1][2], /width=264,height=96/);
+    assert.match(calls[1][2], /width=264,height=60/);
+    assert.equal(api.lectureRemoteCollapsed("session"), true);
+    assert.equal(api.lectureRemoteCollapsed("other-session"), false);
   } finally {
     api.restore();
   }
@@ -66,10 +69,12 @@ test("popup opening happens in the initiating call and a closed lifecycle can op
 test("Document PiP starts synchronously and repeated clicks share its pending request", async () => {
   const target = popup();
   let calls = 0;
+  let options;
   let resolve;
   const api = await fixture({
     documentPictureInPicture: {
-      requestWindow() {
+      requestWindow(value) {
+        options = value;
         calls++;
         return new Promise((done) => {
           resolve = done;
@@ -80,6 +85,12 @@ test("Document PiP starts synchronously and repeated clicks share its pending re
   try {
     const opening = api.openLectureRemoteWindow({ windowKey: "session" });
     assert.equal(calls, 1);
+    assert.deepEqual(options, {
+      width: 420,
+      height: 400,
+      disallowReturnToOpener: true,
+      preferInitialWindowPlacement: true
+    });
     assert.equal(api.openLectureRemoteWindow({ windowKey: "session" }), opening);
     resolve(target);
     assert.equal(await opening, target);
