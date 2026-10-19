@@ -1,5 +1,5 @@
 import AppKit
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 import Darwin
 
 @MainActor final class CaptureModesSelfTest: NSObject, NSApplicationDelegate {
