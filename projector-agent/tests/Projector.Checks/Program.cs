@@ -4,6 +4,15 @@ using System.Text;
 using System.Text.Json;
 using Lecturer.Projector;
 
+if (args.Length > 0 && args[0] == "--process-start-identity")
+{
+    if (args.Length != 2 || !int.TryParse(args[1], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var processId) || processId <= 0)
+        throw new InvalidDataException("EXPECTED_PROCESS_ID");
+    using var process = System.Diagnostics.Process.GetProcessById(processId);
+    Console.WriteLine(JsonSerializer.Serialize(new { pid = processId, ticks = ProcessStartIdentity.ReadTicks(process) }, Wire.Json));
+    return;
+}
+
 if (args.Length > 0 && args[0] == "--verify-fixture")
 {
     if (args.Length != 3) throw new InvalidDataException("EXPECTED_ENVELOPE_AND_PUBLIC_TRUST_FIXTURE");
@@ -295,9 +304,9 @@ if (!OperatingSystem.IsWindows())
             var challenge = new UpdatePreflight(id, nonce, Path.Combine(preflightDirectory, "ready.json"), "0.2.0");
             using var pending = new PendingNativeUpdate(old, challenge);
             Equal(false, pending.Ready);
-            Reject(() => new ProcessUpdateProcesses(old.Id, old.StartTime.ToUniversalTime().Ticks + 1, challenge).WaitForOldExit(CancellationToken.None).GetAwaiter().GetResult(), "OLD_PROCESS_IDENTITY_CHANGED");
+            Reject(() => new ProcessUpdateProcesses(old.Id, ProcessStartIdentity.ReadTicks(old) + 1, challenge).WaitForOldExit(CancellationToken.None).GetAwaiter().GetResult(), "OLD_PROCESS_IDENTITY_CHANGED");
             Equal(false, File.Exists(challenge.Path));
-            var waiting = new ProcessUpdateProcesses(old.Id, old.StartTime.ToUniversalTime().Ticks, challenge).WaitForOldExit(CancellationToken.None);
+            var waiting = new ProcessUpdateProcesses(old.Id, ProcessStartIdentity.ReadTicks(old), challenge).WaitForOldExit(CancellationToken.None);
             Equal(true, pending.Ready); waiting.GetAwaiter().GetResult();
             var receipt = JsonSerializer.Deserialize<PreflightReceipt>(File.ReadAllBytes(challenge.Path), Wire.Json)!;
             Equal(nonce, receipt.Nonce); Equal("0.2.0", receipt.Version);
@@ -356,6 +365,16 @@ if (!OperatingSystem.IsWindows())
 }
 passed += BootstrapChecks.Run();
 passed += AppearanceChecks.Run();
+passed += InstallationIdentityChecks.Run();
+passed += ProcessStartIdentityChecks.Run();
+Check("pairing identity fields remain optional for old helpers and cross native bootstrap wire", () => {
+    var old = JsonSerializer.Deserialize<PairRequest>("{\"pairingCode\":\"ABCDEFGHJKLM\",\"name\":\"Computer\",\"platform\":\"MACOS_ARM64\",\"version\":\"0.2.4\",\"osVersion\":\"14.0\",\"protocolVersion\":1}", Wire.Json)!;
+    Equal<Guid?>(null, old.InstallationId); Equal<string?>(null, old.PreviousDeviceToken);
+    var identity = Guid.NewGuid();
+    var current = old with { InstallationId = identity, PreviousDeviceToken = new string('a', 64) };
+    var decoded = JsonSerializer.Deserialize<PairRequest>(JsonSerializer.Serialize(current, Wire.Json), Wire.Json)!;
+    Equal<Guid?>(identity, decoded.InstallationId); Equal(new string('a', 64), decoded.PreviousDeviceToken);
+});
 Console.WriteLine($"{passed} checks passed. No OS display mutation, startup registration or production network request performed.");
 internal sealed class FakeHost : IProjectionHost {
     public int Executions { get; private set; }

@@ -108,6 +108,19 @@
   overflow-wrap: anywhere;
   min-width: 0;
 }
+.projector-device-archive {
+  color: var(--muted-foreground);
+}
+.projector-device-archive > summary {
+  width: fit-content;
+  padding-block: 10px;
+  cursor: pointer;
+}
+.projector-device-archive > summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
 @media (max-width: 600px) {
   .projector-helper {
     padding: 20px;

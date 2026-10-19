@@ -156,7 +156,7 @@ import Darwin
         while form.alert.runModal() == .alertFirstButtonReturn {
             guard let url = Self.validOrigin(form.address.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) else { form.validationError("Введите адрес сайта учреждения, начинающийся с https://."); continue }
             guard ConnectionForm.validCode(form.code.stringValue) else { form.validationError("Нужен код подключения помощника из 12 букв и цифр. Код занятия со слайда не подходит."); continue }
-            origin = url; start(origin: url, token: nil, pairingCode: ConnectionForm.normalizedCode(form.code.stringValue), userInitiated: true); return
+            start(origin: url, token: nil, pairingCode: ConnectionForm.normalizedCode(form.code.stringValue), userInitiated: true); return
         }
     }
     @objc private func revealFromUser() {
@@ -207,12 +207,23 @@ import Darwin
         alert.addButton(withTitle: "Подключить"); alert.addButton(withTitle: "Отмена")
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return true }
-        self.origin = origin; start(origin: origin, token: nil, pairingCode: code, userInitiated: true)
+        start(origin: origin, token: nil, pairingCode: code, userInitiated: true)
         return true
     }
     private func start(origin: URL, token: String?, pairingCode: String?, userInitiated: Bool = false) {
         userInitiatedPairing = userInitiated && pairingCode != nil
         if userInitiatedPairing { pairingDraft = pairingCode; pairingError = nil }
+        let bootstrap: [String: Any]
+        do {
+            bootstrap = try CoordinatorBootstrap.make(origin: origin, name: Host.current().localizedName ?? "Mac", platform: platform(),
+                                                      deviceToken: token, pairingCode: pairingCode, directory: directory,
+                                                      previousToken: { Keychain.read(account: $0) })
+        } catch {
+            status = "Не удалось прочитать ID этой установки"; rebuildMenu()
+            pairingFailedIfNeeded("Не удалось прочитать постоянный ID этой установки. Подключение не изменено. Сохраните диагностику и обратитесь в поддержку.")
+            return
+        }
+        self.origin = origin
         lastRemoteAction = nil
         generation = UUID(); let currentGeneration = generation
         process?.terminate(); projection.neutralize(); remote.close(); Task { await capture.stop() }; pending.removeAll()
@@ -228,15 +239,12 @@ import Darwin
         process.terminationHandler = { [weak self] _ in Task { @MainActor in guard self?.generation == currentGeneration else { return }; self?.projection.neutralize(); self?.remote.close(); await self?.capture.stop(); self?.status = "Связь остановлена — используйте сайт"; self?.rebuildMenu(); self?.pairingFailedIfNeeded() } }
         do {
             try process.run(); self.process = process; self.input = input
-            var bootstrap: [String: Any] = ["origin": origin.absoluteString, "name": Host.current().localizedName ?? "Mac", "platform": platform()]
-            if let token { bootstrap["deviceToken"] = token }
-            if let pairingCode { bootstrap["pairingCode"] = pairingCode }
             send(bootstrap); status = "Подключение…"; rebuildMenu()
         } catch { status = "Не удалось запустить компонент"; rebuildMenu(); pairingFailedIfNeeded() }
     }
-    private func pairingFailedIfNeeded() {
+    private func pairingFailedIfNeeded(_ message: String? = nil) {
         guard userInitiatedPairing else { return }; userInitiatedPairing = false
-        pairingError = "Не удалось подключить помощник. Код мог истечь или уже использоваться. Получите новый 12-символьный код в «Настройке проектора» и проверьте адрес сайта и интернет."
+        pairingError = message ?? "Не удалось подключить помощник. Код мог истечь или уже использоваться. Получите новый 12-символьный код в «Настройке проектора» и проверьте адрес сайта и интернет."
         DispatchQueue.main.async { [weak self] in self?.pair() }
     }
     private func pairingSucceededIfNeeded() {
@@ -352,10 +360,7 @@ import Darwin
         let os = ProcessInfo.processInfo.operatingSystemVersion
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
         // .NET checks identity using UTC ticks. Obtain the native start time directly without a shell.
-        var processInfo = proc_bsdinfo()
-        let size = proc_pidinfo(ProcessInfo.processInfo.processIdentifier, PROC_PIDTBSDINFO, 0, &processInfo, Int32(MemoryLayout<proc_bsdinfo>.size))
-        guard size == MemoryLayout<proc_bsdinfo>.size else { throw HostError.code("PROCESS_IDENTITY_UNAVAILABLE") }
-        let ticks = UInt64(processInfo.pbi_start_tvsec) * 10_000_000 + UInt64(processInfo.pbi_start_tvusec) * 10 + 621_355_968_000_000_000
+        let ticks = try NativeProcessStartIdentity.readTicks(pid: ProcessInfo.processInfo.processIdentifier)
         helper.arguments = ["install", envelope, package, platform(), "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)", version,
                             rootURL.path, rootURL.path, minimum, String(ProcessInfo.processInfo.processIdentifier), String(ticks)]
         var environment = ProcessInfo.processInfo.environment
@@ -533,7 +538,12 @@ enum Keychain {
     }
 }
 
-if CommandLine.arguments.contains("--journal-self-test") {
+if let index = CommandLine.arguments.firstIndex(of: "--process-identity-self-test"), CommandLine.arguments.count > index + 2 {
+    try ProcessIdentitySelfTest.run(checksURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]),
+                                    reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 2]))
+} else if let index = CommandLine.arguments.firstIndex(of: "--identity-self-test"), CommandLine.arguments.count > index + 1 {
+    try IdentitySelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if CommandLine.arguments.contains("--journal-self-test") {
     try JournalSelfTest.run()
 } else if CommandLine.arguments.contains("--capture-self-test") {
     try CaptureSelfTest.run()

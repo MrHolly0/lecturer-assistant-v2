@@ -597,10 +597,11 @@ export function ProjectorHelperSettings({
   const staleDraft = draft !== null && draft.expectedRevision !== data.revision;
   const pairExpired = pair && Date.parse(pair.expiresAt) <= now;
   const availableDevices = data.devices.filter((device) => !device.revoked && device.connected);
+  const archivedDevices = data.devices.filter((device) => device.revoked);
   const deviceId = selectedDevice || (availableDevices.length === 1 ? availableDevices[0].id : "");
   const visibleDevices = wizard
     ? data.devices.filter((device) => device.id === deviceId)
-    : data.devices;
+    : data.devices.filter((device) => !device.revoked);
   const showInstallation = !wizard || !deviceId || installationOpen;
   const installers = data.installers.filter(
     (installer) => !wizard || !workspaceNeedsUpdate(installer.version)
@@ -938,6 +939,21 @@ export function ProjectorHelperSettings({
               />
             </article>
           ))}
+          {!wizard && archivedDevices.length > 0 && (
+            <details className="projector-device-archive">
+              <summary>Отключённые подключения ({archivedDevices.length})</summary>
+              {archivedDevices.map((device) => (
+                <div className="projector-device" key={device.id}>
+                  <span>
+                    <strong>{device.name}</strong>
+                    <small>
+                      {platformLabels[device.platform]} · версия {device.version}
+                    </small>
+                  </span>
+                </div>
+              ))}
+            </details>
+          )}
         </div>
       )}
       {wizard && deviceId && (

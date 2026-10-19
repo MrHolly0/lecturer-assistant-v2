@@ -4146,6 +4146,16 @@ components:
         protocolVersion:
           type: integer
           enum: [1]
+        installationId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional nonzero stable UUID generated once in the canonical local installation data directory. Re-pairing with a fresh owner-issued code reuses the same owner's installation, rotates its key and resets prior output. Never infer this identity from a name, MAC address or platform.
+        previousDeviceToken:
+          type: string
+          nullable: true
+          pattern: '^[a-f0-9]{64}$'
+          description: Optional previously stored key for this exact origin only, supplied in the request body. A fresh pairing code is still required. A same-owner legacy row without an installation UUID may be adopted; a different installation or owner is never merged. Never put the key in a URL or logs.
     ProjectionPairedDevice:
       type: object
       required: [deviceId, deviceToken, protocolVersion]

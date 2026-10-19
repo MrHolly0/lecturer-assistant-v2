@@ -151,19 +151,60 @@ public class ProjectionService {
                 || pairing.policyRevision() != policy.revision() || currentStaff(pairing.ownerId()) == null) {
             throw unauthorized("Код подключения недействителен");
         }
-        UUID id = UuidV7.generate();
+        DeviceRow existing = request.installationId() == null ? null : jdbc.sql("""
+                select * from projection.devices where owner_id = ? and installation_id = ? for update
+                """).params(pairing.ownerId(), request.installationId()).query(this::deviceRow).optional().orElse(null);
+        DeviceRow previous = request.previousDeviceToken() == null ? null : jdbc.sql("""
+                select * from projection.devices where owner_id = ? and token_hash = ? for update
+                """).params(pairing.ownerId(), hash(request.previousDeviceToken()))
+                .query(this::deviceRow).optional().orElse(null);
+        if (existing == null && previous != null && (previous.installationId() == null
+                || previous.installationId().equals(request.installationId()))) {
+            existing = previous;
+        }
+        UUID id = existing == null ? UuidV7.generate() : existing.id();
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
         String token = HexFormat.of().formatHex(bytes);
-        jdbc.sql("""
-                insert into projection.devices(id, owner_id, token_hash, name, platform, version,
-                    os_version, protocol_version, created_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """).params(id, pairing.ownerId(), hash(token), request.name().trim(), request.platform().name(),
-                        request.version(), request.osVersion(), request.protocolVersion(), timestamp(now)).update();
+        if (existing == null) {
+            jdbc.sql("""
+                    insert into projection.devices(id, owner_id, token_hash, name, platform, version,
+                        os_version, protocol_version, created_at, installation_id)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """).params(id, pairing.ownerId(), hash(token), request.name().trim(), request.platform().name(),
+                            request.version(), request.osVersion(), request.protocolVersion(), timestamp(now),
+                            request.installationId()).update();
+        } else {
+            // The fresh owner-issued code authorizes rotation, including an explicitly revoked installation.
+            jdbc.sql("""
+                    update projection.devices set token_hash = ?, name = ?, platform = ?, version = ?,
+                        os_version = ?, protocol_version = ?, installation_id = ?, revoked_at = null,
+                        status = 'IDLE', last_seen_at = null, screens = '[]'::jsonb, diagnostic_code = null,
+                        active_course_id = null, active_session_id = null, active_until = null,
+                        active_command_id = null where id = ?
+                    """).params(hash(token), request.name().trim(), request.platform().name(), request.version(),
+                            request.osVersion(), request.protocolVersion(), request.installationId(), id).update();
+            cancelPending(id, now);
+        }
+        if (previous != null && !previous.id().equals(id) && previous.installationId() == null) {
+            // A presented old local key proves only this legacy row; never merge another computer or owner.
+            jdbc.sql("""
+                    update projection.devices set revoked_at = ?, status = 'IDLE', last_seen_at = null,
+                        screens = '[]'::jsonb, diagnostic_code = null, active_course_id = null,
+                        active_session_id = null, active_until = null, active_command_id = null where id = ?
+                    """).params(timestamp(now), previous.id()).update();
+            cancelPending(previous.id(), now);
+        }
         jdbc.sql("update projection.pairings set consumed_at = ? where id = ?")
                 .params(timestamp(now), pairing.id()).update();
         return new PairedDevice(id, token, 1);
+    }
+
+    private void cancelPending(UUID deviceId, Instant now) {
+        jdbc.sql("""
+                update projection.commands set acknowledged_at = ?, result = 'CANCELLED'
+                where device_id = ? and acknowledged_at is null
+                """).params(timestamp(now), deviceId).update();
     }
 
     @Transactional
@@ -552,7 +593,8 @@ public class ProjectionService {
                 instant(row, "last_seen_at"), instant(row, "revoked_at"), decodeScreens(row.getString("screens")),
                 row.getObject("active_course_id", UUID.class), row.getObject("active_session_id", UUID.class),
                 instant(row, "active_until"), row.getObject("active_command_id", UUID.class),
-                row.getString("diagnostic_code"), row.getString("remote_theme"));
+                row.getString("diagnostic_code"), row.getString("remote_theme"),
+                row.getObject("installation_id", UUID.class));
     }
 
     private CommandRow commandRow(ResultSet row, int index) throws SQLException {
@@ -722,5 +764,5 @@ public class ProjectionService {
     private record DeviceRow(UUID id, UUID ownerId, String name, Platform platform, String version,
             String osVersion, DeviceStatus status, Instant lastSeenAt, Instant revokedAt, List<Screen> screens,
             UUID activeCourseId, UUID activeSessionId, Instant activeUntil, UUID activeCommandId,
-            String diagnosticCode, String remoteTheme) {}
+            String diagnosticCode, String remoteTheme, UUID installationId) {}
 }

@@ -2813,6 +2813,13 @@ export interface components {
       osVersion: string;
       /** @enum {integer} */
       protocolVersion: 1;
+      /**
+       * Format: uuid
+       * @description Optional nonzero stable UUID generated once in the canonical local installation data directory. Re-pairing with a fresh owner-issued code reuses the same owner's installation, rotates its key and resets prior output. Never infer this identity from a name, MAC address or platform.
+       */
+      installationId?: string | null;
+      /** @description Optional previously stored key for this exact origin only, supplied in the request body. A fresh pairing code is still required. A same-owner legacy row without an installation UUID may be adopted; a different installation or owner is never merged. Never put the key in a URL or logs. */
+      previousDeviceToken?: string | null;
     };
     ProjectionPairedDevice: {
       /** Format: uuid */

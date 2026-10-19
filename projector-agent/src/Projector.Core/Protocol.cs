@@ -13,7 +13,8 @@ public static class Wire
     public static readonly HashSet<string> Platforms = ["WINDOWS_X64", "WINDOWS_ARM64", "MACOS_X64", "MACOS_ARM64"];
 }
 public sealed record ScreenInfo(string Id, string Label, int Width, int Height, bool IsPrimary);
-public sealed record PairRequest(string PairingCode, string Name, string Platform, string Version, string OsVersion, int ProtocolVersion = 1);
+public sealed record PairRequest(string PairingCode, string Name, string Platform, string Version, string OsVersion,
+    int ProtocolVersion = 1, Guid? InstallationId = null, string? PreviousDeviceToken = null);
 public sealed record PairResponse(Guid DeviceId, string DeviceToken, int ProtocolVersion);
 public sealed record AgentAck(Guid CommandId, string Result, string? DiagnosticCode = null);
 public sealed record AgentPoll(string Version, int ProtocolVersion, string Status, ScreenInfo[] Screens, AgentAck? Ack = null, string? OsVersion = null);

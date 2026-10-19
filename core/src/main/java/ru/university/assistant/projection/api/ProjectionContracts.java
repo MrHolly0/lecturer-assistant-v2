@@ -1,6 +1,8 @@
 package ru.university.assistant.projection.api;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -47,7 +49,19 @@ public final class ProjectionContracts {
     public record PairRequest(@NotBlank @Pattern(regexp = "[A-HJ-NP-Z2-9]{12}") String pairingCode,
             @NotBlank @Size(max = 80) String name, @NotNull Platform platform,
             @NotBlank @Pattern(regexp = VERSION_PATTERN) String version,
-            @NotBlank @Size(max = 80) String osVersion, @Min(1) @Max(1) int protocolVersion) {}
+            @NotBlank @Size(max = 80) String osVersion, @Min(1) @Max(1) int protocolVersion,
+            UUID installationId, @Pattern(regexp = "[a-f0-9]{64}") String previousDeviceToken) {
+        public PairRequest(String pairingCode, String name, Platform platform, String version,
+                String osVersion, int protocolVersion) {
+            this(pairingCode, name, platform, version, osVersion, protocolVersion, null, null);
+        }
+
+        @AssertTrue(message = "Идентификатор установки не может быть пустым UUID")
+        @JsonIgnore
+        public boolean isInstallationIdValid() {
+            return installationId == null || !installationId.equals(new UUID(0, 0));
+        }
+    }
 
     public record PairedDevice(UUID deviceId, String deviceToken, int protocolVersion) {}
 

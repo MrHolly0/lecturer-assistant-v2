@@ -137,13 +137,16 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
         if (dialog.ShowDialog() != DialogResult.OK) return;
         try
         {
-            origin = PublicScene.ValidateOrigin(address.Text);
+            var requestedOrigin = PublicScene.ValidateOrigin(address.Text);
+            var installationId = InstallationIdentity.LoadOrCreate(directory);
+            var previousToken = PreviousDeviceToken(requestedOrigin);
             using var http = Http();
             var platform = RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "WINDOWS_ARM64" : "WINDOWS_X64";
-            var paired = await new AgentClient(http, origin).Pair(new(code.Text, Environment.MachineName, platform, ReleaseInfo.Version, Environment.OSVersion.Version.ToString()), CancellationToken.None);
+            var paired = await new AgentClient(http, requestedOrigin).Pair(new(code.Text, Environment.MachineName, platform, ReleaseInfo.Version, Environment.OSVersion.Version.ToString(),
+                InstallationId: installationId, PreviousDeviceToken: previousToken), CancellationToken.None);
             if (paired.ProtocolVersion != 1 || paired.DeviceToken.Length != 64) throw new InvalidDataException("BAD_PAIR_RESPONSE");
             CredentialStore.Save(Path.Combine(directory, "device.dpapi"), paired.DeviceToken);
-            File.WriteAllText(Path.Combine(directory, "origin.txt"), origin.AbsoluteUri); Connect(paired.DeviceToken);
+            File.WriteAllText(Path.Combine(directory, "origin.txt"), requestedOrigin.AbsoluteUri); origin = requestedOrigin; Connect(paired.DeviceToken);
         }
         catch { status = "Подключение не удалось. Проверьте код и разрешение администратора."; UpdateMenu(); }
     }
@@ -157,15 +160,28 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
                 "\n\nСайт сможет открывать публичный материал на выбранном проекторе и приватный пульт. Перед изменением режима экранов будет отдельное подтверждение. Пароль аккаунта не передаётся.",
                 "Подключить помощник проектора", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             Stop();
+            var installationId = InstallationIdentity.LoadOrCreate(directory);
+            var previousToken = PreviousDeviceToken(link.Origin);
             using var http = Http();
             var platform = RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "WINDOWS_ARM64" : "WINDOWS_X64";
-            var paired = await new AgentClient(http, link.Origin).Pair(new(link.Code, Environment.MachineName, platform, ReleaseInfo.Version, Environment.OSVersion.Version.ToString()), CancellationToken.None);
+            var paired = await new AgentClient(http, link.Origin).Pair(new(link.Code, Environment.MachineName, platform, ReleaseInfo.Version, Environment.OSVersion.Version.ToString(),
+                InstallationId: installationId, PreviousDeviceToken: previousToken), CancellationToken.None);
             if (paired.ProtocolVersion != 1 || paired.DeviceToken.Length != 64) throw new InvalidDataException("BAD_PAIR_RESPONSE");
             CredentialStore.Save(Path.Combine(directory, "device.dpapi"), paired.DeviceToken);
             File.WriteAllText(Path.Combine(directory, "origin.txt"), link.Origin.AbsoluteUri); origin = link.Origin; Connect(paired.DeviceToken);
         }
         catch { status = "Подключение не удалось. Вернитесь на сайт и создайте новый код."; UpdateMenu(); }
         finally { pairingInProgress = false; }
+    }
+    private string? PreviousDeviceToken(Uri requestedOrigin)
+    {
+        var saved = Path.Combine(directory, "origin.txt");
+        if (!File.Exists(saved)) return null;
+        Uri savedOrigin;
+        try { savedOrigin = PublicScene.ValidateOrigin(File.ReadAllText(saved)); }
+        catch (InvalidDataException) { return null; }
+        if (!StringComparer.Ordinal.Equals(savedOrigin.AbsoluteUri, requestedOrigin.AbsoluteUri)) return null;
+        return CredentialStore.Read(Path.Combine(directory, "device.dpapi"));
     }
     private static HttpClient Http() => new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { Timeout = TimeSpan.FromSeconds(10) };
     private void Connect(string token)

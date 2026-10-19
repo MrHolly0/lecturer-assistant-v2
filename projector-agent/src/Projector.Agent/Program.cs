@@ -24,7 +24,8 @@ try
     if (string.IsNullOrEmpty(token))
     {
         if (string.IsNullOrEmpty(bootstrap.PairingCode)) throw new InvalidDataException("PAIRING_REQUIRED");
-        var paired = await new AgentClient(http, origin).Pair(new(bootstrap.PairingCode, bootstrap.Name, bootstrap.Platform, version, Environment.OSVersion.Version.ToString()), CancellationToken.None);
+        var paired = await new AgentClient(http, origin).Pair(new(bootstrap.PairingCode, bootstrap.Name, bootstrap.Platform, version,
+            Environment.OSVersion.Version.ToString(), InstallationId: bootstrap.InstallationId, PreviousDeviceToken: bootstrap.PreviousDeviceToken), CancellationToken.None);
         if (paired.ProtocolVersion != 1 || paired.DeviceToken.Length is < 20 or > 4096) throw new InvalidDataException("BAD_PAIR_RESPONSE");
         token = paired.DeviceToken;
         // Anonymous pipe to the native host, which stores the token in Keychain/DPAPI. Never log it.
@@ -40,7 +41,8 @@ catch (Exception ex)
     Environment.ExitCode = 1;
 }
 
-internal sealed record Bootstrap(string Origin, string Name, string Platform, string? DeviceToken = null, string? PairingCode = null);
+internal sealed record Bootstrap(string Origin, string Name, string Platform, string? DeviceToken = null, string? PairingCode = null,
+    Guid? InstallationId = null, string? PreviousDeviceToken = null);
 internal sealed class StdioHost : IProjectionHost
 {
     private readonly SemaphoreSlim gate = new(1);

@@ -16,7 +16,7 @@ public static class NativeUpdateHandoff
         using var current = Process.GetCurrentProcess();
         var start = new ProcessStartInfo(updaterExecutable) { UseShellExecute = false };
         foreach (var argument in new[] { "install", action.UpdateEnvelopePath, action.UpdatePackagePath, platform, osVersion, ReleaseInfo.Version,
-                     root, root, action.MinimumVersion, current.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), current.StartTime.ToUniversalTime().Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture) }) start.ArgumentList.Add(argument);
+                     root, root, action.MinimumVersion, current.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), ProcessStartIdentity.ReadTicks(current).ToString(System.Globalization.CultureInfo.InvariantCulture) }) start.ArgumentList.Add(argument);
         // A launcher from a previous update may have left a health challenge in the environment. It is not the updater's identity.
         foreach (var key in new[] { "LA_PROJECTOR_UPDATE_ID", "LA_PROJECTOR_UPDATE_NONCE", "LA_PROJECTOR_HEALTH_PATH" }) start.Environment.Remove(key);
         var id = Guid.NewGuid().ToString("N");

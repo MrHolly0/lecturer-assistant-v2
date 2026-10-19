@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import ru.university.assistant.projection.api.FrameFixture;
 import ru.university.assistant.projection.api.VideoFixture;
+import ru.university.assistant.projection.api.ProjectionContracts.PairRequest;
 import ru.university.assistant.projection.api.ProjectionContracts.Platform;
 import ru.university.assistant.projection.api.ProjectionContracts.SignedReleaseEnvelope;
 import ru.university.assistant.projection.internal.ProjectionCatalogStore;
@@ -84,6 +85,222 @@ class ProjectionIntegrationTest extends LiveFlowTestBase {
         assertTrue(initial.get("leaseUntil").isNull());
         assertTrue(settings(lecturerToken).get("devices").get(0).get("connected").asBoolean());
         assertEquals(0, settings(adminToken).get("devices").size());
+    }
+
+    @Test
+    void stableInstallationReusesDeviceRotatesTokenAndConsumesFreshCodeOnlyOnce() throws Exception {
+        policy(true, "0.1.0");
+        deviceVersion = "0.2.5";
+        UUID installation = UUID.randomUUID();
+        JsonNode first = pairWithIdentity(pairing().get("pairingCode").asText(), installation, null, 201);
+        String oldToken = first.get("deviceToken").asText();
+        String code = pairing().get("pairingCode").asText();
+        deviceVersion = "0.2.6";
+        JsonNode again = pairWithIdentity(code, installation, oldToken, 201);
+        assertEquals(first.get("deviceId"), again.get("deviceId"));
+        assertNotEquals(oldToken, again.get("deviceToken").asText());
+        assertEquals(1, jdbc.sql("select count(*) from projection.devices").query(Integer.class).single());
+        assertEquals(installation, jdbc.sql("select installation_id from projection.devices")
+                .query(UUID.class).single());
+        assertEquals("0.2.6", settings(lecturerToken).at("/devices/0/version").asText());
+        poll(oldToken, "IDLE", null, SCREENS, 401);
+        pairWithIdentity(code, installation, again.get("deviceToken").asText(), 401);
+        poll(again.get("deviceToken").asText(), "IDLE", null, SCREENS, 200);
+        // Existing Java callers and pre-0.2.5 wire bodies retain their six-field contract.
+        PairRequest legacy = new PairRequest("ABCDEFGH2345", "Room 12", Platform.WINDOWS_X64,
+                "0.1.0", "10.0.26100", 1);
+        assertTrue(legacy.installationId() == null && legacy.previousDeviceToken() == null);
+    }
+
+    @Test
+    void previousLocalKeyAdoptsLegacyDeviceAndPreservesItsThemeAndCreationTime() throws Exception {
+        JsonNode first = readyDevice();
+        UUID id = UUID.fromString(first.get("deviceId").asText());
+        String created = jdbc.sql("select created_at::text from projection.devices where id = ?")
+                .param(id).query(String.class).single();
+        appearance(id, lecturerToken, "{\"theme\":\"dark\"}", 204);
+        UUID installation = UUID.randomUUID();
+        deviceVersion = "0.2.5";
+        JsonNode adopted = pairWithIdentity(pairing().get("pairingCode").asText(), installation,
+                first.get("deviceToken").asText(), 201);
+        assertEquals(first.get("deviceId"), adopted.get("deviceId"));
+        assertEquals(1, jdbc.sql("select count(*) from projection.devices").query(Integer.class).single());
+        assertEquals(created, jdbc.sql("select created_at::text from projection.devices where id = ?")
+                .param(id).query(String.class).single());
+        assertEquals(installation, jdbc.sql("select installation_id from projection.devices where id = ?")
+                .param(id).query(UUID.class).single());
+        assertFalse(settings(lecturerToken).at("/devices/0/connected").asBoolean());
+        poll(first.get("deviceToken").asText(), "IDLE", null, SCREENS, 401);
+        assertEquals("dark", poll(adopted.get("deviceToken").asText(), "IDLE", null, SCREENS, 200)
+                .get("remoteTheme").asText());
+    }
+
+    @Test
+    void legacyAndDifferentComputersWithTheSameNameAreNotMergedWithoutTheirKey() throws Exception {
+        policy(true, "0.1.0");
+        JsonNode legacyOne = pair(pairing().get("pairingCode").asText(), 201);
+        JsonNode legacyTwo = pair(pairing().get("pairingCode").asText(), 201);
+        JsonNode one = pairWithIdentity(pairing().get("pairingCode").asText(), UUID.randomUUID(), null, 201);
+        JsonNode two = pairWithIdentity(pairing().get("pairingCode").asText(), UUID.randomUUID(), null, 201);
+        assertNotEquals(legacyOne.get("deviceId"), legacyTwo.get("deviceId"));
+        assertNotEquals(one.get("deviceId"), two.get("deviceId"));
+        assertEquals(4, jdbc.sql("select count(*) from projection.devices").query(Integer.class).single());
+        for (JsonNode device : List.of(legacyOne, legacyTwo, one, two)) {
+            poll(device.get("deviceToken").asText(), "IDLE", null, SCREENS, 200);
+        }
+        assertEquals(0, jdbc.sql("select count(*) from projection.devices where revoked_at is not null")
+                .query(Integer.class).single());
+    }
+
+    @Test
+    void previousKeyForAnotherInstallationOrUnknownKeyCannotMergeOrRevokeThatComputer() throws Exception {
+        policy(true, "0.1.0");
+        UUID firstInstallation = UUID.randomUUID();
+        JsonNode first = pairWithIdentity(pairing().get("pairingCode").asText(), firstInstallation, null, 201);
+        UUID secondInstallation = UUID.randomUUID();
+        JsonNode second = pairWithIdentity(pairing().get("pairingCode").asText(), secondInstallation,
+                first.get("deviceToken").asText(), 201);
+        assertNotEquals(first.get("deviceId"), second.get("deviceId"));
+        JsonNode unknown = pairWithIdentity(pairing().get("pairingCode").asText(), UUID.randomUUID(),
+                "0".repeat(64), 201);
+        assertNotEquals(first.get("deviceId"), unknown.get("deviceId"));
+        JsonNode refreshed = pairWithIdentity(pairing().get("pairingCode").asText(), secondInstallation,
+                first.get("deviceToken").asText(), 201);
+        assertEquals(second.get("deviceId"), refreshed.get("deviceId"));
+        poll(first.get("deviceToken").asText(), "IDLE", null, SCREENS, 200);
+        poll(second.get("deviceToken").asText(), "IDLE", null, SCREENS, 401);
+        poll(refreshed.get("deviceToken").asText(), "IDLE", null, SCREENS, 200);
+        assertEquals(3, jdbc.sql("select count(*) from projection.devices").query(Integer.class).single());
+        assertEquals(0, jdbc.sql("select count(*) from projection.devices where revoked_at is not null")
+                .query(Integer.class).single());
+    }
+
+    @Test
+    void aDifferentOwnerWithTheSameInstallationIdAndPreviousKeyGetsAnIndependentDevice() throws Exception {
+        policy(true, "0.1.0");
+        UUID installation = UUID.randomUUID();
+        JsonNode first = pairWithIdentity(pairing().get("pairingCode").asText(), installation, null, 201);
+        String adminCode = json(post("/api/v1/projection/pairings")
+                .header("Authorization", "Bearer " + adminToken), 201).get("pairingCode").asText();
+        JsonNode otherOwner = pairWithIdentity(adminCode, installation, first.get("deviceToken").asText(), 201);
+        assertNotEquals(first.get("deviceId"), otherOwner.get("deviceId"));
+        assertEquals(1, settings(lecturerToken).get("devices").size());
+        assertEquals(1, settings(adminToken).get("devices").size());
+        assertEquals(2, jdbc.sql("select count(*) from projection.devices where installation_id = ?")
+                .param(installation).query(Integer.class).single());
+        poll(first.get("deviceToken").asText(), "IDLE", null, SCREENS, 200);
+        poll(otherOwner.get("deviceToken").asText(), "IDLE", null, SCREENS, 200);
+        assertEquals(0, jdbc.sql("select count(*) from projection.devices where revoked_at is not null")
+                .query(Integer.class).single());
+    }
+
+    @Test
+    void revokedInstallationCanOnlyBeReauthorizedWithAFreshValidOwnerCode() throws Exception {
+        policy(true, "0.1.0");
+        UUID installation = UUID.randomUUID();
+        String consumed = pairing().get("pairingCode").asText();
+        JsonNode first = pairWithIdentity(consumed, installation, null, 201);
+        UUID id = UUID.fromString(first.get("deviceId").asText());
+        json(delete("/api/v1/projection/devices/{deviceId}", id)
+                .header("Authorization", "Bearer " + lecturerToken), 204);
+        poll(first.get("deviceToken").asText(), "IDLE", null, SCREENS, 401);
+        pairWithIdentity(consumed, installation, first.get("deviceToken").asText(), 401);
+        pairWithIdentity("ABCDEFGH2345", installation, first.get("deviceToken").asText(), 401);
+        String expired = pairing().get("pairingCode").asText();
+        jdbc.sql("update projection.pairings set expires_at = now() - interval '1 minute'").update();
+        pairWithIdentity(expired, installation, first.get("deviceToken").asText(), 401);
+        String disabled = pairing().get("pairingCode").asText();
+        policy(false, "0.1.0");
+        pairWithIdentity(disabled, installation, first.get("deviceToken").asText(), 403);
+        policy(true, "0.1.0");
+        pairWithIdentity(disabled, installation, first.get("deviceToken").asText(), 401);
+        JsonNode restored = pairWithIdentity(pairing().get("pairingCode").asText(), installation,
+                first.get("deviceToken").asText(), 201);
+        assertEquals(first.get("deviceId"), restored.get("deviceId"));
+        assertEquals(1, jdbc.sql("select count(*) from projection.devices").query(Integer.class).single());
+        poll(first.get("deviceToken").asText(), "IDLE", null, SCREENS, 401);
+        poll(restored.get("deviceToken").asText(), "IDLE", null, SCREENS, 200);
+        assertFalse(settings(lecturerToken).at("/devices/0/revoked").asBoolean());
+    }
+
+    @Test
+    void rePairClearsOutputAndPendingCommandsAndRevokesOldGrantsButKeepsThemeAndHistory() throws Exception {
+        JsonNode first = readyWorkspaceDevice();
+        UUID id = UUID.fromString(first.get("deviceId").asText());
+        UUID installation = UUID.randomUUID();
+        JsonNode adopted = pairWithIdentity(pairing().get("pairingCode").asText(), installation,
+                first.get("deviceToken").asText(), 201);
+        String token = adopted.get("deviceToken").asText();
+        poll(token, "IDLE", null, SCREENS, 200);
+        appearance(id, lecturerToken, "{\"theme\":\"dark\"}", 204);
+        JsonNode start = startOutput(id, token);
+        JsonNode focus = noTargetCommand(id, "FOCUS_PRIVATE_REMOTE", 202);
+        jdbc.sql("update projection.devices set diagnostic_code = 'OLD_FAILURE' where id = ?").param(id).update();
+        int history = jdbc.sql("select count(*) from projection.commands where device_id = ?")
+                .param(id).query(Integer.class).single();
+        JsonNode again = pairWithIdentity(pairing().get("pairingCode").asText(), installation, token, 201);
+        assertEquals(first.get("deviceId"), again.get("deviceId"));
+        assertEquals(1, jdbc.sql("""
+                select count(*) from projection.devices where id = ? and active_course_id is null
+                    and active_session_id is null and active_command_id is null and active_until is null
+                    and last_seen_at is null and screens = '[]'::jsonb and diagnostic_code is null
+                    and status = 'IDLE' and revoked_at is null and remote_theme = 'dark'
+                """).param(id).query(Integer.class).single());
+        assertEquals(0, jdbc.sql("""
+                select count(*) from projection.commands where device_id = ? and acknowledged_at is null
+                """).param(id).query(Integer.class).single());
+        assertEquals("CANCELLED", jdbc.sql("select result from projection.commands where id = ?")
+                .param(UUID.fromString(focus.get("id").asText())).query(String.class).single());
+        assertEquals(history, jdbc.sql("select count(*) from projection.commands where device_id = ?")
+                .param(id).query(Integer.class).single());
+        poll(token, "SHOWING", null, SCREENS, 401);
+        String control = start.at("/payload/controlToken").asText();
+        String publicGrant = start.at("/payload/projectionViewToken").asText();
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", control), 401);
+        json(get(projectionViewerPath(joinCode, UUID.randomUUID()))
+                .header("X-Projection-View-Token", publicGrant), 401);
+        JsonNode idle = poll(again.get("deviceToken").asText(), "IDLE", null, SCREENS, 200);
+        assertEquals("dark", idle.get("remoteTheme").asText());
+        assertTrue(idle.get("leaseUntil").isNull());
+        assertEquals(0, idle.get("commands").size());
+        json(get(lectureControlPath()).header("X-Lecture-Control-Token", control), 401);
+    }
+
+    @Test
+    void stableDeviceCanRetireOnlyItsPresentedSameOwnerLegacyKeyWithoutDeletingHistory() throws Exception {
+        policy(true, "0.1.0");
+        UUID installation = UUID.randomUUID();
+        JsonNode stable = pairWithIdentity(pairing().get("pairingCode").asText(), installation, null, 201);
+        UUID stableId = UUID.fromString(stable.get("deviceId").asText());
+        appearance(stableId, lecturerToken, "{\"theme\":\"light\"}", 204);
+        JsonNode legacy = pair(pairing().get("pairingCode").asText(), 201);
+        UUID legacyId = UUID.fromString(legacy.get("deviceId").asText());
+        poll(legacy.get("deviceToken").asText(), "IDLE", null, SCREENS, 200);
+        JsonNode oldCommand = command(legacyId, "TEST_TARGET", false, null, UUID.randomUUID(), 202);
+        JsonNode again = pairWithIdentity(pairing().get("pairingCode").asText(), installation,
+                legacy.get("deviceToken").asText(), 201);
+        assertEquals(stable.get("deviceId"), again.get("deviceId"));
+        assertEquals(2, jdbc.sql("select count(*) from projection.devices").query(Integer.class).single());
+        assertEquals(1, jdbc.sql("select count(*) from projection.devices where id = ? and revoked_at is not null")
+                .param(legacyId).query(Integer.class).single());
+        assertEquals("CANCELLED", jdbc.sql("select result from projection.commands where id = ?")
+                .param(UUID.fromString(oldCommand.get("id").asText())).query(String.class).single());
+        poll(legacy.get("deviceToken").asText(), "IDLE", null, SCREENS, 401);
+        poll(stable.get("deviceToken").asText(), "IDLE", null, SCREENS, 401);
+        assertEquals("light", poll(again.get("deviceToken").asText(), "IDLE", null, SCREENS, 200)
+                .get("remoteTheme").asText());
+    }
+
+    @Test
+    void pairingIdentityRejectsZeroUuidAndInvalidPreviousTokensWithoutConsumingTheCode() throws Exception {
+        policy(true, "0.1.0");
+        String code = pairing().get("pairingCode").asText();
+        pairWithIdentity(code, new UUID(0, 0), null, 400);
+        for (String invalid : List.of("", "a", "A".repeat(64), "0".repeat(63), "Bearer " + "0".repeat(64))) {
+            pairWithIdentity(code, UUID.randomUUID(), invalid, 400);
+        }
+        assertEquals(0, jdbc.sql("select count(*) from projection.devices").query(Integer.class).single());
+        pairWithIdentity(code, UUID.randomUUID(), null, 201);
     }
 
     @Test
@@ -751,10 +968,18 @@ class ProjectionIntegrationTest extends LiveFlowTestBase {
     }
 
     private JsonNode pair(String code, int expected) throws Exception {
+        return pairWithIdentity(code, null, null, expected);
+    }
+
+    private JsonNode pairWithIdentity(String code, UUID installationId, String previousToken, int expected)
+            throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>(Map.of("pairingCode", code, "name", "Room 12",
+                "platform", "WINDOWS_X64", "version", deviceVersion, "osVersion", "10.0.26100",
+                "protocolVersion", 1));
+        if (installationId != null) body.put("installationId", installationId);
+        if (previousToken != null) body.put("previousDeviceToken", previousToken);
         return json(post("/api/v1/projection/agent/pair").contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(Map.of("pairingCode", code, "name", "Room 12",
-                        "platform", "WINDOWS_X64", "version", deviceVersion, "osVersion", "10.0.26100",
-                        "protocolVersion", 1))), expected);
+                .content(objectMapper.writeValueAsString(body)), expected);
     }
 
     private JsonNode readyDevice() throws Exception {

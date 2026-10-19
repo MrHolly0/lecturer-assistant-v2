@@ -75,7 +75,7 @@ public sealed class ProcessUpdateProcesses(int? oldPid = null, long? expectedOld
         catch (ArgumentException) { preflight?.Ready(); return; }
         using (old)
         {
-            if (expectedOldStartTicks is null || old.StartTime.ToUniversalTime().Ticks != expectedOldStartTicks)
+            if (expectedOldStartTicks is null || ProcessStartIdentity.ReadTicks(old) != expectedOldStartTicks)
                 throw new InvalidDataException("OLD_PROCESS_IDENTITY_CHANGED");
             // Reaching this point means signed ZIP extraction and journal creation finished safely.
             preflight?.Ready();
