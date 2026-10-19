@@ -30,6 +30,7 @@ interface Props {
   sessionId: string;
   disabled?: boolean;
   commandsBlocked?: boolean;
+  background?: boolean;
 }
 
 type View = "idle" | "create";
@@ -38,7 +39,8 @@ export function PollPanel({
   courseId,
   sessionId,
   disabled = false,
-  commandsBlocked = false
+  commandsBlocked = false,
+  background = false
 }: Props) {
   const qc = useQueryClient();
   const [view, setView] = useState<View>("idle");
@@ -47,6 +49,7 @@ export function PollPanel({
   const activeQuery = useQuery({
     queryKey: ["poll", courseId, sessionId, "active"],
     queryFn: () => getActivePoll(courseId, sessionId),
+    refetchIntervalInBackground: background,
     refetchInterval: (query) => (query.state.data?.poll.status === "OPEN" ? 1500 : 3000)
   });
   const activePoll = activeQuery.data;

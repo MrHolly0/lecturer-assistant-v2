@@ -13,6 +13,7 @@ import { ExternalLink, Grip, PanelRightOpen, X } from "lucide-react";
 import type { Slide } from "../app/api/content-api";
 import { LiveSlideNotesEditor } from "./LiveSlideNotesEditor";
 import { useViewportDrag } from "./useViewportDrag";
+import { useSlideNoteDrafts } from "../app/live/useSlideNoteDrafts";
 
 type NotesWorkspaceValue = {
   slide: Slide;
@@ -38,7 +39,7 @@ export function PresenterNotesWorkspace({
   children: ReactNode;
 }) {
   const [popupName] = useState(() => `lecturer-slide-notes-${crypto.randomUUID()}`);
-  const [drafts, setDrafts] = useState<Record<number, string>>({});
+  const { drafts, updateDraft } = useSlideNoteDrafts(courseId, slide.deckId);
   const [detached, setDetached] = useState(false);
   const [popupBlocked, setPopupBlocked] = useState(false);
   const [popupWindow, setPopupWindow] = useState<Window | null>(null);
@@ -51,22 +52,6 @@ export function PresenterNotesWorkspace({
     }, 0);
   }, []);
 
-  const updateDraft = useCallback(
-    (slideIdx: number, content?: string, expectedContent?: string) => {
-      setDrafts((current) => {
-        if (content === undefined) {
-          if (expectedContent !== undefined && current[slideIdx] !== expectedContent)
-            return current;
-          if (!(slideIdx in current)) return current;
-          const next = { ...current };
-          delete next[slideIdx];
-          return next;
-        }
-        return { ...current, [slideIdx]: content };
-      });
-    },
-    []
-  );
   const openFloating = useCallback((trigger?: HTMLElement | null) => {
     returnFocusRef.current = trigger ?? null;
     setPopupBlocked(false);

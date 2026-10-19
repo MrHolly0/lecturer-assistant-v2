@@ -578,3 +578,68 @@
   border-top: 0;
   padding-top: 0;
 }
+.projector-setup__summary {
+  max-width: 820px;
+  padding: 28px;
+  border-radius: 16px;
+  background: var(--surface);
+}
+.projector-setup__summary h2 {
+  margin: 18px 0 12px;
+}
+.projector-setup__summary > p {
+  max-width: 65ch;
+}
+.projector-setup__secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+.projector-setup-dialog[data-slot="dialog-content"] {
+  width: 760px;
+  min-height: 0;
+  overflow: hidden;
+}
+.projector-setup-dialog .projector-tour__body {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: 6px;
+}
+.projector-check-result p:first-child {
+  margin-top: 0;
+}
+.projector-helper-offer,
+.projector-manual-opening {
+  margin-top: 24px;
+  padding: 18px;
+  background: var(--surface);
+  border-radius: 10px;
+}
+.projector-helper-offer p,
+.projector-manual-opening p {
+  font-size: 14px;
+  color: var(--muted-foreground);
+}
+.projector-helper-link {
+  margin-top: 14px;
+}
+.projector-show-destinations {
+  margin-bottom: 24px;
+  font-size: 14px;
+}
+.projector-show-destinations p + p {
+  margin-top: 8px;
+}
+@media (max-width: 600px) {
+  .projector-setup__summary {
+    padding: 20px 16px;
+  }
+  .projector-setup__summary .projector-setup__actions > .ui-button,
+  .projector-setup__secondary-actions > .ui-button {
+    flex: 1 1 100%;
+  }
+  .projector-setup-dialog .projector-tour__body {
+    padding-right: 2px;
+  }
+}

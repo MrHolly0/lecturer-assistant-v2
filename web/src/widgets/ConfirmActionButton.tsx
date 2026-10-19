@@ -23,6 +23,7 @@ interface ConfirmActionButtonProps {
   size?: VariantProps<typeof buttonVariants>["size"];
   label?: string;
   disabled?: boolean;
+  container?: HTMLElement | null;
   onConfirm: () => void;
 }
 
@@ -36,6 +37,7 @@ export function ConfirmActionButton({
   size,
   label,
   disabled,
+  container,
   onConfirm
 }: ConfirmActionButtonProps) {
   return (
@@ -52,7 +54,7 @@ export function ConfirmActionButton({
           {children}
         </Button>
       </AlertDialogTrigger>
-      <AlertDialogContent>
+      <AlertDialogContent container={container}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>

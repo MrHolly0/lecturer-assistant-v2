@@ -23,6 +23,65 @@ export type ScreenDetails = EventTarget & {
   currentScreen: DetailedScreen;
 };
 export type ProjectionWindow = Window & { getScreenDetails?: () => Promise<ScreenDetails> };
+const publicWindows = new Map<
+  string,
+  { window: Window; verified: boolean; channel: string | null }
+>();
+
+function publicProjectionUrl(joinCode: string, shareAttempt?: string | null) {
+  const query = new URLSearchParams();
+  if (shareAttempt && /^[a-f0-9-]{36}$/i.test(shareAttempt))
+    query.set("shareAttempt", shareAttempt);
+  return `${window.location.origin}${window.location.pathname}#/projection/${encodeURIComponent(joinCode)}${query.size ? `?${query}` : ""}`;
+}
+
+/** Rebind a manual public window in place; an attested HDMI window keeps its physical test. */
+export function bindPublicProjection(joinCode: string, shareAttempt: string | null): boolean {
+  if (
+    !/^[a-zA-Z0-9_-]{1,64}$/.test(joinCode) ||
+    (shareAttempt && !/^[a-f0-9-]{36}$/i.test(shareAttempt))
+  )
+    return false;
+  const entry = publicWindows.get(joinCode);
+  if (!entry || entry.window.closed || entry.verified || entry.channel === shareAttempt)
+    return false;
+  try {
+    const current = new URL(entry.window.location.href);
+    if (
+      current.href !== "about:blank" &&
+      (current.origin !== window.location.origin ||
+        current.hash.split("?")[0] !== `#/projection/${encodeURIComponent(joinCode)}`)
+    )
+      return false;
+    entry.window.location.replace(publicProjectionUrl(joinCode, shareAttempt));
+    entry.channel = shareAttempt;
+    return true;
+  } catch {
+    // A window navigated elsewhere is no longer ours to control.
+    return false;
+  }
+}
+
+/** Open only public lecture content. This does not claim to place or verify an HDMI screen. */
+export function openProjectionWindow(joinCode: string, shareAttempt?: string): Window | null {
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(joinCode)) return null;
+  const existing = publicWindows.get(joinCode);
+  if (existing && !existing.window.closed) {
+    if (shareAttempt) bindPublicProjection(joinCode, shareAttempt);
+    existing.window.focus();
+    return existing.window;
+  }
+  const url = publicProjectionUrl(joinCode, shareAttempt);
+  const target = window.open(url, `lecturer-public-${joinCode}`, "popup,width=1280,height=800");
+  if (target)
+    publicWindows.set(joinCode, {
+      window: target,
+      verified: false,
+      channel: shareAttempt && /^[a-f0-9-]{36}$/i.test(shareAttempt) ? shareAttempt : null
+    });
+  target?.focus();
+  return target;
+}
 
 /** No staff state, token, questions or drafts cross this channel. */
 class BrowserProjection {
@@ -38,6 +97,7 @@ class BrowserProjection {
   private listenersInstalled = false;
   private permission: PermissionStatus | null = null;
   private screenListeners = new Set<DetailedScreen>();
+  private requestGeneration = 0;
 
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => {
@@ -58,7 +118,19 @@ class BrowserProjection {
     window.addEventListener("pagehide", this.closeForPageExit);
   }
 
+  private disconnectScreens() {
+    this.details?.removeEventListener("screenschange", this.refresh);
+    this.details?.removeEventListener("currentscreenchange", this.refresh);
+    this.details = null;
+    for (const screen of this.screenListeners) screen.removeEventListener("change", this.refresh);
+    this.screenListeners.clear();
+    this.permission?.removeEventListener("change", this.permissionChanged);
+    this.permission = null;
+    this.topology = "";
+  }
+
   async requestScreens() {
+    const generation = ++this.requestGeneration;
     this.installListeners();
     if (this.snapshot.attemptId) {
       this.closeWindow();
@@ -66,12 +138,14 @@ class BrowserProjection {
     }
     const host = window as ProjectionWindow;
     if (!window.isSecureContext || typeof host.getScreenDetails !== "function") {
-      this.update({ phase: "unsupported", message: null });
+      this.disconnectScreens();
+      this.update({ phase: "unsupported", screens: [], message: null });
       return;
     }
     this.update({ phase: "requesting", message: null });
     try {
       const details = await host.getScreenDetails();
+      if (generation !== this.requestGeneration) return;
       if (this.details !== details) {
         this.details?.removeEventListener("screenschange", this.refresh);
         this.details?.removeEventListener("currentscreenchange", this.refresh);
@@ -87,19 +161,24 @@ class BrowserProjection {
       });
       try {
         this.permission?.removeEventListener("change", this.permissionChanged);
-        this.permission = await navigator.permissions.query({
+        const permission = await navigator.permissions.query({
           name: "window-management" as PermissionName
         });
+        if (generation !== this.requestGeneration) return;
+        this.permission = permission;
         this.permission.addEventListener("change", this.permissionChanged);
       } catch {
         // Permission querying is optional. getScreenDetails is the authoritative request.
       }
     } catch (error) {
+      if (generation !== this.requestGeneration) return;
+      this.disconnectScreens();
       const denied =
         error instanceof DOMException &&
         (error.name === "NotAllowedError" || error.name === "SecurityError");
       this.update({
         phase: denied ? "permission-denied" : "error",
+        screens: [],
         message: denied ? null : "Браузер не смог получить экраны. Попробуйте ещё раз."
       });
     }
@@ -108,7 +187,13 @@ class BrowserProjection {
   private permissionChanged = () => {
     if (this.permission?.state !== "granted") {
       this.neutralize();
-      this.update({ phase: "permission-denied", placementVerified: false, selectedId: null });
+      this.disconnectScreens();
+      this.update({
+        phase: "permission-denied",
+        screens: [],
+        placementVerified: false,
+        selectedId: null
+      });
     }
   };
 
@@ -195,6 +280,7 @@ class BrowserProjection {
       this.update({ phase: "popup-blocked" });
       return;
     }
+    publicWindows.set(joinCode, { window: this.popup, verified: true, channel: attemptId });
     try {
       this.popup.moveTo(screen.availableLeft, screen.availableTop);
       this.popup.resizeTo(screen.availableWidth, screen.availableHeight);
@@ -329,6 +415,7 @@ class BrowserProjection {
     });
   }
   stop() {
+    ++this.requestGeneration;
     this.closeWindow();
     this.update({
       phase: "stopped",

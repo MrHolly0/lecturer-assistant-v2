@@ -22,23 +22,39 @@ const geometry = (left, width = 1920) =>
     availHeight: 1040,
     label: "Display"
   });
-async function fixture({ api = true, deny = false, blocked = false } = {}) {
+async function fixture({
+  api = true,
+  deny = false,
+  blocked = false,
+  single = false,
+  defer = false
+} = {}) {
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
   const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
   const working = geometry(0),
     hdmi = geometry(-1920);
   const details = Object.assign(new EventTarget(), {
-    screens: [working, hdmi],
+    screens: single ? [working] : [working, hdmi],
     currentScreen: working
   });
   const permission = Object.assign(new EventTarget(), { state: "granted" });
   const sent = [];
+  const opened = [];
+  const replaced = [];
   const popup = {
     closed: false,
+    location: {
+      href: "about:blank",
+      replace(url) {
+        this.href = url;
+        replaced.push(url);
+      }
+    },
     postMessage: (data) => sent.push(data),
     moveTo() {},
     resizeTo() {},
+    focus() {},
     close() {
       this.closed = true;
     }
@@ -46,11 +62,21 @@ async function fixture({ api = true, deny = false, blocked = false } = {}) {
   const host = Object.assign(new EventTarget(), {
     isSecureContext: true,
     location: { origin: "https://class.example", pathname: "/" },
-    open: () => (blocked ? null : popup)
+    open: (...args) => {
+      opened.push(args);
+      popup.closed = false;
+      popup.location.href = args[0];
+      return blocked ? null : popup;
+    }
+  });
+  let resolveScreens;
+  const pendingScreens = new Promise((resolve) => {
+    resolveScreens = resolve;
   });
   if (api)
     host.getScreenDetails = async () => {
       if (deny) throw new DOMException("denied", "NotAllowedError");
+      if (defer) await pendingScreens;
       return details;
     };
   Object.defineProperty(globalThis, "window", { value: host, configurable: true });
@@ -62,7 +88,11 @@ async function fixture({ api = true, deny = false, blocked = false } = {}) {
     value: { setItem() {} },
     configurable: true
   });
-  const { browserProjection: controller } = await import(
+  const {
+    browserProjection: controller,
+    openProjectionWindow,
+    bindPublicProjection
+  } = await import(
     `data:text/javascript;base64,${Buffer.from(moduleSource).toString("base64")}#${crypto.randomUUID()}`
   );
   const message = (data, { origin = host.location.origin, sender = popup } = {}) => {
@@ -93,8 +123,97 @@ async function fixture({ api = true, deny = false, blocked = false } = {}) {
       else delete globalThis[key];
     }
   };
-  return { controller, details, working, hdmi, permission, popup, sent, position, restore };
+  return {
+    controller,
+    openProjectionWindow,
+    bindPublicProjection,
+    opened,
+    replaced,
+    resolveScreens,
+    details,
+    working,
+    hdmi,
+    permission,
+    popup,
+    sent,
+    position,
+    restore
+  };
 }
+
+test("manual public opening works without monitor APIs and carries only public routing data", async () => {
+  const t = await fixture({ api: false });
+  try {
+    const attempt = crypto.randomUUID();
+    assert.equal(t.openProjectionWindow("ABC123", attempt), t.popup);
+    const [url, name] = t.opened[0];
+    assert.equal(url, `https://class.example/#/projection/ABC123?shareAttempt=${attempt}`);
+    assert.equal(name, "lecturer-public-ABC123");
+    assert.equal(t.controller.getSnapshot().placementVerified, false);
+    assert.equal(t.controller.getSnapshot().phase, "idle");
+    assert.equal(t.openProjectionWindow("../../private"), null);
+    assert.equal(t.opened.length, 1);
+    assert.equal(t.openProjectionWindow("ABC123"), t.popup);
+    assert.equal(t.opened.length, 1, "a second click focuses the same public window");
+    t.popup.closed = true;
+    t.openProjectionWindow("ABC123", "private-token");
+    assert.equal(t.opened[1][0], "https://class.example/#/projection/ABC123");
+  } finally {
+    t.restore();
+  }
+});
+
+test("an existing manual projector follows new capture channels in place while a physical test is never bypassed", async () => {
+  const t = await fixture();
+  try {
+    t.openProjectionWindow("ABC123");
+    const first = crypto.randomUUID(),
+      second = crypto.randomUUID();
+    assert.equal(t.bindPublicProjection("ABC123", first), true);
+    assert.equal(new URL(t.popup.location.href).hash, `#/projection/ABC123?shareAttempt=${first}`);
+    assert.equal(t.bindPublicProjection("ABC123", first), false);
+    assert.equal(t.bindPublicProjection("ABC123", null), true);
+    assert.equal(new URL(t.popup.location.href).hash, "#/projection/ABC123");
+    assert.equal(t.bindPublicProjection("ABC123", second), true);
+    assert.equal(t.opened.length, 1, "capture stop/restart never creates or repositions a window");
+    t.popup.location.href = "https://another.example/";
+    assert.equal(t.bindPublicProjection("ABC123", first), false);
+    await t.controller.requestScreens();
+    t.controller.openTest(displayId(t.hdmi), "ABC123");
+    const testUrl = t.popup.location.href;
+    assert.equal(t.bindPublicProjection("ABC123", second), false);
+    assert.equal(
+      t.popup.location.href,
+      testUrl,
+      "the attested attempt keeps its neutral gate and channel"
+    );
+  } finally {
+    t.restore();
+  }
+});
+
+test("screen checks give an observable result for one monitor and ignore a late permission response after stop", async () => {
+  const t = await fixture({ single: true });
+  try {
+    await t.controller.requestScreens();
+    assert.equal(t.controller.getSnapshot().phase, "single-screen");
+    assert.equal(t.controller.getSnapshot().screens.length, 1);
+  } finally {
+    t.restore();
+  }
+  const delayed = await fixture({ defer: true });
+  try {
+    const request = delayed.controller.requestScreens();
+    assert.equal(delayed.controller.getSnapshot().phase, "requesting");
+    delayed.controller.stop();
+    delayed.resolveScreens();
+    await request;
+    assert.equal(delayed.controller.getSnapshot().phase, "stopped");
+    assert.deepEqual(delayed.controller.getSnapshot().screens, []);
+  } finally {
+    delayed.restore();
+  }
+});
 
 test("unsupported API, denied permission and blocked popup are distinct states", async () => {
   for (const [options, phase] of [
@@ -119,6 +238,9 @@ test("only the exact popup, origin and attempt can attest placement; a user conf
   try {
     await t.controller.requestScreens();
     t.controller.openTest(displayId(t.hdmi), "ABC123");
+    const openCount = t.opened.length;
+    assert.equal(t.openProjectionWindow("ABC123"), t.popup);
+    assert.equal(t.opened.length, openCount, "manual open focuses an existing physical test");
     for (const [data, sender] of [
       [{}, { origin: "https://other.example" }],
       [{ attemptId: "old-attempt" }],

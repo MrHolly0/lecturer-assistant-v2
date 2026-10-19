@@ -57,6 +57,7 @@ import { useMaxBridge } from "../app/max/context";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { ScreenShareControls } from "../widgets/ScreenShareControls";
 import { useLiveSession } from "../app/live/useLiveSession";
+import { useSlideNoteDrafts } from "../app/live/useSlideNoteDrafts";
 
 export function TeacherRemotePage({
   courseId,
@@ -73,6 +74,10 @@ export function TeacherRemotePage({
   const [remoteSection, setRemoteSection] = useState<"poll" | "students" | "notes" | "">("");
   const live = useLiveSession(courseId, sessionId);
   const session = live.session;
+  const { drafts: noteDrafts, updateDraft: updateNoteDraft } = useSlideNoteDrafts(
+    courseId,
+    session?.deckId ?? ""
+  );
   const setSession = live.setSession;
   const deckQuery = useQuery({
     queryKey: ["content", courseId, "decks", session?.deckId],
@@ -293,6 +298,7 @@ export function TeacherRemotePage({
           disabled={commandsBlocked}
           onPause={() => pauseMutation.mutate()}
           onResume={() => resumeMutation.mutate()}
+          onSessionChange={setSession}
         />
       </div>
       <section className="teacher-remote-stage" aria-label={`Слайд ${currentSlideIdx}`}>
@@ -439,7 +445,13 @@ export function TeacherRemotePage({
           <p className="question-privacy-hint">
             Видны только вам. На проекторе и у студентов их нет.
           </p>
-          <LiveSlideNotesEditor courseId={courseId} deckId={slide.deckId} slide={slide} />
+          <LiveSlideNotesEditor
+            courseId={courseId}
+            deckId={slide.deckId}
+            slide={slide}
+            draft={noteDrafts[slide.idx]}
+            onDraftChange={updateNoteDraft}
+          />
         </section>
       )}
       {remoteSection === "students" && (

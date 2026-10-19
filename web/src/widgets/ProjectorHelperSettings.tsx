@@ -472,7 +472,7 @@ export function ProjectorHelperSettings() {
       )}
       {!data.agentAllowed ? (
         <p className="projector-helper-note">
-          Учреждение отключило компонент. Продолжайте настройку по инструкции выше.
+          Учреждение отключило компонент. Используйте настройку экранов без установки.
         </p>
       ) : (
         <>

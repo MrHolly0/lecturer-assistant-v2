@@ -1,4 +1,14 @@
-import { ChevronDown, Monitor, Pause, PenLine, Play, QrCode, Square, Wrench } from "lucide-react";
+import {
+  ChevronDown,
+  Monitor,
+  Pause,
+  PenLine,
+  Play,
+  QrCode,
+  Settings2,
+  Square,
+  Wrench
+} from "lucide-react";
 import {
   setLiveProjectionCode,
   type LiveConnectionState,
@@ -34,6 +44,8 @@ import { Button } from "../shared/ui/button";
 import { SessionGroups } from "./SessionGroups";
 import { useNavigate } from "react-router-dom";
 import { ScreenShareControls } from "./ScreenShareControls";
+import { openProjectionWindow } from "../app/projection/browserProjection";
+import { screenShare } from "../app/sharing/screenShare";
 
 interface PresenterTopbarProps {
   courseId: string;
@@ -79,7 +91,7 @@ export function PresenterTopbar({
   const sessionActive = session.status === "LIVE" || session.status === "PAUSED";
   const showJoinCode = session.showJoinCode;
   const joinUrl = buildMaxJoinUrl(session.joinCode);
-  const openProjection = () => {
+  const openProjectionSetup = () => {
     const path = `/settings/projector?${new URLSearchParams({ joinCode: session.joinCode, courseId, sessionId: session.id })}`;
     const url = `${window.location.origin}${window.location.pathname}#${path}`;
     if (maxEnvironment.isMax && getMaxWebApp()?.openLink) {
@@ -91,6 +103,20 @@ export function PresenterTopbar({
       return;
     }
     navigate(path);
+  };
+  const openPublicProjection = () => {
+    const share = screenShare.getSnapshot();
+    const attempt = share.scope?.sessionId === session.id ? share.localChannelId : null;
+    if (maxEnvironment.isMax && getMaxWebApp()?.openLink) {
+      const query = attempt ? `?shareAttempt=${encodeURIComponent(attempt)}` : "";
+      getMaxWebApp()?.openLink?.(
+        `${window.location.origin}${window.location.pathname}#/projection/${encodeURIComponent(session.joinCode)}${query}`
+      );
+      return;
+    }
+    if (!openProjectionWindow(session.joinCode, attempt ?? undefined)) {
+      toast.error("Разрешите открытие отдельного окна в браузере и повторите.");
+    }
   };
   const projectionCodeMutation = useMutation({
     mutationFn: (show: boolean) => setLiveProjectionCode(courseId, session.id, show),
@@ -180,6 +206,10 @@ export function PresenterTopbar({
               <QrCode size={16} />
               Код занятия: {session.joinCode}
             </Button>
+            <Button variant="outline" type="button" onClick={openPublicProjection}>
+              <Monitor size={16} />
+              Открыть проектор
+            </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -198,8 +228,8 @@ export function PresenterTopbar({
                   <PenLine />
                   Рисование
                 </DropdownMenuCheckboxItem>
-                <DropdownMenuItem onSelect={openProjection}>
-                  <Monitor />
+                <DropdownMenuItem onSelect={openProjectionSetup}>
+                  <Settings2 />
                   Настроить проектор
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -231,6 +261,7 @@ export function PresenterTopbar({
               disabled={commandsBlocked}
               onPause={onPause}
               onResume={onResume}
+              onSessionChange={onSessionChange}
             />
             {session.status === "PAUSED" ? (
               <Button

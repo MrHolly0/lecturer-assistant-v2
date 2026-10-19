@@ -22,13 +22,15 @@ export function ScreenShareControls({
   session,
   disabled,
   onPause,
-  onResume
+  onResume,
+  onSessionChange
 }: {
   courseId: string;
   session: LiveSession;
   disabled: boolean;
   onPause: () => void;
   onResume: () => void;
+  onSessionChange?: (session: LiveSession) => void;
 }) {
   const share = useSyncExternalStore(screenShare.subscribe, screenShare.getSnapshot);
   const { isMax } = useMaxBridge();
@@ -37,6 +39,7 @@ export function ScreenShareControls({
   const [preview, setPreview] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [remoteWindow, setRemoteWindow] = useState<Window | null>(null);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
   const mounted = useRef(true);
   const video = useRef<HTMLVideoElement>(null);
   const ours = share.scope?.sessionId === session.id;
@@ -49,15 +52,19 @@ export function ScreenShareControls({
   }, []);
   const openRemote = () => {
     const opening = openLectureRemoteWindow({ windowKey: session.id });
-    setPult(true);
+    setRemoteError(null);
     void opening
       .then((target) => {
-        if (mounted.current) setRemoteWindow(target);
-        else target.close();
+        if (mounted.current) {
+          setRemoteWindow(target);
+          setPult(true);
+        } else target.close();
       })
-      .catch((error) =>
-        toast.error(error instanceof Error ? error.message : "Не удалось вынести пульт.")
-      );
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "Не удалось вынести пульт.";
+        setRemoteError(message);
+        toast.error(message);
+      });
   };
   useEffect(() => {
     if (ours) screenShare.setPaused(session.status === "PAUSED");
@@ -82,8 +89,17 @@ export function ScreenShareControls({
       getMaxWebApp()?.openLink?.(url);
       return;
     }
+    if (ours && share.phase === "publishing") void screenShare.stop();
     setPreview(true);
     void screenShare.choose({ courseId, sessionId: session.id, joinCode: session.joinCode });
+  };
+  const prepare = () => {
+    if (isMax) {
+      choose();
+      return;
+    }
+    setConfirmed(false);
+    setPreview(true);
   };
   return (
     <>
@@ -96,7 +112,7 @@ export function ScreenShareControls({
             share.phase === "choosing" ||
             (share.phase === "publishing" && !ours))
         }
-        onClick={ours && share.phase === "publishing" ? () => void screenShare.stop() : choose}
+        onClick={ours && share.phase === "publishing" ? () => void screenShare.stop() : prepare}
       >
         {ours && share.phase === "publishing" ? (
           <Square size={16} aria-hidden="true" />
@@ -109,6 +125,11 @@ export function ScreenShareControls({
         <MessageCircle size={18} aria-hidden="true" />
         Вынести пульт
       </Button>
+      {remoteError && (
+        <span className="screen-share-remote-error" role="alert">
+          {remoteError}
+        </span>
+      )}
       <Dialog
         open={preview}
         onOpenChange={(open) => {
@@ -119,10 +140,13 @@ export function ScreenShareControls({
       >
         <DialogContent className="screen-share-preview">
           <DialogHeader>
-            <DialogTitle>Проверьте исходящий кадр</DialogTitle>
+            <DialogTitle>
+              {share.phase === "preview" ? "Проверьте исходящий кадр" : "Что показать аудитории?"}
+            </DialogTitle>
             <DialogDescription>
               Можно показать весь экран, окно приложения или вкладку. Сначала проверьте, что увидит
-              аудитория.
+              аудитория. Выбирайте приложение с учебным материалом. Окно «Проектор» получает
+              демонстрацию, его не нужно выбирать источником.
             </DialogDescription>
           </DialogHeader>
           {share.stream ? (
@@ -131,7 +155,8 @@ export function ScreenShareControls({
             <div className="screen-share-preview-empty" role="status">
               {share.phase === "choosing"
                 ? "Выберите источник в окне браузера…"
-                : share.error || "Источник ещё не выбран"}
+                : share.error ||
+                  "Выберите приложение с учебным материалом. Оно останется на вашем рабочем экране."}
             </div>
           )}
           {share.error && share.stream && <p role="alert">{share.error}</p>}
@@ -168,17 +193,20 @@ export function ScreenShareControls({
               disabled={publishing || share.phase === "choosing"}
               onClick={choose}
             >
-              Другой источник
+              {share.stream ? "Другой источник" : "Выбрать окно или экран"}
             </Button>
             <Button
-              disabled={!confirmed || !share.stream || disabled || publishing}
+              disabled={
+                !confirmed || !share.stream || share.phase !== "preview" || disabled || publishing
+              }
               onClick={async () => {
+                // Reserve the separate window before publishing consumes the click activation.
+                openRemote();
                 setPublishing(true);
                 try {
                   await screenShare.publish();
                   if (screenShare.getSnapshot().phase === "publishing") {
                     setPreview(false);
-                    if (!capturesScreen) setPult(true);
                   }
                 } finally {
                   setPublishing(false);
@@ -197,6 +225,8 @@ export function ScreenShareControls({
           disabled={disabled}
           onPause={onPause}
           onResume={onResume}
+          onChooseSource={prepare}
+          onSessionChange={onSessionChange}
           initialWindow={remoteWindow}
           onClose={() => {
             setPult(false);

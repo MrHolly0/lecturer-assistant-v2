@@ -224,6 +224,9 @@
 .floating-lecture-remote.is-collapsed {
   width: 264px;
 }
+.floating-lecture-remote.is-collapsed .floating-remote-header {
+  justify-content: space-between;
+}
 .floating-remote-header {
   display: flex;
   align-items: center;
@@ -277,6 +280,63 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+.floating-remote-tools {
+  min-width: 0;
+}
+.floating-remote-tools > [data-slot="tabs-list"] {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  gap: 0;
+}
+.floating-remote-tools [data-slot="tabs-trigger"] {
+  min-width: 0;
+  padding-inline: 4px;
+  font-size: 12px;
+  white-space: normal;
+}
+.floating-remote-tools > [data-slot="tabs-content"] {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.floating-remote-tools > [data-slot="tabs-content"][hidden] {
+  display: none;
+}
+.floating-remote-tools .participant-list > li {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+.floating-remote-tools .participant-list__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.floating-remote-slides,
+.floating-remote-source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  font-size: 13px;
+}
+.floating-remote-source > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.floating-remote-finish {
+  width: 100%;
+  margin-top: 4px;
+}
+.screen-share-remote-error {
+  max-width: 320px;
+  color: var(--destructive);
+  font-size: 13px;
 }
 .floating-remote-content[hidden] {
   display: none;
@@ -446,6 +506,11 @@
   padding: 0;
   overflow: hidden;
   min-width: 240px;
+}
+.floating-remote-document [data-slot="alert-dialog-footer"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .floating-remote-document .floating-lecture-remote.is-detached {
   position: static;

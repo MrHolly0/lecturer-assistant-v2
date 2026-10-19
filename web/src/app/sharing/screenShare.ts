@@ -1,4 +1,4 @@
-import { browserProjection } from "../projection/browserProjection";
+import { bindPublicProjection, browserProjection } from "../projection/browserProjection";
 import { ApiError } from "../api/http";
 import {
   startShare,
@@ -162,6 +162,7 @@ class ScreenShare {
         }
         this.localPeers.clear();
         this.update({ localChannelId });
+        bindPublicProjection(scope.joinCode, localChannelId);
         this.channel = localShareChannel(scope.joinCode, localChannelId);
         this.channel.onmessage = (event: MessageEvent) =>
           void this.localMessage(event.data, generation).catch(() => undefined);
@@ -422,6 +423,7 @@ class ScreenShare {
     this.channel?.postMessage({ type: "stop" });
     this.channel?.close();
     this.channel = null;
+    if (scope) bindPublicProjection(scope.joinCode, null);
     this.peers.forEach((peer) => peer.close());
     this.peers.clear();
     this.localPeers.clear();

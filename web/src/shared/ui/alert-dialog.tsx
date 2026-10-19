@@ -38,14 +38,17 @@ AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
 
 function AlertDialogContent({
   className,
+  container,
   onOpenAutoFocus,
   onCloseAutoFocus,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
+  container?: React.ComponentProps<typeof AlertDialogPrimitive.Portal>["container"];
+}) {
   // Menu actions can open confirmations without an AlertDialogTrigger.
   const returnFocus = React.useRef<HTMLElement | null>(null);
   return (
-    <AlertDialogPortal>
+    <AlertDialogPortal container={container}>
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
@@ -54,14 +57,19 @@ function AlertDialogContent({
           className
         )}
         onOpenAutoFocus={(event) => {
+          const owner = container?.ownerDocument ?? document;
           returnFocus.current =
-            document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            owner.activeElement?.nodeType === 1 ? (owner.activeElement as HTMLElement) : null;
           onOpenAutoFocus?.(event);
         }}
         onCloseAutoFocus={(event) => {
           onCloseAutoFocus?.(event);
           const target = returnFocus.current;
-          if (!event.defaultPrevented && target?.isConnected && target !== document.body) {
+          if (
+            !event.defaultPrevented &&
+            target?.isConnected &&
+            target !== target.ownerDocument.body
+          ) {
             event.preventDefault();
             target.focus();
           }

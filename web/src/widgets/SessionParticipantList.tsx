@@ -13,12 +13,14 @@ export function SessionParticipantList({
   courseId,
   sessionId,
   participants,
-  disabled = false
+  disabled = false,
+  confirmationContainer
 }: {
   courseId: string;
   sessionId: string;
   participants: SessionParticipant[];
   disabled?: boolean;
+  confirmationContainer?: HTMLElement | null;
 }) {
   const queryClient = useQueryClient();
   const active = participants.filter((participant) => !participant.leftAt && !participant.kicked);
@@ -72,6 +74,7 @@ export function SessionParticipantList({
                 {pendingName ? "Имя запрошено" : "Запросить имя"}
               </Button>
               <ConfirmActionButton
+                container={confirmationContainer}
                 title={`Отключить ${participant.displayName}?`}
                 description="Студент потеряет доступ к этому занятию, но сможет войти снова по коду."
                 confirmLabel="Отключить"

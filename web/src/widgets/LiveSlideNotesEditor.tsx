@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Eraser, Save } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -30,8 +30,8 @@ export function LiveSlideNotesEditor({
 }: Props) {
   const queryClient = useQueryClient();
   const [localDraft, setLocalDraft] = useState(slide.note?.content ?? "");
-  const draft = controlledDraft ?? localDraft;
   const currentContent = slide.note?.content ?? "";
+  const draft = onDraftChange ? controlledDraft ?? currentContent : controlledDraft ?? localDraft;
   const draftRef = useRef(draft);
   const activeSlideRef = useRef({ idx: slide.idx, savedContent: currentContent });
   const unsavedDraftsRef = useRef(new Map<number, string>());
@@ -65,6 +65,7 @@ export function LiveSlideNotesEditor({
     [courseId, deckId, queryClient]
   );
   const saveMutation = useMutation({
+    mutationKey: ["slide-note", courseId, deckId, "save"],
     mutationFn: ({ slideIdx, content }: { slideIdx: number; content: string }) =>
       saveSlideNote(courseId, deckId, slideIdx, content),
     onSuccess: (note, variables) => {
@@ -84,6 +85,7 @@ export function LiveSlideNotesEditor({
     }
   });
   const clearMutation = useMutation({
+    mutationKey: ["slide-note", courseId, deckId, "clear"],
     mutationFn: ({ slideIdx }: { slideIdx: number }) => deleteSlideNote(courseId, deckId, slideIdx),
     onSuccess: (_, variables) => {
       updateCachedNote(variables.slideIdx, undefined);
@@ -101,10 +103,23 @@ export function LiveSlideNotesEditor({
 
   const submitNote = useCallback(
     (slideIdx: number, content: string) => {
+      const alreadySaving = queryClient
+        .getMutationCache()
+        .findAll({
+          mutationKey: ["slide-note", courseId, deckId, "save"],
+          status: "pending"
+        })
+        .some((mutation) => {
+          const pending = mutation.state.variables as
+            | { slideIdx: number; content: string }
+            | undefined;
+          return pending?.slideIdx === slideIdx && pending.content === content;
+        });
+      if (alreadySaving) return;
       submittedRef.current.set(slideIdx, content);
       saveMutation.mutate({ slideIdx, content });
     },
-    [saveMutation]
+    [saveMutation, courseId, deckId, queryClient]
   );
 
   useEffect(() => {
@@ -118,8 +133,9 @@ export function LiveSlideNotesEditor({
         submitNote(previous.idx, previousDraft);
       }
 
-      const nextDraft =
-        controlledDraft ?? unsavedDraftsRef.current.get(slide.idx) ?? currentContent;
+      const nextDraft = onDraftChange
+        ? controlledDraft ?? currentContent
+        : controlledDraft ?? unsavedDraftsRef.current.get(slide.idx) ?? currentContent;
       activeSlideRef.current = { idx: slide.idx, savedContent: currentContent };
       setCurrentDraft(nextDraft, slide.idx);
       return;
@@ -135,15 +151,16 @@ export function LiveSlideNotesEditor({
         setCurrentDraft(currentContent, slide.idx);
       }
     }
-  }, [controlledDraft, currentContent, slide.idx, submitNote, setCurrentDraft]);
+  }, [controlledDraft, currentContent, slide.idx, submitNote, setCurrentDraft, onDraftChange]);
 
   useEffect(() => {
-    if (controlledDraft === undefined) return;
-    draftRef.current = controlledDraft;
-    setLocalDraft(controlledDraft);
-  }, [controlledDraft]);
+    if (controlledDraft === undefined && !onDraftChange) return;
+    const authoritative = controlledDraft ?? currentContent;
+    draftRef.current = authoritative;
+    setLocalDraft(authoritative);
+  }, [controlledDraft, currentContent, onDraftChange]);
 
-  const pending = saveMutation.isPending || clearMutation.isPending;
+  const pending = useIsMutating({ mutationKey: ["slide-note", courseId, deckId] }) > 0;
   const dirty = draft !== currentContent;
 
   return (

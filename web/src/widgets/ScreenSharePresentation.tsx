@@ -19,9 +19,11 @@ type Props = {
 type PresentationVideo = HTMLVideoElement & {
   webkitSetPresentationMode?: (mode: "inline" | "picture-in-picture") => void;
   webkitPresentationMode?: string;
+  webkitDisplayingFullscreen?: boolean;
   webkitEnterFullscreen?: () => void;
   webkitExitFullscreen?: () => void;
 };
+type PresentationDocument = Document & { webkitFullscreenElement?: Element | null };
 type Size = { width: number; height: number };
 
 const FALLBACK_SIZE: Size = { width: 16, height: 9 };
@@ -61,6 +63,7 @@ export function ScreenSharePresentation({
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
   const [mediaSize, setMediaSize] = useState(FALLBACK_SIZE);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
+  const nativeFullscreenRef = useRef(false);
 
   const hasVideo = Boolean(stream || videoUrl);
   const hasImage = !hasVideo && Boolean(frameUrl);
@@ -95,19 +98,47 @@ export function ScreenSharePresentation({
   const spaceWidth = Math.max(viewport.width, mediaWidth);
   const spaceHeight = Math.max(viewport.height, mediaHeight);
 
-  const closePip = useCallback((updateState = true) => {
+  const syncNativePresentation = useCallback(() => {
     const video = videoRef.current;
-    if (video && document.pictureInPictureElement === video) {
-      const exiting = document.exitPictureInPicture?.();
-      void exiting?.catch(() => undefined);
-    }
-    try {
-      video?.webkitSetPresentationMode?.("inline");
-    } catch {
-      // The browser may already have revoked the presentation surface.
-    }
-    if (updateState) setPipActive(false);
+    const viewer = viewerRef.current;
+    const owner = (viewer?.ownerDocument ?? document) as PresentationDocument;
+    const fullscreenElement = owner.fullscreenElement ?? owner.webkitFullscreenElement;
+    const fullscreen = Boolean(
+      (fullscreenElement && (fullscreenElement === video || fullscreenElement === viewer)) ||
+        video?.webkitDisplayingFullscreen ||
+        video?.webkitPresentationMode === "fullscreen"
+    );
+    const pip = Boolean(
+      (video && owner.pictureInPictureElement === video) ||
+        video?.webkitPresentationMode === "picture-in-picture"
+    );
+    setPipActive(sourceRef.current.available && pip);
+    setFullscreenMode((current) =>
+      fullscreen && sourceRef.current.available ? "native" : current === "native" ? null : current
+    );
   }, []);
+
+  const closePip = useCallback(
+    (updateState = true) => {
+      const video = videoRef.current;
+      const sync = () => {
+        if (updateState && mountedRef.current) syncNativePresentation();
+      };
+      if (video && document.pictureInPictureElement === video) {
+        const exiting = document.exitPictureInPicture?.();
+        void exiting?.then(sync, sync);
+      }
+      try {
+        if (video?.webkitPresentationMode === "picture-in-picture") {
+          video.webkitSetPresentationMode?.("inline");
+        }
+      } catch {
+        // The browser may already have revoked the presentation surface.
+      }
+      sync();
+    },
+    [syncNativePresentation]
+  );
 
   const exitFullscreenFallback = useCallback(() => {
     setFullscreenMode((current) => (current === "fallback" ? null : current));
@@ -145,7 +176,7 @@ export function ScreenSharePresentation({
     if (hasVideo && video?.webkitEnterFullscreen && !video.requestFullscreen) {
       try {
         video.webkitEnterFullscreen();
-        setFullscreenMode("native");
+        syncNativePresentation();
         return;
       } catch {
         enterFallback();
@@ -172,7 +203,8 @@ export function ScreenSharePresentation({
           }
           return;
         }
-        setFullscreenMode("native");
+        // A native close can happen before this request settles.
+        syncNativePresentation();
       }, enterFallback);
     } catch {
       enterFallback();
@@ -213,7 +245,7 @@ export function ScreenSharePresentation({
             }
             return;
           }
-          setPipActive(true);
+          syncNativePresentation();
         }, unavailable);
       } catch {
         unavailable();
@@ -224,7 +256,7 @@ export function ScreenSharePresentation({
     if (video.webkitSetPresentationMode && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
       try {
         video.webkitSetPresentationMode("picture-in-picture");
-        setPipActive(true);
+        syncNativePresentation();
         return;
       } catch {
         unavailable();
@@ -283,28 +315,46 @@ export function ScreenSharePresentation({
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
-    const onEnterPip = () => setPipActive(true);
     const onLeavePip = () => setPipActive(false);
-    const onWebkitPresentation = () => {
-      if (video.webkitPresentationMode !== "picture-in-picture") setPipActive(false);
-    };
     const onWebkitFullscreenEnd = () => {
-      setFullscreenMode(null);
+      setFullscreenMode((current) => (current === "native" ? null : current));
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") syncNativePresentation();
+    };
+    video?.addEventListener("enterpictureinpicture", syncNativePresentation);
+    video?.addEventListener("leavepictureinpicture", onLeavePip);
+    video?.addEventListener("webkitpresentationmodechanged", syncNativePresentation);
+    video?.addEventListener("webkitbeginfullscreen", syncNativePresentation);
+    video?.addEventListener("webkitendfullscreen", onWebkitFullscreenEnd);
+    document.addEventListener("fullscreenchange", syncNativePresentation);
+    document.addEventListener("webkitfullscreenchange", syncNativePresentation);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pageshow", syncNativePresentation);
+    window.addEventListener("focus", syncNativePresentation);
+    syncNativePresentation();
+    return () => {
+      video?.removeEventListener("enterpictureinpicture", syncNativePresentation);
+      video?.removeEventListener("leavepictureinpicture", onLeavePip);
+      video?.removeEventListener("webkitpresentationmodechanged", syncNativePresentation);
+      video?.removeEventListener("webkitbeginfullscreen", syncNativePresentation);
+      video?.removeEventListener("webkitendfullscreen", onWebkitFullscreenEnd);
+      document.removeEventListener("fullscreenchange", syncNativePresentation);
+      document.removeEventListener("webkitfullscreenchange", syncNativePresentation);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pageshow", syncNativePresentation);
+      window.removeEventListener("focus", syncNativePresentation);
+    };
+  }, [hasVideo, sourceAvailable, mediaIdentity, syncNativePresentation]);
+
+  useEffect(() => {
+    const wasNative = nativeFullscreenRef.current;
+    nativeFullscreenRef.current = fullscreenMode === "native";
+    if (wasNative && fullscreenMode !== "native") {
       focusReturnRef.current?.focus({ preventScroll: true });
       focusReturnRef.current = null;
-    };
-    video.addEventListener("enterpictureinpicture", onEnterPip);
-    video.addEventListener("leavepictureinpicture", onLeavePip);
-    video.addEventListener("webkitpresentationmodechanged", onWebkitPresentation);
-    video.addEventListener("webkitendfullscreen", onWebkitFullscreenEnd);
-    return () => {
-      video.removeEventListener("enterpictureinpicture", onEnterPip);
-      video.removeEventListener("leavepictureinpicture", onLeavePip);
-      video.removeEventListener("webkitpresentationmodechanged", onWebkitPresentation);
-      video.removeEventListener("webkitendfullscreen", onWebkitFullscreenEnd);
-    };
-  }, [hasVideo, sourceAvailable, mediaIdentity]);
+    }
+  }, [fullscreenMode]);
 
   useEffect(() => {
     const previous = lastSourceRef.current;
@@ -391,25 +441,6 @@ export function ScreenSharePresentation({
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [fullscreenMode, exitFullscreenFallback]);
-
-  useEffect(() => {
-    const onFullscreenChange = () => {
-      const target = hasVideo ? videoRef.current : viewerRef.current;
-      if (document.fullscreenElement === target) {
-        if (sourceRef.current.available) setFullscreenMode("native");
-        else {
-          const exiting = document.exitFullscreen?.();
-          void exiting?.catch(() => undefined);
-        }
-      } else if (fullscreenMode === "native") {
-        setFullscreenMode(null);
-        focusReturnRef.current?.focus({ preventScroll: true });
-        focusReturnRef.current = null;
-      }
-    };
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, [fullscreenMode, hasVideo]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -567,6 +598,7 @@ export function ScreenSharePresentation({
             type="button"
             variant="outline"
             aria-label={fullscreenMode ? "Выйти из полноэкранного режима" : "На весь экран"}
+            aria-pressed={Boolean(fullscreenMode)}
             onClick={enterFullscreen}
           >
             {fullscreenMode ? (
