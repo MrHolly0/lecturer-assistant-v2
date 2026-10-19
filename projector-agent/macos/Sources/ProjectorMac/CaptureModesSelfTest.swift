@@ -4,6 +4,7 @@ import Darwin
 
 @MainActor final class CaptureModesSelfTest: NSObject, NSApplicationDelegate {
     let report: URL
+    private var ownSourceGeometry: [String: Double] = [:]
     init(report: URL) { self.report = report }
     static func run(report: URL) {
         let app = NSApplication.shared; app.setActivationPolicy(.accessory)
@@ -14,7 +15,7 @@ import Darwin
         Task { @MainActor in
             var result: [String: Any], code: Int32 = 0
             do { result = try await exercise() }
-            catch HostError.code(let failure) { result = ["success": false, "code": failure]; code = 1 }
+            catch HostError.code(let failure) { result = ["success": false, "code": failure, "ownSourceGeometry": ownSourceGeometry]; code = 1 }
             catch { result = ["success": false, "code": "CAPTURE_MODES_FIXTURE_FAILED"]; code = 1 }
             do {
                 try FileManager.default.createDirectory(at: report.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -40,6 +41,10 @@ import Darwin
         }
         guard let ownWindow else { throw HostError.code("CAPTURE_MODES_OWN_WINDOW_UNAVAILABLE") }
         let filter = SCContentFilter(desktopIndependentWindow: ownWindow)
+        ownSourceGeometry = ["windowWidth": Double(window.frame.width), "windowHeight": Double(window.frame.height),
+                             "shareableWidth": Double(ownWindow.frame.width), "shareableHeight": Double(ownWindow.frame.height),
+                             "filterWidth": Double(filter.contentRect.width), "filterHeight": Double(filter.contentRect.height),
+                             "filterScale": Double(filter.pointPixelScale)]
         let content = try await SCShareableContent.currentProcess
         guard let display = content.displays.first else { throw HostError.code("CAPTURE_MODES_OWN_DISPLAY_METADATA_UNAVAILABLE") }
         _ = try NativeCapture.protectedDisplayFilter(display: display, applications: content.applications)
@@ -61,7 +66,7 @@ import Darwin
         if #available(macOS 15.2, *) {
             guard events.contains(where: { $0["code"] as? String == "CAPTURE_PRIVATE_SOURCE_REJECTED" }) else { throw HostError.code("CAPTURE_MODES_OWN_SOURCE_NOT_REJECTED") }
         }
-        events.removeAll(); try await capture.beginOwnPreviewFixture(window: ownWindow)
+        events.removeAll(); try await capture.beginOwnPreviewFixture(window: ownWindow, ownWindow: window)
         let deadline = Date().addingTimeInterval(8)
         while Date() < deadline && !events.contains(where: { $0["type"] as? String == "preview" }) { try await Task.sleep(for: .milliseconds(50)) }
         guard let frame = events.first(where: { $0["type"] as? String == "preview" }),
@@ -79,7 +84,8 @@ import Darwin
         child.standardOutput = FileHandle.nullDevice; child.standardError = FileHandle.nullDevice
         try child.run(); CoordinatorShutdown.stop(child, input: input)
         guard !child.isRunning else { throw HostError.code("COORDINATOR_SHUTDOWN_LEFT_CHILD") }
-        return ["success": true, "picker": lifecycle, "noCaptureBeforeSelection": true, "replacementDoesNotEmitIdle": true,
+        return ["success": true, "picker": lifecycle, "ownSourceGeometry": ownSourceGeometry,
+                "noCaptureBeforeSelection": true, "replacementDoesNotEmitIdle": true,
                 "actualOwnWindowStreamPreview": true, "previewRemainsLocalUntilPublish": true,
                 "stopClosesStream": true, "cancelledSelectionCannotRestart": true, "ownedCoordinatorStopped": true,
                 "protectedDisplayUsesExplicitExclusion": true, "missingExclusionBlocksDisplay": true, "displayDenialDoesNotLoop": true,

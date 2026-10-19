@@ -243,11 +243,18 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         event?(["type": "capture-state", "phase": "preview", "sourceName": sourceName, "sourceKind": sourceKind,
                 "captureExcludesRemote": true, "permissionPending": false, "previewOnly": true])
     }
-    func beginOwnPreviewFixture(window: SCWindow) async throws {
+    func beginOwnPreviewFixture(window: SCWindow, ownWindow: NSWindow) async throws {
         guard window.owningApplication?.processID == ProcessInfo.processInfo.processIdentifier else { throw HostError.code("CAPTURE_FIXTURE_NOT_OWN_WINDOW") }
+        guard Int(window.windowID) == ownWindow.windowNumber else { throw HostError.code("CAPTURE_FIXTURE_WINDOW_MISMATCH") }
         await stop(); sourceKind = "window"
-        let filter = SCContentFilter(desktopIndependentWindow: window), rect = filter.contentRect
-        try await startPreview(filter: filter, width: Int(rect.width * CGFloat(filter.pointPixelScale)), height: Int(rect.height * CGFloat(filter.pointPixelScale)), name: "Own fixture", selectionID: generation)
+        // currentProcess metadata can report zero geometry without global
+        // consent. The fixture knows the size of its own verified NSWindow; the
+        // authorized content filter remains unchanged, as does production validation.
+        let filter = SCContentFilter(desktopIndependentWindow: window)
+        let width = ownWindow.frame.width * ownWindow.backingScaleFactor
+        let height = ownWindow.frame.height * ownWindow.backingScaleFactor
+        guard width.isFinite, height.isFinite, width > 0, height > 0, width <= 100_000, height <= 100_000 else { throw HostError.code("CAPTURE_FIXTURE_INVALID_GEOMETRY") }
+        try await startPreview(filter: filter, width: Int(width), height: Int(height), name: "Own fixture", selectionID: generation)
     }
     static func protectedDisplayFilter(display: SCDisplay, applications: [SCRunningApplication]) throws -> SCContentFilter {
         let own = applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }

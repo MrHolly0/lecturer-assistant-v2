@@ -11,6 +11,11 @@ import Darwin
     private let identification = ScreenIdentification()
     private var display: DisplayController!
     private var process: Process?
+    private var coordinatorOutput: CoordinatorOutputReader?
+    private var coordinatorConnectionClosed = false
+    private var coordinatorEndCount = 0
+    private let hostDialog = HostDialog()
+    private var activateDialogApplication = { NSApp.activate(ignoringOtherApps: true) }
     private var generation = UUID()
     private var pendingLocalStop = false
     private var pendingUpdateHandoffFailed = false
@@ -60,7 +65,7 @@ import Darwin
                 guard let self else { return }
                 let pairingFile = self.directory.appendingPathComponent("pending-pair.json")
                 if self.connectionForm != nil && FileManager.default.fileExists(atPath: pairingFile.path) {
-                    if NSApp.modalWindow === self.connectionForm?.alert.window { NSApp.abortModal() }
+                    self.hostDialog.cancel()
                 }
                 if !self.localDialogOpen {
                     if self.consumePairingRequest() { self.discardOpenRequest() }
@@ -129,7 +134,7 @@ import Darwin
                         do {
                             let id = UUID().uuidString
                             let data = try JSONSerialization.data(withJSONObject: ["id": id, "type": "GET_SCREENS"])
-                            delegate.receive(data + Data([10]))
+                            await delegate.receive(data + Data([10]))
                             let reply = pipe.fileHandleForReading.availableData
                             guard let value = try JSONSerialization.jsonObject(with: reply) as? [String: Any],
                                   value["id"] as? String == id, value["success"] as? Bool == true else { throw HostError.code("CAPTURE_DIALOG_BAD_NATIVE_REPLY") }
@@ -139,6 +144,38 @@ import Darwin
                 }
             }
         }
+    }
+    static func exerciseReadinessFixture(_ body: @MainActor () async throws -> [String: Any]) async throws -> [String: Any] {
+        let delegate = AppDelegate(), child = Process(), input = Pipe()
+        child.executableURL = URL(fileURLWithPath: "/bin/cat"); child.standardInput = input
+        child.standardOutput = FileHandle.nullDevice; child.standardError = FileHandle.nullDevice
+        try child.run()
+        delegate.process = child; delegate.origin = URL(string: "https://school.example/")!
+        delegate.activateDialogApplication = {}
+        var displayed: NSAlert?
+        delegate.hostDialog.prepareWindow = { alert in
+            alert.window.alphaValue = 0
+            alert.window.setFrameOrigin(NSPoint(x: 50_000, y: 50_000))
+            displayed = alert
+        }
+        defer { delegate.hostDialog.cancel(); CoordinatorShutdown.stop(child, input: input) }
+        let presentation = Task { await delegate.presentReadiness() }
+        try await Task.sleep(for: .milliseconds(50))
+        guard let displayed, displayed.messageText == "Помощник проектора готов", delegate.hostDialog.isPresented,
+              delegate.localDialogOpen, displayed.window.alphaValue == 0 else { throw HostError.code("READINESS_FIXTURE_NOT_PRESENTED") }
+        let result = try await body()
+        guard delegate.hostDialog.isPresented else { throw HostError.code("READINESS_FIXTURE_DISMISSED_EARLY") }
+        displayed.buttons[0].performClick(nil)
+        await presentation.value
+        guard !delegate.hostDialog.isPresented, !delegate.localDialogOpen else { throw HostError.code("READINESS_FIXTURE_BUTTON_FAILED") }
+        return result
+    }
+    static func coordinatorReaderFixture(_ handle: FileHandle) -> (reader: CoordinatorOutputReader, state: @MainActor () -> (closed: Bool, count: Int), duplicateEnd: @MainActor () async -> Void, cleanup: @MainActor () -> Void) {
+        let delegate = AppDelegate()
+        delegate.connectCoordinatorOutput(handle, generation: delegate.generation)
+        return (delegate.coordinatorOutput!, { (delegate.coordinatorConnectionClosed, delegate.coordinatorEndCount) },
+                { await delegate.coordinatorEnded(generation: delegate.generation) },
+                { delegate.coordinatorOutput?.stop(); delegate.coordinatorOutput = nil })
     }
     static func exerciseSavedConnectionFixture(directory: URL) throws -> [String: Any] {
         let delegate = AppDelegate(), site = URL(string: "https://fixture.invalid/")!
@@ -209,22 +246,24 @@ import Darwin
               let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
         return message["transactionId"] as? String == id && message["nonce"] as? String == nonce
     }
-    @objc private func pair() {
-        guard !localDialogOpen else { connectionForm?.alert.window.makeKeyAndOrderFront(nil); return }
+    @objc private func pair() { Task { @MainActor in await presentPairForm() } }
+    private func presentPairForm() async {
+        guard !localDialogOpen else { hostDialog.focus(); return }
         localDialogOpen = true
         let form = ConnectionForm(origin: origin?.absoluteString ?? ""); connectionForm = form
         if let pairingDraft { form.code.stringValue = pairingDraft }
         if let pairingError { form.validationError(pairingError) }
         defer { connectionForm = nil; localDialogOpen = false; form.alert.window.close() }
         NSApp.activate(ignoringOtherApps: true)
-        while form.alert.runModal() == .alertFirstButtonReturn {
+        while await hostDialog.present(form.alert) == .alertFirstButtonReturn {
             guard let url = Self.validOrigin(form.address.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) else { form.validationError("Введите адрес сайта учреждения, начинающийся с https://."); continue }
             guard ConnectionForm.validCode(form.code.stringValue) else { form.validationError("Нужен код подключения помощника из 12 букв и цифр. Код занятия со слайда не подходит."); continue }
             start(origin: url, token: nil, pairingCode: ConnectionForm.normalizedCode(form.code.stringValue), userInitiated: true); return
         }
     }
-    @objc private func revealFromUser() {
-        guard !localDialogOpen else { connectionForm?.alert.window.makeKeyAndOrderFront(nil); return }
+    @objc private func revealFromUser() { Task { @MainActor in await presentReadiness() } }
+    private func presentReadiness() async {
+        guard !localDialogOpen else { hostDialog.focus(); return }
         if let origin, let action = lastRemoteAction, (try? showRemote(action, origin: origin)) != nil { return }
         if process?.isRunning != true, savedConnectionAccount != nil {
             localDialogOpen = true
@@ -235,7 +274,7 @@ import Darwin
                 : "Адрес учреждения сохранён. Нажмите «Повторить проверку». Если ошибка остаётся, сохраните диагностику через меню LA и обратитесь в поддержку."
             alert.addButton(withTitle: reconnect ? "Ввести код…" : "Повторить проверку")
             alert.addButton(withTitle: reconnect ? "Повторить проверку" : "Подключить по коду…"); alert.addButton(withTitle: "Закрыть")
-            NSApp.activate(ignoringOtherApps: true); let response = alert.runModal(); localDialogOpen = false
+            NSApp.activate(ignoringOtherApps: true); let response = await hostDialog.present(alert); localDialogOpen = false
             if response == .alertFirstButtonReturn { if reconnect { pair() } else { resumeSavedConnection() } }
             else if response == .alertSecondButtonReturn { if reconnect { resumeSavedConnection() } else { pair() } }
             return
@@ -243,10 +282,10 @@ import Darwin
         if origin == nil || process?.isRunning != true { pair(); return }
         localDialogOpen = true
         let alert = NSAlert(); alert.messageText = "Помощник проектора готов"
-        alert.informativeText = status + "\n\nСайт: " + (origin?.absoluteString ?? "") + "\n\nВернитесь на сайт → «Открыть проектор». Выберите этот компьютер, проверьте номер экрана и подтвердите код на проекторе. Во время занятия здесь откроется отдельный пульт."
+        alert.informativeText = status + "\n\nСайт: " + (origin?.absoluteString ?? "") + "\n\nВернитесь на сайт → «Открыть проектор». Выберите этот компьютер, проверьте номер экрана и подтвердите код на проекторе. Для демонстрации здесь откроется отдельный пульт."
         alert.addButton(withTitle: "Готово"); alert.addButton(withTitle: "Подключить к другому сайту…")
-        NSApp.activate(ignoringOtherApps: true)
-        let result = alert.runModal(); localDialogOpen = false
+        activateDialogApplication()
+        let result = await hostDialog.present(alert); localDialogOpen = false
         if result == .alertSecondButtonReturn { pair() }
     }
     private func discardOpenRequest() { try? FileManager.default.removeItem(at: directory.appendingPathComponent("pending-open.json")) }
@@ -279,13 +318,15 @@ import Darwin
               code.count == 12, code.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) }) else { return false }
         try? FileManager.default.removeItem(at: file)
         discardOpenRequest(); localDialogOpen = true
-        defer { localDialogOpen = false }
         let alert = NSAlert(); alert.messageText = "Подключить помощник к сайту?"
         alert.informativeText = "Адрес учреждения: " + origin.absoluteString + "\n\nПодтвердите подключение, если только что нажали кнопку на этом сайте. Сайт сможет управлять только разрешённым показом; пароль аккаунта не передаётся."
         alert.addButton(withTitle: "Подключить"); alert.addButton(withTitle: "Отмена")
         NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return true }
-        start(origin: origin, token: nil, pairingCode: code, userInitiated: true)
+        Task { @MainActor in
+            defer { localDialogOpen = false }
+            guard await hostDialog.present(alert) == .alertFirstButtonReturn else { return }
+            start(origin: origin, token: nil, pairingCode: code, userInitiated: true)
+        }
         return true
     }
     private func start(origin: URL, token: String?, pairingCode: String?, userInitiated: Bool = false) {
@@ -307,21 +348,36 @@ import Darwin
         self.origin = origin
         lastRemoteAction = nil
         generation = UUID(); let currentGeneration = generation
+        coordinatorOutput?.stop(); coordinatorOutput = nil; coordinatorConnectionClosed = false; coordinatorEndCount = 0
         CoordinatorShutdown.stop(process, input: input); process = nil; input = nil; projection.neutralize(); remote.close(); Task { await capture.stop() }; pending.removeAll()
         let coordinator = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/coordinator/Projector.Agent")
         guard FileManager.default.isExecutableFile(atPath: coordinator.path) else { status = "Компонент сборки отсутствует — используйте сайт"; rebuildMenu(); pairingFailedIfNeeded(); return }
         let process = Process(); let input = Pipe(); let output = Pipe()
         process.executableURL = coordinator; process.arguments = ["--native-stdio"]
         process.standardInput = input; process.standardOutput = output; process.standardError = FileHandle.nullDevice
-        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            Task { @MainActor in guard self?.generation == currentGeneration else { return }; self?.receive(data) }
-        }
-        process.terminationHandler = { [weak self] _ in Task { @MainActor in guard self?.generation == currentGeneration else { return }; self?.projection.neutralize(); self?.remote.close(); await self?.capture.stop(); self?.status = "Связь остановлена — используйте сайт"; self?.rebuildMenu(); self?.pairingFailedIfNeeded() } }
+        connectCoordinatorOutput(output.fileHandleForReading, generation: currentGeneration)
+        process.terminationHandler = { [weak self] _ in Task { @MainActor in await self?.coordinatorEnded(generation: currentGeneration) } }
         do {
             try process.run(); self.process = process; self.input = input
             send(bootstrap); status = "Подключение…"; rebuildMenu()
-        } catch { status = "Не удалось запустить компонент"; rebuildMenu(); pairingFailedIfNeeded() }
+        } catch { coordinatorOutput?.stop(); coordinatorOutput = nil; status = "Не удалось запустить компонент"; rebuildMenu(); pairingFailedIfNeeded() }
+    }
+    private func connectCoordinatorOutput(_ handle: FileHandle, generation currentGeneration: UUID) {
+        coordinatorOutput = CoordinatorOutputReader(handle: handle, data: { [weak self] data in
+            Task { @MainActor in guard let self, self.generation == currentGeneration, !self.coordinatorConnectionClosed else { return }; await self.receive(data) }
+        }, ended: { [weak self] in
+            Task { @MainActor in await self?.coordinatorEnded(generation: currentGeneration) }
+        })
+    }
+    private func coordinatorEnded(generation current: UUID) async {
+        guard generation == current, !coordinatorConnectionClosed else { return }
+        coordinatorConnectionClosed = true; coordinatorEndCount += 1; coordinatorOutput?.stop(); coordinatorOutput = nil
+        lastRemoteAction = nil; pending.removeAll(); hostDialog.cancel()
+        let previous = process, previousInput = input; process = nil; input = nil
+        projection.neutralize(); remote.close(); identification.dismiss()
+        CoordinatorShutdown.stop(previous, input: previousInput); await capture.stop()
+        guard generation == current else { return }
+        status = "Связь остановлена — откройте помощник для повторного подключения"; rebuildMenu(); pairingFailedIfNeeded()
     }
     private func pairingFailedIfNeeded(_ message: String? = nil) {
         guard userInitiatedPairing else { return }; userInitiatedPairing = false
@@ -330,11 +386,11 @@ import Darwin
     }
     private func pairingSucceededIfNeeded() {
         guard userInitiatedPairing else { return }; userInitiatedPairing = false; pairingDraft = nil; pairingError = nil
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self, !self.localDialogOpen else { return }; self.localDialogOpen = true
             let alert = NSAlert(); alert.messageText = "Помощник подключён"
             alert.informativeText = "Вернитесь на сайт → «Открыть проектор». Выберите этот компьютер, проверьте номер экрана и подтвердите код на проекторе. Помощник останется доступен в строке меню LA."
-            alert.addButton(withTitle: "Готово"); NSApp.activate(ignoringOtherApps: true); alert.runModal(); self.localDialogOpen = false
+            alert.addButton(withTitle: "Готово"); NSApp.activate(ignoringOtherApps: true); _ = await self.hostDialog.present(alert); self.localDialogOpen = false
         }
     }
     private func platform() -> String {
@@ -344,7 +400,7 @@ import Darwin
         return "MACOS_X64"
         #endif
     }
-    private func receive(_ data: Data) {
+    private func receive(_ data: Data) async {
         if data.isEmpty { return }
         pending.append(data)
         if pending.count > 262144 { process?.terminate(); return }
@@ -369,9 +425,9 @@ import Darwin
                     guard let theme = action["theme"] as? String else { throw HostError.code("REMOTE_THEME_REJECTED") }
                     try remote.setTheme(theme)
                 case "GET_SCREENS": send(["id": id, "success": true, "screens": DisplayController.screens(), "localStop": pendingLocalStop, "updateHandoffFailed": pendingUpdateHandoffFailed]); pendingLocalStop = false; pendingUpdateHandoffFailed = false; continue
-                case "PREPARE_DISPLAYS": try prepareFromSite()
+                case "PREPARE_DISPLAYS": try await prepareFromSite()
                 case "IDENTIFY_SCREENS": identification.show()
-                case "RESTORE_DISPLAYS": try restoreFromSite()
+                case "RESTORE_DISPLAYS": try await restoreFromSite()
                 case "FOCUS_PRIVATE_REMOTE":
                     guard let origin else { throw HostError.code("REMOTE_ORIGIN_REQUIRED") }
                     try showRemote(action, origin: origin)
@@ -463,13 +519,13 @@ import Darwin
         do { try input.fileHandleForWriting.write(contentsOf: data + Data([10])) } catch { process?.terminate() }
     }
     @objc private func prepare() {
-        do { try prepareFromSite() } catch { status = "Подготовка не удалась — используйте инструкцию на сайте"; rebuildMenu() }
+        Task { @MainActor in do { try await prepareFromSite() } catch { if !coordinatorConnectionClosed { status = "Подготовка не удалась — используйте инструкцию на сайте"; rebuildMenu() } } }
     }
-    private func prepareFromSite() throws {
+    private func prepareFromSite() async throws {
         let alert = NSAlert(); alert.messageText = "Подготовить отдельный экран?"
         alert.informativeText = "Подключённые зеркальные дисплеи временно станут отдельными. Проектор сначала покажет только проверочный код. Исходная настройка сохранится; возврат — отдельной кнопкой после скрытия служебного окна."
         alert.addButton(withTitle: "Подготовить"); alert.addButton(withTitle: "Отмена")
-        guard alert.runModal() == .alertFirstButtonReturn else { throw HostError.code("LOCAL_CONFIRMATION_CANCELLED") }
+        guard await hostDialog.present(alert) == .alertFirstButtonReturn else { throw HostError.code("LOCAL_CONFIRMATION_CANCELLED") }
         do { projection.neutralize(); try display.prepareIndependentOutput(); status = "Выберите и проверьте экран на сайте" }
         catch HostError.code(let code) {
             status = code == "DISPLAY_RECOVERY_JOURNAL_INVALID" ? "Сохранённая настройка повреждена — используйте инструкцию на сайте" : "Сначала проверьте возврат сохранённой настройки экранов"
@@ -478,16 +534,16 @@ import Darwin
         catch { status = "Подготовка не удалась — используйте инструкцию на сайте"; rebuildMenu(); throw error }
         rebuildMenu()
     }
-    @objc private func stop() { lastRemoteAction = nil; pendingLocalStop = true; projection.neutralize(); remote.close(); identification.dismiss(); Task { await capture.stop() }; status = "Показ остановлен локально"; rebuildMenu() }
+    @objc private func stop() { lastRemoteAction = nil; pendingLocalStop = true; hostDialog.cancel(); projection.neutralize(); remote.close(); identification.dismiss(); Task { await capture.stop() }; status = "Показ остановлен локально"; rebuildMenu() }
     @objc private func restore() {
-        do { try restoreFromSite() } catch { status = "Возврат не удался — используйте настройки macOS"; rebuildMenu() }
+        Task { @MainActor in do { try await restoreFromSite() } catch { if !coordinatorConnectionClosed { status = "Возврат не удался — используйте настройки macOS"; rebuildMenu() } } }
     }
-    private func restoreFromSite() throws {
+    private func restoreFromSite() async throws {
         projection.neutralize(); remote.close(); Task { await capture.stop() }
         let alert = NSAlert(); alert.messageText = "Вернуть исходную настройку?"
         alert.informativeText = "Сначала скройте служебное окно преподавателя. При возврате дублирования аудитория снова увидит основной экран. Настройки, изменённые вами вручную, не будут перезаписаны."
         alert.addButton(withTitle: "Служебное окно скрыто — вернуть"); alert.addButton(withTitle: "Отмена")
-        guard alert.runModal() == .alertFirstButtonReturn else { throw HostError.code("LOCAL_CONFIRMATION_CANCELLED") }
+        guard await hostDialog.present(alert) == .alertFirstButtonReturn else { throw HostError.code("LOCAL_CONFIRMATION_CANCELLED") }
         do { let result = try display.restore(locallyConfirmed: true); status = result == "RESTORED" || result == "UNCHANGED" ? "Настройка возвращена" : "Настройка изменилась — возврат пропущен"; projection.close() }
         catch { status = "Возврат не удался — используйте настройки macOS"; rebuildMenu(); throw error }
         rebuildMenu()
@@ -518,10 +574,11 @@ import Darwin
         guard process.terminationStatus == 0, data.count <= 128 else { throw HostError.code("LOGIN_PERMISSION_REQUIRED") }
         return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    @objc private func startupHelp() {
+    @objc private func startupHelp() { Task { @MainActor in await presentStartupHelp() } }
+    private func presentStartupHelp() async {
         let alert = NSAlert(); alert.messageText = "Разрешить автозапуск"
         alert.informativeText = "Откройте Системные настройки → Основные → Объекты входа и расширения и разрешите Lecturer Projector. В macOS 14/15 раздел называется «Объекты входа». Это требуется только для запуска после входа в Mac."
-        alert.runModal()
+        _ = await hostDialog.present(alert)
         startupStatus = (try? bootstrapCommand("--login-status")) ?? "UNAVAILABLE"; rebuildMenu()
     }
     @objc private func unpair() {
@@ -532,15 +589,17 @@ import Darwin
         try? FileManager.default.removeItem(at: directory.appendingPathComponent("origin.txt")); origin = nil; savedConnectionAccount = nil; savedCredentialError = nil
         status = "Устройство отключено. Отзовите его также на сайте."; rebuildMenu()
     }
-    @objc private func help() {
+    @objc private func help() { Task { @MainActor in await presentHelp() } }
+    private func presentHelp() async {
         let alert = NSAlert(); alert.messageText = "Помощник проектора"
         alert.informativeText = "Помощник выводит публичную сцену и управляется сайтом/MAX. Он не захватывает экран в простое. Для удаления остановите показ, верните исходную настройку экранов и выберите «Удалить помощник…». Устройство также можно отозвать на сайте. Минимум macOS 14. Браузерный мастер работает без установки."
-        alert.runModal()
+        _ = await hostDialog.present(alert)
     }
-    @objc private func diagnostics() {
+    @objc private func diagnostics() { Task { @MainActor in await saveDiagnostics() } }
+    private func saveDiagnostics() async {
         let panel = NSSavePanel(); panel.nameFieldStringValue = "lecturer-projector-diagnostics.json"
         panel.title = "Сохранить диагностику без данных аккаунта"
-        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        guard await HostDialog.presentSavePanel(panel) == .OK, let destination = panel.url else { return }
         var report: [String: Any] = ["version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
                                     "platform": platform(), "osVersion": ProcessInfo.processInfo.operatingSystemVersionString,
                                     "startup": startupStatus, "installed": bootstrapExecutable() != nil,
@@ -552,19 +611,20 @@ import Darwin
         do { try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys, .prettyPrinted]).write(to: destination, options: .atomic) }
         catch { status = "Не удалось сохранить диагностику"; rebuildMenu() }
     }
-    @objc private func uninstall() {
+    @objc private func uninstall() { Task { @MainActor in await presentUninstall() } }
+    private func presentUninstall() async {
         guard pendingUpdater == nil, !FileManager.default.fileExists(atPath: directory.appendingPathComponent("display-recovery.json").path),
               let executable = bootstrapExecutable(), let rootPath = ProcessInfo.processInfo.environment["LA_PROJECTOR_INSTALL_ROOT"],
               URL(fileURLWithPath: rootPath).standardizedFileURL.path == directory.appendingPathComponent("install").standardizedFileURL.path,
               !FileManager.default.fileExists(atPath: URL(fileURLWithPath: rootPath).appendingPathComponent("update-transaction.json").path) else {
             let alert = NSAlert(); alert.messageText = "Сначала завершите подготовку"
             alert.informativeText = "Остановите показ и верните сохранённую настройку экранов. Если обновление не завершилось или приложение запущено не из установленного пакета, сохраните диагностику и обратитесь в поддержку. Нужные для восстановления файлы не удаляются."
-            alert.runModal(); return
+            _ = await hostDialog.present(alert); return
         }
         let alert = NSAlert(); alert.messageText = "Удалить помощник проектора?"
         alert.informativeText = "Показ будет остановлен, автозапуск отключён, локальный ключ устройства удалён. Приложение и установленные версии переместятся в Корзину. Отзовите устройство также на сайте. Сайт и MAX продолжат работать."
         alert.addButton(withTitle: "Удалить помощник"); alert.addButton(withTitle: "Отмена")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard await hostDialog.present(alert) == .alertFirstButtonReturn else { return }
         do {
             _ = try bootstrapCommand("--disable-login")
             let root = URL(fileURLWithPath: rootPath).standardizedFileURL
@@ -600,10 +660,12 @@ import Darwin
         }
     }
     @objc private func quit() { stop(); NSApp.terminate(nil) }
-    func applicationWillTerminate(_ notification: Notification) { projection.neutralize(); remote.close(); identification.dismiss(); generation = UUID(); CoordinatorShutdown.stop(process, input: input); process = nil; input = nil; terminationSignal?.cancel(); terminationSignal = nil; if instanceLock >= 0 { close(instanceLock) } }
+    func applicationWillTerminate(_ notification: Notification) { projection.neutralize(); remote.close(); identification.dismiss(); hostDialog.cancel(); generation = UUID(); coordinatorOutput?.stop(); coordinatorOutput = nil; CoordinatorShutdown.stop(process, input: input); process = nil; input = nil; terminationSignal?.cancel(); terminationSignal = nil; if instanceLock >= 0 { close(instanceLock) } }
 }
 
-if let index = CommandLine.arguments.firstIndex(of: "--capture-modes-self-test"), CommandLine.arguments.count > index + 1 {
+if let index = CommandLine.arguments.firstIndex(of: "--coordinator-pipe-self-test"), CommandLine.arguments.count > index + 1 {
+    CoordinatorPipeSelfTest.run(report: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if let index = CommandLine.arguments.firstIndex(of: "--capture-modes-self-test"), CommandLine.arguments.count > index + 1 {
     CaptureModesSelfTest.run(report: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if let index = CommandLine.arguments.firstIndex(of: "--credential-storage-self-test"), CommandLine.arguments.count > index + 1 {
     try CredentialStorageSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
