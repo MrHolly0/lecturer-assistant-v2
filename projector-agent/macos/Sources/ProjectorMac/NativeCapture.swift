@@ -240,12 +240,20 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
             guard !choices.isEmpty else { throw HostError.code("CAPTURE_NO_SOURCES") }
             let alert = NSAlert(); alert.messageText = "Какой экран показать?"
             alert.informativeText = "Пульт и окно проектора будут исключены из показа. Остальные окна выбранного экрана будут видны. Сначала проверьте предпросмотр."
-            let select = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 460, height: 32)); choices.forEach { select.addItem(withTitle: $0.0) }; alert.accessoryView = select
+            let select = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 460, height: 32))
+            let labels = Self.uniqueMenuLabels(choices.map(\.0))
+            select.menu = try Self.sourceMenu(labels: labels, sourceIDs: choices.map { $0.1.displayID })
+            select.selectItem(at: 0)
+            alert.accessoryView = select
             alert.addButton(withTitle: "Проверить кадр"); alert.addButton(withTitle: "Отмена")
             let response = await presentSelectionAlert(alert)
             guard generation == selection else { return }
             guard response == .alertFirstButtonReturn else { status(); return }
-            let choice = choices[select.indexOfSelectedItem]
+            let selectedID = (select.selectedItem?.representedObject as? NSNumber)?.uint32Value
+            guard let selectedIndex = Self.menuChoiceIndex(selectedID: selectedID, sourceIDs: choices.map { $0.1.displayID }) else {
+                throw HostError.code("CAPTURE_SOURCE_SELECTION_INVALID")
+            }
+            let choice = choices[selectedIndex]
             let filter = try Self.protectedDisplayFilter(display: choice.1, applications: ownApps)
             sourceKind = "display"
             try await startPreview(filter: filter, width: choice.1.width, height: choice.1.height, name: choice.0, selectionID: selection)
@@ -266,17 +274,27 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
                 let app = window.owningApplication?.applicationName ?? "Приложение"
                 let title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 return (String((title.isEmpty ? app : app + " · " + title).prefix(160)), window)
-            }.sorted { $0.0.localizedCaseInsensitiveCompare($1.0) == .orderedAscending }
+            }.sorted {
+                let comparison = $0.0.localizedCaseInsensitiveCompare($1.0)
+                return comparison == .orderedSame ? $0.1.windowID < $1.1.windowID : comparison == .orderedAscending
+            }
             guard !choices.isEmpty else { throw HostError.code("CAPTURE_NO_SOURCES") }
             let alert = NSAlert(); alert.messageText = "Какое окно показать?"
             alert.informativeText = "Выберите учебное окно. Другие окна и пульт не передаются. Сначала проверьте предпросмотр."
             let select = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 460, height: 32))
-            choices.forEach { select.addItem(withTitle: $0.0) }; alert.accessoryView = select
+            let labels = Self.uniqueMenuLabels(choices.map(\.0))
+            select.menu = try Self.sourceMenu(labels: labels, sourceIDs: choices.map { $0.1.windowID })
+            select.selectItem(at: 0)
+            alert.accessoryView = select
             alert.addButton(withTitle: "Проверить кадр"); alert.addButton(withTitle: "Отмена")
             let response = await presentSelectionAlert(alert)
             guard generation == selection else { return }
             guard response == .alertFirstButtonReturn else { status(); return }
-            let choice = choices[select.indexOfSelectedItem]
+            let selectedID = (select.selectedItem?.representedObject as? NSNumber)?.uint32Value
+            guard let selectedIndex = Self.menuChoiceIndex(selectedID: selectedID, sourceIDs: choices.map { $0.1.windowID }) else {
+                throw HostError.code("CAPTURE_SOURCE_SELECTION_INVALID")
+            }
+            let choice = choices[selectedIndex]
             let filter = try Self.manualWindowFilter(choice.1)
             let rect = filter.contentRect, scale = Double(filter.pointPixelScale)
             guard rect.width.isFinite, rect.height.isFinite, scale.isFinite, rect.width > 0, rect.height > 0, scale > 0,
@@ -296,12 +314,79 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
     static func manualWindowAllowed(_ window: SCWindow) -> Bool {
         manualWindowOwnerAllowed(pid: window.owningApplication?.processID, bundleID: window.owningApplication?.bundleIdentifier)
     }
+    static func uniqueMenuLabels(_ labels: [String]) -> [String] {
+        let totals = Dictionary(grouping: labels, by: { $0 }).mapValues(\.count)
+        var seen: [String: Int] = [:]
+        let reserved = Set(labels)
+        var emitted = Set<String>()
+        return labels.map { label in
+            seen[label, default: 0] += 1
+            guard (totals[label] ?? 0) > 1 else {
+                emitted.insert(label)
+                return label
+            }
+            let ordinal = seen[label] ?? 1
+            var candidate = "\(label) · \(ordinal)"
+            var collision = 1
+            while reserved.contains(candidate) || emitted.contains(candidate) {
+                candidate = "\(label) · \(ordinal) · \(collision)"
+                collision += 1
+            }
+            emitted.insert(candidate)
+            return candidate
+        }
+    }
+    static func sourceMenu(labels: [String], sourceIDs: [UInt32]) throws -> NSMenu {
+        guard labels.count == sourceIDs.count, Set(sourceIDs).count == sourceIDs.count else {
+            throw HostError.code("CAPTURE_SOURCE_MENU_IDENTITY_INVALID")
+        }
+        let menu = NSMenu(title: "")
+        menu.autoenablesItems = false
+        for index in labels.indices {
+            let item = NSMenuItem(title: labels[index], action: nil, keyEquivalent: "")
+            item.representedObject = NSNumber(value: sourceIDs[index])
+            item.isEnabled = true
+            menu.addItem(item)
+        }
+        return menu
+    }
+    static func menuChoiceIndex(selectedID: UInt32?, sourceIDs: [UInt32]) -> Int? {
+        guard let selectedID else { return nil }
+        let matches = sourceIDs.indices.filter { sourceIDs[$0] == selectedID }
+        guard matches.count == 1 else { return nil }
+        return matches[0]
+    }
     static func manualWindowFilter(_ window: SCWindow) throws -> SCContentFilter {
         guard manualWindowAllowed(window) else { throw HostError.code("CAPTURE_PRIVATE_SOURCE_REJECTED") }
         return exactWindowFilter(window)
     }
     static func exactWindowFilter(_ window: SCWindow) -> SCContentFilter { SCContentFilter(desktopIndependentWindow: window) }
     static func exerciseManualSelectionFixture() async throws -> [String: Any] {
+        let repeatedTitle = "Редактор · Учебный проект"
+        let naturalSuffix = repeatedTitle + " · 1"
+        let duplicateLabels = uniqueMenuLabels([repeatedTitle, repeatedTitle, naturalSuffix])
+        let duplicateSourceIDs: [UInt32] = [1042, 2084]
+        let menu = try sourceMenu(labels: duplicateLabels, sourceIDs: [1042, 2084, 3126])
+        let selectedObject = menu.item(at: 1)?.representedObject as? NSNumber
+        guard duplicateLabels == [repeatedTitle + " · 1 · 1", repeatedTitle + " · 2", naturalSuffix],
+              !menu.autoenablesItems,
+              menu.numberOfItems == 3,
+              menu.item(at: 0)?.title == duplicateLabels[0],
+              menu.item(at: 1)?.title == duplicateLabels[1],
+              menu.item(at: 2)?.title == duplicateLabels[2],
+              menu.item(at: 0)?.isEnabled == true,
+              menu.item(at: 1)?.isEnabled == true,
+              menu.item(at: 2)?.isEnabled == true,
+              (menu.item(at: 0)?.representedObject as? NSNumber)?.uint32Value == 1042,
+              selectedObject?.uint32Value == 2084,
+              (menu.item(at: 2)?.representedObject as? NSNumber)?.uint32Value == 3126,
+              menuChoiceIndex(selectedID: duplicateSourceIDs[1], sourceIDs: duplicateSourceIDs) == 1,
+              menuChoiceIndex(selectedID: nil, sourceIDs: duplicateSourceIDs) == nil,
+              menuChoiceIndex(selectedID: 9999, sourceIDs: duplicateSourceIDs) == nil,
+              menuChoiceIndex(selectedID: duplicateSourceIDs[1], sourceIDs: [duplicateSourceIDs[1], duplicateSourceIDs[1]]) == nil,
+              (try? sourceMenu(labels: ["one", "two"], sourceIDs: [7, 7])) == nil else {
+            throw HostError.code("CAPTURE_MENU_STABLE_SELECTION_FIXTURE_FAILED")
+        }
         let own = ProcessInfo.processInfo.processIdentifier
         guard !manualWindowOwnerAllowed(pid: own, bundleID: "org.example.fixture"),
               !manualWindowOwnerAllowed(pid: own + 1, bundleID: "ru.university.lecturer-projector.host"),
@@ -351,6 +436,9 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
                 "manualDenialStopsBeforeEnumeration": true, "selectionReplacementNoIdle": true,
                 "requestIDsEchoed": true, "lateSourceResultRejected": true,
                 "cancelInvalidatesPendingSelection": true, "cancelInvalidatesPendingPermission": true,
+                "duplicateWindowTitlesDisambiguated": true, "menuSelectionUsesStableIdentity": true,
+                "naturalSuffixCollisionAvoided": true, "menuItemCountAndIdentityPreserved": true,
+                "sourceMenuItemsRemainEnabled": true,
                 "manualPathDoesNotActivatePicker": true]
     }
     static func exerciseSnapshotFixture() async throws -> [String: Any] {
