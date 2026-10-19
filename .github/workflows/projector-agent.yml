@@ -22,8 +22,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DOTNET_CLI_TELEMETRY_OPTOUT: 1
-  DOTNET_GENERATE_ASPNET_CERTIFICATE: false
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_GENERATE_ASPNET_CERTIFICATE: "false"
 
 jobs:
   policy-and-updater:
@@ -41,6 +41,7 @@ jobs:
 
   windows-package:
     needs: policy-and-updater
+    timeout-minutes: 25
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -57,14 +58,17 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-      - name: Locate or install Inno Setup compiler
+      - name: Install pinned Inno Setup compiler on isolated runner
+        timeout-minutes: 5
         shell: pwsh
         run: |
-          $compiler = "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
-          if (-not (Test-Path $compiler)) {
-            winget install --id JRSoftware.InnoSetup --exact --silent --accept-package-agreements --accept-source-agreements
-            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed on isolated CI runner' }
-          }
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.0-x64.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' -OutFile $installer
+          if ((Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f') { throw 'Inno Setup checksum mismatch' }
+          $compilerRoot = Join-Path $env:RUNNER_TEMP 'projector-inno'
+          $install = Start-Process $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/CURRENTUSER', "/DIR=`"$compilerRoot`"") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw 'Inno Setup installation failed on isolated CI runner' }
+          $compiler = Join-Path $compilerRoot 'ISCC.exe'
           if (-not (Test-Path $compiler)) { throw 'ISCC compiler is unavailable' }
           "PROJECTOR_ISCC=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Build per-user development installer and update package
@@ -90,6 +94,7 @@ jobs:
 
   macos-package:
     needs: policy-and-updater
+    timeout-minutes: 25
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

@@ -48,7 +48,8 @@ UPDATE_CHECK_REQUESTED; отсутствующая metadata — RELEASE_FEED_NOT
 присутствуют с первого исходного пакета. Автоматический source path включается только при
 реальном signed envelope в `release` и запуске из установленного stable launcher.
 В текущем каталоге такого релиза нет, поэтому сайт не предлагает скачивание и online
-update. Development EXE/DMG доступны отдельно для испытаний.
+update. Development DMG собраны отдельно для испытаний. Windows EXE предусмотрен
+скриптом и native CI; локальная эмуляционная упаковка на Mac не дала установщик.
 
 Недостаёт перед первым публичным подписанным release:
 
