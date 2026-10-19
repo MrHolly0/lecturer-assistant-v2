@@ -117,7 +117,7 @@ internal static class WorkspaceSelfTest
                       window.addEventListener('lecture-projector-theme', event => window.fixtureThemeEvents.push(event.detail.theme));
                       window.addEventListener('lecture-projector-native', event => window.fixtureCapabilityEvents.push(event.detail.platform));
                     </script>
-                    <h2>Пульт</h2><p>Изолированная проверка WebView2</p>
+                    <h2>Пульт</h2><p>Изолированная проверка WebView2</p><textarea id="fixtureDraft"></textarea>
                     """, Stage);
                 Stage("waiting for local fixture navigation");
                 Assert(await remote.Ready.WaitAsync(TimeSpan.FromSeconds(30)), "WebView2 fixture loaded");
@@ -137,7 +137,7 @@ internal static class WorkspaceSelfTest
                 await ThemeSnapshot("initialBrowserReady");
                 Passed("site theme available before bootstrap");
                 Stage("updating theme without navigation");
-                remote.SetTheme("light");
+                await remote.SetTheme("light");
                 await ThemeSnapshot("lightRequested");
                 Assert(remote.ProfileColorScheme == "Light", "native profile received light preference");
                 await WaitForFixture(remote, "window.lectureProjectorNative.theme === 'light' && localStorage.getItem('la_theme_preference') === 'light' && window.fixtureThemeEvents.includes('light')", "live site theme event delivery");
@@ -146,8 +146,14 @@ internal static class WorkspaceSelfTest
                 await WaitForFixture(remote, "!matchMedia('(prefers-color-scheme: dark)').matches && matchMedia('(prefers-color-scheme: light)').matches", "live browser light preference delivery");
                 await ThemeSnapshot("lightBrowserReady");
                 Assert(await remote.RunFixtureScript("window.fixtureInitialTheme === 'dark' && window.fixtureStoredTheme === 'dark'") == "true", "theme change does not reload the document");
-                var invalidThemeRejected = false; try { remote.SetTheme("invalid"); } catch (InvalidDataException) { invalidThemeRejected = true; }
+                var invalidThemeRejected = false; try { await remote.SetTheme("invalid"); } catch (InvalidDataException) { invalidThemeRejected = true; }
                 Assert(invalidThemeRejected && await remote.RunFixtureScript("window.lectureProjectorNative.theme === 'light'") == "true", "invalid theme preserves current remote");
+                await remote.RunFixtureScript("document.getElementById('fixtureDraft').value = 'Ответ преподавателя'");
+                var darkUpdate = remote.SetTheme("dark"); var lightUpdate = remote.SetTheme("light");
+                await Task.WhenAll(darkUpdate, lightUpdate);
+                await WaitForFixture(remote, "window.lectureProjectorNative.theme === 'light' && matchMedia('(prefers-color-scheme: light)').matches", "sequential renderer theme delivery");
+                Assert(remote.ProfileColorScheme == "Light" && await remote.RunFixtureScript("document.getElementById('fixtureDraft').value === 'Ответ преподавателя' && window.fixtureInitialTheme === 'dark'") == "true", "rapid theme updates preserve draft and document");
+                await ThemeSnapshot("rapidUpdatesSettled");
                 Passed("inherited and live site theme without reload");
                 Stage("collapsing through native bridge");
                 await remote.RunFixtureScript("window.lectureProjectorNative.resize({height:60,collapsed:true})");

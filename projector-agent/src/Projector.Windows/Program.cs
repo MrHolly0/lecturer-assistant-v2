@@ -198,7 +198,9 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
                 {
                     case "SET_THEME":
                         if (action.Theme is not ("light" or "dark")) throw new InvalidDataException("REMOTE_THEME_REJECTED");
-                        remoteTheme = action.Theme; remote?.SetTheme(remoteTheme); openingRemote?.SetTheme(remoteTheme);
+                        remoteTheme = action.Theme;
+                        if (remote is { } currentRemote) await currentRemote.SetTheme(remoteTheme);
+                        if (openingRemote is { } pendingRemote) await pendingRemote.SetTheme(remoteTheme);
                         completion.TrySetResult(new(action.Id, true)); return;
                     case "PREPARE_DISPLAYS":
                         if (!Prepare()) { completion.TrySetResult(new(action.Id, false, "LOCAL_PREPARATION_CANCELLED")); return; }

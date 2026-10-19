@@ -14,6 +14,7 @@ internal sealed class RemoteForm : Form
     private readonly Action? focusProjection;
     private readonly Action? stopProjection;
     private string theme;
+    private Task rendererTheme = Task.CompletedTask;
     private readonly string profileRoot = Path.Combine(Path.GetTempPath(), "LecturerProjectorRemote", Guid.NewGuid().ToString("N"));
     private WebView2? web;
     private bool collapsed;
@@ -60,6 +61,9 @@ internal sealed class RemoteForm : Form
         if (disposed) return;
         var core = control.CoreWebView2;
         ApplyNativeTheme();
+        progress?.Invoke("synchronizing renderer theme");
+        await QueueRendererTheme();
+        if (disposed) return;
         if (fixtureHtml is not null)
         {
             core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
@@ -155,17 +159,34 @@ internal sealed class RemoteForm : Form
         origin.Scheme == "https" && LectureWorkspace.Allowed(origin, candidate);
 
     private Color ThemeBackground => theme == "dark" ? Color.FromArgb(17, 24, 39) : Color.White;
-    internal void SetTheme(string value)
+    internal Task SetTheme(string value)
     {
         if (value is not ("light" or "dark")) throw new InvalidDataException("REMOTE_THEME_REJECTED");
-        if (disposed || theme == value) return;
-        theme = value; BackColor = ThemeBackground; ApplyNativeTheme(); SendTheme();
+        if (disposed) return Task.CompletedTask;
+        if (theme == value) return rendererTheme;
+        theme = value; BackColor = ThemeBackground; ApplyNativeTheme();
+        return QueueRendererTheme();
     }
     private void ApplyNativeTheme()
     {
         if (disposed || web?.CoreWebView2 is null) return;
         web.DefaultBackgroundColor = ThemeBackground;
         web.CoreWebView2.Profile.PreferredColorScheme = theme == "dark" ? CoreWebView2PreferredColorScheme.Dark : CoreWebView2PreferredColorScheme.Light;
+    }
+    private Task QueueRendererTheme()
+    {
+        if (disposed || web?.CoreWebView2 is not { } core) return Task.CompletedTask;
+        return rendererTheme = SynchronizeRendererTheme(rendererTheme, core, theme);
+    }
+    private async Task SynchronizeRendererTheme(Task previous, CoreWebView2 core, string requestedTheme)
+    {
+        // CDP calls can complete out of order. Keep this owned renderer's updates sequential.
+        try { await previous; } catch (Exception ex) when (ex is not OutOfMemoryException) { }
+        if (disposed || web?.CoreWebView2 != core) return;
+        var parameters = JsonSerializer.Serialize(new { features = new[] { new { name = "prefers-color-scheme", value = requestedTheme } } }, Wire.Json);
+        await core.CallDevToolsProtocolMethodAsync("Emulation.setEmulatedMedia", parameters).WaitAsync(TimeSpan.FromSeconds(10));
+        if (disposed || web?.CoreWebView2 != core || theme != requestedTheme) return;
+        SendTheme();
     }
     private void SendTheme()
     {
