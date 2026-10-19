@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import ru.university.assistant.projection.api.FrameFixture;
+import ru.university.assistant.projection.api.VideoFixture;
 import ru.university.assistant.projection.api.ProjectionContracts.Platform;
 import ru.university.assistant.projection.api.ProjectionContracts.SignedReleaseEnvelope;
 import ru.university.assistant.projection.internal.ProjectionCatalogStore;
@@ -311,6 +312,19 @@ class ProjectionIntegrationTest extends LiveFlowTestBase {
         json(post("/api/v1/courses/{course}/sessions/{session}/projection/commands", courseId, sessionId)
                 .header("X-Projection-View-Token", grant).contentType(MediaType.APPLICATION_JSON)
                 .content("{}"), 401);
+        UUID epoch = UUID.randomUUID();
+        String upload = "/api/v1/courses/" + courseId + "/sessions/" + sessionId
+                + "/screen-share/" + shareId + "/video/" + epoch;
+        json(put(upload + "/init?codec=" + VideoFixture.CODEC).header("Authorization", "Bearer " + lecturerToken)
+                .contentType("video/mp4").content(VideoFixture.init()), 204);
+        json(put(upload + "/segments/0").header("Authorization", "Bearer " + lecturerToken)
+                .contentType("video/mp4").content(VideoFixture.segment()), 204);
+        json(get(viewerPath + "/video").header("X-Projection-View-Token", grant), 200);
+        mockMvc.perform(get(viewerPath + "/video/" + epoch + "/segments/0")
+                .header("X-Projection-View-Token", grant).accept("video/mp4"))
+                .andExpect(status().isOk()).andExpect(content().bytes(VideoFixture.segment()));
+        policy(false, "0.1.0");
+        json(get(viewerPath + "/video").header("X-Projection-View-Token", grant), 403);
     }
 
     @Test

@@ -115,6 +115,13 @@ export async function sendStudentSlideToChat(
   );
 }
 
+export async function sendStudentShareFrameToChat(joinCode: string, participantToken: string) {
+  await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/screen-share/frame/chat`, {
+    method: "POST",
+    headers: participantToken ? { "X-Participant-Token": participantToken } : {}
+  });
+}
+
 export async function submitStudentSignal(
   joinCode: string,
   participantToken: string,

@@ -13,8 +13,9 @@ class ShareFrameTest {
     @Test
     void previewDimensionsAndCompressedBytesAreBoundedBeforeRasterAllocation() throws Exception {
         assertDoesNotThrow(() -> ShareFrame.validate(FrameFixture.jpeg(960, 540)));
-        expect(HttpStatus.BAD_REQUEST, FrameFixture.jpeg(961, 200));
-        expect(HttpStatus.BAD_REQUEST, FrameFixture.jpeg(200, 541));
+        assertDoesNotThrow(() -> ShareFrame.validate(FrameFixture.jpeg(1920, 1080)));
+        expect(HttpStatus.BAD_REQUEST, FrameFixture.jpeg(1921, 1080));
+        expect(HttpStatus.BAD_REQUEST, FrameFixture.jpeg(1920, 1081));
         expect(HttpStatus.PAYLOAD_TOO_LARGE, new byte[ShareFrame.MAX_BYTES + 1]);
         expect(HttpStatus.BAD_REQUEST, new byte[] { 1, 2, 3, 4 });
         expect(HttpStatus.BAD_REQUEST, new byte[] { (byte) 0xff, (byte) 0xd8, (byte) 0xff, (byte) 0xd9 });

@@ -182,7 +182,7 @@ peer path may use an optional low-frame-rate JPEG preview over the existing HTTP
 This is not full-motion video, audio transport or an SFU.
 
 - Staff owner: `PUT /api/v1/courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}/frame`,
-  raw `Content-Type: image/jpeg`. At most 256 KiB and 960 × 540, at most two accepted
+  raw `Content-Type: image/jpeg`. At most 256 KiB and 1920 × 1080, at most two accepted
   frames per second. Read is bounded at 256 KiB + 1 even without honest Content-Length;
   metadata dimensions are checked without allocating a raster or caching input on disk.
 - Current student receiver: GET its existing viewer path plus `/frame`, using the current
@@ -203,3 +203,58 @@ Frame downloads do not join/rejoin a session or renew a viewer/host lease. Conti
 existing signalling heartbeat; kicked, banned, disabled or unrelated people cannot read
 an old registered viewer's frame. The same current host authorization applies to both
 video signalling and HTTPS previews.
+
+## Encoded H264 video over HTTPS
+
+An authenticated publisher may send a single-video-track fragmented MP4 stream over
+the same HTTPS origin. This transports actual encoded video, with an initialization
+and independently decodable fragments; JPEG previews remain a separate optional path.
+It does not require an additional public UDP port. The browser receiver uses a real
+video decoder, MSE/MMS where supported, and the available fullscreen/PiP APIs. Device
+and MAX compatibility still requires physical playback tests.
+
+Publisher endpoints below the existing staff `screen-share/{shareId}` path:
+
+- `PUT /video/{epoch}/init?codec=avc1.XXXXXX`: `Content-Type: video/mp4`, at most
+  128 KiB, exactly bounded `ftyp` plus `moov`. One H264 `avc1` video track, no audio.
+  The server derives the exact codec from `avcC`; encoders may add compatibility
+  constraint flags to the requested profile. Profile/level must match the request.
+- `PUT /video/{epoch}/segments/{sequence}`: `video/mp4`, at most 2 MiB, bounded
+  `moof` plus `mdat` with a valid fragment/sample-table structure. The publisher must
+  start each fragment at a keyframe. The server checks framing without decoding media;
+  framing validation is not proof that every encoded sample can play on every device.
+- Epoch is a UUID; sequence starts at zero and must be contiguous. Retained identical
+  retries are idempotent; changed retries and gaps return 409. An expired/pruned retry
+  returns 410. Use a new UUID on replacement, reconnection or resume after pause.
+  Retired UUIDs cannot be reused within the same share; the bounded epoch limit requires
+  starting a new share after too many replacements.
+
+Both student and native receiver paths support these suffixes below their existing
+`screen-share/viewers/{viewerId}` path, with their current participant/output grant:
+
+- `GET /video`: `{shareId,epoch,codec,firstSequence,lastSequence}`, or 204 until an
+  initialization and at least one unexpired fragment are available. A late receiver
+  starts from a retained keyframe rather than expecting the beginning of the lecture.
+- `GET /video/{epoch}/init` and `GET /video/{epoch}/segments/{sequence}`: `video/mp4`,
+  `Cache-Control: no-store`, `nosniff`. Send `Accept: video/mp4` for these binary requests.
+  A stale epoch or missing/pruned fragment returns 410; refresh metadata and discard
+  the old decode buffer. Metadata 204 means no currently playable ring, pause or stop.
+
+Register a viewer through the existing signalling GET first. Every video read rechecks
+current participation or the device grant and the exact registered viewer identity.
+Reads refresh only that existing viewer's activity for playback; they never join/rejoin
+a participant or extend the publisher lease. The current publisher, owner course rights,
+device policy/grant and host lease remain authoritative.
+
+The RAM ring retains at most six fragments, at most 8 MiB of initialization/fragment
+payloads per room and 64 MiB across rooms. Each fragment expires after six seconds;
+storage is pruned independently of incoming media requests. Budget exhaustion returns
+429 and cannot grow an unbounded queue. These limits describe stored payloads, not total
+process memory including concurrent HTTP buffers and video decoder memory on clients.
+There are no media files, database blobs, frame history or payload logs.
+
+A committed pause or terminal session transition invalidates buffered JPEG/video
+immediately on this server instance, even when no media poll observed the paused state.
+Resume requires a fresh epoch. Stop, host lease expiry and permission revocation deny
+future reads. A receiver must clear already downloaded/decoded media when access or
+playback state changes; data already delivered cannot be recalled from a client.

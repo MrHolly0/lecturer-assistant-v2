@@ -11,6 +11,8 @@ import org.springframework.web.server.ResponseStatusException;
 /** A bounded JPEG preview, never decoded to an unbounded raster or cached on disk. */
 final class ShareFrame {
     static final int MAX_BYTES = 256 * 1024;
+    static final int MAX_WIDTH = 1920;
+    static final int MAX_HEIGHT = 1080;
 
     private ShareFrame() {}
 
@@ -27,9 +29,9 @@ final class ShareFrame {
             reader.setInput(input, true, true);
             // Metadata only: never call read(), which would allocate a raster from attacker dimensions.
             int width = reader.getWidth(0), height = reader.getHeight(0);
-            if (width < 1 || height < 1 || width > 960 || height > 540) {
+            if (width < 1 || height < 1 || width > MAX_WIDTH || height > MAX_HEIGHT) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Размер кадра должен быть не больше 960 × 540");
+                        "Размер кадра должен быть не больше 1920 × 1080");
             }
         } catch (IOException | IllegalArgumentException exception) {
             throw invalid();

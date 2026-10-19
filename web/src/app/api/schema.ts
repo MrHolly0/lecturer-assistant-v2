@@ -2477,6 +2477,186 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}/video/{epoch}/init": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Publish a bounded single-video-track H264/fMP4 initialization.
+     * @description Current publisher only. video/mp4; no disk storage. Identical retained retries are idempotent. Paused, retired or replaced epochs cannot resume. Up to six retained fragments, 8 MiB per room, 64 MiB total stored payloads; each fragment expires after six seconds.
+     */
+    put: operations["uploadShareVideoInit"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}/video/{epoch}/segments/{sequence}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Publish a contiguous independently decodable fMP4 fragment.
+     * @description Current publisher only. video/mp4; no disk storage. Identical retained retries are idempotent. Paused, retired or replaced epochs cannot resume. Up to six retained fragments, 8 MiB per room, 64 MiB total stored payloads; each fragment expires after six seconds.
+     */
+    put: operations["uploadShareVideoSegment"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/screen-share/viewers/{viewerId}/video": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read only this authorized existing viewer’s public encoded video.
+     * @description Revalidates current participation or device grant on every request. May refresh only this existing viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept: video/mp4 for binary parts.
+     */
+    get: operations["getStudentShareVideoMetadata"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/screen-share/viewers/{viewerId}/video/{epoch}/init": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read only this authorized existing viewer’s public encoded video.
+     * @description Revalidates current participation or device grant on every request. May refresh only this existing viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept: video/mp4 for binary parts.
+     */
+    get: operations["getStudentShareVideoInit"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/screen-share/viewers/{viewerId}/video/{epoch}/segments/{sequence}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read only this authorized existing viewer’s public encoded video.
+     * @description Revalidates current participation or device grant on every request. May refresh only this existing viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept: video/mp4 for binary parts.
+     */
+    get: operations["getStudentShareVideoSegment"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}/video": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read only this authorized existing viewer’s public encoded video.
+     * @description Revalidates current participation or device grant on every request. May refresh only this existing viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept: video/mp4 for binary parts.
+     */
+    get: operations["getProjectionShareVideoMetadata"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}/video/{epoch}/init": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read only this authorized existing viewer’s public encoded video.
+     * @description Revalidates current participation or device grant on every request. May refresh only this existing viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept: video/mp4 for binary parts.
+     */
+    get: operations["getProjectionShareVideoInit"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}/video/{epoch}/segments/{sequence}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read only this authorized existing viewer’s public encoded video.
+     * @description Revalidates current participation or device grant on every request. May refresh only this existing viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept: video/mp4 for binary parts.
+     */
+    get: operations["getProjectionShareVideoSegment"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/screen-share/frame/chat": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Send the current fresh public demonstration image to this participant’s own linked MAX chat.
+     * @description No request body. Revalidates participant and linked chat ownership. Takes only a fresh current JPEG; no viewer registration, permanent media file or caller-chosen recipient.
+     */
+    post: operations["sendShareFrameToStudentChat"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2514,6 +2694,18 @@ export interface components {
       offer: string | null;
       paused: boolean;
       iceServers: components["schemas"]["ShareIceServer"][];
+    };
+    ShareVideoMetadata: {
+      /** Format: uuid */
+      shareId: string;
+      /** Format: uuid */
+      epoch: string;
+      /** @description Exact codec profile/compatibility/level derived from avcC, including encoder-added constraint flags. */
+      codec: string;
+      /** Format: int64 */
+      firstSequence: number;
+      /** Format: int64 */
+      lastSequence: number;
     };
     /** @enum {string} */
     ProjectionPlatform: "WINDOWS_X64" | "WINDOWS_ARM64" | "MACOS_X64" | "MACOS_ARM64";
@@ -8025,7 +8217,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Invalid JPEG metadata or dimensions greater than 960 by 540. */
+      /** @description Invalid JPEG metadata or dimensions greater than 1920 by 1080. */
       400: {
         headers: {
           [name: string]: unknown;
@@ -8181,6 +8373,546 @@ export interface operations {
       };
       /** @description Signalling viewer not registered or its heartbeat expired. */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  uploadShareVideoInit: {
+    parameters: {
+      query: {
+        codec: string;
+      };
+      header?: never;
+      path: {
+        courseId: string;
+        sessionId: string;
+        shareId: string;
+        epoch: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "video/mp4": string;
+      };
+    };
+    responses: {
+      /** @description Accepted without persistence. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid MP4 framing, H264 codec metadata or sequence. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Staff authentication required. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Only the current share owner may publish. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Paused, missing initialization, retired epoch, conflicting retry or sequence gap. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Share ended, publisher lease expired or retry fragment pruned. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Initialization exceeds 128 KiB or fragment exceeds 2 MiB; read is bounded without Content-Length. */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Content-Type must be video/mp4. */
+      415: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Stored-payload budget, room or epoch limit reached. */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  uploadShareVideoSegment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: string;
+        sessionId: string;
+        shareId: string;
+        epoch: string;
+        sequence: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "video/mp4": string;
+      };
+    };
+    responses: {
+      /** @description Accepted without persistence. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid MP4 framing, H264 codec metadata or sequence. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Staff authentication required. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Only the current share owner may publish. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Paused, missing initialization, retired epoch, conflicting retry or sequence gap. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Share ended, publisher lease expired or retry fragment pruned. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Initialization exceeds 128 KiB or fragment exceeds 2 MiB; read is bounded without Content-Length. */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Content-Type must be video/mp4. */
+      415: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Stored-payload budget, room or epoch limit reached. */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getStudentShareVideoMetadata: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Current participant receipt when not using an authenticated participating account. */
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: string;
+        viewerId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current playable ring; only after at least one unexpired fragment. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ShareVideoMetadata"];
+        };
+      };
+      /** @description No current initialized video with an unexpired fragment, paused or stopped. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, invalid or expired participant/output grant. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Viewer not registered or its activity expired. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getStudentShareVideoInit: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Current participant receipt when not using an authenticated participating account. */
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: string;
+        viewerId: string;
+        epoch: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current initialization or retained fragment; no-store/nosniff. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "video/mp4": string;
+        };
+      };
+      /** @description Missing, invalid or expired participant/output grant. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Viewer not registered or its activity expired. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Stale epoch or missing/pruned fragment. Refresh metadata; do not replay old media. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getStudentShareVideoSegment: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Current participant receipt when not using an authenticated participating account. */
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: string;
+        viewerId: string;
+        epoch: string;
+        sequence: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current initialization or retained fragment; no-store/nosniff. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "video/mp4": string;
+        };
+      };
+      /** @description Missing, invalid or expired participant/output grant. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Viewer not registered or its activity expired. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Stale epoch or missing/pruned fragment. Refresh metadata; do not replay old media. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getProjectionShareVideoMetadata: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: string;
+        viewerId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current playable ring; only after at least one unexpired fragment. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ShareVideoMetadata"];
+        };
+      };
+      /** @description No current initialized video with an unexpired fragment, paused or stopped. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, invalid or expired participant/output grant. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Viewer not registered or its activity expired. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getProjectionShareVideoInit: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: string;
+        viewerId: string;
+        epoch: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current initialization or retained fragment; no-store/nosniff. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "video/mp4": string;
+        };
+      };
+      /** @description Missing, invalid or expired participant/output grant. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Viewer not registered or its activity expired. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Stale epoch or missing/pruned fragment. Refresh metadata; do not replay old media. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getProjectionShareVideoSegment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: string;
+        viewerId: string;
+        epoch: string;
+        sequence: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current initialization or retained fragment; no-store/nosniff. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "video/mp4": string;
+        };
+      };
+      /** @description Missing, invalid or expired participant/output grant. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Viewer not registered or its activity expired. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Stale epoch or missing/pruned fragment. Refresh metadata; do not replay old media. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  sendShareFrameToStudentChat: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Delivery accepted; no response body. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid participant identity. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Wrong ownership, kicked or banned participant. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No linked MAX chat, no fresh image, paused or inactive sharing. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Delivery cooldown or capacity limit. */
+      429: {
         headers: {
           [name: string]: unknown;
         };

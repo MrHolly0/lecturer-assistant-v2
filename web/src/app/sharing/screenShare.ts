@@ -8,14 +8,21 @@ import {
   uploadShareFrame,
   type ShareStatus
 } from "../api/share-api";
-import { captureOptions, validateCaptureSurface } from "./capturePolicy";
+import {
+  captureOptions,
+  captureSurface,
+  validateCaptureSurface,
+  type CaptureSurface
+} from "./capturePolicy";
 import { gatheredDescription, localShareChannel } from "./rtc";
+import { ShareVideoPublisher } from "./videoPublisher";
 
 type Scope = { courseId: string; sessionId: string; joinCode: string };
 export type ShareSnapshot = {
   phase: "idle" | "choosing" | "preview" | "publishing" | "error";
   stream: MediaStream | null;
   sourceName: string;
+  surface: CaptureSurface;
   error: string | null;
   paused: boolean;
   viewers: number;
@@ -27,6 +34,7 @@ class ScreenShare {
     phase: "idle",
     stream: null,
     sourceName: "",
+    surface: "unknown",
     error: null,
     paused: false,
     viewers: 0,
@@ -47,6 +55,8 @@ class ScreenShare {
   private frameCanvas: HTMLCanvasElement | null = null;
   private frameTimer: ReturnType<typeof setTimeout> | null = null;
   private frameAbort: AbortController | null = null;
+  private videoPublisher: ShareVideoPublisher | null = null;
+  private videoRetry: ReturnType<typeof setTimeout> | null = null;
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -63,7 +73,7 @@ class ScreenShare {
     this.update({ phase: "choosing", scope, error: null });
     try {
       if (!navigator.mediaDevices?.getDisplayMedia)
-        throw new Error("Откройте сайт в настольном Chrome или Edge для демонстрации окна.");
+        throw new Error("Откройте сайт в настольном браузере с поддержкой демонстрации экрана.");
       const stream = await navigator.mediaDevices.getDisplayMedia(captureOptions);
       if (generation !== this.generation) {
         stream.getTracks().forEach((track) => track.stop());
@@ -90,10 +100,19 @@ class ScreenShare {
         },
         { once: true }
       );
+      const surface = captureSurface(track.getSettings());
+      if ("contentHint" in track) track.contentHint = "detail";
+      const names = {
+        monitor: "Экран преподавателя",
+        window: "Окно преподавателя",
+        browser: "Вкладка преподавателя",
+        unknown: "Демонстрация преподавателя"
+      };
       this.update({
         phase: "preview",
         stream,
-        sourceName: track.label.slice(0, 120) || "Окно преподавателя"
+        surface,
+        sourceName: names[surface]
       });
     } catch (error) {
       if (generation !== this.generation) return;
@@ -102,7 +121,7 @@ class ScreenShare {
         stream: null,
         error:
           error instanceof DOMException && error.name === "NotAllowedError"
-            ? "Доступ к окну не получен. Вы можете выбрать источник снова."
+            ? "Доступ к демонстрации не получен. Вы можете выбрать источник снова."
             : error instanceof Error
               ? error.message
               : "Не удалось начать захват."
@@ -164,6 +183,7 @@ class ScreenShare {
       }, 1000);
       void this.poll(generation);
       void this.startFrames(generation);
+      this.startVideo(generation);
     } catch (error) {
       if (generation !== this.generation) return;
       this.update({
@@ -247,13 +267,18 @@ class ScreenShare {
         video.videoWidth > 0 &&
         video.videoHeight > 0
       ) {
-        const scale = Math.min(960 / video.videoWidth, 540 / video.videoHeight, 1);
+        const scale = Math.min(1920 / video.videoWidth, 1080 / video.videoHeight, 1);
         canvas.width = Math.max(1, Math.floor(video.videoWidth * scale));
         canvas.height = Math.max(1, Math.floor(video.videoHeight * scale));
         canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const blob = await new Promise<Blob | null>((resolve) =>
-          canvas.toBlob(resolve, "image/jpeg", 0.65)
-        );
+        let blob: Blob | null = null;
+        for (const quality of [0.84, 0.72, 0.58]) {
+          blob = await new Promise<Blob | null>((resolve) =>
+            canvas.toBlob(resolve, "image/jpeg", quality)
+          );
+          if (blob && blob.size <= 256 * 1024) break;
+          if (generation !== this.generation) return;
+        }
         if (blob && blob.size <= 256 * 1024 && generation === this.generation) {
           this.channel?.postMessage({ type: "frame", shareId: share.id, frame: blob });
           this.frameAbort = new AbortController();
@@ -277,6 +302,40 @@ class ScreenShare {
     this.state.stream?.getTracks().forEach((track) => peer.addTrack(track, this.state.stream!));
     this.peers.set(id, peer);
     return peer;
+  }
+  private startVideo(generation: number) {
+    const stream = this.state.stream,
+      scope = this.state.scope,
+      share = this.share;
+    if (
+      typeof VideoEncoder === "undefined" ||
+      generation !== this.generation ||
+      this.state.phase !== "publishing" ||
+      this.state.paused ||
+      this.videoPublisher ||
+      !stream ||
+      !scope ||
+      !share
+    )
+      return;
+    const publisher = new ShareVideoPublisher();
+    this.videoPublisher = publisher;
+    const failed = () => {
+      publisher.stop();
+      if (this.videoPublisher !== publisher || generation !== this.generation) return;
+      this.videoPublisher = null;
+      this.videoRetry = setTimeout(() => {
+        this.videoRetry = null;
+        this.startVideo(generation);
+      }, 5000);
+    };
+    void publisher.start(stream, { ...scope, shareId: share.id }, failed).catch(failed);
+  }
+  private stopVideo() {
+    if (this.videoRetry) clearTimeout(this.videoRetry);
+    this.videoRetry = null;
+    this.videoPublisher?.stop();
+    this.videoPublisher = null;
   }
   private async localMessage(value: unknown, generation: number) {
     if (!value || typeof value !== "object" || !this.share || this.state.phase !== "publishing")
@@ -323,10 +382,15 @@ class ScreenShare {
     });
   }
   setPaused(paused: boolean) {
+    const changed = paused !== this.state.paused;
     this.state.stream?.getVideoTracks().forEach((track) => {
       track.enabled = !paused;
     });
     this.update({ paused });
+    if (changed) {
+      if (paused) this.stopVideo();
+      else this.startVideo(this.generation);
+    }
     this.sendLocalStatus();
   }
   private pagehide = () => {
@@ -337,6 +401,7 @@ class ScreenShare {
       share = this.share;
     ++this.generation;
     this.publishGeneration = null;
+    this.stopVideo();
     this.detachProjectionListener?.();
     this.detachProjectionListener = null;
     if (this.frameTimer) clearTimeout(this.frameTimer);
@@ -367,6 +432,7 @@ class ScreenShare {
       stream: null,
       error: null,
       sourceName: "",
+      surface: "unknown",
       viewers: 0,
       paused: false,
       scope: null,

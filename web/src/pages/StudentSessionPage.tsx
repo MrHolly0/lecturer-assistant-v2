@@ -15,6 +15,7 @@ import {
   getStudentSession,
   joinStudentSession,
   sendStudentSlideToChat,
+  sendStudentShareFrameToChat,
   submitStudentName,
   submitStudentSignal,
   type SignalValue,
@@ -278,6 +279,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить слайд в MAX."))
   });
+  const frameChatMut = useMutation({
+    mutationFn: () => sendStudentShareFrameToChat(normalizedCode, participantToken),
+    onSuccess: () => toast.success("Кадр отправляется файлом в чат MAX, без пережатия."),
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить кадр в MAX."))
+  });
 
   useEffect(() => {
     try {
@@ -524,40 +530,42 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
 
       {isJoined && !isTerminalSession && (
         <section className="student-slide-card">
-          <div className="student-slide-meta">
-            <span>Слайд {slideLabel}</span>
-            {current.currentSlide && (
-              <StudentSlideViewer
-                slide={current.currentSlide}
-                restoreFocusOnClose={!current.nameRequested}
-              />
-            )}
-            {user &&
-              current.currentSlide &&
-              (current.status === "LIVE" || current.status === "PAUSED") && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={
-                    !commandsReady ||
-                    slideChatMut.isPending ||
-                    requestedSlideIdx === current.currentSlideIdx
-                  }
-                  onClick={() => slideChatMut.mutate()}
-                >
-                  <MessageCircle size={16} aria-hidden="true" />{" "}
-                  {requestedSlideIdx === current.currentSlideIdx
-                    ? "Запрошен в MAX"
-                    : "Получить в чате MAX"}
-                </Button>
-              )}
-          </div>
           <ScreenShareViewer
             joinCode={normalizedCode}
             participantToken={participantToken}
             paused={current.status === "PAUSED"}
+            onFrameToChat={() => frameChatMut.mutate()}
+            frameToChatPending={frameChatMut.isPending}
           >
+            <div className="student-slide-meta">
+              <span>Слайд {slideLabel}</span>
+              {current.currentSlide && (
+                <StudentSlideViewer
+                  slide={current.currentSlide}
+                  restoreFocusOnClose={!current.nameRequested}
+                />
+              )}
+              {user &&
+                current.currentSlide &&
+                (current.status === "LIVE" || current.status === "PAUSED") && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      !commandsReady ||
+                      slideChatMut.isPending ||
+                      requestedSlideIdx === current.currentSlideIdx
+                    }
+                    onClick={() => slideChatMut.mutate()}
+                  >
+                    <MessageCircle size={16} aria-hidden="true" />{" "}
+                    {requestedSlideIdx === current.currentSlideIdx
+                      ? "Запрошен в MAX"
+                      : "Получить в чате MAX"}
+                  </Button>
+                )}
+            </div>
             {current.currentSlide ? (
               <div className="student-slide-viewport">
                 <img

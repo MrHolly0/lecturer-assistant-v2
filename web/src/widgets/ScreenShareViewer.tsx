@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { CirclePause, Monitor, RotateCw } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   answerProjectionShare,
   answerShare,
@@ -10,7 +9,8 @@ import {
 } from "../app/api/share-api";
 import { ApiError } from "../app/api/http";
 import { gatheredDescription, localShareChannel } from "../app/sharing/rtc";
-import { Button } from "../shared/ui/button";
+import { ShareVideoPlayback } from "../app/sharing/videoPlayback";
+import { ScreenSharePresentation } from "./ScreenSharePresentation";
 
 export function ScreenShareViewer({
   joinCode,
@@ -19,6 +19,9 @@ export function ScreenShareViewer({
   localChannelId,
   projectionViewToken,
   paused = false,
+  onFrameToChat,
+  frameToChatPending,
+  frameToChatMessage,
   children
 }: {
   joinCode: string;
@@ -27,22 +30,27 @@ export function ScreenShareViewer({
   localChannelId?: string | null;
   projectionViewToken?: string | null;
   paused?: boolean;
+  onFrameToChat?: () => void;
+  frameToChatPending?: boolean;
+  frameToChatMessage?: string;
   children: ReactNode;
 }) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [rtcConnected, setRtcConnected] = useState(false);
   const [active, setActive] = useState(false);
+  const [sourceId, setSourceId] = useState<string | null>(null);
   const [mediaPaused, setMediaPaused] = useState(false);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
-  const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     let alive = true,
       busy = false,
       frameBusy = false,
       remoteAvailable = false;
     let peer: RTCPeerConnection | null = null;
+    let videoPlayback: ShareVideoPlayback | null = null;
     let shareId: string | null = null;
     let roomId: string | null = null;
     let lastStatus = 0,
@@ -61,6 +69,7 @@ export function ScreenShareViewer({
     const localMode = local && !projectionViewToken;
     if (localMode && !localChannelId) {
       setActive(false);
+      setSourceId(null);
       setStream(null);
       setFrameUrl(null);
       return;
@@ -72,6 +81,11 @@ export function ScreenShareViewer({
       if (frameObjectUrl) URL.revokeObjectURL(frameObjectUrl);
       frameObjectUrl = null;
       if (alive) setFrameUrl(null);
+    };
+    const clearVideo = () => {
+      videoPlayback?.stop();
+      videoPlayback = null;
+      if (alive) setVideoUrl(null);
     };
     const connected = () => remoteAvailable && peer?.connectionState === "connected";
     const acceptFrame = (blob: Blob) => {
@@ -106,12 +120,14 @@ export function ScreenShareViewer({
     };
     const reset = () => {
       dropPeer();
+      clearVideo();
       clearFrame();
       roomId = null;
       activeSince = 0;
       lastFrame = 0;
       if (alive) {
         setActive(false);
+        setSourceId(null);
         setError(false);
       }
     };
@@ -124,10 +140,12 @@ export function ScreenShareViewer({
       answerAbort?.abort();
       if (timer) clearTimeout(timer);
       dropPeer();
+      clearVideo();
       clearFrame();
       roomId = null;
       activeSince = 0;
       setActive(true);
+      setSourceId(null);
       setMediaPaused(false);
       setError(true);
     };
@@ -139,8 +157,12 @@ export function ScreenShareViewer({
         activeSince = Date.now();
       }
       roomPaused = nextPaused;
+      setSourceId(id);
       lastStatus = Date.now();
-      if (nextPaused) clearFrame();
+      if (nextPaused) {
+        clearFrame();
+        clearVideo();
+      }
       setActive(true);
       setMediaPaused(nextPaused);
     };
@@ -169,8 +191,14 @@ export function ScreenShareViewer({
         setRtcConnected(ready);
         if (ready) {
           clearFrame();
+          clearVideo();
           setError(false);
-        } else if (["failed", "disconnected"].includes(next.connectionState)) setError(true);
+        } else if (
+          ["failed", "disconnected"].includes(next.connectionState) &&
+          !videoPlayback?.isReady() &&
+          !frameObjectUrl
+        )
+          setError(true);
       };
       try {
         await next.setRemoteDescription({ type: "offer", sdp });
@@ -191,7 +219,7 @@ export function ScreenShareViewer({
         else await answerShare(joinCode, viewerId, participantToken, id, answer, controller.signal);
       } catch (failure) {
         if (alive && !halted && generation === requestGeneration && peer === next) {
-          setError(true);
+          if (!videoPlayback?.isReady() && !frameObjectUrl) setError(true);
           if (failure instanceof ApiError && [401, 403, 404, 410].includes(failure.status)) {
             halt();
           }
@@ -272,6 +300,7 @@ export function ScreenShareViewer({
         !roomId ||
         roomPaused ||
         connected() ||
+        videoPlayback?.isReady() ||
         !activeSince ||
         Date.now() - activeSince < 4000
       )
@@ -316,14 +345,41 @@ export function ScreenShareViewer({
         frameBusy = false;
       }
     };
+    const videoTick = () => {
+      if (!alive || halted || channel || !roomId || roomPaused || connected()) {
+        clearVideo();
+        return;
+      }
+      if (!videoPlayback) {
+        videoPlayback = new ShareVideoPlayback(
+          { code: joinCode, viewerId, participantToken, projectionViewToken },
+          roomId,
+          {
+            onUrl: (url) => {
+              if (alive && !halted) {
+                setVideoUrl(url);
+                if (url) setError(false);
+              }
+            },
+            onFailure: (failure) => {
+              if (failure instanceof ApiError && [401, 403].includes(failure.status)) halt();
+            }
+          }
+        );
+      }
+      void videoPlayback.refresh();
+    };
     // This lease check must keep running while a status fetch, answer, or ICE is stuck.
     const livenessTimer = setInterval(() => {
       if (alive && !halted && roomId && lastStatus && Date.now() - lastStatus >= 4000) halt();
     }, 250);
     const frameTimer = setInterval(() => void frameTick(), 800);
+    const videoTimer = setInterval(videoTick, 500);
     setActive(false);
+    setSourceId(null);
     setStream(null);
     setFrameUrl(null);
+    setVideoUrl(null);
     setRtcConnected(false);
     setError(false);
     void poll();
@@ -336,63 +392,28 @@ export function ScreenShareViewer({
       if (timer) clearTimeout(timer);
       clearInterval(livenessTimer);
       clearInterval(frameTimer);
+      clearInterval(videoTimer);
+      videoPlayback?.stop();
       peer?.close();
       clearFrame();
       channel?.postMessage({ type: "leave", viewerId });
       channel?.close();
     };
   }, [joinCode, participantToken, local, localChannelId, projectionViewToken, retry]);
-  useEffect(() => {
-    const element = video.current;
-    if (!element || !stream || !rtcConnected) return;
-    element.srcObject = stream;
-    void element.play().catch(() => setError(true));
-    return () => {
-      element.srcObject = null;
-    };
-  }, [stream, active, rtcConnected]);
   if (!active) return <>{children}</>;
-  const videoReady = Boolean(stream && rtcConnected);
-  const hasImage = Boolean(frameUrl || videoReady);
   return (
-    <section
-      className={`screen-share-viewer${local ? " screen-share-viewer--projection" : ""}`}
-      aria-label="Демонстрация преподавателя"
-    >
-      {videoReady && (
-        <video ref={video} autoPlay muted playsInline aria-label="Окно преподавателя" />
-      )}
-      {!videoReady && frameUrl && (
-        <>
-          <img src={frameUrl} alt="Демонстрация преподавателя" />
-          <span className="screen-share-fallback-label">Обновляемое изображение</span>
-        </>
-      )}
-      {(paused || mediaPaused || !hasImage) && (
-        <div className="screen-share-viewer-state" role="status">
-          {paused || mediaPaused ? (
-            <>
-              <CirclePause size={32} aria-hidden="true" />
-              <strong>Демонстрация на паузе</strong>
-            </>
-          ) : error ? (
-            <>
-              <Monitor size={32} aria-hidden="true" />
-              <strong>Не удалось получить демонстрацию</strong>
-              <p>Проверьте сеть. Слайды занятия доступны после остановки демонстрации.</p>
-              <Button variant="outline" onClick={() => setRetry((value) => value + 1)}>
-                <RotateCw size={18} aria-hidden="true" />
-                Подключиться снова
-              </Button>
-            </>
-          ) : (
-            <>
-              <Monitor size={32} aria-hidden="true" />
-              <strong>Подключаем демонстрацию…</strong>
-            </>
-          )}
-        </div>
-      )}
-    </section>
+    <ScreenSharePresentation
+      stream={rtcConnected ? stream : null}
+      videoUrl={videoUrl}
+      sourceId={sourceId}
+      frameUrl={frameUrl}
+      paused={paused || mediaPaused}
+      error={error}
+      projection={local || Boolean(projectionViewToken)}
+      onRetry={() => setRetry((value) => value + 1)}
+      onFrameToChat={onFrameToChat}
+      frameToChatPending={frameToChatPending}
+      frameToChatMessage={frameToChatMessage}
+    />
   );
 }

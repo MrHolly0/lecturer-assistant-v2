@@ -98,13 +98,14 @@ async function fixture(t, capture) {
     configurable: true,
     value: (id) => intervals.delete(id)
   });
-  const mocks = `const f=globalThis.__laShareTest; export const startShare=(...args)=>{f.requests.push(['start',...args]);return f.api.start(...args)}; export const pollShare=(...args)=>f.api.poll(...args); export const stopShare=(...args)=>{f.requests.push(['stop',...args]);return f.api.stop(...args)}; export const offerShare=async()=>{}; export const uploadShareFrame=async()=>{}; export class ApiError extends Error {status=403}; export const browserProjection=f.projection; export const gatheredDescription=async()=>''; export const localShareChannel=f.channel;`;
+  const mocks = `const f=globalThis.__laShareTest; export const startShare=(...args)=>{f.requests.push(['start',...args]);return f.api.start(...args)}; export const pollShare=(...args)=>f.api.poll(...args); export const stopShare=(...args)=>{f.requests.push(['stop',...args]);return f.api.stop(...args)}; export const offerShare=async()=>{}; export const uploadShareFrame=async()=>{}; export class ApiError extends Error {status=403}; export const browserProjection=f.projection; export const gatheredDescription=async()=>''; export const localShareChannel=f.channel; export class ShareVideoPublisher {async start(){} stop(){}};`;
   const mockUrl = `data:text/javascript,${encodeURIComponent(mocks)}`;
   let source = original
     .replace('from "../projection/browserProjection"', `from ${JSON.stringify(mockUrl)}`)
     .replace('from "../api/http"', `from ${JSON.stringify(mockUrl)}`)
     .replace('from "../api/share-api"', `from ${JSON.stringify(mockUrl)}`)
     .replace('from "./rtc"', `from ${JSON.stringify(mockUrl)}`)
+    .replace('from "./videoPublisher"', `from ${JSON.stringify(mockUrl)}`)
     .replace(
       'from "./capturePolicy"',
       `from ${JSON.stringify(new URL("./capturePolicy.ts", import.meta.url).href)}`
@@ -133,7 +134,7 @@ async function fixture(t, capture) {
     }
   };
 }
-test("capture stays local until the teacher explicitly publishes and monitor capture is stopped", async (t) => {
+test("window and monitor capture stay local until the teacher explicitly publishes", async (t) => {
   const stream = media();
   const f = await fixture(t, async () => stream);
   await f.controller.choose(scope);
@@ -141,12 +142,16 @@ test("capture stays local until the teacher explicitly publishes and monitor cap
   assert.equal(f.requests.filter((x) => x[0] === "start").length, 0);
   await f.controller.stop();
   assert.equal(stream.track.stopped, true);
-  const forbidden = media("monitor");
-  f.api.capture = async () => forbidden;
+  const monitor = media("monitor");
+  f.api.capture = async () => monitor;
   await f.controller.choose(scope);
-  assert.equal(forbidden.track.stopped, true);
-  assert.equal(f.controller.getSnapshot().phase, "error");
+  assert.equal(monitor.track.stopped, false);
+  assert.equal(f.controller.getSnapshot().phase, "preview");
+  assert.equal(f.controller.getSnapshot().surface, "monitor");
+  assert.equal(f.controller.getSnapshot().sourceName, "Экран преподавателя");
   assert.equal(f.requests.filter((x) => x[0] === "start").length, 0);
+  await f.controller.stop();
+  assert.equal(monitor.track.stopped, true);
 });
 test("a late browser permission response cannot resurrect capture after stop", async (t) => {
   const permission = deferred(),

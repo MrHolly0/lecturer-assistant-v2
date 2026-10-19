@@ -133,6 +133,20 @@ class ShareServiceTest {
     }
 
     @Test
+    void videoReadsRefreshExistingViewerActivityButNeverPublisherLeaseOrRegisterAViewer() {
+        Status room = start();
+        UUID person = UUID.randomUUID(), viewer = UUID.randomUUID();
+        expect(HttpStatus.NOT_FOUND, () -> service.videoViewer(access(person), viewer));
+        service.view(access(person), viewer);
+        clock.advance(7);
+        assertEquals(room.leaseUntil(), service.videoViewer(access(person), viewer).leaseUntil());
+        clock.advance(7);
+        assertEquals(room.leaseUntil(), service.videoViewer(access(person), viewer).leaseUntil());
+        clock.advance(1);
+        assertNull(service.videoViewer(access(person), viewer));
+    }
+
+    @Test
     void ownerAccountRemovalDisableRoleDowngradeAndCourseRevocationRevokeTheRoom() {
         for (String revocation : List.of("missing", "disabled", "student", "course")) {
             currentAccounts.put(owner.id(), state(owner, PersonStatus.ACTIVE));

@@ -27,19 +27,21 @@ import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
 import { screenShare } from "../app/sharing/screenShare";
 import { browserProjection } from "../app/projection/browserProjection";
+import {
+  openLectureRemoteWindow,
+  prepareLectureRemoteWindow,
+  supportsPinnedLectureRemote
+} from "../app/projection/lectureRemoteWindow";
+import "../styles/lecture-remote-window.css";
 
-type PictureInPictureHost = Window & {
-  documentPictureInPicture?: {
-    requestWindow: (options: { width: number; height: number }) => Promise<Window>;
-  };
-};
 export function FloatingLectureRemote({
   courseId,
   session,
   disabled,
   onPause,
   onResume,
-  onClose
+  onClose,
+  initialWindow
 }: {
   courseId: string;
   session: LiveSession;
@@ -47,18 +49,21 @@ export function FloatingLectureRemote({
   onPause: () => void;
   onResume: () => void;
   onClose: () => void;
+  initialWindow?: Window | null;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [external, setExternal] = useState<Window | null>(null);
+  const [external, setExternal] = useState<Window | null>(() =>
+    initialWindow && !initialWindow.closed ? initialWindow : null
+  );
   const [filter, setFilter] = useState<StudentQuestion["status"]>("OPEN");
   const [selected, setSelected] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [publishing, setPublishing] = useState(false);
   const [position, setPosition] = useState({ x: Math.max(12, window.innerWidth - 444), y: 100 });
-  const canPin =
-    typeof (window as PictureInPictureHost).documentPictureInPicture?.requestWindow === "function";
+  const canPin = supportsPinnedLectureRemote();
   const panel = useRef<HTMLElement>(null);
-  const externalRef = useRef<Window | null>(null);
+  const externalRef = useRef<Window | null>(initialWindow ?? null);
+  const mountGeneration = useRef({ generation: 0 });
   const client = useQueryClient();
   const questions = useInfiniteQuery({
     queryKey: ["live", courseId, session.id, "questions", filter, "floating"],
@@ -134,56 +139,46 @@ export function FloatingLectureRemote({
     };
   }, [collapsed, external]);
   useEffect(() => {
+    if (initialWindow && !initialWindow.closed) setExternal(initialWindow);
+  }, [initialWindow]);
+  useEffect(() => {
+    const lifecycle = mountGeneration.current;
+    const generation = ++lifecycle.generation;
     return () => {
-      externalRef.current?.close();
+      // StrictMode immediately sets up again; only a real unmount closes the OS window.
+      queueMicrotask(() => {
+        if (lifecycle.generation === generation) externalRef.current?.close();
+      });
     };
   }, []);
   useEffect(() => {
-    if (!external) return;
+    if (!external || external.closed) return;
     externalRef.current = external;
-    external.document.title = "Lecturer Assistant · Пульт";
-    const base = external.document.createElement("base");
-    base.href = window.location.href;
-    external.document.head.append(base);
-    for (const source of document.querySelectorAll('link[rel="stylesheet"], style'))
-      external.document.head.append(source.cloneNode(true));
-    external.document.documentElement.className = document.documentElement.className;
-    external.document.body.className = "floating-remote-document";
-    const observer = new MutationObserver(() => {
-      external.document.documentElement.className = document.documentElement.className;
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    const stopThemeSync = prepareLectureRemoteWindow(external);
     const back = () => {
       externalRef.current = null;
       setExternal(null);
     };
-    const closeBeforeMirror = () => {
-      external.close();
-    };
     external.addEventListener("pagehide", back);
     const unsubscribe = browserProjection.subscribe(() => {
-      if (browserProjection.getSnapshot().phase === "stopped") closeBeforeMirror();
+      if (browserProjection.getSnapshot().phase === "stopped") external.close();
     });
     return () => {
-      observer.disconnect();
+      stopThemeSync();
       external.removeEventListener("pagehide", back);
       unsubscribe();
     };
   }, [external]);
+  function returnToBrowser() {
+    const target = external;
+    externalRef.current = null;
+    setExternal(null);
+    target?.close();
+  }
   async function detach() {
-    if (external && !external.closed) {
-      external.focus();
-      return;
-    }
     try {
-      const host = window as PictureInPictureHost;
-      const child = canPin
-        ? await host.documentPictureInPicture!.requestWindow({
-            width: collapsed ? 280 : 420,
-            height: collapsed ? 110 : 820
-          })
-        : window.open("", "lecturer-private-remote", "popup,width=420,height=820");
-      if (!child) throw new Error("Разрешите всплывающие окна для сайта.");
+      // The helper opens synchronously before this first await.
+      const child = await openLectureRemoteWindow({ windowKey: session.id, collapsed });
       setExternal(child);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось открыть отдельный пульт.");
@@ -244,39 +239,41 @@ export function FloatingLectureRemote({
       aria-label="Приватный пульт занятия"
     >
       <header className="floating-remote-header">
-        <Button
-          size="icon"
-          variant="ghost"
-          onPointerDown={drag}
-          aria-label="Переместить пульт"
-          onKeyDown={(event) => {
-            if (!external && event.key.startsWith("Arrow")) {
-              event.preventDefault();
-              event.stopPropagation();
-              setPosition((value) => ({
-                x: Math.max(
-                  8,
-                  Math.min(
-                    window.innerWidth - (panel.current?.offsetWidth ?? 260) - 8,
-                    value.x +
-                      (event.key === "ArrowRight" ? 20 : event.key === "ArrowLeft" ? -20 : 0)
+        {!external && (
+          <Button
+            size="icon"
+            variant="ghost"
+            onPointerDown={drag}
+            aria-label="Переместить пульт"
+            onKeyDown={(event) => {
+              if (!external && event.key.startsWith("Arrow")) {
+                event.preventDefault();
+                event.stopPropagation();
+                setPosition((value) => ({
+                  x: Math.max(
+                    8,
+                    Math.min(
+                      window.innerWidth - (panel.current?.offsetWidth ?? 260) - 8,
+                      value.x +
+                        (event.key === "ArrowRight" ? 20 : event.key === "ArrowLeft" ? -20 : 0)
+                    )
+                  ),
+                  y: Math.max(
+                    8,
+                    Math.min(
+                      window.innerHeight - (panel.current?.offsetHeight ?? 60) - 8,
+                      value.y + (event.key === "ArrowDown" ? 20 : event.key === "ArrowUp" ? -20 : 0)
+                    )
                   )
-                ),
-                y: Math.max(
-                  8,
-                  Math.min(
-                    window.innerHeight - (panel.current?.offsetHeight ?? 60) - 8,
-                    value.y + (event.key === "ArrowDown" ? 20 : event.key === "ArrowUp" ? -20 : 0)
-                  )
-                )
-              }));
-            }
-          }}
-        >
-          <GripVertical size={18} aria-hidden="true" />
-        </Button>
+                }));
+              }
+            }}
+          >
+            <GripVertical size={18} aria-hidden="true" />
+          </Button>
+        )}
         <BrandMark className="brand-mark" />
-        {!collapsed && <strong>Пульт</strong>}
+        {!collapsed && <strong className="floating-remote-title">Пульт</strong>}
         {collapsed && (
           <Button
             variant="ghost"
@@ -288,6 +285,16 @@ export function FloatingLectureRemote({
             <span className="floating-question-count">{counts?.open ?? 0}</span>
           </Button>
         )}
+        <Button
+          size="icon"
+          variant="outline"
+          className="floating-remote-popout"
+          aria-label={external ? "Вернуть пульт в браузер" : "Вынести пульт в отдельное окно"}
+          title={external ? "Вернуть пульт в браузер" : "Вынести пульт в отдельное окно"}
+          onClick={external ? returnToBrowser : () => void detach()}
+        >
+          <ExternalLink size={20} aria-hidden="true" />
+        </Button>
         <Button
           size="icon"
           variant="ghost"

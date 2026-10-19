@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings 0",
     "format": "prettier --check \"src/**/*.{ts,tsx,css}\"",
-    "test": "node --experimental-strip-types --test src/app/api/student-snapshot-gate.test.mjs src/app/student-resume.test.mjs src/app/max/bridge.test.mjs src/shared/lib/sessionHistoryDates.test.mjs src/shared/lib/sessionAnalytics.test.mjs src/app/projection/setupState.test.mjs src/app/projection/browserProjection.test.mjs src/app/sharing/capturePolicy.test.mjs src/app/sharing/screenShare.test.mjs"
+    "test": "node --experimental-strip-types --test src/app/api/student-snapshot-gate.test.mjs src/app/student-resume.test.mjs src/app/max/bridge.test.mjs src/shared/lib/sessionHistoryDates.test.mjs src/shared/lib/sessionAnalytics.test.mjs src/app/projection/setupState.test.mjs src/app/projection/browserProjection.test.mjs src/app/sharing/capturePolicy.test.mjs src/app/sharing/screenShare.test.mjs src/app/projection/lectureRemoteWindow.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "1.2.3",
@@ -45,6 +45,7 @@
     "embla-carousel-react": "8.6.0",
     "input-otp": "1.4.2",
     "lucide-react": "0.487.0",
+    "mediabunny": "1.61.6",
     "next-themes": "0.4.6",
     "qrcode": "^1.5.4",
     "react": "18.2.0",

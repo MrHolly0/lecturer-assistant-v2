@@ -3129,7 +3129,7 @@ paths:
         "204":
           description: Latest preview accepted; no persistence.
         "400":
-          description: Invalid JPEG metadata or dimensions greater than 960 by 540.
+          description: Invalid JPEG metadata or dimensions greater than 1920 by 1080.
         "401":
           description: Staff authentication required.
         "403":
@@ -3220,6 +3220,475 @@ paths:
           description: Use policy, owner rights or exact session/device scope revoked.
         "404":
           description: Signalling viewer not registered or its heartbeat expired.
+
+  /courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}/video/{epoch}/init:
+    put:
+      operationId: uploadShareVideoInit
+      tags:
+        - projection
+      summary: Publish a bounded single-video-track H264/fMP4 initialization.
+      description: >-
+        Current publisher only. video/mp4; no disk storage. Identical retained retries are idempotent. Paused,
+        retired or replaced epochs cannot resume. Up to six retained fragments, 8 MiB per room, 64 MiB total
+        stored payloads; each fragment expires after six seconds.
+      parameters:
+        - in: path
+          name: courseId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: shareId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: epoch
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: codec
+          required: true
+          schema:
+            type: string
+            pattern: ^[aA][vV][cC]1\.[A-Fa-f0-9]{6}$
+      requestBody:
+        required: true
+        content:
+          video/mp4:
+            schema:
+              type: string
+              format: binary
+              maxLength: 131072
+      responses:
+        '204':
+          description: Accepted without persistence.
+        '400':
+          description: Invalid MP4 framing, H264 codec metadata or sequence.
+        '401':
+          description: Staff authentication required.
+        '403':
+          description: Only the current share owner may publish.
+        '409':
+          description: Paused, missing initialization, retired epoch, conflicting retry or sequence gap.
+        '410':
+          description: Share ended, publisher lease expired or retry fragment pruned.
+        '413':
+          description: Initialization exceeds 128 KiB or fragment exceeds 2 MiB; read is bounded without Content-Length.
+        '415':
+          description: Content-Type must be video/mp4.
+        '429':
+          description: Stored-payload budget, room or epoch limit reached.
+  /courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}/video/{epoch}/segments/{sequence}:
+    put:
+      operationId: uploadShareVideoSegment
+      tags:
+        - projection
+      summary: Publish a contiguous independently decodable fMP4 fragment.
+      description: >-
+        Current publisher only. video/mp4; no disk storage. Identical retained retries are idempotent. Paused,
+        retired or replaced epochs cannot resume. Up to six retained fragments, 8 MiB per room, 64 MiB total
+        stored payloads; each fragment expires after six seconds.
+      parameters:
+        - in: path
+          name: courseId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: shareId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: epoch
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: sequence
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      requestBody:
+        required: true
+        content:
+          video/mp4:
+            schema:
+              type: string
+              format: binary
+              maxLength: 2097152
+      responses:
+        '204':
+          description: Accepted without persistence.
+        '400':
+          description: Invalid MP4 framing, H264 codec metadata or sequence.
+        '401':
+          description: Staff authentication required.
+        '403':
+          description: Only the current share owner may publish.
+        '409':
+          description: Paused, missing initialization, retired epoch, conflicting retry or sequence gap.
+        '410':
+          description: Share ended, publisher lease expired or retry fragment pruned.
+        '413':
+          description: Initialization exceeds 128 KiB or fragment exceeds 2 MiB; read is bounded without Content-Length.
+        '415':
+          description: Content-Type must be video/mp4.
+        '429':
+          description: Stored-payload budget, room or epoch limit reached.
+  /student/sessions/{joinCode}/screen-share/viewers/{viewerId}/video:
+    get:
+      operationId: getStudentShareVideoMetadata
+      tags:
+        - projection
+      summary: Read only this authorized existing viewer’s public encoded video.
+      description: >-
+        Revalidates current participation or device grant on every request. May refresh only this existing
+        viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept:
+        video/mp4 for binary parts.
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: joinCode
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: viewerId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: X-Participant-Token
+          required: false
+          schema:
+            type: string
+          description: Current participant receipt when not using an authenticated participating account.
+      responses:
+        '200':
+          description: Current playable ring; only after at least one unexpired fragment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareVideoMetadata'
+        '204':
+          description: No current initialized video with an unexpired fragment, paused or stopped.
+        '401':
+          description: Missing, invalid or expired participant/output grant.
+        '403':
+          description: Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access.
+        '404':
+          description: Viewer not registered or its activity expired.
+  /student/sessions/{joinCode}/screen-share/viewers/{viewerId}/video/{epoch}/init:
+    get:
+      operationId: getStudentShareVideoInit
+      tags:
+        - projection
+      summary: Read only this authorized existing viewer’s public encoded video.
+      description: >-
+        Revalidates current participation or device grant on every request. May refresh only this existing
+        viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept:
+        video/mp4 for binary parts.
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: joinCode
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: viewerId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: epoch
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: X-Participant-Token
+          required: false
+          schema:
+            type: string
+          description: Current participant receipt when not using an authenticated participating account.
+      responses:
+        '200':
+          description: Current initialization or retained fragment; no-store/nosniff.
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Missing, invalid or expired participant/output grant.
+        '403':
+          description: Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access.
+        '404':
+          description: Viewer not registered or its activity expired.
+        '410':
+          description: Stale epoch or missing/pruned fragment. Refresh metadata; do not replay old media.
+  /student/sessions/{joinCode}/screen-share/viewers/{viewerId}/video/{epoch}/segments/{sequence}:
+    get:
+      operationId: getStudentShareVideoSegment
+      tags:
+        - projection
+      summary: Read only this authorized existing viewer’s public encoded video.
+      description: >-
+        Revalidates current participation or device grant on every request. May refresh only this existing
+        viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept:
+        video/mp4 for binary parts.
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: joinCode
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: viewerId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: epoch
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: sequence
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - in: header
+          name: X-Participant-Token
+          required: false
+          schema:
+            type: string
+          description: Current participant receipt when not using an authenticated participating account.
+      responses:
+        '200':
+          description: Current initialization or retained fragment; no-store/nosniff.
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Missing, invalid or expired participant/output grant.
+        '403':
+          description: Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access.
+        '404':
+          description: Viewer not registered or its activity expired.
+        '410':
+          description: Stale epoch or missing/pruned fragment. Refresh metadata; do not replay old media.
+  /projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}/video:
+    get:
+      operationId: getProjectionShareVideoMetadata
+      tags:
+        - projection
+      summary: Read only this authorized existing viewer’s public encoded video.
+      description: >-
+        Revalidates current participation or device grant on every request. May refresh only this existing
+        viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept:
+        video/mp4 for binary parts.
+      security:
+        - projectionView: []
+      parameters:
+        - in: path
+          name: joinCode
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: viewerId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current playable ring; only after at least one unexpired fragment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareVideoMetadata'
+        '204':
+          description: No current initialized video with an unexpired fragment, paused or stopped.
+        '401':
+          description: Missing, invalid or expired participant/output grant.
+        '403':
+          description: Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access.
+        '404':
+          description: Viewer not registered or its activity expired.
+  /projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}/video/{epoch}/init:
+    get:
+      operationId: getProjectionShareVideoInit
+      tags:
+        - projection
+      summary: Read only this authorized existing viewer’s public encoded video.
+      description: >-
+        Revalidates current participation or device grant on every request. May refresh only this existing
+        viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept:
+        video/mp4 for binary parts.
+      security:
+        - projectionView: []
+      parameters:
+        - in: path
+          name: joinCode
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: viewerId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: epoch
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current initialization or retained fragment; no-store/nosniff.
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Missing, invalid or expired participant/output grant.
+        '403':
+          description: Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access.
+        '404':
+          description: Viewer not registered or its activity expired.
+        '410':
+          description: Stale epoch or missing/pruned fragment. Refresh metadata; do not replay old media.
+  /projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}/video/{epoch}/segments/{sequence}:
+    get:
+      operationId: getProjectionShareVideoSegment
+      tags:
+        - projection
+      summary: Read only this authorized existing viewer’s public encoded video.
+      description: >-
+        Revalidates current participation or device grant on every request. May refresh only this existing
+        viewer’s activity, never the publisher lease; does not join/rejoin or register a viewer. Use Accept:
+        video/mp4 for binary parts.
+      security:
+        - projectionView: []
+      parameters:
+        - in: path
+          name: joinCode
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: viewerId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: epoch
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: sequence
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        '200':
+          description: Current initialization or retained fragment; no-store/nosniff.
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Missing, invalid or expired participant/output grant.
+        '403':
+          description: Wrong viewer identity, kicked/banned participant or revoked owner/device/policy access.
+        '404':
+          description: Viewer not registered or its activity expired.
+        '410':
+          description: Stale epoch or missing/pruned fragment. Refresh metadata; do not replay old media.
+  /student/sessions/{joinCode}/screen-share/frame/chat:
+    post:
+      operationId: sendShareFrameToStudentChat
+      tags:
+        - projection
+      summary: Send the current fresh public demonstration image to this participant’s own linked MAX chat.
+      description: >-
+        No request body. Revalidates participant and linked chat ownership. Takes only a fresh current JPEG; no
+        viewer registration, permanent media file or caller-chosen recipient.
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: joinCode
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: X-Participant-Token
+          required: false
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Delivery accepted; no response body.
+        '401':
+          description: Missing or invalid participant identity.
+        '403':
+          description: Wrong ownership, kicked or banned participant.
+        '409':
+          description: No linked MAX chat, no fresh image, paused or inactive sharing.
+        '429':
+          description: Delivery cooldown or capacity limit.
 
 components:
   securitySchemes:
@@ -3450,6 +3919,33 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ShareIceServer'
+    ShareVideoMetadata:
+      type: object
+      required:
+        - shareId
+        - epoch
+        - codec
+        - firstSequence
+        - lastSequence
+      properties:
+        shareId:
+          type: string
+          format: uuid
+        epoch:
+          type: string
+          format: uuid
+        codec:
+          type: string
+          pattern: ^avc1\.[a-f0-9]{6}$
+          description: Exact codec profile/compatibility/level derived from avcC, including encoder-added constraint flags.
+        firstSequence:
+          type: integer
+          format: int64
+          minimum: 0
+        lastSequence:
+          type: integer
+          format: int64
+          minimum: 0
     ProjectionPlatform:
       type: string
       enum: [WINDOWS_X64, WINDOWS_ARM64, MACOS_X64, MACOS_ARM64]

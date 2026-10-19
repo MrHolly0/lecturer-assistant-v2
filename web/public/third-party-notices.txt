@@ -1,0 +1,8 @@
+Mediabunny 1.61.6
+Copyright (c) Vanilagy and contributors
+License: Mozilla Public License 2.0 (LICENSE-mediabunny.txt)
+Unmodified source: https://github.com/Vanilagy/mediabunny/tree/v1.61.6
+Package source: https://registry.npmjs.org/mediabunny/-/mediabunny-1.61.6.tgz
+
+The library packages the live video stream in fragmented MP4. Its source is
+distributed under MPL-2.0; application files use their respective licenses.

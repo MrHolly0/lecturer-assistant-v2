@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { MonitorUp, MessageCircle, Square } from "lucide-react";
+import { toast } from "sonner";
 import type { LiveSession } from "../app/api/live-api";
 import { screenShare } from "../app/sharing/screenShare";
 import { useMaxBridge } from "../app/max/context";
 import { getMaxWebApp } from "../app/max/bridge";
+import { openLectureRemoteWindow } from "../app/projection/lectureRemoteWindow";
 import { Button } from "../shared/ui/button";
 import {
   Dialog,
@@ -34,8 +36,29 @@ export function ScreenShareControls({
   const [confirmed, setConfirmed] = useState(false);
   const [preview, setPreview] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [remoteWindow, setRemoteWindow] = useState<Window | null>(null);
+  const mounted = useRef(true);
   const video = useRef<HTMLVideoElement>(null);
   const ours = share.scope?.sessionId === session.id;
+  const capturesScreen = share.surface === "monitor" || share.surface === "unknown";
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const openRemote = () => {
+    const opening = openLectureRemoteWindow({ windowKey: session.id });
+    setPult(true);
+    void opening
+      .then((target) => {
+        if (mounted.current) setRemoteWindow(target);
+        else target.close();
+      })
+      .catch((error) =>
+        toast.error(error instanceof Error ? error.message : "Не удалось вынести пульт.")
+      );
+  };
   useEffect(() => {
     if (ours) screenShare.setPaused(session.status === "PAUSED");
   }, [session.status, ours]);
@@ -80,11 +103,11 @@ export function ScreenShareControls({
         ) : (
           <MonitorUp size={18} aria-hidden="true" />
         )}
-        {ours && share.phase === "publishing" ? "Остановить демонстрацию" : "Показать окно"}
+        {ours && share.phase === "publishing" ? "Остановить демонстрацию" : "Начать демонстрацию"}
       </Button>
-      <Button variant="outline" onClick={() => setPult(true)}>
+      <Button variant="outline" onClick={openRemote}>
         <MessageCircle size={18} aria-hidden="true" />
-        Плавающий пульт
+        Вынести пульт
       </Button>
       <Dialog
         open={preview}
@@ -98,18 +121,12 @@ export function ScreenShareControls({
           <DialogHeader>
             <DialogTitle>Проверьте исходящий кадр</DialogTitle>
             <DialogDescription>
-              Выберите отдельное окно приложения или вкладку. В кадре не должно быть пульта,
-              вопросов студентов и правильных ответов.
+              Можно показать весь экран, окно приложения или вкладку. Сначала проверьте, что увидит
+              аудитория.
             </DialogDescription>
           </DialogHeader>
           {share.stream ? (
-            <video
-              ref={video}
-              muted
-              autoPlay
-              playsInline
-              aria-label="Предпросмотр выбранного окна"
-            />
+            <video ref={video} muted autoPlay playsInline aria-label="Предпросмотр демонстрации" />
           ) : (
             <div className="screen-share-preview-empty" role="status">
               {share.phase === "choosing"
@@ -118,6 +135,16 @@ export function ScreenShareControls({
             </div>
           )}
           {share.error && share.stream && <p role="alert">{share.error}</p>}
+          {share.stream && capturesScreen && (
+            <p className="screen-share-capture-note" role="note">
+              {share.surface === "monitor"
+                ? "Выбран весь экран."
+                : "Браузер не указал тип источника."}{" "}
+              Пульт, личные вопросы и другие окна на этом экране тоже будут видны. Браузер не
+              скрывает их из демонстрации. Для приватного управления выберите отдельное окно
+              приложения или оставьте пульт на другом экране.
+            </p>
+          )}
           <label className="screen-share-confirm">
             <input
               type="checkbox"
@@ -125,10 +152,15 @@ export function ScreenShareControls({
               onChange={(event) => setConfirmed(event.target.checked)}
               disabled={!share.stream || publishing}
             />
-            <span>В кадре только материал для аудитории</span>
+            <span>
+              {capturesScreen
+                ? "Понимаю, что видны все окна выбранного экрана"
+                : "В кадре только материал для аудитории"}
+            </span>
           </label>
           <p className="screen-share-network-note">
-            Передаётся только изображение выбранного окна. Звук не передаётся.
+            Передаётся видео выбранного источника, без звука. Если видео недоступно, участники
+            получают обновляемые кадры.
           </p>
           <DialogFooter>
             <Button
@@ -146,7 +178,7 @@ export function ScreenShareControls({
                   await screenShare.publish();
                   if (screenShare.getSnapshot().phase === "publishing") {
                     setPreview(false);
-                    setPult(true);
+                    if (!capturesScreen) setPult(true);
                   }
                 } finally {
                   setPublishing(false);
@@ -165,7 +197,11 @@ export function ScreenShareControls({
           disabled={disabled}
           onPause={onPause}
           onResume={onResume}
-          onClose={() => setPult(false)}
+          initialWindow={remoteWindow}
+          onClose={() => {
+            setPult(false);
+            setRemoteWindow(null);
+          }}
         />
       )}
     </>

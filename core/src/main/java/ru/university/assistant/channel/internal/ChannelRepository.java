@@ -189,6 +189,21 @@ class ChannelRepository {
                 .optional();
     }
 
+    boolean isActiveMaxIdentity(UUID personId, UUID identityId) {
+        return jdbc.sql("""
+                        select exists (
+                            select 1 from iam.channel_identities ci
+                            join iam.persons p on p.id = ci.person_id
+                            where ci.id = :identityId and ci.person_id = :personId
+                                and ci.channel_type = 'max' and p.status = 'ACTIVE'
+                        )
+                        """)
+                .param("identityId", identityId)
+                .param("personId", personId)
+                .query(Boolean.class)
+                .single();
+    }
+
     private void markDelivered(String channelType, DeliveryReport report) {
         jdbc.sql(
                         """

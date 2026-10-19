@@ -157,6 +157,15 @@
   font-size: 13px;
   margin: 0;
 }
+.screen-share-capture-note {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 14px;
+  line-height: 1.5;
+}
 .screen-share-viewer {
   width: 100%;
   position: relative;

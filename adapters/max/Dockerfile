@@ -2,7 +2,7 @@
 # поэтому ни package.json, ни npm install не нужны. Контекст сборки — корень репозитория.
 FROM node:22-alpine
 WORKDIR /app
-COPY adapters/max/lib.mjs adapters/max/max-adapter.mjs ./
+COPY adapters/max/lib.mjs adapters/max/document-media.mjs adapters/max/max-adapter.mjs ./
 
 # Сертификат platform-api2.max.ru выдан Russian Trusted Sub CA (Минцифры), корня которого
 # нет в хранилище Node: без него любой запрос к MAX API падает с

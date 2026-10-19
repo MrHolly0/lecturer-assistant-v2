@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.context.event.EventListener;
 import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.iam.api.AccountStateApi;
 import ru.university.assistant.iam.api.AuthenticatedUser;
@@ -15,6 +16,7 @@ import ru.university.assistant.iam.api.PersonStatus;
 import ru.university.assistant.live.api.LiveSession;
 import ru.university.assistant.live.api.LiveSessionAccessApi;
 import ru.university.assistant.live.api.SessionStatus;
+import ru.university.assistant.live.api.SessionStateChanged;
 import ru.university.assistant.live.api.MediaViewingAccessApi.ViewerAccess;
 import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.projection.api.ShareContracts.Peer;
@@ -148,6 +150,51 @@ public class ShareService {
             return null;
         }
         return room.frame;
+    }
+
+    public record ChatFrame(UUID shareId, Instant receivedAt, byte[] bytes) {}
+
+    /** A current authorized participant may request a fresh image without creating a media viewer. */
+    public synchronized ChatFrame currentFrameForChat(ViewerAccess access) {
+        Room room = activeRoom(access.session());
+        if (room == null || access.session().status() == SessionStatus.PAUSED || room.frameAt == null
+                || !room.frameAt.plusSeconds(4).isAfter(now())) return null;
+        return new ChatFrame(room.id, room.frameAt, room.frame.clone());
+    }
+
+    public record VideoScope(UUID sessionId, UUID shareId, Instant leaseUntil, boolean paused) {}
+
+    public synchronized VideoScope videoPublisher(AuthenticatedUser user, UUID courseId,
+            UUID sessionId, UUID shareId) {
+        LiveSession session = manage(user, courseId, sessionId);
+        Room room = ownerRoom(user, sessionId, shareId);
+        return new VideoScope(sessionId, room.id, room.leaseUntil, session.status() == SessionStatus.PAUSED);
+    }
+
+    /** Only refresh an already registered, owned viewer; media never renews the publisher lease. */
+    public synchronized VideoScope videoViewer(ViewerAccess access, UUID viewerId) {
+        Room room = activeRoom(access.session());
+        if (room == null) return null;
+        pruneViewers(room);
+        ViewerState viewer = viewer(room, viewerId);
+        if (!viewer.personId.equals(access.personId())) throw error(HttpStatus.FORBIDDEN, "Чужое подключение");
+        viewer.seenAt = now();
+        return new VideoScope(access.session().id(), room.id, room.leaseUntil,
+                access.session().status() == SessionStatus.PAUSED);
+    }
+
+    synchronized boolean videoRoomExists(UUID sessionId, UUID shareId) {
+        expire();
+        Room room = rooms.get(sessionId);
+        return room != null && room.id.equals(shareId);
+    }
+
+    @EventListener
+    public synchronized void stateChanged(SessionStateChanged event) {
+        Room room = rooms.get(event.sessionId());
+        if (room == null || event.status() == SessionStatus.LIVE) return;
+        clearFrame(room);
+        if (event.status() != SessionStatus.PAUSED) rooms.remove(event.sessionId());
     }
 
     private void clearFrame(Room room) {

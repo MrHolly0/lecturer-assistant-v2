@@ -25,6 +25,7 @@ import "./styles/course-participants.css";
 import "./styles/projector-setup.css";
 import "./styles/projector-workspace.css";
 import "./styles/projector-helper-controls.css";
+import "./styles/screen-share-presentation.css";
 
 registerServiceWorker();
 

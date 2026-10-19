@@ -1,0 +1,381 @@
+.screen-share-viewer.screen-share-presentation {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: auto;
+  overflow: visible;
+  contain: inline-size;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--foreground, #18181b);
+}
+
+.screen-share-presentation__heading {
+  flex: none;
+  min-width: 0;
+  padding: 4px 0 8px;
+  color: var(--foreground, #18181b);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.screen-share-viewer.screen-share-presentation > .screen-share-presentation__stage {
+  position: relative;
+  display: flex;
+  flex: none;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  align-items: safe center;
+  justify-content: safe center;
+  overflow: auto;
+  contain: inline-size;
+  overscroll-behavior: contain;
+  border-radius: inherit;
+  background: #17191c;
+  scrollbar-color: #858990 #292c30;
+  scrollbar-width: thin;
+}
+
+.screen-share-presentation__stage--image {
+  background: #17191c;
+}
+
+.screen-share-presentation__stage:focus-visible,
+.screen-share-presentation button:focus-visible,
+.screen-share-presentation input:focus-visible {
+  outline: 3px solid var(--ring, #93c5fd);
+  outline-offset: 2px;
+}
+
+.screen-share-presentation__space {
+  display: grid;
+  flex: none;
+  place-items: center;
+  max-width: none;
+  max-height: none;
+  margin: auto;
+}
+
+.screen-share-viewer.screen-share-presentation .screen-share-presentation__media {
+  display: block;
+  flex: none;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  user-select: none;
+}
+
+.screen-share-presentation__stage > .screen-share-viewer-state {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  color: #f4f4f5;
+  background: #17191c;
+  text-align: center;
+}
+
+.screen-share-presentation__stage > .screen-share-viewer-state strong {
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.screen-share-presentation__stage > .screen-share-viewer-state span {
+  max-width: 36ch;
+  color: #d1d5db;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.screen-share-presentation__toolbar {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+  color: var(--foreground, #18181b);
+}
+
+.screen-share-presentation__toolbar > button {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.screen-share-presentation__image-mode,
+.screen-share-presentation__feedback,
+.screen-share-presentation__frame-action > span {
+  color: var(--muted-foreground, #52525b);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.screen-share-presentation__zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 2px 4px;
+  border: 1px solid var(--border, #d4d4d8);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--foreground, #18181b);
+}
+
+.screen-share-presentation__zoom > button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.screen-share-presentation__zoom > button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.screen-share-presentation .screen-share-presentation__zoom > button[data-slot="button"] {
+  flex: 0 0 auto;
+  min-width: max-content;
+  padding-inline: 8px;
+  color: var(--foreground, #18181b) !important;
+  white-space: nowrap;
+}
+
+.screen-share-presentation__range-label {
+  display: grid;
+  grid-template-columns: auto minmax(48px, 112px);
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.screen-share-presentation__range-label > span {
+  min-width: 34px;
+  text-align: center;
+}
+
+.screen-share-presentation__range-label input {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  margin: 0;
+  accent-color: var(--primary, #5b7cfa);
+}
+
+.screen-share-presentation__frame-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.screen-share-presentation__frame-action > button {
+  min-height: 44px;
+}
+
+.screen-share-presentation__escape-hint {
+  margin-left: auto;
+  color: var(--muted-foreground, #52525b);
+  font-size: 13px;
+}
+
+.screen-share-viewer.screen-share-viewer--projection.screen-share-presentation {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: auto;
+  overflow: hidden;
+  border-radius: 0;
+  background: #17191c;
+}
+
+.screen-share-viewer.screen-share-viewer--projection.screen-share-presentation
+  > .screen-share-presentation__stage {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+
+.screen-share-viewer.screen-share-viewer--fullscreen-fallback.screen-share-presentation {
+  position: fixed;
+  z-index: 2000;
+  inset: 0 auto auto 0;
+  display: flex;
+  width: 100vw;
+  height: min(var(--app-viewport-height, 100dvh), var(--app-content-height, 100dvh));
+  max-height: 100dvh;
+  min-height: 0;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  aspect-ratio: auto;
+  overflow: hidden;
+  border-radius: 0;
+  background: #17191c;
+  color: #f4f4f5;
+}
+
+.screen-share-viewer.screen-share-viewer--fullscreen-fallback.screen-share-presentation
+  .screen-share-presentation__heading,
+.screen-share-viewer.screen-share-viewer--fullscreen-fallback.screen-share-presentation
+  .screen-share-presentation__toolbar {
+  color: #f4f4f5;
+}
+
+.screen-share-viewer.screen-share-viewer--fullscreen-fallback.screen-share-presentation
+  .screen-share-presentation__zoom
+  > button[data-slot="button"],
+.screen-share-presentation:fullscreen
+  .screen-share-presentation__zoom
+  > button[data-slot="button"] {
+  color: #f4f4f5 !important;
+}
+
+.screen-share-viewer.screen-share-viewer--fullscreen-fallback.screen-share-presentation
+  .screen-share-presentation__image-mode,
+.screen-share-viewer.screen-share-viewer--fullscreen-fallback.screen-share-presentation
+  .screen-share-presentation__feedback,
+.screen-share-viewer.screen-share-viewer--fullscreen-fallback.screen-share-presentation
+  .screen-share-presentation__frame-action
+  > span,
+.screen-share-viewer.screen-share-viewer--fullscreen-fallback.screen-share-presentation
+  .screen-share-presentation__escape-hint {
+  color: #d1d5db;
+}
+
+.screen-share-viewer.screen-share-viewer--fullscreen-fallback.screen-share-presentation
+  > .screen-share-presentation__stage {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 0;
+  min-height: 0;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+
+.screen-share-viewer.screen-share-viewer--fullscreen-fallback.screen-share-presentation
+  > .screen-share-presentation__toolbar {
+  flex: none;
+}
+
+.screen-share-presentation:fullscreen {
+  display: flex;
+  width: 100vw;
+  height: min(var(--app-viewport-height, 100dvh), var(--app-content-height, 100dvh));
+  max-height: 100dvh;
+  min-height: 0;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  aspect-ratio: auto;
+  overflow: hidden;
+  border-radius: 0;
+  background: #17191c;
+  color: #f4f4f5;
+}
+
+.screen-share-presentation:fullscreen .screen-share-presentation__heading,
+.screen-share-presentation:fullscreen .screen-share-presentation__toolbar {
+  color: #f4f4f5;
+}
+
+.screen-share-presentation:fullscreen .screen-share-presentation__image-mode,
+.screen-share-presentation:fullscreen .screen-share-presentation__feedback,
+.screen-share-presentation:fullscreen .screen-share-presentation__frame-action > span,
+.screen-share-presentation:fullscreen .screen-share-presentation__escape-hint {
+  color: #d1d5db;
+}
+
+.screen-share-presentation:fullscreen > .screen-share-presentation__stage {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 0;
+  min-height: 0;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+
+.screen-share-presentation:fullscreen > .screen-share-presentation__toolbar {
+  flex: none;
+  color: #f4f4f5;
+}
+
+@media (max-width: 560px) {
+  .screen-share-presentation__toolbar {
+    gap: 6px;
+    padding-top: 6px;
+  }
+
+  .screen-share-presentation__toolbar > button {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding-inline: 9px;
+    font-size: 13px;
+  }
+
+  .screen-share-presentation__zoom {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .screen-share-presentation__range-label {
+    grid-template-columns: auto minmax(48px, 1fr);
+    flex: 1 1 auto;
+    max-width: 260px;
+  }
+
+  .screen-share-presentation__zoom > button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .screen-share-presentation__image-mode {
+    flex: 1 1 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-share-presentation *,
+  .screen-share-presentation *::before,
+  .screen-share-presentation *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

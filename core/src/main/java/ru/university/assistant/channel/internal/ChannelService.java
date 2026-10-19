@@ -1,6 +1,9 @@
 package ru.university.assistant.channel.internal;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
@@ -39,10 +42,12 @@ public class ChannelService implements ChannelInternalApi, ChannelFanoutApi {
 
     private final ChannelRepository channels;
     private final ChannelIdentityApi identities;
+    private final ChannelMediaStore media;
 
-    ChannelService(ChannelRepository channels, ChannelIdentityApi identities) {
+    ChannelService(ChannelRepository channels, ChannelIdentityApi identities, ChannelMediaStore media) {
         this.channels = channels;
         this.identities = identities;
+        this.media = media;
     }
 
     @Transactional
@@ -102,6 +107,23 @@ public class ChannelService implements ChannelInternalApi, ChannelFanoutApi {
                 deliveryId, identityId, null, OutboundPriority.P0_INTERACTIVE,
                 new OutboundContent(ContentType.IMAGE, null, imageUrl, "Слайд " + slideIdx),
                 List.of(), ReplyMode.NEW, "requested-slide"));
+    }
+
+    @Override
+    @Transactional
+    public void sendFrameToStudent(UUID sessionId, UUID personId, UUID shareId, Instant receivedAt, byte[] jpeg) {
+        UUID identityId = channels.maxIdentityForPerson(personId)
+                .filter(id -> channels.isActiveMaxIdentity(personId, id))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Откройте бота MAX и привяжите аккаунт, чтобы получить кадр в своём чате"));
+        ChannelMediaStore.Staged file = media.stage(personId, identityId, shareId, receivedAt, jpeg);
+        String caption = "Кадр демонстрации. Получен сервером "
+                + DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss 'UTC'")
+                        .withZone(ZoneOffset.UTC).format(receivedAt);
+        channels.enqueue("max", new OutboundMessage(file.deliveryId(), identityId, null,
+                OutboundPriority.P0_INTERACTIVE,
+                new OutboundContent(ContentType.DOCUMENT, null, file.ref(), caption),
+                List.of(), ReplyMode.NEW, "requested-share-frame"));
     }
 
     private void enqueueCommandResponse(String channelType, java.util.UUID identityId, String text) {

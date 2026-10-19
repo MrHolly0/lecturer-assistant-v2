@@ -1,0 +1,11 @@
+.floating-remote-header > .floating-remote-popout {
+  flex: none;
+  margin-left: auto;
+}
+.floating-remote-header > .floating-remote-title {
+  flex: 1;
+  min-width: 0;
+  margin-right: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

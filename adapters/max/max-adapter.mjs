@@ -8,6 +8,7 @@
 // в пользу задокументированного, а не предполагаемого поведения. Чистая логика (без сети и
 // без процесса) вынесена в lib.mjs и покрыта тестами в lib.test.mjs.
 import http from "node:http";
+import { createDocumentUploader } from "./document-media.mjs";
 import {
   createRateLimiter,
   extractJoinCode,
@@ -115,9 +116,12 @@ async function maxApi(path, { method = "GET", query, body } = {}) {
 }
 
 // buttonRows: массив рядов, ряд — массив кнопок MAX (payload.buttons[][]).
-async function sendMessage(userId, text, buttonRows, imageUrl) {
+const uploadDocument = createDocumentUploader({ coreUrl, apiKey, apiBase, maxApi });
+
+async function sendMessage(userId, text, buttonRows, imageUrl, fileToken) {
   const attachments = [
     ...(imageUrl ? [{ type: "image", payload: { url: new URL(imageUrl, webAppUrl).toString() } }] : []),
+    ...(fileToken ? [{ type: "file", payload: { token: fileToken } }] : []),
     ...(buttonRows?.length ? [{ type: "inline_keyboard", payload: { buttons: buttonRows } }] : []),
   ];
   return maxApi("/messages", {
@@ -241,11 +245,15 @@ async function pollCoreOutbox() {
     const started = Date.now();
     let report;
     try {
+      const fileToken = message.content.type === "DOCUMENT"
+          ? await uploadDocument(message.content.ref) : undefined;
       const result = await sendMessage(
           message.externalUserId,
-          message.content.type === "IMAGE" ? message.content.caption ?? "Слайд лекции" : message.content.text ?? "",
+          ["IMAGE", "DOCUMENT"].includes(message.content.type)
+              ? message.content.caption ?? "Материал занятия" : message.content.text ?? "",
           renderKeyboard(message.keyboard),
-          message.content.type === "IMAGE" ? message.content.ref : undefined);
+          message.content.type === "IMAGE" ? message.content.ref : undefined,
+          fileToken);
       report = {
         messageId: message.id,
         status: "DELIVERED",
