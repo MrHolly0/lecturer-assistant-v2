@@ -28,15 +28,28 @@ if ($InitialHosts) { throw 'Native helper is running; use an isolated runner' }
 if ($InitialStartup) { throw 'A projector autostart entry exists; use an isolated runner' }
 New-Item -ItemType Directory -Path $TestRoot -Force | Out-Null
 
+function Run-BoundedProcess([string]$Executable, [string[]]$Arguments, [int]$TimeoutSeconds = 120) {
+    $Created = Start-Process -FilePath $Executable -ArgumentList $Arguments -WorkingDirectory $TestRoot -PassThru
+    try {
+        if (-not $Created.WaitForExit($TimeoutSeconds * 1000)) {
+            $TimeoutReport = Join-Path $TestRoot ("process-timeout-$($Created.Id).json")
+            [ordered]@{ executable = $Executable; processId = $Created.Id; timeoutSeconds = $TimeoutSeconds; processTerminated = $false } |
+                ConvertTo-Json | Set-Content -LiteralPath $TimeoutReport -Encoding utf8NoBOM
+            throw "Created process timed out after $TimeoutSeconds seconds (PID $($Created.Id)); diagnostic: $TimeoutReport. No process was terminated."
+        }
+        return $Created.ExitCode
+    }
+    finally { $Created.Dispose() }
+}
 function Run-Installer([string]$Executable, [string[]]$Arguments) {
-    $Run = Start-Process -FilePath $Executable -ArgumentList $Arguments -Wait -PassThru
-    if ($Run.ExitCode -ne 0) { throw "Installer command failed with exit code $($Run.ExitCode)" }
+    $ExitCode = Run-BoundedProcess $Executable $Arguments 120
+    if ($ExitCode -ne 0) { throw "Installer command failed with exit code $ExitCode" }
 }
 function Test-InstalledHost($Slot, [string]$ExpectedVersion, [string]$ReportName) {
     $ReportPath = Join-Path $TestRoot $ReportName
     $Executable = Join-Path (Join-Path (Join-Path $InstallRoot 'versions') $Slot.slot) $Slot.entryPoint
-    $Diagnostic = Start-Process -FilePath $Executable -ArgumentList @('--preflight', "`"$ReportPath`"") -Wait -PassThru
-    if ($Diagnostic.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $ReportPath)) { throw 'Installed native host preflight did not run successfully' }
+    $Diagnostic = Run-BoundedProcess $Executable @('--preflight', "`"$ReportPath`"") 30
+    if ($Diagnostic -ne 0 -or -not (Test-Path -LiteralPath $ReportPath)) { throw 'Installed native host preflight did not run successfully' }
     $Report = Get-Content -LiteralPath $ReportPath -Raw | ConvertFrom-Json
     $ExpectedArchitecture = $Platform.Replace('WINDOWS_', '')
     if ($Report.mode -ne 'PREFLIGHT' -or $Report.version -ne $ExpectedVersion -or $Report.platform -ne $Platform -or $Report.processArchitecture -ne $ExpectedArchitecture -or $Report.osArchitecture -ne $ExpectedArchitecture) { throw 'Native host reported the wrong version or architecture' }
@@ -58,6 +71,12 @@ try {
     if (Get-Process Projector.Windows -ErrorAction SilentlyContinue) { throw 'Silent installation launched native UI' }
     if (Get-ProjectorStartupValue) { throw 'Silent installation enabled autostart without opt-in' }
     Test-InstalledHost $Pointer $Version 'host-preflight.json'
+    # Even malformed maintenance arguments must fail quietly, without a launcher MessageBox.
+    $Launcher = Join-Path $InstallRoot 'launcher/Projector.Launcher.exe'
+    foreach ($Maintenance in @('bootstrap', 'bootstrap-check', 'uninstall-check')) {
+        if ((Run-BoundedProcess $Launcher @($Maintenance) 15) -eq 0) { throw 'Malformed maintenance command unexpectedly succeeded' }
+        if ($Maintenance -ne 'uninstall-check' -and (Run-BoundedProcess $Launcher @($Maintenance, 'invalid-maintenance-argument') 15) -eq 0) { throw 'Malformed two-argument maintenance command unexpectedly succeeded' }
+    }
     $PairProtocol = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($PairProtocolKey)
     if ($null -eq $PairProtocol) { throw 'Per-user browser pairing protocol was not registered' }
     try {
@@ -84,16 +103,18 @@ try {
         if ($Upgraded.version -ne $UpgradeVersion -or $Upgraded.platform -ne $Platform -or $Upgraded.slot -eq $Pointer.slot) { throw 'Manual installer upgrade did not activate a new verified slot' }
         Test-InstalledHost $Upgraded $UpgradeVersion 'host-upgrade-preflight.json'
         $LauncherHash = (Get-FileHash (Join-Path $InstallRoot 'launcher/Projector.Launcher.exe') -Algorithm SHA256).Hash
-        $Downgrade = Start-Process -FilePath $Installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/TASKS=""', "/DIR=`"$InstallRoot`"", "/LOG=`"$(Join-Path $TestRoot 'downgrade-refusal.log')`"") -Wait -PassThru
+        $Downgrade = Run-BoundedProcess $Installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/TASKS=""', "/DIR=`"$InstallRoot`"", "/LOG=`"$(Join-Path $TestRoot 'downgrade-refusal.log')`"") 60
         $AfterDowngrade = Get-Content -LiteralPath (Join-Path $InstallRoot 'current.json') -Raw | ConvertFrom-Json
-        if ($Downgrade.ExitCode -eq 0 -or $AfterDowngrade.slot -ne $Upgraded.slot -or (Get-FileHash (Join-Path $InstallRoot 'launcher/Projector.Launcher.exe') -Algorithm SHA256).Hash -ne $LauncherHash) { throw 'Old installer downgraded or changed the active product' }
+        if ($Downgrade -eq 0 -or $AfterDowngrade.slot -ne $Upgraded.slot -or (Get-FileHash (Join-Path $InstallRoot 'launcher/Projector.Launcher.exe') -Algorithm SHA256).Hash -ne $LauncherHash) { throw 'Old installer downgraded or changed the active product' }
     }
 
     # A live show.lock must reject removal without killing the host or dropping state.
     $ShowLock = [IO.File]::Open((Join-Path $InstallRoot 'show.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     try {
-        $Blocked = Start-Process -FilePath (Join-Path $InstallRoot 'uninstall/unins000.exe') -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
-        if ($Blocked.ExitCode -eq 0 -or -not (Test-Path (Join-Path $InstallRoot 'current.json'))) { throw 'Uninstall ignored active show lock' }
+        # Exercise the exact two-argument launcher failure that silent Inno must receive immediately.
+        if ((Run-BoundedProcess $Launcher @('uninstall-check', "`"$InstallRoot`"") 15) -eq 0) { throw 'Launcher uninstall-check ignored active show lock' }
+        $Blocked = Run-BoundedProcess (Join-Path $InstallRoot 'uninstall/unins000.exe') @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') 30
+        if ($Blocked -eq 0 -or -not (Test-Path (Join-Path $InstallRoot 'current.json'))) { throw 'Uninstall ignored active show lock' }
     }
     finally { $ShowLock.Dispose() }
 
@@ -105,7 +126,7 @@ try {
     if (Get-ProjectorStartupValue) { throw 'Unexpected autostart mutation' }
     $RemainingPairProtocol = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($PairProtocolKey)
     if ($RemainingPairProtocol) { $RemainingPairProtocol.Dispose(); throw 'Uninstaller left the browser pairing URL protocol' }
-    Write-Output 'PASS: per-user install, native host runtime preflight, immutable slot, idempotent reinstall, optional version upgrade/downgrade refusal, locked-show refusal, silent uninstall; no UI, display or autostart mutation'
+    Write-Output 'PASS: per-user install, native host runtime preflight, noninteractive maintenance failures, immutable slot, idempotent reinstall, optional version upgrade/downgrade refusal, locked-show refusal, silent uninstall; all child waits bounded; no UI, display or autostart mutation'
 }
 finally {
     # Logs survive CI failure. No forced process stop, display change, pairing or credential deletion.

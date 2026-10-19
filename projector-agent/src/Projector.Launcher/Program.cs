@@ -3,7 +3,8 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Lecturer.Projector;
 
-var interactive = args.Length is 1 or 2;
+var maintenance = args.Length > 0 && args[0] is "bootstrap" or "bootstrap-check" or "uninstall-check";
+var interactive = !maintenance && args.Length is 1 or 2;
 try
 {
     var platform = (OperatingSystem.IsWindows() ? "WINDOWS_" : OperatingSystem.IsMacOS() ? "MACOS_" : "UNSUPPORTED_") +

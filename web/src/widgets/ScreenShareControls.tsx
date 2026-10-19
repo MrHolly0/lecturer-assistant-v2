@@ -53,19 +53,26 @@ export function ScreenShareControls({
     refetchInterval: 3000,
     retry: false
   });
-  const nativeDevices = helpers.data?.agentAllowed
-    ? helpers.data.devices.filter(
-        (device) =>
-          device.connected &&
-          !device.revoked &&
-          device.version
-            .split(".")
-            .map(Number)
-            .some((part, index) => (index === 0 ? part > 0 : index === 1 && part >= 2)) &&
-          device.activeSessionId === session.id &&
-          (device.status === "SHOWING" || device.status === "PAUSED")
-      ) ?? []
-    : [];
+  const helpersUnknown = !nativeWorkspace && !helpers.data;
+  const helperStateTitle = helpersUnknown
+    ? helpers.isError
+      ? "Не удалось проверить помощник. Повторите проверку подключения."
+      : "Проверяем подключение помощника…"
+    : undefined;
+  const nativeDevices =
+    !nativeWorkspace && helpers.data?.agentAllowed
+      ? helpers.data.devices.filter(
+          (device) =>
+            device.connected &&
+            !device.revoked &&
+            device.version
+              .split(".")
+              .map(Number)
+              .some((part, index) => (index === 0 ? part > 0 : index === 1 && part >= 2)) &&
+            device.activeSessionId === session.id &&
+            (device.status === "SHOWING" || device.status === "PAUSED")
+        ) ?? []
+      : [];
   const preferredDevice = preferredNativeProjectionDevice(courseId, session.id);
   const nativeDevice =
     nativeDevices.find((device) => device.id === preferredDevice) ??
@@ -100,6 +107,7 @@ export function ScreenShareControls({
     };
   }, []);
   const openRemote = () => {
+    if (helpersUnknown) return;
     if (nativeDevice) {
       focusNative.mutate();
       return;
@@ -124,6 +132,15 @@ export function ScreenShareControls({
         toast.error(message);
       });
   };
+  const handoffToNativeRemote = () => {
+    if (nativeWorkspace || nativeDevices.length === 0) return false;
+    void controller.stop();
+    setPreview(false);
+    setConfirmed(false);
+    openRemote();
+    if (nativeDevice) toast.info("Выберите источник в отдельном пульте.");
+    return true;
+  };
   useEffect(() => {
     if (ours) controller.setPaused(session.status === "PAUSED");
   }, [session.status, ours, controller]);
@@ -140,6 +157,7 @@ export function ScreenShareControls({
     if (share.phase === "publishing" && ours) setPreview(false);
   }, [share.phase, ours]);
   const choose = () => {
+    if (helpersUnknown || handoffToNativeRemote()) return;
     setConfirmed(false);
     if (isMax) {
       const path = `/settings/projector?${new URLSearchParams({ courseId, sessionId: session.id, joinCode: session.joinCode })}`;
@@ -152,11 +170,7 @@ export function ScreenShareControls({
     void controller.choose({ courseId, sessionId: session.id, joinCode: session.joinCode });
   };
   const prepare = () => {
-    if (nativeDevices.length > 0) {
-      openRemote();
-      toast.info("В отдельном пульте нажмите «Показать приложение» и выберите источник.");
-      return;
-    }
+    if (helpersUnknown || handoffToNativeRemote()) return;
     if (isMax) {
       choose();
       return;
@@ -171,11 +185,14 @@ export function ScreenShareControls({
           variant="outline"
           disabled={
             !(ours && share.phase === "publishing") &&
-            (disabled ||
+            (helpersUnknown ||
+              disabled ||
               session.status !== "LIVE" ||
               share.phase === "choosing" ||
               (share.phase === "publishing" && !ours))
           }
+          title={helperStateTitle}
+          aria-busy={helpersUnknown && helpers.isFetching}
           onClick={ours && share.phase === "publishing" ? () => void controller.stop() : prepare}
         >
           {ours && share.phase === "publishing" ? (
@@ -187,10 +204,24 @@ export function ScreenShareControls({
         </Button>
       )}
       {!nativeWorkspace && (
-        <Button variant="outline" onClick={openRemote}>
+        <Button
+          variant="outline"
+          disabled={helpersUnknown}
+          title={helperStateTitle}
+          aria-busy={helpersUnknown && helpers.isFetching}
+          onClick={openRemote}
+        >
           <MessageCircle size={18} aria-hidden="true" />
           Пульт
         </Button>
+      )}
+      {!nativeWorkspace && helpersUnknown && helpers.isError && (
+        <span className="screen-share-remote-error" role="alert">
+          Не удалось проверить подключение помощника.{" "}
+          <Button variant="link" onClick={() => void helpers.refetch()}>
+            Повторить проверку
+          </Button>
+        </span>
       )}
       {remoteError && (
         <span className="screen-share-remote-error" role="alert">
@@ -259,16 +290,23 @@ export function ScreenShareControls({
           <DialogFooter>
             <Button
               variant="outline"
-              disabled={publishing || share.phase === "choosing"}
+              disabled={publishing || share.phase === "choosing" || helpersUnknown}
+              title={helperStateTitle}
               onClick={choose}
             >
               {hasPreview ? "Другой источник" : "Выбрать окно или экран"}
             </Button>
             <Button
               disabled={
-                !confirmed || !hasPreview || share.phase !== "preview" || disabled || publishing
+                !confirmed ||
+                !hasPreview ||
+                share.phase !== "preview" ||
+                disabled ||
+                publishing ||
+                helpersUnknown
               }
               onClick={async () => {
+                if (helpersUnknown || handoffToNativeRemote()) return;
                 // Reserve the separate window before publishing consumes the click activation.
                 if (!nativeWorkspace) openRemote();
                 setPublishing(true);
@@ -299,6 +337,7 @@ export function ScreenShareControls({
           initialWindow={remoteWindow}
           onClose={() => {
             if (nativeWorkspace) {
+              void controller.stop();
               nativeCommand("close");
               return;
             }
