@@ -1,4 +1,5 @@
 import { expireStoredAuth, getStoredAuth } from "../auth";
+import { invalidatePendingAuthRefresh } from "./refresh";
 import { refreshAuthSession } from "./refresh";
 import { apiErrorFromResponse, ApiError } from "./errors";
 
@@ -14,6 +15,7 @@ let lastForbiddenRefreshAt = 0;
 export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise<Response> {
   const { skipAuthorization = false, skipAuthRefresh = false, ...requestInit } = init;
   const accessToken = skipAuthorization ? null : getStoredAuth()?.accessToken ?? null;
+  let responseToken = accessToken;
   let response = await sendRequest(path, requestInit, accessToken);
 
   const refreshForbidden = Boolean(
@@ -25,15 +27,34 @@ export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise
   if (refreshForbidden) lastForbiddenRefreshAt = Date.now();
   if ((response.status === 401 || refreshForbidden) && !skipAuthRefresh && accessToken) {
     const currentToken = getStoredAuth()?.accessToken ?? null;
-    const refreshed =
-      currentToken && currentToken !== accessToken ? true : await refreshAuthSession();
+    let refreshed: Awaited<ReturnType<typeof refreshAuthSession>> | true | null = null;
+    try {
+      if (currentToken && currentToken !== accessToken) {
+        refreshed = true;
+        responseToken = currentToken;
+      } else {
+        refreshed = await refreshAuthSession();
+      }
+    } catch (error) {
+      // A recoverable refresh failure does not invalidate the existing session. For
+      // a 403, preserve the authorization response; refreshing is only a best-effort
+      // compatibility path for stale access tokens.
+      if (response.status === 403) refreshed = null;
+      else throw error;
+    }
     if (refreshed) {
-      response = await sendRequest(path, requestInit, getStoredAuth()?.accessToken ?? null);
+      responseToken = getStoredAuth()?.accessToken ?? null;
+      response = await sendRequest(path, requestInit, responseToken);
     }
   }
 
   if (response.status === 401) {
-    if (!skipAuthRefresh && accessToken) expireStoredAuth();
+    // Only expire the credentials that received this response. An older request
+    // must not clear a token installed by a later login/account switch.
+    if (!skipAuthRefresh && responseToken && getStoredAuth()?.accessToken === responseToken) {
+      invalidatePendingAuthRefresh();
+      expireStoredAuth();
+    }
     throw new ApiError(401, "Сессия истекла");
   }
   await assertSuccessful(response);

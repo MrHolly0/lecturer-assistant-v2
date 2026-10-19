@@ -1,7 +1,7 @@
 import type { components } from "./schema";
-import { apiFetch } from "./http";
+import { ApiError, apiFetch } from "./http";
 import { clearStoredAuth, getStoredAuth, setStoredAuth } from "../auth";
-import { refreshAuthSession } from "./refresh";
+import { captureAuthTransition, invalidatePendingAuthRefresh, refreshAuthSession } from "./refresh";
 import { announceDirectoryChange } from "../directorySync";
 
 type AuthResponse = components["schemas"]["AuthResponse"];
@@ -25,6 +25,7 @@ let maxLoginInFlight: Promise<MaxLoginResult> | null = null;
 let maxLoginKey: string | null = null;
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
+  invalidatePendingAuthRefresh();
   const res = await apiFetch("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
@@ -42,6 +43,7 @@ export async function registerByInvitation(
   password: string,
   invitationCode: string
 ): Promise<AuthResponse> {
+  invalidatePendingAuthRefresh();
   const res = await apiFetch("/auth/register", {
     method: "POST",
     body: JSON.stringify({ displayName, email, password, invitationCode }),
@@ -75,6 +77,7 @@ export async function confirmMaxLink(
   initData: string,
   confirmationToken: string
 ): Promise<MaxLoginResult> {
+  invalidatePendingAuthRefresh();
   clearStoredAuth();
   try {
     const response = await apiFetch("/auth/max/link-confirm", {
@@ -85,7 +88,7 @@ export async function confirmMaxLink(
     });
     const auth = (await response.json()) as MaxAuthResponse;
     setStoredAuth({ accessToken: auth.accessToken });
-    const user = await getCurrentUser();
+    const user = await getCurrentUser({ skipAuthRefresh: true });
     return { auth, user };
   } catch (error) {
     clearStoredAuth();
@@ -106,9 +109,13 @@ export function loginWithMax(
   const key = JSON.stringify([initData, linkCode, startParam, existingOnly]);
   if (maxLoginInFlight) {
     if (maxLoginKey === key) return maxLoginInFlight;
+    const ensureCurrent = captureAuthTransition();
     return maxLoginInFlight
       .catch(() => undefined)
-      .then(() => loginWithMax(initData, linkCode, startParam, existingOnly));
+      .then(() => {
+        ensureCurrent();
+        return loginWithMax(initData, linkCode, startParam, existingOnly);
+      });
   }
   maxLoginKey = key;
   maxLoginInFlight = performMaxLogin(initData, linkCode, startParam, existingOnly).finally(() => {
@@ -124,7 +131,9 @@ async function performMaxLogin(
   startParam?: string,
   existingOnly = false
 ): Promise<MaxLoginResult> {
-  clearStoredAuth();
+  invalidatePendingAuthRefresh();
+  const ensureCurrent = captureAuthTransition();
+  let issuedAccessToken: string | null = null;
   try {
     const request: MaxAuthRequest = { initData };
     if (linkCode) request.linkCode = linkCode;
@@ -137,11 +146,21 @@ async function performMaxLogin(
       skipAuthRefresh: true
     });
     const auth = (await res.json()) as MaxAuthResponse;
+    ensureCurrent();
+    issuedAccessToken = auth.accessToken;
     setStoredAuth({ accessToken: auth.accessToken });
-    const user = await getCurrentUser();
+    const user = await getCurrentUser({ skipAuthRefresh: true });
+    ensureCurrent();
     return { auth, user };
   } catch (error) {
-    clearStoredAuth();
+    if (
+      issuedAccessToken &&
+      getStoredAuth()?.accessToken === issuedAccessToken &&
+      error instanceof ApiError &&
+      (error.status === 401 || error.status === 403)
+    ) {
+      clearStoredAuth();
+    }
     throw error;
   }
 }
@@ -155,10 +174,14 @@ export async function logout(): Promise<void> {
     });
   } catch {
     // best-effort
+  } finally {
+    invalidatePendingAuthRefresh();
   }
 }
 
-export async function getCurrentUser(): Promise<UserProfile> {
-  const res = await apiFetch("/auth/me");
+export async function getCurrentUser(
+  options: { skipAuthRefresh?: boolean } = {}
+): Promise<UserProfile> {
+  const res = await apiFetch("/auth/me", { skipAuthRefresh: options.skipAuthRefresh });
   return res.json() as Promise<UserProfile>;
 }

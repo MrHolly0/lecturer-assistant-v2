@@ -117,6 +117,11 @@ export function useLiveSession(courseId: string, sessionId: string) {
             queryKey: ["live", courseId, sessionId, "engagement"]
           });
         }
+        if (message.type.startsWith("qa.")) {
+          void queryClient.invalidateQueries({
+            queryKey: ["live", courseId, sessionId, "questions"]
+          });
+        }
       },
       (state) => {
         setConnection(state);
@@ -128,6 +133,9 @@ export function useLiveSession(courseId: string, sessionId: string) {
           });
           void queryClient.invalidateQueries({
             queryKey: ["live", courseId, sessionId, "engagement"]
+          });
+          void queryClient.invalidateQueries({
+            queryKey: ["live", courseId, sessionId, "questions"]
           });
         }
       }
@@ -142,9 +150,11 @@ export function useLiveSession(courseId: string, sessionId: string) {
       if (document.visibilityState === "visible") void refreshRef.current();
     };
     window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("pageshow", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener("pageshow", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, []);

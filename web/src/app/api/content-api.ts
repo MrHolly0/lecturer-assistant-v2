@@ -1,7 +1,7 @@
 import type { components } from "./schema";
 import { expireStoredAuth, getStoredAuth } from "../auth";
 import { apiFetch, ApiError } from "./http";
-import { refreshAuthSession } from "./refresh";
+import { invalidatePendingAuthRefresh, refreshAuthSession } from "./refresh";
 
 export type ImportJob = components["schemas"]["ImportJob"];
 export type SlideDeck = components["schemas"]["SlideDeck"];
@@ -166,13 +166,21 @@ export function uploadDeck(
             return;
           }
 
-          if (await refreshAuthSession()) {
-            send(true);
+          try {
+            if (await refreshAuthSession()) {
+              send(true);
+              return;
+            }
+          } catch (error) {
+            reject(error);
             return;
           }
         }
         if (xhr.status === 401) {
-          expireStoredAuth();
+          if (requestToken && getStoredAuth()?.accessToken === requestToken) {
+            invalidatePendingAuthRefresh();
+            expireStoredAuth();
+          }
           reject(new ApiError(401, "Сессия истекла"));
           return;
         }

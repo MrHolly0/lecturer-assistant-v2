@@ -1,0 +1,55 @@
+import assert from "node:assert/strict";
+import { after, beforeEach, test } from "node:test";
+import { clearStoredAuth, getStoredAuth, setStoredAuth } from "../auth.ts";
+import { loginWithMax } from "./auth-api.ts";
+import { invalidatePendingAuthRefresh, RefreshSupersededError } from "./refresh.ts";
+
+const originalFetch = globalThis.fetch;
+const originalStorage = globalThis.sessionStorage;
+const response = (status, body = {}) => new Response(JSON.stringify(body), { status });
+
+beforeEach(() => {
+  invalidatePendingAuthRefresh();
+  const values = new Map();
+  globalThis.sessionStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key)
+  };
+});
+after(() => {
+  globalThis.fetch = originalFetch;
+  if (originalStorage === undefined) delete globalThis.sessionStorage;
+  else globalThis.sessionStorage = originalStorage;
+});
+
+test("a late automatic MAX login cannot restore auth after an explicit exit", async () => {
+  let complete;
+  globalThis.fetch = () => new Promise((resolve) => { complete = resolve; });
+  const pending = loginWithMax("fixture-launch", undefined, undefined, true);
+  invalidatePendingAuthRefresh();
+  clearStoredAuth();
+  complete(response(200, { accessToken: "late-access" }));
+  await assert.rejects(pending, RefreshSupersededError);
+  assert.equal(getStoredAuth(), null);
+});
+
+test("a temporary MAX login outage preserves the warm credentials", async () => {
+  setStoredAuth({ accessToken: "warm-access" });
+  globalThis.fetch = async () => response(503);
+  await assert.rejects(loginWithMax("fixture-launch", undefined, undefined, true));
+  assert.deepEqual(getStoredAuth(), { accessToken: "warm-access" });
+});
+
+test("a rejected MAX identity cannot fall back to a different browser refresh cookie", async () => {
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return String(url).endsWith("/auth/max")
+      ? response(200, { accessToken: "max-access" })
+      : response(401);
+  };
+  await assert.rejects(loginWithMax("fixture-launch", undefined, undefined, true));
+  assert.equal(calls.some((url) => url.endsWith("/auth/refresh")), false);
+  assert.equal(getStoredAuth(), null);
+});

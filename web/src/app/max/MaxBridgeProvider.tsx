@@ -53,6 +53,7 @@ export function MaxBridgeProvider({ children }: { children: ReactNode }) {
     void refreshViewport();
 
     const refreshBridge = () => {
+      if (document.visibilityState === "hidden") return;
       const next = readEnvironment();
       setEnvironment((current) =>
         current.isMax === next.isMax &&
@@ -72,6 +73,7 @@ export function MaxBridgeProvider({ children }: { children: ReactNode }) {
     window.addEventListener("resize", refreshViewport);
     visualViewport?.addEventListener("resize", refreshViewport);
     window.addEventListener("focus", refreshBridge);
+    window.addEventListener("pageshow", refreshBridge);
     document.addEventListener("visibilitychange", refreshBridge);
 
     return () => {
@@ -80,6 +82,7 @@ export function MaxBridgeProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("resize", refreshViewport);
       visualViewport?.removeEventListener("resize", refreshViewport);
       window.removeEventListener("focus", refreshBridge);
+      window.removeEventListener("pageshow", refreshBridge);
       document.removeEventListener("visibilitychange", refreshBridge);
     };
   }, [refreshViewport]);

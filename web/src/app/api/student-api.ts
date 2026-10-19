@@ -347,6 +347,8 @@ export function connectStudentSession(
   window.addEventListener("online", handleOnline);
   window.addEventListener("offline", handleOffline);
   document.addEventListener("visibilitychange", handleVisibility);
+  window.addEventListener("pageshow", handleVisibility);
+  window.addEventListener("focus", handleVisibility);
   onStateChange("CONNECTING");
   openStream();
 
@@ -360,6 +362,8 @@ export function connectStudentSession(
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
       document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("pageshow", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
     }
   };
 }

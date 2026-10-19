@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   answerProjectionShare,
   answerShare,
@@ -44,6 +44,7 @@ export function ScreenShareViewer({
   const [mediaPaused, setMediaPaused] = useState(false);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
+  const recoveryAttempt = useRef(0);
   useEffect(() => {
     let alive = true,
       busy = false,
@@ -58,6 +59,7 @@ export function ScreenShareViewer({
       lastFrame = 0;
     let roomPaused = false;
     let halted = false;
+    let retryable = true;
     let generation = 0;
     let statusAbort: AbortController | null = null;
     let frameAbort: AbortController | null = null;
@@ -65,6 +67,7 @@ export function ScreenShareViewer({
     let frameObjectUrl: string | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let frameExpiry: ReturnType<typeof setTimeout> | null = null;
+    let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
     const viewerId = crypto.randomUUID();
     const localMode = local && !projectionViewToken;
     if (localMode && !localChannelId) {
@@ -131,9 +134,27 @@ export function ScreenShareViewer({
         setError(false);
       }
     };
-    const halt = () => {
+    const scheduleRecovery = () => {
+      if (
+        !alive ||
+        !halted ||
+        !retryable ||
+        recoveryTimer ||
+        document.visibilityState === "hidden" ||
+        !navigator.onLine
+      )
+        return;
+      const delay = Math.min(1500 * 2 ** recoveryAttempt.current++, 15000);
+      recoveryTimer = setTimeout(() => {
+        recoveryTimer = null;
+        if (alive && navigator.onLine && document.visibilityState !== "hidden")
+          setRetry((value) => value + 1);
+      }, delay);
+    };
+    const halt = (recoverable = true) => {
       if (!alive || halted) return;
       halted = true;
+      retryable = recoverable;
       generation += 1;
       statusAbort?.abort();
       frameAbort?.abort();
@@ -148,6 +169,7 @@ export function ScreenShareViewer({
       setSourceId(null);
       setMediaPaused(false);
       setError(true);
+      scheduleRecovery();
     };
     const acceptStatus = (id: string, nextPaused: boolean) => {
       if (!alive || halted) return;
@@ -157,6 +179,7 @@ export function ScreenShareViewer({
         activeSince = Date.now();
       }
       roomPaused = nextPaused;
+      recoveryAttempt.current = 0;
       setSourceId(id);
       lastStatus = Date.now();
       if (nextPaused) {
@@ -221,7 +244,7 @@ export function ScreenShareViewer({
         if (alive && !halted && generation === requestGeneration && peer === next) {
           if (!videoPlayback?.isReady() && !frameObjectUrl) setError(true);
           if (failure instanceof ApiError && [401, 403, 404, 410].includes(failure.status)) {
-            halt();
+            halt(false);
           }
         }
       } finally {
@@ -282,7 +305,7 @@ export function ScreenShareViewer({
             setActive(true);
             setError(true);
           }
-          if (revoked) halt();
+          if (revoked) halt(false);
         }
       } finally {
         clearTimeout(deadline);
@@ -338,7 +361,7 @@ export function ScreenShareViewer({
           failure instanceof ApiError &&
           [401, 403, 404, 410].includes(failure.status)
         )
-          halt();
+          halt(false);
       } finally {
         clearTimeout(deadline);
         if (frameAbort === controller) frameAbort = null;
@@ -362,7 +385,7 @@ export function ScreenShareViewer({
               }
             },
             onFailure: (failure) => {
-              if (failure instanceof ApiError && [401, 403].includes(failure.status)) halt();
+              if (failure instanceof ApiError && [401, 403].includes(failure.status)) halt(false);
             }
           }
         );
@@ -375,6 +398,22 @@ export function ScreenShareViewer({
     }, 250);
     const frameTimer = setInterval(() => void frameTick(), 800);
     const videoTimer = setInterval(videoTick, 500);
+    const resume = () => {
+      if (!alive || document.visibilityState === "hidden" || !navigator.onLine || !retryable)
+        return;
+      if (halted) {
+        scheduleRecovery();
+      } else if (lastStatus && Date.now() - lastStatus >= 4000) {
+        // A suspended WebView cannot renew media leases. Discard its old media and
+        // verify the existing participant again; a transport timeout is not logout.
+        recoveryAttempt.current = 0;
+        halt();
+      }
+    };
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("pageshow", resume);
+    window.addEventListener("focus", resume);
+    window.addEventListener("online", resume);
     setActive(false);
     setSourceId(null);
     setStream(null);
@@ -390,6 +429,11 @@ export function ScreenShareViewer({
       frameAbort?.abort();
       answerAbort?.abort();
       if (timer) clearTimeout(timer);
+      if (recoveryTimer) clearTimeout(recoveryTimer);
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("pageshow", resume);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("online", resume);
       clearInterval(livenessTimer);
       clearInterval(frameTimer);
       clearInterval(videoTimer);

@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings 0",
     "format": "prettier --check \"src/**/*.{ts,tsx,css}\"",
-    "test": "node --experimental-strip-types --test src/app/api/student-snapshot-gate.test.mjs src/app/student-resume.test.mjs src/app/max/bridge.test.mjs src/shared/lib/sessionHistoryDates.test.mjs src/shared/lib/sessionAnalytics.test.mjs src/app/projection/setupState.test.mjs src/app/projection/browserProjection.test.mjs src/app/sharing/capturePolicy.test.mjs src/app/sharing/screenShare.test.mjs src/app/projection/lectureRemoteWindow.test.mjs"
+    "test": "node --experimental-transform-types --experimental-loader ./scripts/ts-extension-loader.mjs --test src/app/api/student-snapshot-gate.test.mjs src/app/api/refresh.test.mjs src/app/api/http-auth-recovery.test.mjs src/app/api/max-login-recovery.test.mjs src/app/student-resume.test.mjs src/app/max/bridge.test.mjs src/app/max/authResume.test.mjs src/shared/lib/sessionHistoryDates.test.mjs src/shared/lib/sessionAnalytics.test.mjs src/app/projection/setupState.test.mjs src/app/projection/browserProjection.test.mjs src/app/sharing/capturePolicy.test.mjs src/app/sharing/screenShare.test.mjs src/app/projection/lectureRemoteWindow.test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "1.2.3",

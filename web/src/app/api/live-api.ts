@@ -270,10 +270,17 @@ export function connectLiveSession(
 
     refreshAttemptedSinceConnected = true;
     rejectedToken = token;
-    const refreshed = await refreshAuthSession();
-    if (!refreshed) {
-      expireStoredAuth();
+    try {
+      const refreshed = await refreshAuthSession();
+      if (refreshed) return;
+      if (getStoredAuth()?.accessToken === token) expireStoredAuth();
       stopped = true;
+      currentSocket.close();
+    } catch {
+      // Network/5xx refresh failures do not revoke the access token. Reconnect
+      // with backoff and allow another refresh attempt on the next socket.
+      refreshAttemptedSinceConnected = false;
+      rejectedToken = null;
       currentSocket.close();
     }
   }
@@ -282,7 +289,8 @@ export function connectLiveSession(
     if (stopped) return;
     reconnectImmediately = true;
     attempt = 0;
-    refreshAttemptedSinceConnected = true;
+    refreshAttemptedSinceConnected = false;
+    rejectedToken = null;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
     else scheduleReconnect();
   };
@@ -296,19 +304,36 @@ export function connectLiveSession(
   };
 
   const handleOffline = () => onStateChange?.("offline");
+  let resumeTimer: ReturnType<typeof setTimeout> | undefined;
+  const handleResume = () => {
+    if (stopped || document.visibilityState !== "visible" || resumeTimer) return;
+    // MAX may suspend an apparently open socket. A fresh connection also fetches
+    // committed state; group the foreground events emitted by the same resume.
+    resumeTimer = setTimeout(() => {
+      resumeTimer = undefined;
+      if (!stopped && document.visibilityState === "visible") handleOnline();
+    }, 0);
+  };
 
   window.addEventListener("auth:refreshed", handleAuthRefreshed);
   window.addEventListener("online", handleOnline);
   window.addEventListener("offline", handleOffline);
+  window.addEventListener("pageshow", handleResume);
+  window.addEventListener("focus", handleResume);
+  document.addEventListener("visibilitychange", handleResume);
 
   connect();
 
   return () => {
     stopped = true;
     if (reconnectTimer) window.clearTimeout(reconnectTimer);
+    if (resumeTimer) clearTimeout(resumeTimer);
     window.removeEventListener("auth:refreshed", handleAuthRefreshed);
     window.removeEventListener("online", handleOnline);
     window.removeEventListener("offline", handleOffline);
+    window.removeEventListener("pageshow", handleResume);
+    window.removeEventListener("focus", handleResume);
+    document.removeEventListener("visibilitychange", handleResume);
     socket?.close();
   };
 }
