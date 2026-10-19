@@ -110,11 +110,11 @@ jobs:
         run: ./projector-agent/scripts/build-windows.ps1 -Runtime '${{ matrix.runtime }}' -Version '0.1.1' -InnoCompiler "$env:PROJECTOR_ISCC"
       - name: Build a second version for installer upgrade tests
         shell: pwsh
-        run: ./projector-agent/scripts/build-windows.ps1 -Runtime '${{ matrix.runtime }}' -Version '0.2.9' -InnoCompiler "$env:PROJECTOR_ISCC"
+        run: ./projector-agent/scripts/build-windows.ps1 -Runtime '${{ matrix.runtime }}' -Version '0.2.10' -InnoCompiler "$env:PROJECTOR_ISCC"
       - name: Verify real install, upgrade, downgrade refusal and removal without launching the helper
         shell: pwsh
         run: |
-          ./projector-agent/scripts/test-windows-install.ps1 -Installer 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.1.1-setup-unsigned.exe' -Version '0.1.1' -Platform '${{ matrix.platform }}' -UpgradeInstaller 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.9-setup-unsigned.exe' -UpgradeVersion '0.2.9'
+          ./projector-agent/scripts/test-windows-install.ps1 -Installer 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.1.1-setup-unsigned.exe' -Version '0.1.1' -Platform '${{ matrix.platform }}' -UpgradeInstaller 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.10-setup-unsigned.exe' -UpgradeVersion '0.2.10'
       - name: Verify native workspace bridge and capture exclusion API in isolated window
         timeout-minutes: 8
         shell: pwsh
@@ -133,7 +133,7 @@ jobs:
             finally { $created.Dispose() }
           }
           $fixtureRoot = Join-Path $env:RUNNER_TEMP ('projector-workspace-' + [Guid]::NewGuid().ToString('N'))
-          Expand-Archive -LiteralPath 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.9-update-unsigned.zip' -DestinationPath $fixtureRoot
+          Expand-Archive -LiteralPath 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.10-update-unsigned.zip' -DestinationPath $fixtureRoot
           $helper = Join-Path $fixtureRoot 'app/Projector.Windows.exe'
           if (-not (Test-Path -LiteralPath $helper)) { throw 'Native helper executable missing from update package' }
           if (-not $env:PROJECTOR_INSTALL_SMOKE_ROOT) { throw 'Installer smoke diagnostics directory missing' }
@@ -168,7 +168,7 @@ jobs:
           if (Test-Path -LiteralPath $videoReport) { Get-Content -LiteralPath $videoReport }
           if ($videoFixture -ne 0 -or -not (Test-Path -LiteralPath $videoReport)) { throw 'Own-source video publisher fixture failed' }
           $video = Get-Content -LiteralPath $videoReport -Raw | ConvertFrom-Json
-          if ($video.success -ne $true -or $video.ownedWindowDisposed -ne $true -or $video.version -ne '0.2.9') { throw 'Video host did not complete teardown' }
+          if ($video.success -ne $true -or $video.ownedWindowDisposed -ne $true -or $video.version -ne '0.2.10') { throw 'Video host did not complete teardown' }
           foreach ($key in @('success','ownCanvasSourceOnly','actualPublisher','scopedUploadCredentials','h264InitOrdered','segmentSequenceOrdered','mseDecodeVerified','decodedPixelsChanged','playbackTimeAdvanced','stopNoFurtherUploads','tracksStopped','teardownComplete')) {
             if ($video.media.$key -ne $true) { throw "Video media gate failed: $key" }
           }
@@ -196,8 +196,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
           path: |
-            projector-agent/packages/${{ matrix.runtime }}/*-0.2.9-setup-unsigned.exe
-            projector-agent/packages/${{ matrix.runtime }}/*-0.2.9-update-unsigned.zip
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.10-setup-unsigned.exe
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.10-update-unsigned.zip
             projector-agent/packages/${{ matrix.runtime }}/bootstrap.json
             projector-agent/packages/${{ matrix.runtime }}/package-manifest.json
 
@@ -221,7 +221,7 @@ jobs:
         with:
           dotnet-version: "10.0.x"
       - name: Build development DMG and update package
-        run: sh projector-agent/scripts/build-macos.sh '${{ matrix.architecture }}' '0.2.9' development
+        run: sh projector-agent/scripts/build-macos.sh '${{ matrix.architecture }}' '0.2.10' development
       - name: Verify packaged seed and launcher without native UI or login registration
         run: python3 projector-agent/scripts/test-macos-package.py 'projector-agent/packages/${{ matrix.runtime }}/.build-development.noindex/bootstrap/Lecturer Projector.app'
       - name: Verify native private panel typing and content sizes without screen access
@@ -319,6 +319,22 @@ jobs:
               assert report[key] is False, key
           print(json.dumps(report))
           PY
+      - name: Verify bounded source selection and explicit manual window fallback without UI
+        timeout-minutes: 1
+        run: |
+          'projector-agent/packages/${{ matrix.runtime }}/.build-development.noindex/host/Lecturer Projector Host.app/Contents/MacOS/ProjectorMac' --capture-selection-self-test '${{ runner.temp }}/capture-selection.json'
+          python3 - <<'PYVALIDATE'
+          import json
+          with open("${{ runner.temp }}/capture-selection.json") as source:
+              report = json.load(source)
+          for key in ('success', 'timeoutCompletesExactlyOnce', 'timeoutRejectsLateSelection', 'cancelCompletesExactlyOnce', 'manualWindowOwnerExclusion', 'manualPermissionExplicit', 'manualDenialStopsBeforeEnumeration', 'selectionReplacementNoIdle', 'requestIDsEchoed', 'lateSourceResultRejected', 'cancelInvalidatesPendingSelection', 'cancelInvalidatesPendingPermission', 'manualPathDoesNotActivatePicker', 'snapshotSyncIndependentOfSelection', 'snapshotScopeAndPhasesPreserved', 'snapshotExcludesCredentials', 'snapshotDoesNotMutateSelection'):
+              assert report[key] is True, key
+          for key in ('applicationCreated', 'systemPickerPresented', 'screenCaptured', 'realPermissionAPIsCalled', 'userInstallationChanged', 'userWindowsUsed', 'networkUsed', 'keychainUsed'):
+              assert report[key] is False, key
+          assert report['productionTimeoutSeconds'] == 120
+          assert 0.04 <= report['fixtureTimeoutSeconds'] < 2
+          print(json.dumps(report))
+          PYVALIDATE
       - name: Verify system picker scope, own source video and coordinator cleanup
         timeout-minutes: 2
         run: |
@@ -327,13 +343,14 @@ jobs:
           import json
           with open("${{ runner.temp }}/capture-modes.json") as source:
               report = json.load(source)
-          for key in ('success', 'noCaptureBeforeSelection', 'actualOwnWindowStreamPreview', 'previewRemainsLocalUntilPublish', 'stopClosesStream', 'cancelledSelectionCannotRestart', 'ownedCoordinatorStopped', 'protectedDisplayUsesExplicitExclusion', 'missingExclusionBlocksDisplay', 'displayDenialDoesNotLoop', 'privateSourceOnly', 'fixtureWindowsTransparent', 'fixtureCleaned', 'replacementDoesNotEmitIdle'):
+          for key in ('success', 'noCaptureBeforeSelection', 'actualOwnWindowStreamPreview', 'previewRemainsLocalUntilPublish', 'stopClosesStream', 'cancelledSelectionCannotRestart', 'ownedCoordinatorStopped', 'protectedDisplayUsesExplicitExclusion', 'missingExclusionBlocksDisplay', 'displayDenialDoesNotLoop', 'privateSourceOnly', 'fixtureWindowsTransparent', 'fixtureCleaned', 'replacementDoesNotEmitIdle', 'manualWindowExactFilter'):
               assert report[key] is True, key
           for key in ('systemPickerPresented', 'fullDisplayCaptured', 'globalPermissionRequested', 'userApplicationCaptured', 'userInstallationChanged', 'keychainUsed', 'networkUsed'):
               assert report[key] is False, key
-          for key in ('windowAndApplicationOnly', 'ownSourcesExcluded', 'exactAuthorizedFilterPreserved', 'cancelCompletesExactlyOnce', 'staleSelectionRejected', 'pendingSelectionAllowsNativeReplies'):
+          for key in ('windowAndApplicationOnly', 'ownSourcesExcluded', 'exactAuthorizedFilterPreserved', 'cancelCompletesExactlyOnce', 'staleSelectionRejected', 'pendingSelectionAllowsNativeReplies', 'timeoutCompletesExactlyOnce', 'timeoutRejectsLateSelection'):
               assert report["picker"][key] is True, key
           assert report["picker"]["systemPickerPresented"] is False
+          assert report["picker"]["productionTimeoutSeconds"] == 120
           assert 0 <= report["picker"]["fixtureReplySeconds"] < 2
           print(json.dumps(report))
           PYVALIDATE
@@ -360,6 +377,7 @@ jobs:
           if-no-files-found: ignore
           path: |
             ${{ runner.temp }}/capture-dialog.json
+            ${{ runner.temp }}/capture-selection.json
             ${{ runner.temp }}/coordinator-pipe.json
             ${{ runner.temp }}/keychain-recovery.json
             ${{ runner.temp }}/credential-storage.json
@@ -377,14 +395,15 @@ jobs:
           retention-days: 1
           if-no-files-found: error
           path: |
-            projector-agent/packages/${{ matrix.runtime }}/*-0.2.9-development.dmg
-            projector-agent/packages/${{ matrix.runtime }}/*-0.2.9-development-update.zip
-            projector-agent/packages/${{ matrix.runtime }}/*-0.2.9-development.json
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.10-development.dmg
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.10-development-update.zip
+            projector-agent/packages/${{ matrix.runtime }}/*-0.2.10-development.json
             ${{ runner.temp }}/remote-ui.json
             ${{ runner.temp }}/workspace-behavior.json
             ${{ runner.temp }}/installation-identity.json
             ${{ runner.temp }}/process-start-identity.json
             ${{ runner.temp }}/capture-dialog.json
+            ${{ runner.temp }}/capture-selection.json
             ${{ runner.temp }}/coordinator-pipe.json
             ${{ runner.temp }}/keychain-recovery.json
             ${{ runner.temp }}/credential-storage.json

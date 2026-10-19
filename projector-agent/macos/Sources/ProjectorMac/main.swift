@@ -97,14 +97,18 @@ import Darwin
     private func applyRemoteCommand(_ value: [String: Any]) async {
         guard let action = value["action"] as? String else { return }
         switch action {
-        case "chooseSource": await capture.chooseSource()
-        case "chooseDisplay": await capture.chooseDisplay()
+        case "chooseSource": await capture.chooseSource(requestID: value["requestId"] as? String)
+        case "chooseDisplay": await capture.chooseDisplay(requestID: value["requestId"] as? String)
+        case "chooseWindowFallback": await capture.chooseWindowFallback(requestID: value["requestId"] as? String)
         case "publish": await capture.startPublishing()
         case "stopCapture": await capture.stop()
         case "stopProjection": stop()
         case "pause": await capture.setPaused(value["paused"] as? Bool ?? true)
         case "focusProjection": projection.focus()
-        case "ready", "capabilities": remote.emit(NativeCapture.capabilities); capture.status()
+        case "ready", "capabilities":
+            remote.emit(NativeCapture.capabilities)
+            if let syncID = value["syncId"] as? String { capture.snapshot(syncID: syncID) }
+            else { capture.status() }
         case "screenRecordingSettings": if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") { NSWorkspace.shared.open(url) }
         default: break
         }
@@ -663,7 +667,9 @@ import Darwin
     func applicationWillTerminate(_ notification: Notification) { projection.neutralize(); remote.close(); identification.dismiss(); hostDialog.cancel(); generation = UUID(); coordinatorOutput?.stop(); coordinatorOutput = nil; CoordinatorShutdown.stop(process, input: input); process = nil; input = nil; terminationSignal?.cancel(); terminationSignal = nil; if instanceLock >= 0 { close(instanceLock) } }
 }
 
-if let index = CommandLine.arguments.firstIndex(of: "--coordinator-pipe-self-test"), CommandLine.arguments.count > index + 1 {
+if let index = CommandLine.arguments.firstIndex(of: "--capture-selection-self-test"), CommandLine.arguments.count > index + 1 {
+    CaptureSelectionSelfTest.run(report: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if let index = CommandLine.arguments.firstIndex(of: "--coordinator-pipe-self-test"), CommandLine.arguments.count > index + 1 {
     CoordinatorPipeSelfTest.run(report: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if let index = CommandLine.arguments.firstIndex(of: "--capture-modes-self-test"), CommandLine.arguments.count > index + 1 {
     CaptureModesSelfTest.run(report: URL(fileURLWithPath: CommandLine.arguments[index + 1]))

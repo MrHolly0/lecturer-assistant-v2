@@ -152,9 +152,23 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
     private let systemPicker = SystemSourcePicker()
     private let displayAuthorization = DisplayCaptureAuthorization()
     private var sourceKind = "window"
+    private var usesSystemPickerGrant = false
+    private var selectionRequestID: String?
+    private var captureMode = "system-window"
+    private var capturePhase = "idle"
+    private var capturePermissionPending = false
+    private var captureError: (code: String, message: String)?
+    private var selectionScope: (courseID: UUID, sessionID: UUID)?
+    private struct PendingSourceChoice {
+        let generation: UUID
+        let requestID: String
+        let mode: String
+        let scope: (courseID: UUID, sessionID: UUID)?
+    }
+    private var pendingSourceChoice: PendingSourceChoice?
     private let imageContext = CIContext(options: [.cacheIntermediates: false])
     private let sampleQueue = DispatchQueue(label: "ru.university.lecturer.capture", qos: .userInitiated)
-    var isActive: Bool { choosingSource || stream != nil || publisher != nil }
+    var isActive: Bool { pendingSourceChoice != nil || choosingSource || stream != nil || publisher != nil }
 
     func bind(_ scope: NativeCaptureScope) {
         if let previous = currentScope, previous.sessionID != scope.sessionID || previous.courseID != scope.courseID || previous.origin != scope.origin || previous.token != scope.token { Task { await stop() } }
@@ -163,15 +177,26 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
     static var capabilities: [String: Any] {
         ["type": "capabilities", "platform": "MACOS", "nativeCapture": true,
          "captureExclusion": ["supported": true, "enabled": true],
-         "captureModes": ["window": true, "application": true, "protectedDisplay": true],
+         "captureModes": ["window": true, "application": true, "protectedDisplay": true, "manualWindow": true],
          "displayPermissionRequired": !CGPreflightScreenCaptureAccess()]
     }
-    func chooseSource(selection: (() async throws -> SCContentFilter?)? = nil) async {
-        guard !choosingSource else { return }
-        await stop(emitState: false)
-        let selectionID = generation; choosingSource = true
+    private func beginSourceChoice(requestID: String?, mode: String, teardownPause: (() async -> Void)? = nil) async -> UUID? {
+        let request = UUID()
+        let sourceRequestID = UUID(uuidString: requestID ?? "")?.uuidString.lowercased() ?? UUID().uuidString.lowercased()
+        let scope = currentScope.map { (courseID: $0.courseID, sessionID: $0.sessionID) }
+        pendingSourceChoice = PendingSourceChoice(generation: request, requestID: sourceRequestID, mode: mode, scope: scope)
+        selectionRequestID = sourceRequestID
+        captureMode = mode; sourceName = ""; sourceKind = mode == "display" ? "display" : "window"
+        await stop(emitState: false, replacementGeneration: request, teardownPause: teardownPause)
+        guard generation == request else { return nil }
+        pendingSourceChoice = nil; selectionScope = scope
+        choosingSource = true
+        return request
+    }
+    func chooseSource(requestID: String? = nil, replacementTeardown: (() async -> Void)? = nil, selection: (() async throws -> SCContentFilter?)? = nil) async {
+        guard let selectionID = await beginSourceChoice(requestID: requestID, mode: "system-window", teardownPause: replacementTeardown) else { return }
         defer { if generation == selectionID { choosingSource = false } }
-        event?(["type": "capture-state", "phase": "choosing", "permissionPending": false])
+        emit(["type": "capture-state", "phase": "choosing", "permissionPending": false])
         do {
             let filter: SCContentFilter?
             if let selection { filter = try await selection() } else { filter = try await systemPicker.select() }
@@ -190,18 +215,18 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
             guard rect.width.isFinite, rect.height.isFinite, scale.isFinite, rect.width > 0, rect.height > 0, scale > 0,
                   Double(rect.width) * scale <= 100_000, Double(rect.height) * scale <= 100_000 else { throw HostError.code("CAPTURE_SOURCE_GONE") }
             sourceKind = filter.style == .application ? "application" : "window"
+            usesSystemPickerGrant = true
             try await startPreview(filter: filter, width: Int(Double(rect.width) * scale), height: Int(Double(rect.height) * scale), name: String(name.prefix(120)), selectionID: selectionID)
         } catch {
             guard generation == selectionID else { return }
-            await stop(); emitError((error as? HostError).flatMap { if case .code(let code) = $0 { return code }; return nil } ?? "CAPTURE_SOURCE_FAILED")
+            await fail((error as? HostError).flatMap { if case .code(let code) = $0 { return code }; return nil } ?? "CAPTURE_SOURCE_FAILED", expected: selectionID)
         }
     }
-    func chooseDisplay() async {
-        guard !choosingSource else { return }
-        await stop(emitState: false)
-        let selection = generation; choosingSource = true
+    func chooseDisplay(requestID: String? = nil) async {
+        guard let selection = await beginSourceChoice(requestID: requestID, mode: "display") else { return }
         defer { if generation == selection { choosingSource = false } }
         guard await authorizeScreenCapture(selection: selection), generation == selection else { return }
+        emit(["type": "capture-state", "phase": "choosing", "permissionPending": false, "sourceKind": "display"])
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
             guard generation == selection else { return }
@@ -217,15 +242,191 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
             alert.informativeText = "Пульт и окно проектора будут исключены из показа. Остальные окна выбранного экрана будут видны. Сначала проверьте предпросмотр."
             let select = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 460, height: 32)); choices.forEach { select.addItem(withTitle: $0.0) }; alert.accessoryView = select
             alert.addButton(withTitle: "Проверить кадр"); alert.addButton(withTitle: "Отмена")
-            guard await presentSelectionAlert(alert) == .alertFirstButtonReturn, generation == selection else { status(); return }
+            let response = await presentSelectionAlert(alert)
+            guard generation == selection else { return }
+            guard response == .alertFirstButtonReturn else { status(); return }
             let choice = choices[select.indexOfSelectedItem]
             let filter = try Self.protectedDisplayFilter(display: choice.1, applications: ownApps)
             sourceKind = "display"
             try await startPreview(filter: filter, width: choice.1.width, height: choice.1.height, name: choice.0, selectionID: selection)
         } catch {
             guard generation == selection else { return }
-            await stop(); emitError((error as? HostError).flatMap { if case .code(let code) = $0 { return code }; return nil } ?? "CAPTURE_SOURCE_FAILED")
+            await fail((error as? HostError).flatMap { if case .code(let code) = $0 { return code }; return nil } ?? "CAPTURE_SOURCE_FAILED", expected: selection)
         }
+    }
+    func chooseWindowFallback(requestID: String? = nil, permission: (() async -> Bool)? = nil) async {
+        guard let selection = await beginSourceChoice(requestID: requestID, mode: "manual-window") else { return }
+        defer { if generation == selection { choosingSource = false } }
+        guard await authorizeScreenCapture(selection: selection, manualWindow: true, permission: permission), generation == selection else { return }
+        emit(["type": "capture-state", "phase": "choosing", "permissionPending": false, "sourceKind": "window"])
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+            guard generation == selection else { return }
+            let choices = content.windows.filter(Self.manualWindowAllowed).map { window -> (String, SCWindow) in
+                let app = window.owningApplication?.applicationName ?? "Приложение"
+                let title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return (String((title.isEmpty ? app : app + " · " + title).prefix(160)), window)
+            }.sorted { $0.0.localizedCaseInsensitiveCompare($1.0) == .orderedAscending }
+            guard !choices.isEmpty else { throw HostError.code("CAPTURE_NO_SOURCES") }
+            let alert = NSAlert(); alert.messageText = "Какое окно показать?"
+            alert.informativeText = "Выберите учебное окно. Другие окна и пульт не передаются. Сначала проверьте предпросмотр."
+            let select = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 460, height: 32))
+            choices.forEach { select.addItem(withTitle: $0.0) }; alert.accessoryView = select
+            alert.addButton(withTitle: "Проверить кадр"); alert.addButton(withTitle: "Отмена")
+            let response = await presentSelectionAlert(alert)
+            guard generation == selection else { return }
+            guard response == .alertFirstButtonReturn else { status(); return }
+            let choice = choices[select.indexOfSelectedItem]
+            let filter = try Self.manualWindowFilter(choice.1)
+            let rect = filter.contentRect, scale = Double(filter.pointPixelScale)
+            guard rect.width.isFinite, rect.height.isFinite, scale.isFinite, rect.width > 0, rect.height > 0, scale > 0,
+                  Double(rect.width) * scale <= 100_000, Double(rect.height) * scale <= 100_000 else { throw HostError.code("CAPTURE_SOURCE_GONE") }
+            sourceKind = "window"
+            try await startPreview(filter: filter, width: Int(Double(rect.width) * scale), height: Int(Double(rect.height) * scale), name: choice.0, selectionID: selection)
+        } catch {
+            guard generation == selection else { return }
+            await fail((error as? HostError).flatMap { if case .code(let code) = $0 { return code }; return nil } ?? "CAPTURE_SOURCE_FAILED", expected: selection)
+        }
+    }
+    static func manualWindowOwnerAllowed(pid: pid_t?, bundleID: String?) -> Bool {
+        guard let pid, pid > 0, pid != ProcessInfo.processInfo.processIdentifier, let bundleID, !bundleID.isEmpty,
+              !["ru.university.lecturer-projector.host", "ru.university.lecturer-projector"].contains(bundleID) else { return false }
+        return true
+    }
+    static func manualWindowAllowed(_ window: SCWindow) -> Bool {
+        manualWindowOwnerAllowed(pid: window.owningApplication?.processID, bundleID: window.owningApplication?.bundleIdentifier)
+    }
+    static func manualWindowFilter(_ window: SCWindow) throws -> SCContentFilter {
+        guard manualWindowAllowed(window) else { throw HostError.code("CAPTURE_PRIVATE_SOURCE_REJECTED") }
+        return exactWindowFilter(window)
+    }
+    static func exactWindowFilter(_ window: SCWindow) -> SCContentFilter { SCContentFilter(desktopIndependentWindow: window) }
+    static func exerciseManualSelectionFixture() async throws -> [String: Any] {
+        let own = ProcessInfo.processInfo.processIdentifier
+        guard !manualWindowOwnerAllowed(pid: own, bundleID: "org.example.fixture"),
+              !manualWindowOwnerAllowed(pid: own + 1, bundleID: "ru.university.lecturer-projector.host"),
+              !manualWindowOwnerAllowed(pid: own + 1, bundleID: "ru.university.lecturer-projector"),
+              !manualWindowOwnerAllowed(pid: nil, bundleID: nil),
+              !manualWindowOwnerAllowed(pid: 0, bundleID: "org.example.fixture"),
+              manualWindowOwnerAllowed(pid: own + 1, bundleID: "org.example.educational") else { throw HostError.code("MANUAL_WINDOW_OWNER_POLICY_FAILED") }
+        let capture = NativeCapture()
+        var events: [[String: Any]] = [], permissionCalls = 0
+        capture.event = { events.append($0) }
+        let oldID = UUID().uuidString.lowercased(), manualID = UUID().uuidString.lowercased()
+        let previous = Task {
+            await capture.chooseSource(requestID: oldID, selection: {
+                try await Task.sleep(for: .milliseconds(150)); throw HostError.code("FIXTURE_OLD_SOURCE_FAILED")
+            })
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        let switchIndex = events.count
+        await capture.chooseWindowFallback(requestID: manualID, permission: { permissionCalls += 1; return false })
+        await previous.value
+        let switched = Array(events.dropFirst(switchIndex))
+        guard permissionCalls == 1, !capture.isActive, !capture.usesSystemPickerGrant,
+              switched.first?["phase"] as? String == "permission",
+              switched.first?["sourceKind"] as? String == "window",
+              switched.first?["permissionPending"] as? Bool == true,
+              switched.allSatisfy({ $0["requestId"] as? String == manualID && $0["captureMode"] as? String == "manual-window" }),
+              !switched.contains(where: { $0["phase"] as? String == "idle" || $0["phase"] as? String == "preview" }),
+              switched.last?["code"] as? String == "CAPTURE_MANUAL_PERMISSION_REQUIRED" else { throw HostError.code("MANUAL_WINDOW_SWITCH_OR_PERMISSION_FAILED") }
+        let cancelled = Task { await capture.chooseSource(requestID: UUID().uuidString, selection: { try await Task.sleep(for: .milliseconds(100)); return nil }) }
+        try await Task.sleep(for: .milliseconds(20)); await capture.stop()
+        let stoppedEvents = events.count; await cancelled.value
+        guard !capture.isActive, events.count == stoppedEvents, events.last?["phase"] as? String == "idle" else { throw HostError.code("MANUAL_WINDOW_CANCEL_REVIVED_SELECTION") }
+        let pendingPermission = Task {
+            await capture.chooseWindowFallback(requestID: UUID().uuidString, permission: { try? await Task.sleep(for: .milliseconds(100)); return false })
+        }
+        try await Task.sleep(for: .milliseconds(20)); await capture.stop()
+        let cancelledPermissionEvents = events.count; await pendingPermission.value
+        guard events.count == cancelledPermissionEvents, !capture.isActive else { throw HostError.code("MANUAL_WINDOW_CANCEL_REVIVED_PERMISSION") }
+        let terminalID = UUID().uuidString.lowercased(), terminalIndex = events.count
+        await capture.chooseSource(requestID: terminalID, selection: { throw HostError.code("CAPTURE_SYSTEM_PICKER_TIMED_OUT") })
+        let terminal = Array(events.dropFirst(terminalIndex))
+        guard terminal.count == 2, terminal.first?["phase"] as? String == "choosing",
+              terminal.last?["type"] as? String == "error", terminal.last?["code"] as? String == "CAPTURE_SYSTEM_PICKER_TIMED_OUT",
+              terminal.allSatisfy({ $0["requestId"] as? String == terminalID && $0["captureMode"] as? String == "system-window" }),
+              !terminal.contains(where: { $0["phase"] as? String == "idle" }), !capture.isActive else { throw HostError.code("CAPTURE_TERMINAL_ERROR_LOST_REQUEST_ID") }
+        return ["manualWindowOwnerExclusion": true, "manualPermissionExplicit": true,
+                "manualDenialStopsBeforeEnumeration": true, "selectionReplacementNoIdle": true,
+                "requestIDsEchoed": true, "lateSourceResultRejected": true,
+                "cancelInvalidatesPendingSelection": true, "cancelInvalidatesPendingPermission": true,
+                "manualPathDoesNotActivatePicker": true]
+    }
+    static func exerciseSnapshotFixture() async throws -> [String: Any] {
+        let capture = NativeCapture(), course = UUID(), session = UUID(), selectionID = UUID().uuidString.lowercased()
+        let fixtureToken = "fixture-private-device-token", fixtureOrigin = URL(string: "https://snapshot.example/")!
+        capture.bind(NativeCaptureScope(origin: fixtureOrigin, courseID: course, sessionID: session, token: fixtureToken))
+        var events: [[String: Any]] = []
+        capture.event = { events.append($0) }
+        let pending = Task { await capture.chooseSource(requestID: selectionID, selection: { try await Task.sleep(for: .milliseconds(120)); return nil }) }
+        try await Task.sleep(for: .milliseconds(20))
+        let generation = capture.generation
+        let phases = ["choosing", "permission", "preview", "live", "paused", "error"]
+        for phase in phases {
+            // Feed the same local state reducer used by real capture callbacks;
+            // no stream, picker, permission request or publisher is created.
+            if phase == "error" { capture.emitError("CAPTURE_SYSTEM_PICKER_TIMED_OUT") }
+            else { capture.emit(["type": "capture-state", "phase": phase, "permissionPending": phase == "permission"]) }
+            let sync = UUID().uuidString.lowercased(), count = events.count
+            capture.snapshot(syncID: sync)
+            guard events.count == count + 1, let snapshot = events.last,
+                  snapshot["type"] as? String == "capture-snapshot", snapshot["syncId"] as? String == sync,
+                  snapshot["requestId"] as? String == selectionID, sync != selectionID,
+                  snapshot["courseId"] as? String == course.uuidString.lowercased(), snapshot["sessionId"] as? String == session.uuidString.lowercased(),
+                  snapshot["phase"] as? String == phase, snapshot["captureMode"] as? String == "system-window",
+                  snapshot["permissionPending"] as? Bool == (phase == "permission"),
+                  capture.generation == generation, capture.selectionRequestID == selectionID else { throw HostError.code("CAPTURE_SNAPSHOT_IDENTITY_OR_PHASE_FAILED") }
+            let bytes = try JSONSerialization.data(withJSONObject: snapshot), text = String(decoding: bytes, as: UTF8.self)
+            guard !text.contains(fixtureToken), !text.contains(fixtureOrigin.host!),
+                  snapshot["origin"] == nil, snapshot["token"] == nil, snapshot["controlToken"] == nil,
+                  snapshot["joinCode"] == nil else { throw HostError.code("CAPTURE_SNAPSHOT_LEAKED_CREDENTIALS") }
+        }
+        // A rebinding cannot relabel an older in-flight selection as a different lecture.
+        capture.currentScope = NativeCaptureScope(origin: fixtureOrigin, courseID: UUID(), sessionID: UUID(), token: fixtureToken)
+        capture.snapshot(syncID: UUID().uuidString)
+        guard events.last?["courseId"] as? String == course.uuidString.lowercased(),
+              events.last?["sessionId"] as? String == session.uuidString.lowercased() else { throw HostError.code("CAPTURE_SNAPSHOT_RELABELED_OLD_SELECTION") }
+        let count = events.count; capture.snapshot(syncID: "not-a-uuid")
+        guard events.count == count else { throw HostError.code("CAPTURE_SNAPSHOT_ACCEPTED_INVALID_SYNC") }
+        await capture.stop(); await pending.value
+        capture.snapshot(syncID: UUID().uuidString)
+        guard events.last?["phase"] as? String == "idle", !capture.isActive else { throw HostError.code("CAPTURE_SNAPSHOT_REVIVED_STOPPED_CAPTURE") }
+        let replacing = NativeCapture(), replacementCourse = UUID(), replacementSession = UUID()
+        replacing.bind(NativeCaptureScope(origin: fixtureOrigin, courseID: replacementCourse, sessionID: replacementSession, token: fixtureToken))
+        var firstGate: CheckedContinuation<Void, Never>?, secondGate: CheckedContinuation<Void, Never>?, selectionCalls = 0
+        var replacementSnapshots: [[String: Any]] = []
+        replacing.event = { replacementSnapshots.append($0) }
+        let firstID = UUID().uuidString.lowercased(), secondID = UUID().uuidString.lowercased()
+        let first = Task {
+            await replacing.chooseSource(requestID: firstID, replacementTeardown: {
+                await withCheckedContinuation { firstGate = $0 }
+            }, selection: { selectionCalls += 1; return nil })
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        guard let releaseFirst = firstGate, replacing.capturePhase == "idle", !replacing.choosingSource, replacing.isActive else { throw HostError.code("CAPTURE_SNAPSHOT_TEARDOWN_FIXTURE_NOT_PENDING") }
+        replacing.snapshot(syncID: UUID().uuidString)
+        guard replacementSnapshots.last?["phase"] as? String == "choosing", replacementSnapshots.last?["requestId"] as? String == firstID,
+              replacementSnapshots.last?["courseId"] as? String == replacementCourse.uuidString.lowercased(),
+              replacementSnapshots.last?["sessionId"] as? String == replacementSession.uuidString.lowercased() else { throw HostError.code("CAPTURE_SNAPSHOT_TEARDOWN_REPORTED_IDLE") }
+        let second = Task {
+            await replacing.chooseSource(requestID: secondID, replacementTeardown: {
+                await withCheckedContinuation { secondGate = $0 }
+            }, selection: { selectionCalls += 1; return nil })
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        guard let releaseSecond = secondGate else { throw HostError.code("CAPTURE_SNAPSHOT_REPLACEMENT_NOT_PENDING") }
+        releaseFirst.resume(); await first.value
+        replacing.snapshot(syncID: UUID().uuidString)
+        guard selectionCalls == 0, replacementSnapshots.last?["phase"] as? String == "choosing",
+              replacementSnapshots.last?["requestId"] as? String == secondID else { throw HostError.code("CAPTURE_SNAPSHOT_OLDER_TEARDOWN_WON") }
+        await replacing.stop(); let stoppedCount = replacementSnapshots.count
+        releaseSecond.resume(); await second.value
+        guard selectionCalls == 0, replacementSnapshots.count == stoppedCount, !replacing.isActive else { throw HostError.code("CAPTURE_SNAPSHOT_CANCEL_REVIVED_TEARDOWN") }
+        replacing.snapshot(syncID: UUID().uuidString)
+        guard replacementSnapshots.last?["phase"] as? String == "idle" else { throw HostError.code("CAPTURE_SNAPSHOT_CANCEL_LEFT_PENDING_CHOICE") }
+        return ["snapshotSyncIndependentOfSelection": true, "snapshotScopeAndPhasesPreserved": true,
+                "snapshotExcludesCredentials": true, "snapshotDoesNotMutateSelection": true]
     }
     private func startPreview(filter: SCContentFilter, width: Int, height: Int, name: String, selectionID: UUID) async throws {
         guard width > 0, height > 0 else { throw HostError.code("CAPTURE_SOURCE_GONE") }
@@ -237,10 +438,10 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         let active = SCStream(filter: filter, configuration: config, delegate: self)
         try active.addStreamOutput(self, type: .screen, sampleHandlerQueue: sampleQueue)
         self.stream = active; sourceName = name
-        if sourceKind != "display" { SCContentSharingPicker.shared.setConfiguration(SystemSourcePicker.configuration(windowIDs: NSApp.windows.map(\.windowNumber)), for: active) }
+        if usesSystemPickerGrant { SCContentSharingPicker.shared.setConfiguration(SystemSourcePicker.configuration(windowIDs: NSApp.windows.map(\.windowNumber)), for: active) }
         try await active.startCapture()
         guard generation == selectionID else { try? await active.stopCapture(); return }
-        event?(["type": "capture-state", "phase": "preview", "sourceName": sourceName, "sourceKind": sourceKind,
+        emit(["type": "capture-state", "phase": "preview", "sourceName": sourceName, "sourceKind": sourceKind,
                 "captureExcludesRemote": true, "permissionPending": false, "previewOnly": true])
     }
     func beginOwnPreviewFixture(window: SCWindow, ownWindow: NSWindow) async throws {
@@ -250,7 +451,7 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         // currentProcess metadata can report zero geometry without global
         // consent. The fixture knows the size of its own verified NSWindow; the
         // authorized content filter remains unchanged, as does production validation.
-        let filter = SCContentFilter(desktopIndependentWindow: window)
+        let filter = Self.exactWindowFilter(window)
         let width = ownWindow.frame.width * ownWindow.backingScaleFactor
         let height = ownWindow.frame.height * ownWindow.backingScaleFactor
         guard width.isFinite, height.isFinite, width > 0, height > 0, width <= 100_000, height <= 100_000 else { throw HostError.code("CAPTURE_FIXTURE_INVALID_GEOMETRY") }
@@ -261,14 +462,18 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         guard !own.isEmpty else { throw HostError.code("CAPTURE_PRIVATE_WINDOW_EXCLUSION_UNAVAILABLE") }
         return SCContentFilter(display: display, excludingApplications: own, exceptingWindows: [])
     }
-    private func authorizeScreenCapture(selection: UUID) async -> Bool {
-        event?(["type": "capture-state", "phase": "permission", "permissionPending": true])
-        let granted = await displayAuthorization.request(preflight: { CGPreflightScreenCaptureAccess() }, activate: { NSApp.activate(ignoringOtherApps: true) }, prompt: {
-            await CaptureAuthorization.offMainPrompt { CGRequestScreenCaptureAccess() }
-        })
+    private func authorizeScreenCapture(selection: UUID, manualWindow: Bool = false, permission: (() async -> Bool)? = nil) async -> Bool {
+        emit(["type": "capture-state", "phase": "permission", "permissionPending": true, "sourceKind": manualWindow ? "window" : "display"])
+        let granted: Bool
+        if let permission { granted = await permission() }
+        else {
+            granted = await displayAuthorization.request(preflight: { CGPreflightScreenCaptureAccess() }, activate: { NSApp.activate(ignoringOtherApps: true) }, prompt: {
+                await CaptureAuthorization.offMainPrompt { CGRequestScreenCaptureAccess() }
+            })
+        }
         if granted { return true }
         guard generation == selection else { return false }
-        emitError("SCREEN_RECORDING_PERMISSION_REQUIRED")
+        emitError(manualWindow ? "CAPTURE_MANUAL_PERMISSION_REQUIRED" : "SCREEN_RECORDING_PERMISSION_REQUIRED")
         return false
     }
     private func presentSelectionAlert(_ alert: NSAlert) async -> NSApplication.ModalResponse {
@@ -280,18 +485,23 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         guard stream != nil, publisher == nil, let scope = currentScope else { emitError("CAPTURE_SELECT_SOURCE_FIRST"); return }
         let current = generation
         do {
-            let publisher = NativeMediaPublisher(scope: scope) { [weak self] code in Task { @MainActor in guard let self, self.generation == current else { return }; await self.stop(); self.emitError(code) } }
+            let publisher = NativeMediaPublisher(scope: scope) { [weak self] code in Task { @MainActor in await self?.fail(code, expected: current) } }
             self.publisher = publisher
             let id = try await publisher.start(name: sourceName)
             guard generation == current else { await publisher.stop(); return }
             try prepareWriter()
             pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in Task { @MainActor in
                 guard let self, self.generation == current, let publisher = self.publisher else { return }
-                do { let paused = try await publisher.poll(); await self.applyPaused(paused); self.event?(["type": "capture-state", "phase": paused ? "paused" : "live", "sourceName": self.sourceName]) }
-                catch { await self.stop(); self.emitError("CAPTURE_LEASE_LOST") }
+                do {
+                    let paused = try await publisher.poll()
+                    guard self.generation == current else { return }
+                    await self.applyPaused(paused)
+                    guard self.generation == current else { return }
+                    self.emit(["type": "capture-state", "phase": paused ? "paused" : "live", "sourceName": self.sourceName])
+                } catch { await self.fail("CAPTURE_LEASE_LOST", expected: current) }
             } }
-            event?(["type": "capture-state", "phase": "live", "shareId": id, "sourceName": sourceName, "captureExcludesRemote": true])
-        } catch { await stop(); emitError("CAPTURE_START_FAILED") }
+            emit(["type": "capture-state", "phase": "live", "shareId": id, "sourceName": sourceName, "captureExcludesRemote": true])
+        } catch { await fail("CAPTURE_START_FAILED", expected: current) }
     }
     private func prepareWriter() throws {
         let parts = try CaptureWriter.make(width: dimensions.width, height: dimensions.height, delegate: self)
@@ -309,12 +519,16 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         await applyPaused(value)
     }
     private func applyPaused(_ value: Bool) async {
-        let needsEpoch = await publisher?.needsVideoEpoch() ?? false
+        let current = generation, activePublisher = publisher
+        let needsEpoch = await activePublisher?.needsVideoEpoch() ?? false
+        guard generation == current else { return }
         let staleEpoch = !value && needsEpoch
         guard paused != value || staleEpoch else { return }; paused = value
-        await publisher?.suspend(value)
+        await activePublisher?.suspend(value)
+        guard generation == current else { return }
+        if capturePhase == "live" || capturePhase == "paused" { capturePhase = value ? "paused" : "live" }
         frameTimer?.invalidate(); frameTimer = nil; writerInput?.markAsFinished(); writer?.cancelWriting(); writerInput = nil; adaptor = nil; writer = nil; firstPTS = nil
-        if !value { do { try prepareWriter() } catch { await stop(); emitError("CAPTURE_RESUME_FAILED") } }
+        if !value { do { try prepareWriter() } catch { await fail("CAPTURE_RESUME_FAILED", expected: current) } }
     }
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, sampleBuffer.isValid else { return }
@@ -330,7 +544,7 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         latestBuffer = buffer
         let now = ProcessInfo.processInfo.systemUptime
         if publisher == nil {
-            if now - lastPreview > 0.5, let jpeg = jpeg(buffer, quality: 0.65) { lastPreview = now; event?(["type": "preview", "phase": "preview", "frameUrl": "data:image/jpeg;base64," + jpeg.base64EncodedString(), "sourceName": sourceName, "captureExcludesRemote": true]) }
+            if now - lastPreview > 0.5, let jpeg = jpeg(buffer, quality: 0.65) { lastPreview = now; emit(["type": "preview", "phase": "preview", "frameUrl": "data:image/jpeg;base64," + jpeg.base64EncodedString(), "sourceName": sourceName, "captureExcludesRemote": true]) }
             return
         }
     }
@@ -339,8 +553,8 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         let now = ProcessInfo.processInfo.systemUptime
         if let writer, let input = writerInput, let adaptor, input.isReadyForMoreMediaData {
             let time = CMTime(seconds: now - startedAt, preferredTimescale: 600)
-            if !adaptor.append(buffer, withPresentationTime: time) { emitError("CAPTURE_ENCODER_FAILED"); Task { await stop() }; return }
-            if writer.status == .failed { emitError("CAPTURE_ENCODER_FAILED"); Task { await stop() }; return }
+            if !adaptor.append(buffer, withPresentationTime: time) { let current = generation; Task { await fail("CAPTURE_ENCODER_FAILED", expected: current) }; return }
+            if writer.status == .failed { let current = generation; Task { await fail("CAPTURE_ENCODER_FAILED", expected: current) }; return }
         }
         if now - lastFrame > 1.5, let jpeg = jpeg(buffer, quality: 0.65), jpeg.count <= 256 * 1024 {
             lastFrame = now; Task { await publisher.enqueue("/frame", data: jpeg, contentType: "image/jpeg") }
@@ -363,26 +577,60 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
                 if initialization { suffix = "/video/\(self.epoch)/init?codec=" + (try CaptureMp4.codec(data)) }
                 else { suffix = "/video/\(self.epoch)/segments/\(self.sequence)"; self.sequence += 1 }
                 await publisher.enqueue(suffix, data: data, contentType: "video/mp4")
-            } catch { await self.stop(); self.emitError("CAPTURE_MP4_FAILED") }
+            } catch { await self.fail("CAPTURE_MP4_FAILED", expected: self.generation) }
         }
     }
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
-        Task { @MainActor [weak self] in guard let self, self.stream === stream else { return }; await self.stop(); self.emitError("CAPTURE_SOURCE_STOPPED") }
+        Task { @MainActor [weak self] in guard let self, self.stream === stream else { return }; await self.fail("CAPTURE_SOURCE_STOPPED", expected: self.generation) }
     }
-    func stop(emitState: Bool = true) async {
-        generation = UUID(); choosingSource = false; pollTimer?.invalidate(); pollTimer = nil
+    func stop(emitState: Bool = true, replacementGeneration: UUID = UUID(), teardownPause: (() async -> Void)? = nil) async {
+        generation = replacementGeneration; choosingSource = false; usesSystemPickerGrant = false; pollTimer?.invalidate(); pollTimer = nil
+        if pendingSourceChoice?.generation != replacementGeneration { pendingSourceChoice = nil }
+        capturePhase = "idle"; capturePermissionPending = false; captureError = nil; selectionScope = nil
         selectionDialog.cancel()
         let active = stream; stream = nil; latestBuffer = nil
         systemPicker.deactivate()
         frameTimer?.invalidate(); frameTimer = nil; writerInput?.markAsFinished(); writer?.cancelWriting(); writerInput = nil; adaptor = nil; writer = nil; firstPTS = nil
         let previous = publisher; publisher = nil; paused = false
-        if emitState { event?(["type": "capture-state", "phase": "idle"]) }
+        if emitState { emit(["type": "capture-state", "phase": "idle"]) }
+        await teardownPause?()
         try? await active?.stopCapture(); await previous?.stop()
     }
-    func status() { event?(["type": "capture-state", "phase": publisher == nil ? (stream == nil ? "idle" : "preview") : (paused ? "paused" : "live"), "sourceName": sourceName, "captureExcludesRemote": true]) }
+    func status() { emit(["type": "capture-state", "phase": publisher == nil ? (stream == nil ? "idle" : "preview") : (paused ? "paused" : "live"), "sourceName": sourceName, "captureExcludesRemote": true]) }
+    func snapshot(syncID: String) {
+        guard let sync = UUID(uuidString: syncID) else { return }
+        let pending = pendingSourceChoice.flatMap { $0.generation == generation ? $0 : nil }
+        let phase = pending != nil || (publisher != nil && capturePhase == "preview") ? "choosing" : capturePhase
+        var value: [String: Any] = ["type": "capture-snapshot", "syncId": sync.uuidString.lowercased(),
+            "phase": phase, "captureMode": pending?.mode ?? captureMode, "sourceName": sourceName,
+            "sourceKind": sourceKind, "captureExcludesRemote": true, "permissionPending": pending == nil && capturePermissionPending]
+        let scope: (courseID: UUID, sessionID: UUID)?
+        if let pending { scope = pending.scope }
+        else { scope = selectionScope ?? currentScope.map { (courseID: $0.courseID, sessionID: $0.sessionID) } }
+        if let scope {
+            value["courseId"] = scope.courseID.uuidString.lowercased(); value["sessionId"] = scope.sessionID.uuidString.lowercased()
+        }
+        if let requestID = pending?.requestID ?? selectionRequestID { value["requestId"] = requestID }
+        if pending == nil, let captureError { value["code"] = captureError.code; value["message"] = captureError.message }
+        if phase == "preview", let latestBuffer, let frame = jpeg(latestBuffer, quality: 0.65) {
+            value["frameUrl"] = "data:image/jpeg;base64," + frame.base64EncodedString()
+        }
+        // A sync reply is scoped to the newly loaded remote, independently of
+        // the older source-selection request that it may choose to adopt.
+        event?(value)
+    }
+    private func fail(_ code: String, expected: UUID) async {
+        guard generation == expected else { return }
+        let terminal = UUID()
+        await stop(emitState: false, replacementGeneration: terminal)
+        guard generation == terminal else { return }
+        emitError(code)
+    }
     private func emitError(_ code: String) {
         let message: String
         switch code {
+        case "CAPTURE_SYSTEM_PICKER_TIMED_OUT", "CAPTURE_SYSTEM_PICKER_FAILED": message = "macOS не завершила выбор источника. Повторите попытку или выберите «Окно вручную» либо «Весь экран». Для этих способов нужно разрешение записи экрана macOS."
+        case "CAPTURE_MANUAL_PERMISSION_REQUIRED": message = "Для ручного выбора окна нужно разрешение записи экрана macOS. Системный выбор окна можно попробовать без него. Если доступ уже выдан, сохраните диагностику — повторно переключать его не нужно."
         case "SCREEN_RECORDING_PERMISSION_REQUIRED": message = "Для всего экрана требуется отдельное разрешение macOS. Можно продолжить через «Окно или приложение» без изменения настроек. Если доступ уже выдан, сохраните диагностику — повторно переключать его не нужно."
         case "CAPTURE_PRIVATE_WINDOW_EXCLUSION_UNAVAILABLE", "CAPTURE_PRIVATE_SOURCE_REJECTED", "CAPTURE_UNPROTECTED_DISPLAY_REJECTED": message = "Этот источник нельзя показать, сохранив пульт приватным. Выберите отдельное учебное окно или приложение. Пульт не будет опубликован."
         case "CAPTURE_SELECT_SOURCE_FIRST": message = "Сначала выберите окно или экран и проверьте предпросмотр."
@@ -391,6 +639,22 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         case "CAPTURE_PAUSE_FAILED": message = "Не удалось изменить паузу. Проверьте состояние занятия на сайте."
         default: message = "Не удалось продолжить демонстрацию. Выберите источник заново. Код: " + code
         }
-        event?(["type": "error", "code": code, "message": message, "permissionPending": false])
+        emit(["type": "error", "code": code, "message": message, "permissionPending": false])
+    }
+    private func emit(_ payload: [String: Any]) {
+        var value = payload
+        switch payload["type"] as? String {
+        case "capture-state", "preview":
+            if let phase = payload["phase"] as? String { capturePhase = phase }
+            capturePermissionPending = payload["permissionPending"] as? Bool ?? (capturePhase == "permission")
+            captureError = nil
+        case "error":
+            capturePhase = "error"; capturePermissionPending = false
+            if let code = payload["code"] as? String, let message = payload["message"] as? String { captureError = (code, message) }
+        default: break
+        }
+        if let selectionRequestID { value["requestId"] = selectionRequestID }
+        value["captureMode"] = captureMode
+        event?(value)
     }
 }

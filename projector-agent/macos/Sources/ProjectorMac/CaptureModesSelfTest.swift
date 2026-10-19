@@ -40,7 +40,13 @@ import Darwin
             if ownWindow != nil { break }; try await Task.sleep(for: .milliseconds(50))
         }
         guard let ownWindow else { throw HostError.code("CAPTURE_MODES_OWN_WINDOW_UNAVAILABLE") }
-        let filter = SCContentFilter(desktopIndependentWindow: ownWindow)
+        let filter = NativeCapture.exactWindowFilter(ownWindow)
+        guard filter.style == .window else { throw HostError.code("MANUAL_WINDOW_FILTER_NOT_SINGLE_WINDOW") }
+        if #available(macOS 15.2, *) {
+            guard filter.includedWindows.count == 1, filter.includedWindows.first?.windowID == ownWindow.windowID else { throw HostError.code("MANUAL_WINDOW_FILTER_INCLUDES_OTHER_WINDOWS") }
+        }
+        do { _ = try NativeCapture.manualWindowFilter(ownWindow); throw HostError.code("MANUAL_WINDOW_PRIVATE_SOURCE_ACCEPTED") }
+        catch HostError.code(let code) { guard code == "CAPTURE_PRIVATE_SOURCE_REJECTED" else { throw HostError.code(code) } }
         ownSourceGeometry = ["windowWidth": Double(window.frame.width), "windowHeight": Double(window.frame.height),
                              "shareableWidth": Double(ownWindow.frame.width), "shareableHeight": Double(ownWindow.frame.height),
                              "filterWidth": Double(filter.contentRect.width), "filterHeight": Double(filter.contentRect.height),
@@ -84,7 +90,7 @@ import Darwin
         child.standardOutput = FileHandle.nullDevice; child.standardError = FileHandle.nullDevice
         try child.run(); CoordinatorShutdown.stop(child, input: input)
         guard !child.isRunning else { throw HostError.code("COORDINATOR_SHUTDOWN_LEFT_CHILD") }
-        return ["success": true, "picker": lifecycle, "ownSourceGeometry": ownSourceGeometry,
+        return ["success": true, "picker": lifecycle, "ownSourceGeometry": ownSourceGeometry, "manualWindowExactFilter": true,
                 "noCaptureBeforeSelection": true, "replacementDoesNotEmitIdle": true,
                 "actualOwnWindowStreamPreview": true, "previewRemainsLocalUntilPublish": true,
                 "stopClosesStream": true, "cancelledSelectionCannotRestart": true, "ownedCoordinatorStopped": true,

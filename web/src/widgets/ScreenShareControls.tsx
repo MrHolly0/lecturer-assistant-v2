@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { MonitorUp, SlidersHorizontal, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -47,12 +47,20 @@ export function ScreenShareControls({
   nativeWorkspace?: boolean;
 }) {
   const controller = workspaceShare();
+  const scope = { courseId, sessionId: session.id, joinCode: session.joinCode };
+  useLayoutEffect(() => {
+    if (controller === nativeCapture) {
+      nativeCapture.registerScope({ courseId, sessionId: session.id, joinCode: session.joinCode });
+    }
+  }, [controller, courseId, session.id, session.joinCode]);
   const share = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const previewFrame =
     "previewFrame" in share && typeof share.previewFrame === "string"
       ? share.previewFrame
       : undefined;
   const nativeSourceKind = "sourceKind" in share ? share.sourceKind : undefined;
+  const nativeCaptureMode = "captureMode" in share ? share.captureMode : undefined;
+  const nativeErrorCode = "errorCode" in share ? share.errorCode : undefined;
   const displayPermissionDenied = "permissionDenied" in share && share.permissionDenied === true;
   const hasPreview = Boolean(share.stream || previewFrame);
   const nativeCapabilities = nativeBridge();
@@ -60,6 +68,16 @@ export function ScreenShareControls({
     nativeCapabilities?.platform === "MACOS" &&
     nativeCapabilities.captureModes?.window === true &&
     nativeCapabilities.captureModes.application === true;
+  const manualWindowAvailable =
+    nativeCapabilities?.platform === "MACOS" &&
+    nativeCapabilities.nativeCapture &&
+    nativeCapabilities.captureModes?.manualWindow === true;
+  const manualWindowFallbackAvailable =
+    manualWindowAvailable &&
+    ((share.phase === "choosing" && nativeCaptureMode !== "manual-window") ||
+      share.phase === "error");
+  const manualWindowError = share.phase === "error" && nativeCaptureMode === "manual-window";
+  const systemPickerTimedOut = nativeErrorCode === "CAPTURE_SYSTEM_PICKER_TIMED_OUT";
   const { isMax, theme } = useMaxBridge();
   const helpers = useQuery({
     queryKey: ["projection-settings"],
@@ -177,10 +195,18 @@ export function ScreenShareControls({
   useEffect(() => {
     if (share.phase === "publishing" && ours) setPreview(false);
   }, [share.phase, ours]);
-  const choose = (mode: "window" | "display" = "window") => {
+  useEffect(() => {
+    if (
+      controller === nativeCapture &&
+      (share.phase === "choosing" || share.phase === "preview" || share.phase === "error")
+    ) {
+      setPreview(true);
+    }
+  }, [controller, share.phase]);
+  const choose = (mode: "window" | "display" | "manual-window" = "window") => {
     if (helpersUnknown || handoffToNativeRemote()) return;
     setConfirmed(false);
-    if (isMax) {
+    if (isMax && !nativeBridge()?.nativeCapture) {
       const path = `/settings/projector?${new URLSearchParams({ courseId, sessionId: session.id, joinCode: session.joinCode })}`;
       const url = `${window.location.origin}${window.location.pathname}#${path}`;
       getMaxWebApp()?.openLink?.(url);
@@ -188,9 +214,13 @@ export function ScreenShareControls({
     }
     if (ours && share.phase === "publishing") void controller.stop();
     setPreview(true);
-    const scope = { courseId, sessionId: session.id, joinCode: session.joinCode };
     if (nativeBridge()?.nativeCapture) void nativeCapture.choose(scope, mode);
     else void controller.choose(scope);
+  };
+  const cancelSourceChoice = () => {
+    setConfirmed(false);
+    setPreview(false);
+    void controller.stop();
   };
   const prepare = () => {
     if (helpersUnknown || handoffToNativeRemote()) return;
@@ -288,12 +318,16 @@ export function ScreenShareControls({
               {share.phase === "choosing"
                 ? nativeBridge()?.nativeCapture
                   ? "permissionPending" in share && share.permissionPending
-                    ? nativeBridge()?.platform === "MACOS"
-                      ? "Подтвердите запрос macOS на захват всего экрана…"
-                      : "Подтвердите системный запрос на захват всего экрана…"
-                    : systemWindowPickerAvailable
-                      ? "Выберите окно или приложение в системном меню…"
-                      : "Выберите источник в системном меню…"
+                    ? nativeCaptureMode === "manual-window"
+                      ? "Подтвердите запрос macOS на доступ к записи экрана. Аудитории будет передано выбранное окно…"
+                      : nativeCaptureMode === "display"
+                        ? "Подтвердите запрос macOS на запись всего экрана…"
+                        : "Подтвердите системный запрос на выбор источника…"
+                    : nativeCaptureMode === "manual-window"
+                      ? "Выберите окно в списке помощника…"
+                      : systemWindowPickerAvailable
+                        ? "Выберите окно или приложение в системном меню…"
+                        : "Выберите источник в системном меню…"
                   : "Выберите источник в системном окне браузера…"
                 : share.error ||
                   "Выберите приложение с учебным материалом. Оно останется на вашем рабочем экране."}
@@ -311,6 +345,39 @@ export function ScreenShareControls({
             </p>
           )}
           {share.error && <p role="alert">{share.error}</p>}
+          {manualWindowFallbackAvailable && (
+            <details
+              className="screen-share-manual-window-fallback"
+              open={manualWindowError || (share.phase === "error" && systemPickerTimedOut)}
+            >
+              <summary>
+                {manualWindowError
+                  ? "Повторить ручной выбор окна?"
+                  : "Не появилось системное меню?"}
+              </summary>
+              {manualWindowError ? (
+                <p>
+                  Для ручного выбора нужен доступ macOS к записи экрана. Если доступа нет, разрешите
+                  его для помощника в системных настройках и повторите выбор. После выбора
+                  передаётся только указанное окно.
+                </p>
+              ) : (
+                <p>
+                  Для ручного выбора macOS нужен доступ к записи экрана. Если его ещё нет, macOS
+                  запросит его после нажатия этой кнопки. После выбора передаётся только указанное
+                  окно.
+                </p>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={publishing || disabled}
+                onClick={() => choose("manual-window")}
+              >
+                {manualWindowError ? "Повторить ручной выбор" : "Выбрать окно вручную"}
+              </Button>
+            </details>
+          )}
           {hasPreview && capturesScreen && (
             <p className="screen-share-capture-note" role="note">
               {nativeBridge()?.nativeCapture
@@ -350,11 +417,13 @@ export function ScreenShareControls({
               title={helperStateTitle}
               onClick={() => choose("window")}
             >
-              {hasPreview
-                ? "Другой источник"
-                : nativeBridge()?.nativeCapture && systemWindowPickerAvailable
-                  ? "Выбрать окно или приложение"
-                  : "Выбрать окно или экран"}
+              {systemPickerTimedOut
+                ? "Повторить системный выбор"
+                : hasPreview
+                  ? "Другой источник"
+                  : nativeBridge()?.nativeCapture && systemWindowPickerAvailable
+                    ? "Выбрать окно или приложение"
+                    : "Выбрать окно или экран"}
             </Button>
             {nativeBridge()?.nativeCapture &&
               nativeBridge()?.captureModes?.protectedDisplay === true &&
@@ -366,6 +435,17 @@ export function ScreenShareControls({
                   onClick={() => choose("display")}
                 >
                   Выбрать весь экран
+                </Button>
+              )}
+            {nativeCapabilities?.nativeCapture &&
+              (share.phase === "choosing" || share.phase === "error") && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={publishing}
+                  onClick={cancelSourceChoice}
+                >
+                  Отменить
                 </Button>
               )}
             <Button

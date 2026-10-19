@@ -27,8 +27,10 @@ import ScreenCaptureKit
         let observer: Observer
         let continuation: CheckedContinuation<SelectedFilter?, any Error>
         let usesSystemPicker: Bool
+        let deadline: Task<Void, Never>
     }
     private var pending: Pending?
+    private var activatedByUs = false
     var isPresented: Bool { pending != nil }
 
     static func configuration(windowIDs: [Int]) -> SCContentSharingPickerConfiguration {
@@ -41,21 +43,25 @@ import ScreenCaptureKit
     }
 
     func select() async throws -> SCContentFilter? { try await select(present: nil) }
-    private func select(present: ((Observer) -> Void)?) async throws -> SCContentFilter? {
+    private func select(timeout: Duration = .seconds(120), present: ((Observer) -> Void)?) async throws -> SCContentFilter? {
         cancel()
         let selected: SelectedFilter? = try await withCheckedThrowingContinuation { continuation in
             let id = UUID()
             // Each presentation owns an observer; a late callback from a cancelled
             // presentation cannot approve a newer selection.
             let activeObserver = Observer(id: id, owner: self)
-            pending = Pending(id: id, observer: activeObserver, continuation: continuation, usesSystemPicker: present == nil)
+            let deadline = Task { @MainActor [weak self] in
+                do { try await Task.sleep(for: timeout) } catch { return }
+                self?.complete(id: id, result: .failure(HostError.code("CAPTURE_SYSTEM_PICKER_TIMED_OUT")))
+            }
+            pending = Pending(id: id, observer: activeObserver, continuation: continuation, usesSystemPicker: present == nil, deadline: deadline)
             if let present { present(activeObserver) }
             else {
                 let picker = SCContentSharingPicker.shared
                 picker.defaultConfiguration = Self.configuration(windowIDs: NSApp.windows.map(\.windowNumber))
                 picker.maximumStreamCount = 1
                 NSApp.activate(ignoringOtherApps: true)
-                picker.add(activeObserver); picker.isActive = true; picker.present()
+                picker.add(activeObserver); activatedByUs = true; picker.isActive = true; picker.present(using: .window)
             }
         }
         return selected?.filter
@@ -67,13 +73,36 @@ import ScreenCaptureKit
     private func complete(id: UUID, result: Result<SelectedFilter?, any Error>) {
         guard let current = pending, current.id == id else { return }
         pending = nil
+        current.deadline.cancel()
         if current.usesSystemPicker { SCContentSharingPicker.shared.remove(current.observer) }
         // Keep the OS picker active for the lifetime of its scoped stream grant.
         // Stop/cancel explicitly deactivates it after the stream is closed.
         current.continuation.resume(with: result)
     }
     func deactivate() {
-        cancel(); SCContentSharingPicker.shared.isActive = false
+        cancel()
+        guard activatedByUs else { return }
+        activatedByUs = false; SCContentSharingPicker.shared.isActive = false
+    }
+    static func exerciseDeadlineFixture() async throws -> [String: Any] {
+        let picker = SystemSourcePicker()
+        var previous: Observer?
+        let started = ProcessInfo.processInfo.systemUptime
+        let timedOut = Task {
+            do { _ = try await picker.select(timeout: .milliseconds(60), present: { previous = $0 }); return false }
+            catch HostError.code(let code) { return code == "CAPTURE_SYSTEM_PICKER_TIMED_OUT" }
+            catch { return false }
+        }
+        guard await timedOut.value, let previous, !picker.isPresented else { throw HostError.code("SYSTEM_PICKER_DEADLINE_FAILED") }
+        let elapsed = ProcessInfo.processInfo.systemUptime - started
+        let replacement = Task { try await picker.select(present: { _ in }) == nil }
+        try await Task.sleep(for: .milliseconds(20))
+        picker.complete(id: previous.id, result: .success(nil))
+        guard picker.isPresented else { throw HostError.code("SYSTEM_PICKER_TIMEOUT_CANCELLED_REPLACEMENT") }
+        picker.cancel(); picker.cancel()
+        guard try await replacement.value, !picker.isPresented, !picker.activatedByUs else { throw HostError.code("SYSTEM_PICKER_TIMEOUT_CANCEL_FAILED") }
+        return ["timeoutCompletesExactlyOnce": true, "timeoutRejectsLateSelection": true, "cancelCompletesExactlyOnce": true,
+                "productionTimeoutSeconds": 120, "fixtureTimeoutSeconds": elapsed, "systemPickerPresented": false]
     }
 
     static func exerciseLifecycleFixture(filter: SCContentFilter, reply: @MainActor () async throws -> Void) async throws -> [String: Any] {
@@ -94,12 +123,25 @@ import ScreenCaptureKit
         picker.complete(id: previous.id, result: .success(SelectedFilter(filter: filter)))
         guard picker.isPresented else { throw HostError.code("SYSTEM_PICKER_STALE_RESULT_ACCEPTED") }
         picker.cancel(); _ = try await newer.value
+        var expiredObserver: Observer?
+        let expired = Task {
+            do { _ = try await picker.select(timeout: .milliseconds(60), present: { expiredObserver = $0 }); return false }
+            catch HostError.code(let code) { return code == "CAPTURE_SYSTEM_PICKER_TIMED_OUT" }
+            catch { return false }
+        }
+        guard await expired.value, !picker.isPresented, let expiredObserver else { throw HostError.code("SYSTEM_PICKER_DEADLINE_FAILED") }
+        let afterTimeout = Task { try await picker.select(present: { callback = $0 }) == nil }
+        try await Task.sleep(for: .milliseconds(30))
+        picker.complete(id: expiredObserver.id, result: .success(SelectedFilter(filter: filter)))
+        guard picker.isPresented else { throw HostError.code("SYSTEM_PICKER_EXPIRED_RESULT_ACCEPTED") }
+        picker.cancel(); guard try await afterTimeout.value else { throw HostError.code("SYSTEM_PICKER_EXPIRED_CANCEL_FAILED") }
         let config = configuration(windowIDs: [12, 34, -1])
         guard config.allowedPickerModes == [.singleWindow, .singleApplication],
               !config.allowedPickerModes.contains(.singleDisplay), !config.allowsChangingSelectedContent,
               config.excludedWindowIDs == [12, 34], config.excludedBundleIDs.contains("ru.university.lecturer-projector.host") else { throw HostError.code("SYSTEM_PICKER_PRIVATE_CONFIGURATION_FAILED") }
         return ["windowAndApplicationOnly": true, "ownSourcesExcluded": true, "exactAuthorizedFilterPreserved": true,
                 "cancelCompletesExactlyOnce": true, "staleSelectionRejected": true, "pendingSelectionAllowsNativeReplies": true,
+                "timeoutCompletesExactlyOnce": true, "timeoutRejectsLateSelection": true, "productionTimeoutSeconds": 120,
                 "fixtureReplySeconds": ProcessInfo.processInfo.systemUptime - start, "systemPickerPresented": false]
     }
 }
