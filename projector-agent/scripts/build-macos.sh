@@ -15,14 +15,15 @@ if [ "$projector_mode" = production ]; then
     python3 "$projector_root/scripts/package-macos.py" trust "$PROJECTOR_TRUST_FILE"
 fi
 projector_output="$projector_root/packages/$projector_rid"
-projector_work="$projector_output/build-$projector_mode"
+projector_work="$projector_output/.build-$projector_mode.noindex"
 projector_host="$projector_work/host/Lecturer Projector Host.app"
-projector_bundle="$projector_work/disk/Lecturer Projector.app"
+projector_bundle="$projector_work/bootstrap/Lecturer Projector.app"
+projector_installer="$projector_work/disk/Install Lecturer Projector.app"
 # Never reuse a package-manager SDK's locally patched runtime/host packs: they can
 # carry absolute dependencies on that build machine. Restore official NuGet packs.
 projector_framework_packs="$projector_output/official-framework-packs"
 if [ -d "$projector_work" ]; then rm -rf "$projector_work"; fi
-mkdir -p "$projector_host/Contents/MacOS/coordinator" "$projector_host/Contents/MacOS/updater" "$projector_bundle/Contents/MacOS/launcher" "$projector_bundle/Contents/Resources"
+mkdir -p "$projector_host/Contents/MacOS/coordinator" "$projector_host/Contents/MacOS/updater" "$projector_bundle/Contents/MacOS/launcher" "$projector_bundle/Contents/Resources" "$projector_installer/Contents/MacOS" "$projector_installer/Contents/Resources"
 swift build --package-path "$projector_root/macos" -c release --arch "$projector_arch" --disable-sandbox
 projector_swift_bin=$(swift build --package-path "$projector_root/macos" -c release --arch "$projector_arch" --show-bin-path)
 if [ "$(uname -m)" = "$projector_arch" ]; then
@@ -76,6 +77,20 @@ else
     codesign --verify --deep --strict "$projector_bundle"
     spctl --assess --type execute "$projector_bundle"
 fi
+cp "$projector_swift_bin/ProjectorBootstrap" "$projector_installer/Contents/MacOS/ProjectorBootstrap"
+python3 "$projector_root/scripts/package-macos.py" plist "$projector_installer" "$projector_version" installer "$projector_mode"
+python3 "$projector_root/scripts/package-macos.py" archive-bootstrap "$projector_bundle" "$projector_installer/Contents/Resources/application.zip"
+if [ "$projector_mode" = development ]; then
+    python3 "$projector_root/scripts/package-macos.py" sign-development "$projector_installer" "$projector_root/macos/packaging/dotnet.entitlements"
+else
+    python3 "$projector_root/scripts/package-macos.py" sign "$projector_installer" "$PROJECTOR_MAC_SIGN_IDENTITY" "$projector_root/macos/packaging/dotnet.entitlements"
+    ditto -c -k --keepParent "$projector_installer" "$projector_work/installer-notarization.zip"
+    xcrun notarytool submit "$projector_work/installer-notarization.zip" --keychain-profile "$PROJECTOR_MAC_NOTARY_PROFILE" --wait
+    xcrun stapler staple "$projector_installer"
+    xcrun stapler validate "$projector_installer"
+    spctl --assess --type execute "$projector_installer"
+fi
+codesign --verify --deep --strict "$projector_installer"
 projector_image="$projector_output/lecturer-projector-$projector_rid-$projector_version-$projector_mode.dmg"
 if [ -f "$projector_image" ]; then rm "$projector_image"; fi
 # A hosted Mac can briefly retain a DiskImages helper after an unsuccessful create.

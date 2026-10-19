@@ -11,6 +11,7 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
 @MainActor enum Installation {
     static let name = "Lecturer Projector.app"
     static let identifier = "ru.university.lecturer-projector"
+    static let installerIdentifier = identifier + ".installer"
     static let files = FileManager.default
     static var userApplication: URL { files.homeDirectoryForCurrentUser.appendingPathComponent("Applications/" + name) }
     static var data: URL { files.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("LecturerProjector", isDirectory: true) }
@@ -185,19 +186,31 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
     private var startupLock: Int32 = -1
     private var quietLaunch = false
     private var lastPairRequest = Date.distantPast
+    private var canonicalBundle: URL?
+    private var handlerRepairPending = false
+    private var extractedPayload: URL?
     func applicationWillFinishLaunching(_ notification: Notification) { detectQuietLaunch() }
     private func detectQuietLaunch() {
         let launch = NSAppleEventManager.shared().currentAppleEvent?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
         quietLaunch = quietLaunch || launch == keyAELaunchedAsLogInItem || launch == keyAELaunchedAsServiceItem
     }
-    private func requestVisibleOpenSoon() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            guard let self, Date().timeIntervalSince(self.lastPairRequest) > 2 else { return }
-            do { try Installation.requestVisibleOpen() } catch { Self.showError("VISIBLE_OPEN_FAILED") }
+    private func openFromUser(terminateAfter: Bool = false) {
+        guard !handlerRepairPending, let target = canonicalBundle else { return }
+        handlerRepairPending = true
+        Task { @MainActor in
+            do { try await PairingURLRegistration.ensureInstalled(target) }
+            catch BootstrapFailure.code(let code) { Self.showError(code) }
+            catch { Self.showError("PAIR_HANDLER_REGISTRATION_FAILED") }
+            try? await Task.sleep(for: .milliseconds(800))
+            handlerRepairPending = false
+            if Date().timeIntervalSince(lastPairRequest) > 2 {
+                do { try Installation.requestVisibleOpen() } catch { Self.showError("VISIBLE_OPEN_FAILED") }
+            }
+            if terminateAfter { NSApp.terminate(nil) }
         }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        requestVisibleOpenSoon(); return true
+        openFromUser(); return true
     }
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let request = Installation.pairingRequest(urls) else { return }
@@ -208,14 +221,22 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
         do {
             detectQuietLaunch()
             let running = Bundle.main.bundleURL
+            if Bundle.main.bundleIdentifier == Installation.installerIdentifier {
+                let stage = Installation.data.appendingPathComponent(".installer-payloads.noindex/" + UUID().uuidString)
+                extractedPayload = stage
+                let payload = try InstallerPayload.extract(from: running, into: stage)
+                try install(from: payload); return
+            }
             guard Bundle.main.bundleIdentifier == Installation.identifier else { throw BootstrapFailure.code("INVALID_APPLICATION_BUNDLE") }
             guard let bundle = try Installation.installedMatch(runningBundle: running) else { try install(from: running); return }
+            canonicalBundle = bundle
             try Installation.checkParents(Installation.data)
             try Installation.files.createDirectory(at: Installation.data, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             startupLock = open(Installation.data.appendingPathComponent("bootstrap.lock").path, O_CREAT | O_RDWR, 0o600)
             guard startupLock >= 0, flock(startupLock, LOCK_EX | LOCK_NB) == 0 else {
-                if !quietLaunch { try Installation.requestVisibleOpen() }
-                NSApp.terminate(nil); return
+                if !quietLaunch { openFromUser(terminateAfter: true) }
+                else { NSApp.terminate(nil) }
+                return
             }
             let resources = bundle.appendingPathComponent("Contents/Resources")
             let seed = try Installation.readMetadata(resources.appendingPathComponent("bootstrap.json"))
@@ -243,7 +264,7 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
                 }
             }
             try process.run(); launcher = process
-            if !quietLaunch { requestVisibleOpenSoon() }
+            if !quietLaunch { openFromUser() }
         } catch BootstrapFailure.code(let code) { Self.showError(code); NSApp.terminate(nil) }
         catch { Self.showError("INSTALLATION_FAILED"); NSApp.terminate(nil) }
     }
@@ -282,15 +303,18 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
             } else { try Installation.files.moveItem(at: temporary, to: target) }
         }
         Task { @MainActor in
-            do { _ = try await WorkspaceHandoff.open(target: target) }
+            do {
+                _ = try await WorkspaceHandoff.open(target: target)
+            } catch BootstrapFailure.code(let code) { Self.showError(code) }
             catch { Self.showError("START_INSTALLED_APPLICATION_FAILED") }
             NSApp.terminate(nil)
         }
     }
     private static func showError(_ code: String) {
-        let alert = NSAlert(); alert.messageText = "Помощник не запущен"
+        let alert = NSAlert(); alert.messageText = code.hasPrefix("PAIR_HANDLER_") ? "Открытие по ссылке не настроено" : "Помощник не запущен"
         let explanation: String
         switch code {
+        case "PAIR_HANDLER_REGISTRATION_FAILED", "PAIR_HANDLER_SELECTION_DENIED", "PAIR_HANDLER_SELECTION_UNVERIFIED", "PAIR_HANDLER_UNSAFE_TARGET", "PAIR_HANDLER_UNDECLARED_SCHEME": explanation = "macOS не связала ссылки сайта с установленным помощником. Откройте Lecturer Projector из ваших «Приложений» и повторите. Подключение вручную по 12-символьному коду доступно в настройке проектора на сайте. Другие приложения и настройки экранов не изменены."
         case "MULTIPLE_MATCHING_INSTALLATIONS": explanation = "Найдены две одинаковые установки: в ваших «Приложениях» и общих /Applications. Оставьте одну установку и откройте её снова. Помощник не выбирает копию за вас."
         case "UPDATE_RECOVERY_REQUIRED": explanation = "Предыдущее обновление не завершилось. Не удаляйте сохранённые файлы вручную: передайте код в поддержку. Браузерный мастер доступен."
         case "HELPER_RUNNING", "INSTALLATION_BUSY", "ACTIVE_SHOW", "SHOW_ACTIVE", "AGENT_RUNNING", "INSTALL_INSTANCE_ACTIVE": explanation = "Помощник уже запущен: найдите значок LA в строке меню. Перед переустановкой завершите показ и выйдите из помощника."
@@ -300,15 +324,22 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
         alert.informativeText = explanation + "\n\nКод: " + code
         NSApp.activate(ignoringOtherApps: true); alert.runModal()
     }
-    func applicationWillTerminate(_ notification: Notification) { if startupLock >= 0 { close(startupLock) } }
+    func applicationWillTerminate(_ notification: Notification) {
+        if let extractedPayload { try? Installation.files.removeItem(at: extractedPayload) }
+        if startupLock >= 0 { close(startupLock) }
+    }
 }
 
 if CommandLine.arguments.contains("--self-test") {
     try Installation.selfTest()
+} else if let index = CommandLine.arguments.firstIndex(of: "--installer-self-test"), CommandLine.arguments.count > index + 3 {
+    InstallerPayload.selfTest(installer: URL(fileURLWithPath: CommandLine.arguments[index + 1]), report: URL(fileURLWithPath: CommandLine.arguments[index + 2]), referenceCanonical: URL(fileURLWithPath: CommandLine.arguments[index + 3]))
 } else if let index = CommandLine.arguments.firstIndex(of: "--handoff-self-test"), CommandLine.arguments.count > index + 1 {
     HandoffSelfTest.run(report: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if let index = CommandLine.arguments.firstIndex(of: "--handoff-fixture-child"), CommandLine.arguments.count > index + 1 {
     HandoffFixtureChild.run(report: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if let report = HandoffFixtureChild.automaticReport() {
+    HandoffFixtureChild.run(report: report)
 } else if CommandLine.arguments.contains("--login-status") || CommandLine.arguments.contains("--enable-login") || CommandLine.arguments.contains("--disable-login") {
     guard Bundle.main.bundleIdentifier == Installation.identifier,
           (try? Installation.installedMatch(runningBundle: Bundle.main.bundleURL)) != nil else { FileHandle.standardError.write(Data("STABLE_INSTALL_REQUIRED\n".utf8)); exit(1) }

@@ -50,18 +50,41 @@ def package_seed(bundle, output, metadata, version, platform):
 
 def write_plist(bundle, version, role, mode):
     host = role == "host"
-    value = dict(CFBundleIdentifier="ru.university.lecturer-projector.host" if host else "ru.university.lecturer-projector",
-                 CFBundleName="Lecturer Projector Host" if host else "Lecturer Projector",
-                 CFBundleDisplayName="Lecturer Projector", CFBundleExecutable="ProjectorMac" if host else "ProjectorBootstrap",
+    installer = role == "installer"
+    value = dict(CFBundleIdentifier="ru.university.lecturer-projector.host" if host else ("ru.university.lecturer-projector.installer" if installer else "ru.university.lecturer-projector"),
+                 CFBundleName="Lecturer Projector Host" if host else ("Install Lecturer Projector" if installer else "Lecturer Projector"),
+                 CFBundleDisplayName="Установить Lecturer Projector" if installer else "Lecturer Projector", CFBundleExecutable="ProjectorMac" if host else "ProjectorBootstrap",
                  CFBundlePackageType="APPL", CFBundleShortVersionString=version, CFBundleVersion=version,
                  LSUIElement=True, LSMinimumSystemVersion="14.0", NSHighResolutionCapable=True,
                  LAReleaseMode=mode)
-    if not host:
+    if role == "bootstrap":
         value["CFBundleURLTypes"] = [dict(CFBundleURLName="Lecturer Projector pairing", CFBundleURLSchemes=["lecturer-projector"], CFBundleTypeRole="Viewer")]
-    else:
+    elif host:
         value["NSScreenCaptureUsageDescription"] = "Передача выбранного учебного окна или экрана студентам. Пульт и окно проектора исключаются из захвата."
     with (Path(bundle) / "Contents/Info.plist").open("wb") as stream:
         plistlib.dump(value, stream, sort_keys=True)
+
+
+def archive_bootstrap(bundle, output):
+    bundle, output = Path(bundle), Path(output)
+    if bundle.name != "Lecturer Projector.app":
+        raise ValueError("Unexpected canonical application name")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        for item in sorted(bundle.rglob("*")):
+            mode = item.lstat().st_mode
+            if stat.S_ISDIR(mode):
+                continue
+            if not stat.S_ISREG(mode):
+                raise ValueError("Canonical application payload must contain regular files only")
+            name = item.relative_to(bundle.parent).as_posix()
+            entry = zipfile.ZipInfo(name, date_time=(2020, 1, 1, 0, 0, 0))
+            entry.create_system = 3
+            entry.external_attr = ((stat.S_IFREG | (0o755 if mode & 0o111 else 0o644)) << 16)
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            with item.open("rb") as source, archive.open(entry, "w") as target:
+                while data := source.read(1 << 20):
+                    target.write(data)
 
 
 def sign(bundle, identity, entitlements, development=False):
@@ -134,7 +157,7 @@ def report(bundle, image, update, mode):
 
 
 if __name__ == "__main__":
-    commands = {"seed": package_seed, "plist": write_plist, "sign": sign, "sign-development": sign_development, "check-native": check_native, "trust": trust, "report": report}
+    commands = {"seed": package_seed, "plist": write_plist, "archive-bootstrap": archive_bootstrap, "sign": sign, "sign-development": sign_development, "check-native": check_native, "trust": trust, "report": report}
     if len(sys.argv) < 2 or sys.argv[1] not in commands:
         raise SystemExit("Use seed, plist, sign, trust or report")
     commands[sys.argv[1]](*sys.argv[2:])
