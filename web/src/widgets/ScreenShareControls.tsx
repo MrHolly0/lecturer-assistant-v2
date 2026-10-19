@@ -87,7 +87,7 @@ export function ScreenShareControls({
     (nativeDevices.length === 1 ? nativeDevices[0] : undefined);
   const focusNative = useMutation({
     mutationFn: async () => {
-      await syncProjectionAppearance(nativeDevice!.id, theme);
+      await syncProjectionAppearance(nativeDevice!.id, theme, { force: true });
       return sendProjectionCommand(courseId, session.id, {
         deviceId: nativeDevice!.id,
         requestId: crypto.randomUUID(),

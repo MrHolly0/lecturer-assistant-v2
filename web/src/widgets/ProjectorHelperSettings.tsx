@@ -18,7 +18,9 @@ import {
   type ProjectionPolicyUpdate
 } from "../app/api/projection-api";
 import { ApiError, userErrorMessage } from "../app/api/errors";
+import { useMaxBridge } from "../app/max/context";
 import { rememberNativeProjectionDevice } from "../app/projection/nativeProjectionPreference";
+import { syncProjectionAppearance } from "../app/projection/projectionAppearance";
 import { Button } from "../shared/ui/button";
 import {
   Dialog,
@@ -72,6 +74,7 @@ function HelperDeviceControls({
   wizard?: boolean;
   onRequestUpgrade?: () => void;
 }) {
+  const { theme } = useMaxBridge();
   const targetId = useId();
   const [target, setTarget] = useState("");
   const [test, setTest] = useState<{
@@ -102,12 +105,14 @@ function HelperDeviceControls({
     selected &&
     !selected.isPrimary;
   const command = useMutation({
-    mutationFn: (
+    mutationFn: async (
       request: Omit<ProjectionCommandRequest, "deviceId" | "requestId" | "displayConfirmed"> & {
         displayConfirmed?: boolean;
       }
     ) => {
       if (!context) throw new Error("Сначала откройте настройку из занятия");
+      if (request.type === "START_PUBLIC_PROJECTION" || request.type === "FOCUS_PRIVATE_REMOTE")
+        await syncProjectionAppearance(device.id, theme, { force: true });
       return sendProjectionCommand(context.courseId, context.sessionId, {
         ...request,
         displayConfirmed: request.displayConfirmed ?? false,
