@@ -11,9 +11,15 @@ $Installer = (Resolve-Path -LiteralPath $Installer).Path
 $TemporaryRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
 $TestRoot = Join-Path $TemporaryRoot ('lecturer-projector-install-' + [Guid]::NewGuid().ToString('N'))
 $InstallRoot = Join-Path $TestRoot 'installed'
-$StartupPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $StartupName = 'LecturerAssistantProjector'
-$InitialStartup = Get-ItemPropertyValue -LiteralPath $StartupPath -Name $StartupName -ErrorAction SilentlyContinue
+function Get-ProjectorStartupValue {
+    $RunKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Run')
+    if ($null -eq $RunKey) { return $null }
+    try { return $RunKey.GetValue($StartupName, $null) }
+    finally { $RunKey.Dispose() }
+}
+if ($env:GITHUB_ENV) { "PROJECTOR_INSTALL_SMOKE_ROOT=$TestRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
+$InitialStartup = Get-ProjectorStartupValue
 $InitialHosts = @(Get-Process Projector.Windows -ErrorAction SilentlyContinue).Id
 if ($InitialHosts) { throw 'Native helper is running; use an isolated runner' }
 if ($InitialStartup) { throw 'A projector autostart entry exists; use an isolated runner' }
@@ -47,7 +53,7 @@ try {
     }
     if (-not (Test-Path -LiteralPath (Join-Path $InstallRoot 'launcher/Projector.Launcher.exe'))) { throw 'Stable launcher missing' }
     if (Get-Process Projector.Windows -ErrorAction SilentlyContinue) { throw 'Silent installation launched native UI' }
-    if (Get-ItemPropertyValue -LiteralPath $StartupPath -Name $StartupName -ErrorAction SilentlyContinue) { throw 'Silent installation enabled autostart without opt-in' }
+    if (Get-ProjectorStartupValue) { throw 'Silent installation enabled autostart without opt-in' }
     Test-InstalledHost $Pointer $Version 'host-preflight.json'
 
     # Idempotent reinstallation must keep the same verified immutable slot.
@@ -80,7 +86,7 @@ try {
         if (Test-Path -LiteralPath (Join-Path $InstallRoot $Removed)) { throw "Uninstaller left installed product files: $Removed" }
     }
     if (Get-Process Projector.Windows -ErrorAction SilentlyContinue) { throw 'Installer smoke launched a native helper process' }
-    if (Get-ItemPropertyValue -LiteralPath $StartupPath -Name $StartupName -ErrorAction SilentlyContinue) { throw 'Unexpected autostart mutation' }
+    if (Get-ProjectorStartupValue) { throw 'Unexpected autostart mutation' }
     Write-Output 'PASS: per-user install, native host runtime preflight, immutable slot, idempotent reinstall, optional version upgrade/downgrade refusal, locked-show refusal, silent uninstall; no UI, display or autostart mutation'
 }
 finally {

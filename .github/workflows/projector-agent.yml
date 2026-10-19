@@ -81,6 +81,16 @@ jobs:
         shell: pwsh
         run: |
           ./projector-agent/scripts/test-windows-install.ps1 -Installer 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.1.0-setup-unsigned.exe' -Platform '${{ matrix.platform }}' -UpgradeInstaller 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.1.1-setup-unsigned.exe' -UpgradeVersion '0.1.1'
+      - name: Save installer smoke diagnostics
+        if: always() && env.PROJECTOR_INSTALL_SMOKE_ROOT != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: projector-${{ matrix.runtime }}-smoke-logs
+          retention-days: 1
+          if-no-files-found: warn
+          path: |
+            ${{ env.PROJECTOR_INSTALL_SMOKE_ROOT }}/*.log
+            ${{ env.PROJECTOR_INSTALL_SMOKE_ROOT }}/*.json
       - uses: actions/upload-artifact@v4
         with:
           name: projector-${{ matrix.runtime }}-development
