@@ -44,6 +44,10 @@ import { MaxLinkReviewScreen } from "../widgets/MaxLinkReviewScreen";
 import { MaxEntryScreen, MaxTeacherScreen } from "../widgets/MaxEntryScreen";
 import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
 import { AuthPageFrame } from "../widgets/AuthPageFrame";
+import { ProjectionLifecycle } from "./sharing/ProjectionLifecycle";
+import { ProjectorSetupPage } from "../pages/ProjectorSetupPage";
+import { ProjectorHelperSettings } from "../widgets/ProjectorHelperSettings";
+import { ProjectionSetupGate } from "./projection/ProjectionSetupGate";
 
 const maxRootPaths = new Set(["/", "/home", "/student/join", "/courses", "/login", "/register"]);
 const maxStartParamPattern = /^[A-Za-z0-9_-]{1,512}$/;
@@ -214,15 +218,39 @@ function LoadingScreen({ message = "Загрузка…" }: { message?: string }
 
 function PublicOnly({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
+  const [searchParams] = useSearchParams();
   if (loading) return <LoadingScreen />;
-  if (user) return <Navigate to={landingPath(user.role)} replace />;
+  if (user) {
+    const returnTo = searchParams.get("returnTo");
+    return (
+      <Navigate
+        to={
+          user.role !== "STUDENT" && returnTo && /^\/settings\/projector(?:\?|$)/.test(returnTo)
+            ? returnTo
+            : landingPath(user.role)
+        }
+        replace
+      />
+    );
+  }
   return children;
 }
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <LoadingScreen />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user)
+    return (
+      <Navigate
+        to={
+          location.pathname === "/settings/projector"
+            ? `/login?returnTo=${encodeURIComponent(location.pathname + location.search)}`
+            : "/login"
+        }
+        replace
+      />
+    );
 
   return (
     <Layout>
@@ -283,7 +311,18 @@ function PresenterRoute() {
 
 function ProjectionRoute() {
   const { joinCode } = useParams();
-  return <ProjectionPage joinCode={joinCode ?? ""} />;
+  return (
+    <ProjectionSetupGate>
+      {joinCode === "setup" ? (
+        <main className="projection-shell projection-fallback">
+          <h1>Экран проектора проверен</h1>
+          <p>Вернитесь к настройке на рабочем экране.</p>
+        </main>
+      ) : (
+        <ProjectionPage joinCode={joinCode ?? ""} />
+      )}
+    </ProjectionSetupGate>
+  );
 }
 
 function LegacyProjectionRoute() {
@@ -403,7 +442,11 @@ const router = createHashRouter([
               { path: "/courses/:courseId/materials", element: <MaterialsRoute /> },
               { path: "/courses/:courseId/questions", element: <QuestionBankRoute /> },
               { path: "/courses/:courseId/analytics", element: <CourseAnalyticsRoute /> },
-              { path: "/settings/max", element: <MaxLinkPage /> }
+              { path: "/settings/max", element: <MaxLinkPage /> },
+              {
+                path: "/settings/projector",
+                element: <ProjectorSetupPage helperPanel={<ProjectorHelperSettings />} />
+              }
             ]
           },
           {
@@ -422,6 +465,7 @@ export function App() {
 
   return (
     <AuthProvider>
+      <ProjectionLifecycle />
       <RouterProvider router={router} />
       <Toaster theme={theme} position="top-center" richColors />
     </AuthProvider>

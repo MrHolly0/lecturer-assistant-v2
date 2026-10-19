@@ -23,6 +23,7 @@ spring:
       - interaction
       - channel
       - analytics
+      - projection
 
 management:
   endpoints:
@@ -39,6 +40,10 @@ server:
     include-message: always
 
 app:
+  projection:
+    releases:
+      catalog-path: ${PROJECTOR_RELEASE_CATALOG_PATH:}
+      trust-path: ${PROJECTOR_RELEASE_TRUST_PATH:}
   version: ${APP_VERSION:0.0.1-SNAPSHOT}
   live:
     sse-broadcast-workers: ${SSE_BROADCAST_WORKERS:4}

@@ -47,6 +47,9 @@ class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/api/v1/student/**")
                         .permitAll()
+                        // Separate, opaque helper credential is checked by ProjectionAgentController.
+                        .requestMatchers("/api/v1/projection/agent/**")
+                        .permitAll()
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/v1/auth/bootstrap-admin",
@@ -85,7 +88,8 @@ class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(OriginList.parse(allowedOrigins));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Participant-Token"));
+        configuration.setAllowedHeaders(List.of(
+                "Authorization", "Content-Type", "X-Participant-Token", "X-Projection-View-Token"));
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

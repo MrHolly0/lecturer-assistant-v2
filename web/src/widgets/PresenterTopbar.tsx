@@ -32,6 +32,8 @@ import {
 import { ConfirmActionButton } from "./ConfirmActionButton";
 import { Button } from "../shared/ui/button";
 import { SessionGroups } from "./SessionGroups";
+import { useNavigate } from "react-router-dom";
+import { ScreenShareControls } from "./ScreenShareControls";
 
 interface PresenterTopbarProps {
   courseId: string;
@@ -71,14 +73,15 @@ export function PresenterTopbar({
   onEnd
 }: PresenterTopbarProps) {
   const maxEnvironment = useMaxBridge();
+  const navigate = useNavigate();
   const [connectionOpen, setConnectionOpen] = useState(false);
-  const [projectionBlocked, setProjectionBlocked] = useState(false);
   const commandsBlocked = connection !== "connected" || syncing || syncError;
   const sessionActive = session.status === "LIVE" || session.status === "PAUSED";
   const showJoinCode = session.showJoinCode;
   const joinUrl = buildMaxJoinUrl(session.joinCode);
   const openProjection = () => {
-    const url = `${window.location.origin}/#/projection/${encodeURIComponent(session.joinCode)}`;
+    const path = `/settings/projector?${new URLSearchParams({ joinCode: session.joinCode, courseId, sessionId: session.id })}`;
+    const url = `${window.location.origin}${window.location.pathname}#${path}`;
     if (maxEnvironment.isMax && getMaxWebApp()?.openLink) {
       try {
         getMaxWebApp()?.openLink?.(url);
@@ -87,11 +90,7 @@ export function PresenterTopbar({
       }
       return;
     }
-    const projectionWindow = window.open(url, "lecturer-projection", "popup,width=1280,height=720");
-    if (projectionWindow) {
-      projectionWindow.focus();
-      setProjectionBlocked(false);
-    } else setProjectionBlocked(true);
+    navigate(path);
   };
   const projectionCodeMutation = useMutation({
     mutationFn: (show: boolean) => setLiveProjectionCode(courseId, session.id, show),
@@ -201,7 +200,7 @@ export function PresenterTopbar({
                 </DropdownMenuCheckboxItem>
                 <DropdownMenuItem onSelect={openProjection}>
                   <Monitor />
-                  Открыть проектор
+                  Настроить проектор
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel>На проекторе</DropdownMenuLabel>
@@ -226,6 +225,13 @@ export function PresenterTopbar({
               </DropdownMenuContent>
             </DropdownMenu>
 
+            <ScreenShareControls
+              courseId={courseId}
+              session={session}
+              disabled={commandsBlocked}
+              onPause={onPause}
+              onResume={onResume}
+            />
             {session.status === "PAUSED" ? (
               <Button
                 type="button"
@@ -299,28 +305,6 @@ export function PresenterTopbar({
               Ссылка MAX не настроена. Студенты могут ввести код в приложении.
             </p>
           )}
-        </DialogContent>
-      </Dialog>
-      <Dialog open={projectionBlocked} onOpenChange={setProjectionBlocked}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Окно проектора заблокировано</DialogTitle>
-            <DialogDescription>
-              Разрешите всплывающие окна для сайта и повторите. Можно открыть проектор в текущем
-              окне.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="presenter-popup-actions">
-            <Button type="button" onClick={openProjection}>
-              Повторить открытие
-            </Button>
-            <a
-              className="ui-button ui-button--outline"
-              href={`${window.location.origin}/#/projection/${encodeURIComponent(session.joinCode)}`}
-            >
-              Открыть в этом окне
-            </a>
-          </div>
         </DialogContent>
       </Dialog>
     </header>

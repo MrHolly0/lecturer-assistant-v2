@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Operator projector release trust",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["repository", "keys"],
+  "properties": {
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+    },
+    "keys": {
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": { "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 8192,
+        "description": "Base64 DER SubjectPublicKeyInfo, EC secp256r1 public key only."
+      }
+    }
+  }
+}

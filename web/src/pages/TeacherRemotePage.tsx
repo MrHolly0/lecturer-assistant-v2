@@ -55,6 +55,7 @@ import { LiveSlideNotesEditor } from "../widgets/LiveSlideNotesEditor";
 import { SessionParticipantList } from "../widgets/SessionParticipantList";
 import { useMaxBridge } from "../app/max/context";
 import { BrandMark } from "../shared/brand/BrandMark";
+import { ScreenShareControls } from "../widgets/ScreenShareControls";
 import { useLiveSession } from "../app/live/useLiveSession";
 
 export function TeacherRemotePage({
@@ -285,6 +286,15 @@ export function TeacherRemotePage({
         onRetry={live.refresh}
       />
 
+      <div className="teacher-remote-sharing">
+        <ScreenShareControls
+          courseId={courseId}
+          session={session}
+          disabled={commandsBlocked}
+          onPause={() => pauseMutation.mutate()}
+          onResume={() => resumeMutation.mutate()}
+        />
+      </div>
       <section className="teacher-remote-stage" aria-label={`Слайд ${currentSlideIdx}`}>
         {deckQuery.isError ? (
           <div className="teacher-remote-stage__empty">

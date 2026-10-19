@@ -1,0 +1,63 @@
+name: Projector helper source verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "projector-agent/**"
+      - "core/src/main/java/ru/university/assistant/projection/**"
+      - "openapi/lecturer-assistant-v2.yaml"
+      - ".github/workflows/projector-agent.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  policy-and-updater:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet run --project projector-agent/tests/Projector.Checks/Projector.Checks.csproj -c Release
+      - run: dotnet build projector-agent/src/Projector.Updater/Projector.Updater.csproj -c Release
+      - run: dotnet build projector-agent/src/Projector.Launcher/Projector.Launcher.csproj -c Release
+      - run: dotnet run --project projector-agent/src/Projector.Agent/Projector.Agent.csproj -- --self-test
+
+  windows-package:
+    runs-on: windows-2022
+    strategy:
+      matrix:
+        runtime: [win-x64, win-arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Build development package (does not run or change displays)
+        shell: pwsh
+        run: ./projector-agent/scripts/build-windows.ps1 -Runtime '${{ matrix.runtime }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: projector-${{ matrix.runtime }}-unsigned
+          path: projector-agent/packages/${{ matrix.runtime }}/*-unsigned.zip
+
+  macos-package:
+    runs-on: macos-15
+    strategy:
+      matrix:
+        architecture: [arm64, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Build development package (does not register login item)
+        run: sh projector-agent/scripts/build-macos.sh '${{ matrix.architecture }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: projector-macos-${{ matrix.architecture }}-unsigned
+          path: projector-agent/packages/osx-*/*-unsigned.zip
+
+# Intentionally no Release publication or pretend signing. See projector-agent/docs/release.md.

@@ -29,6 +29,7 @@ class ModuleBoundaryTest {
             "interaction",
             "channel",
             "analytics",
+            "projection",
             "shared");
 
     @ArchTest

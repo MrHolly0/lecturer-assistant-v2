@@ -8,6 +8,237 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /courses/{courseId}/sessions/{sessionId}/screen-share:
+    post:
+      operationId: startScreenShare
+      summary: Start leased WebRTC sharing during a live session.
+      tags:
+        - projection
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareStart'
+      responses:
+        '200':
+          description: Signalling response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareStatus'
+        '403':
+          description: Current access denied.
+        '409':
+          description: Session or connection changed.
+  /courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}:
+    get:
+      operationId: pollScreenShare
+      summary: Renew publisher lease and read bounded signalling.
+      tags:
+        - projection
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Signalling response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareStatus'
+        '403':
+          description: Current access denied.
+        '409':
+          description: Session or connection changed.
+    delete:
+      operationId: stopScreenShare
+      summary: Stop sharing without ending the lecture.
+      tags:
+        - projection
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Completed.
+        '403':
+          description: Current access denied.
+        '409':
+          description: Session or connection changed.
+  /courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}/viewers/{viewerId}:
+    put:
+      operationId: offerScreenShare
+      summary: Send a gathered video-only SDP offer.
+      tags:
+        - projection
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: viewerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareDescription'
+      responses:
+        '204':
+          description: Completed.
+        '403':
+          description: Current access denied.
+        '409':
+          description: Session or connection changed.
+  /student/sessions/{joinCode}/screen-share/viewers/{viewerId}:
+    get:
+      operationId: viewScreenShare
+      summary: Read viewer signalling; active participation is required.
+      tags:
+        - projection
+      parameters:
+        - name: joinCode
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: viewerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Participant-Token
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Signalling response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareViewer'
+        '204':
+          description: No active demonstration.
+        '403':
+          description: Current access denied.
+        '409':
+          description: Session or connection changed.
+      security:
+        - {}
+        - bearerAuth: []
+  /student/sessions/{joinCode}/screen-share/viewers/{viewerId}/{shareId}:
+    put:
+      operationId: answerScreenShare
+      summary: Send a gathered SDP answer for this viewer.
+      tags:
+        - projection
+      parameters:
+        - name: joinCode
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: viewerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Participant-Token
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareDescription'
+      responses:
+        '204':
+          description: Completed.
+        '403':
+          description: Current access denied.
+        '409':
+          description: Session or connection changed.
+      security:
+        - {}
+        - bearerAuth: []
   /system/info:
     get:
       operationId: getSystemInfo
@@ -2655,8 +2886,351 @@ paths:
         '404':
           description: Organization unit or staff member not found
 
+  /projection/settings:
+    get:
+      operationId: getProjectionSettings
+      tags: [projection]
+      summary: Read institution projector policy and the current staff member's devices.
+      responses:
+        "200":
+          description: No connected device or installer is invented when unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectionSettings"
+        "401":
+          description: Authentication required.
+        "403":
+          description: Active staff account required.
+  /admin/projection/policy:
+    put:
+      operationId: updateProjectionPolicy
+      tags: [projection]
+      summary: Admin changes helper use policy with optimistic revision checking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectionPolicyUpdate"
+      responses:
+        "200":
+          description: Saved policy and caller's devices.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectionSettings"
+        "403":
+          description: Administrator required.
+        "409":
+          description: Policy revision changed. Reload before saving.
+  /projection/pairings:
+    post:
+      operationId: createProjectionPairing
+      tags: [projection]
+      summary: Create a one-time five-minute helper code. Requires allowed policy and active staff.
+      responses:
+        "201":
+          description: Code must be delivered in a body, never a URL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectionPairing"
+        "403":
+          description: Helper forbidden or staff account required.
+  /projection/devices/{deviceId}:
+    delete:
+      operationId: revokeProjectionDevice
+      tags: [projection]
+      parameters:
+        - in: path
+          name: deviceId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Own device credential revoked.
+        "403":
+          description: Caller does not own this device.
+  /courses/{courseId}/sessions/{sessionId}/projection/commands:
+    post:
+      operationId: sendProjectionCommand
+      tags: [projection]
+      summary: Enqueue an idempotent, leased public projection command for an owned device.
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectionCommandRequest"
+      responses:
+        "202":
+          description: Accepted, not yet proof of execution on a physical output.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectionCommand"
+        "403":
+          description: Course management, device ownership or helper policy denied.
+        "409":
+          description: Offline, outdated, inactive session, unconfirmed target or conflicting request ID.
+  /projection/agent/pair:
+    post:
+      operationId: pairProjectionAgent
+      tags: [projection]
+      security: []
+      summary: Atomically exchange a short pairing code for a separate opaque device credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectionAgentPairRequest"
+      responses:
+        "201":
+          description: Device credential returned once. Cache-Control no-store.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectionPairedDevice"
+        "401":
+          description: Expired, consumed or invalidated code.
+        "403":
+          description: Institution policy forbids pairing.
+        "429":
+          description: Pairing attempts rate limited.
+  /projection/agent/poll:
+    post:
+      operationId: pollProjectionAgent
+      tags: [projection]
+      security:
+        - projectionDevice: []
+      summary: Poll restricted commands and renew a 12-second output lease with current rights checks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectionAgentPollRequest"
+      responses:
+        "200":
+          description: Safe stop on use-policy or rights revocation; update metadata remains available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectionAgentPollResponse"
+        "401":
+          description: Device token missing, invalid or revoked. Staff JWT is not a device token.
+        "409":
+          description: Acknowledgement does not belong to this device.
+
+  /projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}:
+    get:
+      operationId: getProjectionMediaViewer
+      tags: [projection]
+      summary: Read public media signalling with a device/session/output-lease-bound projection grant.
+      security:
+        - projectionView: []
+      parameters:
+        - in: path
+          name: joinCode
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: viewerId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Public media offer. Current helper and host permissions checked again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareViewer"
+        "204":
+          description: No current screen share. The grant may be issued before capture starts.
+        "401":
+          description: Grant missing, invalid, expired or no longer bound to an active device output.
+        "403":
+          description: Wrong session, disabled helper policy or revoked owner permissions.
+  /projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}/{shareId}:
+    put:
+      operationId: answerProjectionMediaViewer
+      tags: [projection]
+      summary: Send only this public receiver's WebRTC answer. No host controls or staff data access.
+      security:
+        - projectionView: []
+      parameters:
+        - in: path
+          name: joinCode
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: viewerId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: shareId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShareDescription"
+      responses:
+        "204":
+          description: Public receiver answer accepted.
+        "401":
+          description: Invalid or expired output grant.
+        "403":
+          description: Wrong session, viewer or revoked permissions.
+        "410":
+          description: Screen share has ended.
+
+  /courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}/frame:
+    put:
+      operationId: uploadSharePreviewFrame
+      tags: [projection]
+      summary: Upload the latest bounded JPEG preview for HTTPS fallback, at most two frames per second.
+      description: Only the current share owner. One frame in memory per room, no history or disk storage; 4-second TTL, discarded on pause/stop/lease expiry. Not full-motion video or an SFU.
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+        - in: path
+          name: shareId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+              maxLength: 262144
+      responses:
+        "204":
+          description: Latest preview accepted; no persistence.
+        "400":
+          description: Invalid JPEG metadata or dimensions greater than 960 by 540.
+        "401":
+          description: Staff authentication required.
+        "403":
+          description: Only the current share owner with course manage rights may upload.
+        "409":
+          description: Session paused or not active.
+        "410":
+          description: Share lease expired or room ended.
+        "413":
+          description: Body exceeds 256 KiB, including requests without Content-Length.
+        "415":
+          description: Content-Type must be image/jpeg.
+        "429":
+          description: Less than 500 milliseconds since the previous accepted frame. Skip and retry later.
+  /student/sessions/{joinCode}/screen-share/viewers/{viewerId}/frame:
+    get:
+      operationId: getStudentSharePreviewFrame
+      tags: [projection]
+      security: []
+      summary: Read latest public HTTPS preview for an already registered, current participant viewer.
+      description: Use the existing signalling viewer endpoint for registration/heartbeat. Frame requests do not join a session or renew viewer/host leases. Send Accept image/jpeg.
+      parameters:
+        - in: path
+          name: joinCode
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: viewerId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: X-Participant-Token
+          schema:
+            type: string
+          description: Current participant receipt, or use the current authenticated session participant.
+      responses:
+        "200":
+          description: Latest public JPEG, Cache-Control no-store and nosniff.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "204":
+          description: No preview, paused, expired frame or ended room. Clear any previously displayed image.
+        "401":
+          description: Current participant authentication required.
+        "403":
+          description: Viewer belongs to another person, participant kicked/banned, or session access denied.
+        "404":
+          description: Signalling viewer not registered or its heartbeat expired.
+  /projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}/frame:
+    get:
+      operationId: getProjectionSharePreviewFrame
+      tags: [projection]
+      security:
+        - projectionView: []
+      summary: Read latest public HTTPS preview with the current device/output media grant.
+      description: Same bounded frame and viewer heartbeat as the student endpoint. Every request rechecks device, owner rights, institution policy, session and output lease. Send Accept image/jpeg.
+      parameters:
+        - in: path
+          name: joinCode
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: viewerId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Latest public JPEG, Cache-Control no-store and nosniff.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "204":
+          description: No preview, pause, frame TTL expired or room ended. Clear the previous image.
+        "401":
+          description: Output media grant invalid or expired.
+        "403":
+          description: Use policy, owner rights or exact session/device scope revoked.
+        "404":
+          description: Signalling viewer not registered or its heartbeat expired.
+
 components:
   securitySchemes:
+    projectionView:
+      type: apiKey
+      in: header
+      name: X-Projection-View-Token
+    projectionDevice:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque device credential
     bearerAuth:
       type: http
       scheme: bearer
@@ -2779,6 +3353,419 @@ components:
         type: string
         enum: [telegram, vk, web, echo]
   schemas:
+    ShareStart:
+      type: object
+      required:
+        - sourceName
+      properties:
+        sourceName:
+          type: string
+          minLength: 1
+          maxLength: 120
+    ShareDescription:
+      type: object
+      required:
+        - sdp
+      properties:
+        sdp:
+          type: string
+          minLength: 1
+          maxLength: 65536
+    ShareIceServer:
+      type: object
+      required:
+        - urls
+        - username
+        - credential
+      properties:
+        urls:
+          type: array
+          items:
+            type: string
+        username:
+          type: string
+        credential:
+          type: string
+    SharePeer:
+      type: object
+      required:
+        - id
+        - offer
+        - answer
+      properties:
+        id:
+          type: string
+          format: uuid
+        offer:
+          type: string
+          nullable: true
+        answer:
+          type: string
+          nullable: true
+    ShareStatus:
+      type: object
+      required:
+        - id
+        - sourceName
+        - leaseUntil
+        - paused
+        - peers
+        - iceServers
+      properties:
+        id:
+          type: string
+          format: uuid
+        sourceName:
+          type: string
+        leaseUntil:
+          type: string
+          format: date-time
+        paused:
+          type: boolean
+        peers:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharePeer'
+        iceServers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShareIceServer'
+    ShareViewer:
+      type: object
+      required:
+        - id
+        - offer
+        - paused
+        - iceServers
+      properties:
+        id:
+          type: string
+          format: uuid
+        offer:
+          type: string
+          nullable: true
+        paused:
+          type: boolean
+        iceServers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShareIceServer'
+    ProjectionPlatform:
+      type: string
+      enum: [WINDOWS_X64, WINDOWS_ARM64, MACOS_X64, MACOS_ARM64]
+    ProjectionVersion:
+      type: string
+      pattern: '^[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}$'
+      example: 0.1.0
+    ProjectionDeviceStatus:
+      type: string
+      enum: [IDLE, TESTING, SHOWING, PAUSED, ERROR]
+    ProjectionCommandType:
+      type: string
+      enum: [TEST_TARGET, START_PUBLIC_PROJECTION, STOP_PROJECTION, CHECK_UPDATE]
+    ProjectionInstaller:
+      type: object
+      required: [platform, version, minimumOsVersion, url, sha256, size]
+      properties:
+        platform:
+          $ref: "#/components/schemas/ProjectionPlatform"
+        version:
+          $ref: "#/components/schemas/ProjectionVersion"
+        minimumOsVersion:
+          type: string
+          pattern: '^[0-9]{1,5}(\.[0-9]{1,5}){1,3}$'
+          description: Numeric OS version required by this explicitly chosen platform package.
+        url:
+          type: string
+          format: uri
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        size:
+          type: integer
+          format: int64
+    ProjectionScreen:
+      type: object
+      required: [id, width, height, isPrimary]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 160
+        label:
+          type: string
+          nullable: true
+          maxLength: 120
+        width:
+          type: integer
+          minimum: 1
+          maximum: 32768
+        height:
+          type: integer
+          minimum: 1
+          maximum: 32768
+        isPrimary:
+          type: boolean
+    ProjectionDevice:
+      type: object
+      required: [id, name, platform, version, osVersion, status, connected, revoked, updateRequired, screens]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        platform:
+          $ref: "#/components/schemas/ProjectionPlatform"
+        version:
+          $ref: "#/components/schemas/ProjectionVersion"
+        osVersion:
+          type: string
+        status:
+          $ref: "#/components/schemas/ProjectionDeviceStatus"
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        connected:
+          type: boolean
+          description: Authenticated poll within 15 seconds; not HDMI readiness.
+        revoked:
+          type: boolean
+        updateRequired:
+          type: boolean
+        screens:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectionScreen"
+        diagnosticCode:
+          type: string
+          nullable: true
+    ProjectionSettings:
+      type: object
+      required: [agentAllowed, minimumVersion, revision, updatedAt, installers, devices]
+      properties:
+        agentAllowed:
+          type: boolean
+        minimumVersion:
+          $ref: "#/components/schemas/ProjectionVersion"
+        latestVersion:
+          type: string
+          nullable: true
+        revision:
+          type: integer
+          format: int64
+        updatedAt:
+          type: string
+          format: date-time
+        installers:
+          type: array
+          description: Empty until actual approved signed release packages exist.
+          items:
+            $ref: "#/components/schemas/ProjectionInstaller"
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectionDevice"
+    ProjectionPolicyUpdate:
+      type: object
+      required: [agentAllowed, minimumVersion, expectedRevision]
+      properties:
+        agentAllowed:
+          type: boolean
+        minimumVersion:
+          $ref: "#/components/schemas/ProjectionVersion"
+        expectedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+    ProjectionPairing:
+      type: object
+      required: [id, pairingCode, expiresAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        pairingCode:
+          type: string
+          pattern: '^[A-HJ-NP-Z2-9]{12}$'
+        expiresAt:
+          type: string
+          format: date-time
+    ProjectionAgentPairRequest:
+      type: object
+      required: [pairingCode, name, platform, version, osVersion, protocolVersion]
+      properties:
+        pairingCode:
+          type: string
+          pattern: '^[A-HJ-NP-Z2-9]{12}$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        platform:
+          $ref: "#/components/schemas/ProjectionPlatform"
+        version:
+          $ref: "#/components/schemas/ProjectionVersion"
+        osVersion:
+          type: string
+          minLength: 1
+          maxLength: 80
+        protocolVersion:
+          type: integer
+          enum: [1]
+    ProjectionPairedDevice:
+      type: object
+      required: [deviceId, deviceToken, protocolVersion]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        deviceToken:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Returned once; store in OS protected credentials. Never put in a URL.
+        protocolVersion:
+          type: integer
+          enum: [1]
+    ProjectionCommandRequest:
+      type: object
+      required: [deviceId, requestId, type]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        requestId:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/ProjectionCommandType"
+        targetScreenId:
+          type: string
+          maxLength: 160
+        displayConfirmed:
+          type: boolean
+          default: false
+        testCode:
+          type: string
+          pattern: '^[A-HJ-NP-Z2-9]{6}$'
+          description: Code physically confirmed after a successful TEST_TARGET, required for start.
+    ProjectionCommand:
+      type: object
+      required: [id, type, expiresAt, payload]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/ProjectionCommandType"
+        expiresAt:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          properties:
+            joinCode:
+              type: string
+              nullable: true
+            targetScreenId:
+              type: string
+              nullable: true
+            testCode:
+              type: string
+              nullable: true
+            projectionViewToken:
+              type: string
+              nullable: true
+              pattern: '^[a-f0-9]{64}$'
+              description: START only; public media receiver grant. Put only in native public URL fragment, never a server URL query. Bound to exact device/session/output lease, max 8h.
+    ProjectionCommandAck:
+      type: object
+      required: [commandId, result]
+      properties:
+        commandId:
+          type: string
+          format: uuid
+        result:
+          type: string
+          enum: [COMPLETED, FAILED]
+        diagnosticCode:
+          type: string
+          pattern: '^[A-Z0-9_]{1,64}$'
+    ProjectionAgentPollRequest:
+      type: object
+      required: [version, protocolVersion, status, screens]
+      properties:
+        version:
+          $ref: "#/components/schemas/ProjectionVersion"
+        osVersion:
+          type: string
+          nullable: true
+          pattern: '^([0-9]{1,5}(\.[0-9]{1,5}){1,3})?$'
+          description: Current numeric OS version. Omitted or empty preserves pairing metadata for older clients.
+        protocolVersion:
+          type: integer
+          enum: [1]
+        status:
+          $ref: "#/components/schemas/ProjectionDeviceStatus"
+        screens:
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/ProjectionScreen"
+        ack:
+          $ref: "#/components/schemas/ProjectionCommandAck"
+    ProjectionSignedReleaseEnvelope:
+      type: object
+      required: [keyId, payload, signature]
+      description: Direct signed update metadata. The native embedded SPKI trust verifies ECDSA P-256/SHA-256 IEEE-P1363 before trusting the exact base64-decoded payload bytes.
+      properties:
+        keyId:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,64}$'
+        payload:
+          type: string
+          maxLength: 32768
+          pattern: '^[A-Za-z0-9+/]+={0,2}$'
+          description: Base64 UTF-8 JSON manifest with sequence, version, platform, minimumOsVersion, protocolVersion, publishedAt, expiresAt, url, size, sha256 and entryPoint.
+        signature:
+          type: string
+          pattern: '^[A-Za-z0-9+/]{86}==$'
+          description: Base64 64-byte ECDSA P-256 signature, IEEE-P1363 format.
+    ProjectionAgentPollResponse:
+      type: object
+      required: [protocolVersion, pollAfterMs, mustStop, policy, updateRequired, commands]
+      properties:
+        protocolVersion:
+          type: integer
+          enum: [1]
+        pollAfterMs:
+          type: integer
+        leaseUntil:
+          type: string
+          format: date-time
+          nullable: true
+        mustStop:
+          type: boolean
+          description: Neutralize output; do not end lecture or automatically restore Duplicate.
+        policy:
+          type: object
+          required: [allowed, minimumVersion]
+          properties:
+            allowed:
+              type: boolean
+            minimumVersion:
+              $ref: "#/components/schemas/ProjectionVersion"
+        updateRequired:
+          type: boolean
+        release:
+          allOf:
+            - $ref: "#/components/schemas/ProjectionSignedReleaseEnvelope"
+          nullable: true
+        commands:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectionCommand"
     UnitKind:
       type: string
       enum:

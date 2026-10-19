@@ -398,6 +398,18 @@ public class StudentWebSessionService {
         }
     }
 
+    /** Read-only media access must not implicitly register or rejoin a kicked viewer. */
+    public ru.university.assistant.live.api.MediaViewingAccessApi.ViewerAccess requireMediaViewer(
+            String joinCode, AuthenticatedUser user, String participantToken) {
+        LiveSession session = sessionByCode(joinCode);
+        UUID personId = viewerId(session, user, participantToken);
+        if (personId == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Сначала подключитесь к занятию");
+        }
+        requireActive(session.id(), personId);
+        return new ru.university.assistant.live.api.MediaViewingAccessApi.ViewerAccess(session, personId);
+    }
+
     private ParticipantSession participantSession(String joinCode, String participantToken, AuthenticatedUser user) {
         LiveSession session = sessionByCode(joinCode);
         if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {

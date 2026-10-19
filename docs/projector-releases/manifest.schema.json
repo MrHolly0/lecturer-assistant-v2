@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Signed projector release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sequence",
+    "version",
+    "platform",
+    "minimumOsVersion",
+    "protocolVersion",
+    "publishedAt",
+    "expiresAt",
+    "url",
+    "size",
+    "sha256",
+    "entryPoint"
+  ],
+  "properties": {
+    "sequence": { "type": "integer", "minimum": 1 },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]{1,5}\\.[0-9]{1,5}\\.[0-9]{1,5}$"
+    },
+    "platform": {
+      "enum": ["WINDOWS_X64", "WINDOWS_ARM64", "MACOS_X64", "MACOS_ARM64"]
+    },
+    "artifactType": { "enum": ["UPDATE", "INSTALLER"], "default": "UPDATE" },
+    "minimumOsVersion": {
+      "type": "string",
+      "pattern": "^[0-9]{1,5}(\\.[0-9]{1,5}){1,3}$"
+    },
+    "protocolVersion": { "const": 1 },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "url": { "type": "string", "format": "uri", "maxLength": 4096 },
+    "size": { "type": "integer", "minimum": 1, "maximum": 536870912 },
+    "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+    "entryPoint": { "type": "string", "minLength": 1, "maxLength": 240 }
+  }
+}

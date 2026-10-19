@@ -1,0 +1,582 @@
+.projector-setup {
+  padding-bottom: 48px;
+}
+.projector-setup__header {
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 36px;
+}
+.projector-setup__header h1 {
+  margin-bottom: 10px;
+}
+.projector-setup__header p {
+  max-width: 65ch;
+}
+.projector-setup__columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  gap: 48px;
+  align-items: start;
+}
+.projector-setup__main {
+  min-width: 0;
+  padding: 30px;
+  border-radius: 16px;
+  background: var(--surface);
+}
+.projector-setup__main > h2 {
+  margin: 20px 0 12px;
+  font-size: 28px;
+}
+.projector-setup__main > p,
+.projector-setup__aside p,
+.projector-tour p {
+  max-width: 70ch;
+}
+.projector-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+.projector-setup__aside {
+  padding: 12px 0;
+}
+.projector-setup__aside h2 {
+  font-size: 20px;
+}
+.projector-setup__aside ol {
+  padding-left: 24px;
+  margin: 18px 0 26px;
+}
+.projector-setup__aside li {
+  padding-left: 4px;
+  margin: 12px 0;
+}
+.projector-setup__aside > .ui-button {
+  margin-top: 20px;
+  white-space: normal;
+  text-align: left;
+}
+.projector-back,
+.projector-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--foreground);
+  text-underline-offset: 3px;
+}
+.projector-source {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.projector-eyebrow {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.055em;
+}
+.projector-muted,
+.projector-setup__footnote {
+  color: var(--muted-foreground);
+}
+.projector-setup__footnote {
+  margin: 18px 0 0;
+  font-size: 13px;
+}
+.projector-display-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 22px;
+  margin: 32px 0;
+}
+.projector-display-pair > div {
+  display: grid;
+  gap: 6px;
+  text-align: center;
+  min-width: 0;
+}
+.projector-display-pair > div > span {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.projector-screen-picture {
+  min-height: 150px;
+  border: 1px solid var(--input);
+  border-radius: 10px;
+  background: var(--background);
+  padding: 18px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.projector-screen-picture--teacher > svg {
+  width: 22px;
+  height: 24px;
+  color: var(--brand);
+}
+.projector-screen-picture--teacher > p {
+  width: 100%;
+  padding: 9px;
+  margin: 0;
+  background: var(--surface);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.projector-mini-signals {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+.projector-mini-signals i {
+  flex: 1;
+  height: 22px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #009688 15%, var(--background));
+}
+.projector-mini-signals i:nth-child(2) {
+  background: color-mix(in srgb, #e5a800 18%, var(--background));
+}
+.projector-mini-signals i:nth-child(3) {
+  background: color-mix(in srgb, #c52c40 14%, var(--background));
+}
+.projector-screen-picture--public {
+  background: var(--accent);
+  flex-direction: column;
+  font-size: 14px;
+}
+.projector-setup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+.projector-setup__actions .ui-button,
+.projector-tour .ui-button {
+  white-space: normal;
+}
+.projector-os-select {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+  font-size: 14px;
+}
+.projector-os-select > span {
+  color: var(--muted-foreground);
+}
+.projector-os-select select {
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 8px 34px 8px 12px;
+  max-width: 100%;
+}
+.projector-inline-guide {
+  margin: 26px 0;
+  padding-top: 10px;
+}
+.projector-keys {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  margin: 30px 0;
+}
+.projector-keys kbd {
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-bottom-width: 4px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  min-width: 64px;
+  text-align: center;
+  font-family: inherit;
+  font-size: 26px;
+  font-weight: 600;
+}
+.projector-mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 18px;
+  margin-bottom: 22px;
+  background: var(--accent);
+  border: 1px solid var(--brand);
+  border-radius: 10px;
+}
+.projector-mode strong {
+  flex: 1;
+}
+.projector-mac-guide {
+  border: 1px solid var(--border);
+  background: var(--background);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.projector-mac-guide__path {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.projector-mac-guide ol {
+  padding-left: 22px;
+  margin: 20px 0 0;
+}
+.projector-mac-guide li {
+  padding: 4px;
+}
+.projector-guide-illustration {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+.projector-guide-options {
+  display: grid;
+  gap: 12px;
+  margin: 22px 0;
+}
+.projector-guide-options > div {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 16px;
+}
+.projector-guide-options p {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+.projector-guide-options span {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+.projector-screen-choice {
+  border: 0;
+  padding: 0;
+  margin: 26px 0;
+  min-width: 0;
+}
+.projector-screen-choice legend {
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.projector-screen-choice > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.projector-display-option {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--input);
+  border-radius: 10px;
+  background: var(--background);
+  min-width: 0;
+  cursor: pointer;
+}
+.projector-display-option > strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.projector-display-option > span {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.projector-display-option.is-selected {
+  border-color: var(--primary);
+  outline: 1px solid var(--primary);
+  background: var(--accent);
+}
+.projector-display-option.is-current {
+  opacity: 0.65;
+  cursor: default;
+}
+.projector-display-option__drawing {
+  position: relative;
+  text-align: center;
+  padding: 6px 0;
+}
+.projector-display-option__drawing span {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 16px;
+  font-weight: 600;
+}
+.projector-display-option__select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  min-height: 32px;
+}
+.projector-display-option input,
+.projector-confirm__checkbox input {
+  accent-color: var(--primary);
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.projector-screen-choice > p {
+  font-size: 13px;
+  margin-top: 16px;
+}
+.projector-confirm {
+  margin: 28px 0;
+}
+.projector-confirm__code {
+  font-size: 64px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 20px 0;
+  font-variant-numeric: tabular-nums;
+}
+.projector-confirm__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+.projector-feedback {
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--accent);
+}
+.projector-connected {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 24px 0;
+  background: var(--accent);
+  padding: 16px;
+  border-radius: 10px;
+}
+.projector-connected > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.projector-connected p {
+  margin: 4px 0 0;
+  font-size: 14px;
+}
+.projector-helper-slot {
+  margin-top: 36px;
+}
+.projector-tour[data-slot="dialog-content"] {
+  width: 680px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  min-height: min(672px, calc(100dvh - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 30px;
+  overflow-y: auto;
+}
+.projector-tour [data-slot="dialog-header"] {
+  text-align: left;
+}
+.projector-tour [data-slot="dialog-title"] {
+  font-size: 28px;
+  line-height: 1.25;
+  letter-spacing: -0.6px;
+}
+.projector-tour [data-slot="dialog-description"] {
+  font-size: 16px;
+}
+.projector-tour__body {
+  flex: 1;
+  min-height: 0;
+}
+.projector-tour__body > :last-child {
+  margin-bottom: 0;
+}
+.projector-tour__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: auto;
+}
+.projector-tour__footer > div {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+.projector-tour--reverse[data-slot="dialog-content"] {
+  min-height: 0;
+}
+.projector-return-steps {
+  padding-left: 22px;
+}
+.projector-return-steps li {
+  padding: 8px 0 8px 8px;
+}
+.projector-setup--neutral {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  margin: 0;
+  max-width: none;
+  background: var(--background);
+  overflow-y: auto;
+  padding: 40px 24px;
+}
+.projector-finish {
+  min-height: calc(100dvh - 80px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  text-align: center;
+}
+.projector-finish h1 {
+  margin: 12px 0 0;
+}
+.projector-finish > p {
+  max-width: 58ch;
+  color: var(--muted-foreground);
+}
+.projector-public-test {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 36px;
+  background: var(--background);
+  gap: 14px;
+}
+.projector-public-test h1 {
+  margin: 10px 0;
+}
+.projector-public-test p {
+  max-width: 60ch;
+  margin: 0;
+}
+.projector-public-test__brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 22px;
+}
+.projector-public-test__brand svg {
+  width: 32px;
+  height: 36px;
+  color: var(--brand);
+}
+.projector-public-test .projector-public-test__code {
+  font-size: clamp(60px, 12vw, 160px);
+  line-height: 1.1;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  margin: 20px 0;
+  font-variant-numeric: tabular-nums;
+}
+.projector-public-test > .ui-button {
+  margin-top: 20px;
+}
+@media (max-width: 900px) {
+  .projector-setup__columns {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .projector-setup__aside {
+    max-width: 65ch;
+  }
+}
+@media (max-width: 600px) {
+  .projector-setup__header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .projector-setup__main {
+    padding: 20px 16px;
+  }
+  .projector-setup__main > h2 {
+    font-size: 24px;
+  }
+  .projector-display-pair {
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr);
+  }
+  .projector-screen-picture {
+    padding: 12px 8px;
+    min-height: 130px;
+    font-size: 12px;
+  }
+  .projector-display-pair > div > strong {
+    font-size: 14px;
+  }
+  .projector-tour[data-slot="dialog-content"] {
+    padding: 24px 20px;
+    gap: 16px;
+  }
+  .projector-tour [data-slot="dialog-title"] {
+    font-size: 24px;
+  }
+  .projector-tour__footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+  .projector-tour__footer > div {
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+  .projector-tour__footer > .ui-button {
+    align-self: flex-start;
+  }
+  .projector-setup__actions > .ui-button {
+    flex: 1 1 180px;
+  }
+  .projector-os-select {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .projector-mac-guide {
+    padding: 14px;
+  }
+}
+.projector-display-option__drawing {
+  display: grid;
+  place-items: center;
+}
+.projector-setup__aside ol,
+.projector-mac-guide ol,
+.projector-return-steps {
+  list-style: decimal;
+}
+.projector-tour [data-slot="dialog-footer"] {
+  border-top: 0;
+  padding-top: 0;
+}

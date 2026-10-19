@@ -33,6 +33,7 @@ import { StudentConnectionBanner } from "../widgets/StudentConnectionBanner";
 import { StudentFeedbackControls } from "../widgets/StudentFeedbackControls";
 import { StudentJoinPanel } from "../widgets/StudentJoinPanel";
 import { StudentPollCard } from "../widgets/StudentPollCard";
+import { ScreenShareViewer } from "../widgets/ScreenShareViewer";
 import { StudentSlideViewer } from "../widgets/StudentSlideViewer";
 import { StudentGroupJoinIssue, StudentGroupPicker } from "../widgets/StudentGroupJoin";
 import { StudentSessionError, StudentSessionLoading } from "../widgets/StudentSessionState";
@@ -552,19 +553,28 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
                 </Button>
               )}
           </div>
-          {current.currentSlide ? (
-            <div className="student-slide-viewport">
-              <img src={current.currentSlide.imageUrl} alt={`Слайд ${current.currentSlide.idx}`} />
-              <DrawingOverlay
-                slideIdx={current.currentSlide.idx}
-                annotations={(current.annotations ?? {}) as LiveAnnotations}
-                active={false}
-                onChange={() => undefined}
-              />
-            </div>
-          ) : (
-            <div className="student-slide-empty">Слайд пока не выбран</div>
-          )}
+          <ScreenShareViewer
+            joinCode={normalizedCode}
+            participantToken={participantToken}
+            paused={current.status === "PAUSED"}
+          >
+            {current.currentSlide ? (
+              <div className="student-slide-viewport">
+                <img
+                  src={current.currentSlide.imageUrl}
+                  alt={`Слайд ${current.currentSlide.idx}`}
+                />
+                <DrawingOverlay
+                  slideIdx={current.currentSlide.idx}
+                  annotations={(current.annotations ?? {}) as LiveAnnotations}
+                  active={false}
+                  onChange={() => undefined}
+                />
+              </div>
+            ) : (
+              <div className="student-slide-empty">Слайд пока не выбран</div>
+            )}
+          </ScreenShareViewer>
         </section>
       )}
 

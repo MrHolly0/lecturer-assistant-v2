@@ -4,6 +4,8 @@
 # Локальные скрытые файлы и каталоги не входят в контекст сборки.
 .*
 .github
+AGENTS.md
+projector-agent
 docs
 e2e
 artifacts

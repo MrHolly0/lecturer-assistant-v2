@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { MessageCircle } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { login } from "../app/api/auth-api";
 import { useAuth } from "../app/AuthContext";
 import { ApiError } from "../app/api/http";
@@ -15,6 +15,7 @@ import { AuthPasswordField } from "../widgets/AuthPasswordField";
 export function LoginPage() {
   const { setUser } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -24,7 +25,12 @@ export function LoginPage() {
     mutationFn: () => login(email, password),
     onSuccess: (data) => {
       setUser(data.user);
-      navigate(landingPath(data.user.role), { replace: true });
+      const returnTo = searchParams.get("returnTo");
+      const projectorReturn = returnTo && /^\/settings\/projector(?:\?|$)/.test(returnTo);
+      navigate(
+        data.user.role !== "STUDENT" && projectorReturn ? returnTo : landingPath(data.user.role),
+        { replace: true }
+      );
     },
     onError: (err) => {
       setError(

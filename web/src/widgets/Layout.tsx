@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   MoreHorizontal,
+  Monitor,
   QrCode,
   Shield,
   UserRound,
@@ -52,7 +53,14 @@ const navItems = [
     roles: ["ADMIN", "LECTURER", "ASSISTANT"],
     more: true
   },
-  { path: "/admin/users", icon: Shield, label: "Учётные записи", roles: ["ADMIN"], more: true }
+  { path: "/admin/users", icon: Shield, label: "Учётные записи", roles: ["ADMIN"], more: true },
+  {
+    path: "/settings/projector",
+    icon: Monitor,
+    label: "Настройка проектора",
+    roles: ["ADMIN", "LECTURER", "ASSISTANT"],
+    more: true
+  }
 ];
 const roleLabels: Record<string, string> = {
   ADMIN: "Администратор",

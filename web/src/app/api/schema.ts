@@ -4,6 +4,92 @@
  */
 
 export interface paths {
+  "/courses/{courseId}/sessions/{sessionId}/screen-share": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start leased WebRTC sharing during a live session. */
+    post: operations["startScreenShare"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Renew publisher lease and read bounded signalling. */
+    get: operations["pollScreenShare"];
+    put?: never;
+    post?: never;
+    /** Stop sharing without ending the lecture. */
+    delete: operations["stopScreenShare"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}/viewers/{viewerId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Send a gathered video-only SDP offer. */
+    put: operations["offerScreenShare"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/screen-share/viewers/{viewerId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read viewer signalling; active participation is required. */
+    get: operations["viewScreenShare"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/screen-share/viewers/{viewerId}/{shareId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Send a gathered SDP answer for this viewer. */
+    put: operations["answerScreenShare"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/system/info": {
     parameters: {
       query?: never;
@@ -2179,10 +2265,412 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/projection/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read institution projector policy and the current staff member's devices. */
+    get: operations["getProjectionSettings"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/projection/policy": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Admin changes helper use policy with optimistic revision checking. */
+    put: operations["updateProjectionPolicy"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projection/pairings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create a one-time five-minute helper code. Requires allowed policy and active staff. */
+    post: operations["createProjectionPairing"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projection/devices/{deviceId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations["revokeProjectionDevice"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/projection/commands": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Enqueue an idempotent, leased public projection command for an owned device. */
+    post: operations["sendProjectionCommand"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projection/agent/pair": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Atomically exchange a short pairing code for a separate opaque device credential. */
+    post: operations["pairProjectionAgent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projection/agent/poll": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Poll restricted commands and renew a 12-second output lease with current rights checks. */
+    post: operations["pollProjectionAgent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read public media signalling with a device/session/output-lease-bound projection grant. */
+    get: operations["getProjectionMediaViewer"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}/{shareId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Send only this public receiver's WebRTC answer. No host controls or staff data access. */
+    put: operations["answerProjectionMediaViewer"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}/frame": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Upload the latest bounded JPEG preview for HTTPS fallback, at most two frames per second.
+     * @description Only the current share owner. One frame in memory per room, no history or disk storage; 4-second TTL, discarded on pause/stop/lease expiry. Not full-motion video or an SFU.
+     */
+    put: operations["uploadSharePreviewFrame"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/screen-share/viewers/{viewerId}/frame": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read latest public HTTPS preview for an already registered, current participant viewer.
+     * @description Use the existing signalling viewer endpoint for registration/heartbeat. Frame requests do not join a session or renew viewer/host leases. Send Accept image/jpeg.
+     */
+    get: operations["getStudentSharePreviewFrame"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projection/agent/view/sessions/{joinCode}/screen-share/viewers/{viewerId}/frame": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read latest public HTTPS preview with the current device/output media grant.
+     * @description Same bounded frame and viewer heartbeat as the student endpoint. Every request rechecks device, owner rights, institution policy, session and output lease. Send Accept image/jpeg.
+     */
+    get: operations["getProjectionSharePreviewFrame"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    ShareStart: {
+      sourceName: string;
+    };
+    ShareDescription: {
+      sdp: string;
+    };
+    ShareIceServer: {
+      urls: string[];
+      username: string;
+      credential: string;
+    };
+    SharePeer: {
+      /** Format: uuid */
+      id: string;
+      offer: string | null;
+      answer: string | null;
+    };
+    ShareStatus: {
+      /** Format: uuid */
+      id: string;
+      sourceName: string;
+      /** Format: date-time */
+      leaseUntil: string;
+      paused: boolean;
+      peers: components["schemas"]["SharePeer"][];
+      iceServers: components["schemas"]["ShareIceServer"][];
+    };
+    ShareViewer: {
+      /** Format: uuid */
+      id: string;
+      offer: string | null;
+      paused: boolean;
+      iceServers: components["schemas"]["ShareIceServer"][];
+    };
+    /** @enum {string} */
+    ProjectionPlatform: "WINDOWS_X64" | "WINDOWS_ARM64" | "MACOS_X64" | "MACOS_ARM64";
+    /** @example 0.1.0 */
+    ProjectionVersion: string;
+    /** @enum {string} */
+    ProjectionDeviceStatus: "IDLE" | "TESTING" | "SHOWING" | "PAUSED" | "ERROR";
+    /** @enum {string} */
+    ProjectionCommandType:
+      | "TEST_TARGET"
+      | "START_PUBLIC_PROJECTION"
+      | "STOP_PROJECTION"
+      | "CHECK_UPDATE";
+    ProjectionInstaller: {
+      platform: components["schemas"]["ProjectionPlatform"];
+      version: components["schemas"]["ProjectionVersion"];
+      /** @description Numeric OS version required by this explicitly chosen platform package. */
+      minimumOsVersion: string;
+      /** Format: uri */
+      url: string;
+      sha256: string;
+      /** Format: int64 */
+      size: number;
+    };
+    ProjectionScreen: {
+      id: string;
+      label?: string | null;
+      width: number;
+      height: number;
+      isPrimary: boolean;
+    };
+    ProjectionDevice: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      platform: components["schemas"]["ProjectionPlatform"];
+      version: components["schemas"]["ProjectionVersion"];
+      osVersion: string;
+      status: components["schemas"]["ProjectionDeviceStatus"];
+      /** Format: date-time */
+      lastSeenAt?: string | null;
+      /** @description Authenticated poll within 15 seconds; not HDMI readiness. */
+      connected: boolean;
+      revoked: boolean;
+      updateRequired: boolean;
+      screens: components["schemas"]["ProjectionScreen"][];
+      diagnosticCode?: string | null;
+    };
+    ProjectionSettings: {
+      agentAllowed: boolean;
+      minimumVersion: components["schemas"]["ProjectionVersion"];
+      latestVersion?: string | null;
+      /** Format: int64 */
+      revision: number;
+      /** Format: date-time */
+      updatedAt: string;
+      /** @description Empty until actual approved signed release packages exist. */
+      installers: components["schemas"]["ProjectionInstaller"][];
+      devices: components["schemas"]["ProjectionDevice"][];
+    };
+    ProjectionPolicyUpdate: {
+      agentAllowed: boolean;
+      minimumVersion: components["schemas"]["ProjectionVersion"];
+      /** Format: int64 */
+      expectedRevision: number;
+    };
+    ProjectionPairing: {
+      /** Format: uuid */
+      id: string;
+      pairingCode: string;
+      /** Format: date-time */
+      expiresAt: string;
+    };
+    ProjectionAgentPairRequest: {
+      pairingCode: string;
+      name: string;
+      platform: components["schemas"]["ProjectionPlatform"];
+      version: components["schemas"]["ProjectionVersion"];
+      osVersion: string;
+      /** @enum {integer} */
+      protocolVersion: 1;
+    };
+    ProjectionPairedDevice: {
+      /** Format: uuid */
+      deviceId: string;
+      /** @description Returned once; store in OS protected credentials. Never put in a URL. */
+      deviceToken: string;
+      /** @enum {integer} */
+      protocolVersion: 1;
+    };
+    ProjectionCommandRequest: {
+      /** Format: uuid */
+      deviceId: string;
+      /** Format: uuid */
+      requestId: string;
+      type: components["schemas"]["ProjectionCommandType"];
+      targetScreenId?: string;
+      /** @default false */
+      displayConfirmed: boolean;
+      /** @description Code physically confirmed after a successful TEST_TARGET, required for start. */
+      testCode?: string;
+    };
+    ProjectionCommand: {
+      /** Format: uuid */
+      id: string;
+      type: components["schemas"]["ProjectionCommandType"];
+      /** Format: date-time */
+      expiresAt: string;
+      payload: {
+        joinCode?: string | null;
+        targetScreenId?: string | null;
+        testCode?: string | null;
+        /** @description START only; public media receiver grant. Put only in native public URL fragment, never a server URL query. Bound to exact device/session/output lease, max 8h. */
+        projectionViewToken?: string | null;
+      };
+    };
+    ProjectionCommandAck: {
+      /** Format: uuid */
+      commandId: string;
+      /** @enum {string} */
+      result: "COMPLETED" | "FAILED";
+      diagnosticCode?: string;
+    };
+    ProjectionAgentPollRequest: {
+      version: components["schemas"]["ProjectionVersion"];
+      /** @description Current numeric OS version. Omitted or empty preserves pairing metadata for older clients. */
+      osVersion?: string | null;
+      /** @enum {integer} */
+      protocolVersion: 1;
+      status: components["schemas"]["ProjectionDeviceStatus"];
+      screens: components["schemas"]["ProjectionScreen"][];
+      ack?: components["schemas"]["ProjectionCommandAck"];
+    };
+    /** @description Direct signed update metadata. The native embedded SPKI trust verifies ECDSA P-256/SHA-256 IEEE-P1363 before trusting the exact base64-decoded payload bytes. */
+    ProjectionSignedReleaseEnvelope: {
+      keyId: string;
+      /** @description Base64 UTF-8 JSON manifest with sequence, version, platform, minimumOsVersion, protocolVersion, publishedAt, expiresAt, url, size, sha256 and entryPoint. */
+      payload: string;
+      /** @description Base64 64-byte ECDSA P-256 signature, IEEE-P1363 format. */
+      signature: string;
+    };
+    ProjectionAgentPollResponse: {
+      /** @enum {integer} */
+      protocolVersion: 1;
+      pollAfterMs: number;
+      /** Format: date-time */
+      leaseUntil?: string | null;
+      /** @description Neutralize output; do not end lecture or automatically restore Duplicate. */
+      mustStop: boolean;
+      policy: {
+        allowed: boolean;
+        minimumVersion: components["schemas"]["ProjectionVersion"];
+      };
+      updateRequired: boolean;
+      release?: components["schemas"]["ProjectionSignedReleaseEnvelope"] | null;
+      commands: components["schemas"]["ProjectionCommand"][];
+    };
     /** @enum {string} */
     UnitKind: "UNIT" | "FACULTY" | "DEPARTMENT";
     /** @enum {string} */
@@ -3249,6 +3737,250 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  startScreenShare: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: string;
+        sessionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ShareStart"];
+      };
+    };
+    responses: {
+      /** @description Signalling response. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ShareStatus"];
+        };
+      };
+      /** @description Current access denied. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or connection changed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  pollScreenShare: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: string;
+        sessionId: string;
+        shareId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Signalling response. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ShareStatus"];
+        };
+      };
+      /** @description Current access denied. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or connection changed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  stopScreenShare: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: string;
+        sessionId: string;
+        shareId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Completed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Current access denied. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or connection changed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  offerScreenShare: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: string;
+        sessionId: string;
+        shareId: string;
+        viewerId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ShareDescription"];
+      };
+    };
+    responses: {
+      /** @description Completed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Current access denied. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or connection changed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  viewScreenShare: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: string;
+        viewerId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Signalling response. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ShareViewer"];
+        };
+      };
+      /** @description No active demonstration. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Current access denied. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or connection changed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  answerScreenShare: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: string;
+        viewerId: string;
+        shareId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ShareDescription"];
+      };
+    };
+    responses: {
+      /** @description Completed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Current access denied. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or connection changed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   getSystemInfo: {
     parameters: {
       query?: never;
@@ -6920,6 +7652,534 @@ export interface operations {
         content?: never;
       };
       /** @description Unknown staff account or group. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getProjectionSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No connected device or installer is invented when unavailable. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectionSettings"];
+        };
+      };
+      /** @description Authentication required. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Active staff account required. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  updateProjectionPolicy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProjectionPolicyUpdate"];
+      };
+    };
+    responses: {
+      /** @description Saved policy and caller's devices. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectionSettings"];
+        };
+      };
+      /** @description Administrator required. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Policy revision changed. Reload before saving. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createProjectionPairing: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Code must be delivered in a body, never a URL. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectionPairing"];
+        };
+      };
+      /** @description Helper forbidden or staff account required. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revokeProjectionDevice: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        deviceId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Own device credential revoked. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller does not own this device. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  sendProjectionCommand: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProjectionCommandRequest"];
+      };
+    };
+    responses: {
+      /** @description Accepted, not yet proof of execution on a physical output. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectionCommand"];
+        };
+      };
+      /** @description Course management, device ownership or helper policy denied. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Offline, outdated, inactive session, unconfirmed target or conflicting request ID. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  pairProjectionAgent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProjectionAgentPairRequest"];
+      };
+    };
+    responses: {
+      /** @description Device credential returned once. Cache-Control no-store. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectionPairedDevice"];
+        };
+      };
+      /** @description Expired, consumed or invalidated code. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Institution policy forbids pairing. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Pairing attempts rate limited. */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  pollProjectionAgent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProjectionAgentPollRequest"];
+      };
+    };
+    responses: {
+      /** @description Safe stop on use-policy or rights revocation; update metadata remains available. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectionAgentPollResponse"];
+        };
+      };
+      /** @description Device token missing, invalid or revoked. Staff JWT is not a device token. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Acknowledgement does not belong to this device. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getProjectionMediaViewer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: string;
+        viewerId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Public media offer. Current helper and host permissions checked again. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ShareViewer"];
+        };
+      };
+      /** @description No current screen share. The grant may be issued before capture starts. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Grant missing, invalid, expired or no longer bound to an active device output. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Wrong session, disabled helper policy or revoked owner permissions. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  answerProjectionMediaViewer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: string;
+        viewerId: string;
+        shareId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ShareDescription"];
+      };
+    };
+    responses: {
+      /** @description Public receiver answer accepted. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid or expired output grant. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Wrong session, viewer or revoked permissions. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Screen share has ended. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  uploadSharePreviewFrame: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        shareId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "image/jpeg": string;
+      };
+    };
+    responses: {
+      /** @description Latest preview accepted; no persistence. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid JPEG metadata or dimensions greater than 960 by 540. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Staff authentication required. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Only the current share owner with course manage rights may upload. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session paused or not active. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Share lease expired or room ended. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Body exceeds 256 KiB, including requests without Content-Length. */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Content-Type must be image/jpeg. */
+      415: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Less than 500 milliseconds since the previous accepted frame. Skip and retry later. */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getStudentSharePreviewFrame: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Current participant receipt, or use the current authenticated session participant. */
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: string;
+        viewerId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Latest public JPEG, Cache-Control no-store and nosniff. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/jpeg": string;
+        };
+      };
+      /** @description No preview, paused, expired frame or ended room. Clear any previously displayed image. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Current participant authentication required. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Viewer belongs to another person, participant kicked/banned, or session access denied. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Signalling viewer not registered or its heartbeat expired. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getProjectionSharePreviewFrame: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        joinCode: string;
+        viewerId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Latest public JPEG, Cache-Control no-store and nosniff. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/jpeg": string;
+        };
+      };
+      /** @description No preview, pause, frame TTL expired or room ended. Clear the previous image. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Output media grant invalid or expired. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Use policy, owner rights or exact session/device scope revoked. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Signalling viewer not registered or its heartbeat expired. */
       404: {
         headers: {
           [name: string]: unknown;

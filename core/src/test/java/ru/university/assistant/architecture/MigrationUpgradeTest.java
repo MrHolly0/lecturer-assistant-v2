@@ -60,7 +60,7 @@ class MigrationUpgradeTest {
     private Flyway migration(String target) {
         return Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .schemas("shared", "iam", "org", "content", "live", "qa", "feedback",
-                        "interaction", "channel", "analytics")
+                        "interaction", "channel", "analytics", "projection")
                 .defaultSchema("shared").target(target).load();
     }
 }

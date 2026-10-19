@@ -22,6 +22,9 @@ import "./styles/redesign-admin.css";
 import "./styles/redesign-auth.css";
 import "./styles/session-analytics.css";
 import "./styles/course-participants.css";
+import "./styles/projector-setup.css";
+import "./styles/projector-workspace.css";
+import "./styles/projector-helper-controls.css";
 
 registerServiceWorker();
 

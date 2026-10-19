@@ -55,7 +55,8 @@ class RateLimitFilter extends OncePerRequestFilter {
             return null;
         }
         String path = request.getRequestURI();
-        if ("/api/v1/auth/max".equals(path) || path.startsWith("/api/v1/auth/max/")) {
+        if ("/api/v1/auth/max".equals(path) || path.startsWith("/api/v1/auth/max/")
+                || "/api/v1/projection/agent/pair".equals(path)) {
             return authMaxLimiter;
         }
         if (PATH_MATCHER.match(SIGNAL_PATH_PATTERN, path)) {

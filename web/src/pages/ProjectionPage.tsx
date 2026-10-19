@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { CirclePause, CircleStop } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -13,10 +14,14 @@ import { buildMaxJoinUrl } from "../app/max/deepLink";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { SessionGroups } from "../widgets/SessionGroups";
 import { Button } from "../shared/ui/button";
+import { ScreenShareViewer } from "../widgets/ScreenShareViewer";
 
 /** Экран показа использует только доступное студентам состояние лекции. */
 export function ProjectionPage({ joinCode }: { joinCode: string }) {
   const code = joinCode.trim().toUpperCase();
+  const [query] = useSearchParams();
+  const localChannelId = query.get("attempt") ?? query.get("shareAttempt");
+  const projectionViewToken = query.get("projectionViewToken") ?? undefined;
   const [connectionState, setConnectionState] = useState<StudentConnectionState>("CONNECTING");
   const [liveSnapshot, setLiveSnapshot] = useState<StudentSessionSnapshot | null>(null);
   const sessionQuery = useQuery({
@@ -82,49 +87,57 @@ export function ProjectionPage({ joinCode }: { joinCode: string }) {
 
   return (
     <main className="projection-shell">
-      {showJoinCode || session.status === "SCHEDULED" ? (
-        <section
-          className="projection-code projection-code--live"
-          aria-label="Код подключения к занятию"
-        >
-          <div className="projection-brand">
-            <BrandMark />
-            <span>Lecturer Assistant</span>
-          </div>
-          <h1>Подключитесь к занятию</h1>
-          <div className="projection-join-row">
-            <div className="projection-join-code">
-              <span>Код занятия</span>
-              <strong>{session.joinCode}</strong>
-              <p>Введите код или откройте занятие в MAX</p>
+      <ScreenShareViewer
+        joinCode={code}
+        local={!projectionViewToken}
+        projectionViewToken={projectionViewToken}
+        localChannelId={localChannelId}
+        paused={session.status === "PAUSED"}
+      >
+        {showJoinCode || session.status === "SCHEDULED" ? (
+          <section
+            className="projection-code projection-code--live"
+            aria-label="Код подключения к занятию"
+          >
+            <div className="projection-brand">
+              <BrandMark />
+              <span>Lecturer Assistant</span>
             </div>
-            {joinUrl ? (
-              <LocalQrCode value={joinUrl} label="Открыть занятие в MAX" />
+            <h1>Подключитесь к занятию</h1>
+            <div className="projection-join-row">
+              <div className="projection-join-code">
+                <span>Код занятия</span>
+                <strong>{session.joinCode}</strong>
+                <p>Введите код или откройте занятие в MAX</p>
+              </div>
+              {joinUrl ? (
+                <LocalQrCode value={joinUrl} label="Открыть занятие в MAX" />
+              ) : (
+                <p className="muted">MAX-бот не настроен. Введите код занятия.</p>
+              )}
+            </div>
+            <div className="projection-context">
+              <h2>{session.courseTitle}</h2>
+              <p>{session.lectureTitle}</p>
+              <SessionGroups groups={session.groups} compact />
+            </div>
+          </section>
+        ) : (
+          <>
+            {session.currentSlide ? (
+              <img src={session.currentSlide.imageUrl} alt={`Слайд ${session.currentSlideIdx}`} />
             ) : (
-              <p className="muted">MAX-бот не настроен. Введите код занятия.</p>
+              <p>Ожидаем слайд</p>
             )}
-          </div>
-          <div className="projection-context">
-            <h2>{session.courseTitle}</h2>
-            <p>{session.lectureTitle}</p>
-            <SessionGroups groups={session.groups} compact />
-          </div>
-        </section>
-      ) : (
-        <>
-          {session.currentSlide ? (
-            <img src={session.currentSlide.imageUrl} alt={`Слайд ${session.currentSlideIdx}`} />
-          ) : (
-            <p>Ожидаем слайд</p>
-          )}
-          <DrawingOverlay
-            slideIdx={session.currentSlideIdx}
-            annotations={session.annotations as LiveAnnotations}
-            active={false}
-            onChange={() => undefined}
-          />
-        </>
-      )}
+            <DrawingOverlay
+              slideIdx={session.currentSlideIdx}
+              annotations={session.annotations as LiveAnnotations}
+              active={false}
+              onChange={() => undefined}
+            />
+          </>
+        )}
+      </ScreenShareViewer>
       {session.status === "PAUSED" && (
         <div className="projection-pause-banner" role="status">
           <CirclePause size={24} aria-hidden="true" />
