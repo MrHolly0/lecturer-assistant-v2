@@ -83,6 +83,25 @@ export function openProjectionWindow(joinCode: string, shareAttempt?: string): W
   return target;
 }
 
+/** Close only the lecture window we opened, while it still displays our public route. */
+export function closePublicProjection(joinCode: string): void {
+  const entry = publicWindows.get(joinCode);
+  if (!entry) return;
+  publicWindows.delete(joinCode);
+  if (entry.window.closed) return;
+  try {
+    const url = new URL(entry.window.location.href);
+    if (
+      url.href === "about:blank" ||
+      (url.origin === window.location.origin &&
+        url.hash.split("?")[0] === `#/projection/${encodeURIComponent(joinCode)}`)
+    )
+      entry.window.close();
+  } catch {
+    // Navigation to another origin relinquishes control of the window.
+  }
+}
+
 /** No staff state, token, questions or drafts cross this channel. */
 class BrowserProjection {
   private snapshot: ProjectionSnapshot = initialProjectionSnapshot;

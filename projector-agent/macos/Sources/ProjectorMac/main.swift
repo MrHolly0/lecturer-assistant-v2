@@ -43,21 +43,7 @@ import Darwin
         display = DisplayController(directory: directory)
         capture.event = { [weak self] event in self?.remote.emit(event) }
         remote.closed = { [weak self] in Task { @MainActor in await self?.capture.stop() } }
-        remote.command = { [weak self] value in
-            guard let self, let action = value["action"] as? String else { return }
-            Task { @MainActor in
-                switch action {
-                case "chooseSource": await self.capture.chooseSource()
-                case "publish": await self.capture.startPublishing()
-                case "stopCapture": await self.capture.stop()
-                case "pause": await self.capture.setPaused(value["paused"] as? Bool ?? true)
-                case "focusProjection": self.projection.focus()
-                case "ready", "capabilities": self.remote.emit(["type": "capabilities", "platform": "MACOS", "nativeCapture": true, "captureExclusion": ["supported": true, "enabled": true]]); self.capture.status()
-                case "screenRecordingSettings": if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") { NSWorkspace.shared.open(url) }
-                default: break
-                }
-            }
-        }
+        remote.command = { [weak self] value in Task { @MainActor in await self?.applyRemoteCommand(value) } }
         startupStatus = (try? bootstrapCommand("--login-status")) ?? "UNAVAILABLE"
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "LA"
@@ -96,7 +82,38 @@ import Darwin
             status = "Есть сохранённая настройка экранов — проверьте возврат"; rebuildMenu()
         }
     }
+    private func applyRemoteCommand(_ value: [String: Any]) async {
+        guard let action = value["action"] as? String else { return }
+        switch action {
+        case "chooseSource": await capture.chooseSource()
+        case "publish": await capture.startPublishing()
+        case "stopCapture": await capture.stop()
+        case "stopProjection": stop()
+        case "pause": await capture.setPaused(value["paused"] as? Bool ?? true)
+        case "focusProjection": projection.focus()
+        case "ready", "capabilities": remote.emit(["type": "capabilities", "platform": "MACOS", "nativeCapture": true, "captureExclusion": ["supported": true, "enabled": true]]); capture.status()
+        case "screenRecordingSettings": if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") { NSWorkspace.shared.open(url) }
+        default: break
+        }
+    }
+    static func exerciseRemoteCommandsFixture() async throws -> [String: Any] {
+        // No applicationDidFinishLaunching: no saved account, status item, timer or coordinator.
+        let delegate = AppDelegate()
+        let origin = URL(string: "https://school.example/")!
+        let course = UUID(), session = UUID(), token = UUID().uuidString.lowercased() + "." + String(repeating: "a", count: 64)
+        let url = "https://school.example/#/helper/remote?courseId=\(course.uuidString)&sessionId=\(session.uuidString)&controlToken=\(token)"
+        let action: [String: Any] = ["remoteUrl": url, "courseId": course.uuidString, "sessionId": session.uuidString, "controlToken": token]
+        try delegate.configureRemote(action, origin: origin, present: false)
+        guard delegate.lastRemoteAction != nil, !delegate.remote.isPresented else { throw HostError.code("WORKSPACE_MANUAL_REMOTE_SCOPE_LOST") }
+        await delegate.applyRemoteCommand(["action": "stopCapture"])
+        guard !delegate.pendingLocalStop, delegate.lastRemoteAction != nil else { throw HostError.code("WORKSPACE_SOURCE_STOP_CLOSED_PROJECTION") }
+        await delegate.applyRemoteCommand(["action": "stopProjection"])
+        guard delegate.pendingLocalStop, delegate.lastRemoteAction == nil, !delegate.capture.isActive else { throw HostError.code("WORKSPACE_FOOTER_STOP_NOT_LOCAL_STOP") }
+        return ["projectorPreparationKeepsRemoteClosed": true, "manualRemoteScopePreserved": true,
+                "sourceStopKeepsProjectionScope": true, "footerStopSetsLocalStop": true]
+    }
     private func rebuildMenu() {
+        guard item != nil else { return }
         let menu = NSMenu()
         let label = NSMenuItem(title: status, action: nil, keyEquivalent: ""); label.isEnabled = false; menu.addItem(label)
         add(menu, "Подключить к учреждению…", #selector(pair))
@@ -258,6 +275,9 @@ import Darwin
             }
             do {
                 switch type {
+                case "SET_THEME":
+                    guard let theme = action["theme"] as? String else { throw HostError.code("REMOTE_THEME_REJECTED") }
+                    try remote.setTheme(theme)
                 case "GET_SCREENS": send(["id": id, "success": true, "screens": DisplayController.screens(), "localStop": pendingLocalStop, "updateHandoffFailed": pendingUpdateHandoffFailed]); pendingLocalStop = false; pendingUpdateHandoffFailed = false; continue
                 case "PREPARE_DISPLAYS": try prepareFromSite()
                 case "IDENTIFY_SCREENS": identification.show()
@@ -272,7 +292,7 @@ import Darwin
                     guard let raw = action["url"] as? String, let url = URL(string: raw), let origin else { throw HostError.code("PUBLIC_URL_REJECTED") }
                     identification.dismiss()
                     try projection.show(screenID: action["targetScreenId"] as? String ?? "", url: url, origin: origin)
-                    if action["remoteUrl"] != nil { try showRemote(action, origin: origin) }
+                    if action["remoteUrl"] != nil { try configureRemote(action, origin: origin, present: false) }
                     status = "Идёт показ"
                 case "NEUTRAL_STOP": lastRemoteAction = nil; projection.neutralize(); remote.close(); identification.dismiss(); Task { await capture.stop() }; status = "Показ остановлен"
                 case "TARGET_HELP": status = "Основной экран: выберите проектор в браузерном мастере"
@@ -285,11 +305,11 @@ import Darwin
                 }
                 send(["id": id, "success": true]); rebuildMenu()
             } catch HostError.code(let code) {
-                if type != "FOCUS_PRIVATE_REMOTE" { projection.neutralize() }
+                if type != "FOCUS_PRIVATE_REMOTE" && type != "SET_THEME" { projection.close() }
                 send(["id": id, "success": false, "diagnosticCode": code])
             }
             catch {
-                if type != "FOCUS_PRIVATE_REMOTE" { projection.neutralize() }
+                if type != "FOCUS_PRIVATE_REMOTE" && type != "SET_THEME" { projection.close() }
                 send(["id": id, "success": false, "diagnosticCode": "NATIVE_OPERATION_FAILED"])
             }
         }
@@ -301,12 +321,16 @@ import Darwin
         return receipt["id"] as? String == id && receipt["nonce"] as? String == nonce && receipt["ready"] as? Bool == true
     }
     private func showRemote(_ action: [String: Any], origin: URL) throws {
+        try configureRemote(action, origin: origin, present: true)
+    }
+    private func configureRemote(_ action: [String: Any], origin: URL, present: Bool) throws {
         guard let rawRemote = action["remoteUrl"] as? String, let remoteURL = URL(string: rawRemote),
               let rawCourse = action["courseId"] as? String, let courseID = UUID(uuidString: rawCourse),
               let rawSession = action["sessionId"] as? String, let sessionID = UUID(uuidString: rawSession),
               let token = action["controlToken"] as? String, RemoteWindow.validToken(token),
+              RemoteWindow.allowed(remoteURL, origin: origin),
               RemoteWindow.matches(remoteURL, courseID: courseID, sessionID: sessionID, token: token) else { throw HostError.code("REMOTE_SCOPE_REJECTED") }
-        try remote.show(url: remoteURL, origin: origin)
+        if present { try remote.show(url: remoteURL, origin: origin) }
         capture.bind(NativeCaptureScope(origin: origin, courseID: courseID, sessionID: sessionID, token: token))
         lastRemoteAction = action
     }
@@ -519,6 +543,8 @@ if CommandLine.arguments.contains("--journal-self-test") {
     ConnectionSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if let index = CommandLine.arguments.firstIndex(of: "--placement-self-test"), CommandLine.arguments.count > index + 1 {
     PlacementSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if let index = CommandLine.arguments.firstIndex(of: "--workspace-self-test"), CommandLine.arguments.count > index + 1 {
+    WorkspaceSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if CommandLine.arguments.contains("--preflight") {
     let data = try JSONSerialization.data(withJSONObject: ["platform": "macOS", "mutation": false, "screens": DisplayController.screens()], options: [.sortedKeys])
     print(String(decoding: data, as: UTF8.self))

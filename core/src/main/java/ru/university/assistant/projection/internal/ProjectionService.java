@@ -36,6 +36,7 @@ import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.projection.api.ProjectionContracts;
 import ru.university.assistant.projection.api.ProjectionContracts.Ack;
 import ru.university.assistant.projection.api.ProjectionContracts.AgentPolicy;
+import ru.university.assistant.projection.api.ProjectionContracts.AppearanceUpdate;
 import ru.university.assistant.projection.api.ProjectionContracts.Command;
 import ru.university.assistant.projection.api.ProjectionContracts.CommandPayload;
 import ru.university.assistant.projection.api.ProjectionContracts.CommandRequest;
@@ -175,6 +176,21 @@ public class ProjectionService {
                 update projection.devices set revoked_at = ?, active_course_id = null,
                     active_session_id = null, active_until = null, active_command_id = null where id = ?
                 """).params(timestamp(clock.instant()), id).update();
+    }
+
+    @Transactional
+    public void appearance(AuthenticatedUser user, UUID id, AppearanceUpdate request) {
+        requireStaff(user);
+        Policy policy = policy(true);
+        requireAllowed(policy);
+        DeviceRow device = device(id);
+        requireOwner(user, device);
+        if (device.revokedAt() != null) {
+            throw conflict("Подключение помощника отозвано");
+        }
+        // Appearance is persistent preference, never a command to open or change a display.
+        jdbc.sql("update projection.devices set remote_theme = ? where id = ?")
+                .params(request.theme(), id).update();
     }
 
     @Transactional
@@ -345,7 +361,7 @@ public class ProjectionService {
         return new PollResponse(1, 3000, lease, mustStop,
                 new AgentPolicy(allowed, policy.minimumVersion()), updateRequired,
                 releases.update(device.platform(), device.osVersion(), request.version(), policy.minimumVersion()),
-                List.copyOf(outgoing));
+                List.copyOf(outgoing), allowed ? device.remoteTheme() : null);
     }
 
     /** Read-media only, scoped to an acknowledged/delivered public output and its current short lease. */
@@ -536,7 +552,7 @@ public class ProjectionService {
                 instant(row, "last_seen_at"), instant(row, "revoked_at"), decodeScreens(row.getString("screens")),
                 row.getObject("active_course_id", UUID.class), row.getObject("active_session_id", UUID.class),
                 instant(row, "active_until"), row.getObject("active_command_id", UUID.class),
-                row.getString("diagnostic_code"));
+                row.getString("diagnostic_code"), row.getString("remote_theme"));
     }
 
     private CommandRow commandRow(ResultSet row, int index) throws SQLException {
@@ -706,5 +722,5 @@ public class ProjectionService {
     private record DeviceRow(UUID id, UUID ownerId, String name, Platform platform, String version,
             String osVersion, DeviceStatus status, Instant lastSeenAt, Instant revokedAt, List<Screen> screens,
             UUID activeCourseId, UUID activeSessionId, Instant activeUntil, UUID activeCommandId,
-            String diagnosticCode) {}
+            String diagnosticCode, String remoteTheme) {}
 }

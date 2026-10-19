@@ -40,6 +40,8 @@ public final class ProjectionContracts {
             @NotBlank @Pattern(regexp = VERSION_PATTERN) String minimumVersion,
             @Min(0) long expectedRevision) {}
 
+    public record AppearanceUpdate(@NotNull @Pattern(regexp = "light|dark") String theme) {}
+
     public record Pairing(UUID id, String pairingCode, Instant expiresAt) {}
 
     public record PairRequest(@NotBlank @Pattern(regexp = "[A-HJ-NP-Z2-9]{12}") String pairingCode,
@@ -72,7 +74,8 @@ public final class ProjectionContracts {
     public record Command(UUID id, CommandType type, Instant expiresAt, CommandPayload payload) {}
 
     public record PollResponse(int protocolVersion, int pollAfterMs, Instant leaseUntil, boolean mustStop,
-            AgentPolicy policy, boolean updateRequired, SignedReleaseEnvelope release, List<Command> commands) {}
+            AgentPolicy policy, boolean updateRequired, SignedReleaseEnvelope release, List<Command> commands,
+            String remoteTheme) {}
 
     public record CommandRequest(@NotNull UUID deviceId, @NotNull UUID requestId,
             @NotNull CommandType type, @Size(max = 160) String targetScreenId,

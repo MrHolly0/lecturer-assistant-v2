@@ -12,8 +12,10 @@ import WebKit
     private var panel: NSPanel?
     private var web: WKWebView?
     private var allowedURL: URL?
+    private var theme = "light"
     var command: (([String: Any]) -> Void)?
     var closed: (() -> Void)?
+    var isPresented: Bool { panel != nil }
 
     static func allowed(_ candidate: URL, origin: URL) -> Bool {
         guard candidate.scheme == "https", candidate.host == origin.host, candidate.port == origin.port,
@@ -42,21 +44,35 @@ import WebKit
         if allowedURL == url, let panel { panel.orderFrontRegardless(); return }
         close(notify: false)
         allowedURL = url
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = .nonPersistent()
-        config.mediaTypesRequiringUserActionForPlayback = []
-        config.userContentController.add(self, name: "lectureNative")
-        config.userContentController.addUserScript(WKUserScript(source: "window.lectureProjectorNative={platform:'MACOS',nativeCapture:true,captureExclusion:{supported:true,enabled:true},postMessage:function(message){window.webkit.messageHandlers.lectureNative.postMessage(message)}};", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        let config = configuration()
         let web = WKWebView(frame: .zero, configuration: config)
         web.navigationDelegate = self
         let panel = makePanel(web: web)
         self.web = web; self.panel = panel
         web.load(URLRequest(url: url)); panel.orderFrontRegardless()
     }
+    private func configuration() -> WKWebViewConfiguration {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        config.mediaTypesRequiringUserActionForPlayback = []
+        config.userContentController.add(self, name: "lectureNative")
+        config.userContentController.addUserScript(WKUserScript(source: "window.lectureProjectorNative={platform:'MACOS',nativeCapture:true,theme:'\(theme)',captureExclusion:{supported:true,enabled:true},postMessage:function(message){window.webkit.messageHandlers.lectureNative.postMessage(message)}};", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        return config
+    }
+    func setTheme(_ value: String) throws {
+        guard value == "light" || value == "dark" else { throw HostError.code("REMOTE_THEME_REJECTED") }
+        theme = value
+        panel?.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+        applyTheme()
+    }
+    private func applyTheme() {
+        web?.evaluateJavaScript("if(window.lectureProjectorNative){window.lectureProjectorNative.theme='\(theme)';window.dispatchEvent(new CustomEvent('lecture-projector-theme',{detail:{theme:'\(theme)'}}));}", completionHandler: nil)
+    }
     private func makePanel(web: WKWebView) -> NSPanel {
         let panel = NativeRemotePanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 560), styleMask: [.borderless, .resizable, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "Пульт · Lecturer Assistant"; panel.titleVisibility = .hidden; panel.titlebarAppearsTransparent = true
         panel.isReleasedWhenClosed = false; panel.level = .floating; panel.hidesOnDeactivate = false
+        panel.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.minSize = NSSize(width: 264, height: 64); panel.maxSize = NSSize(width: 520, height: 900)
         panel.isMovableByWindowBackground = false; panel.becomesKeyOnlyIfNeeded = false; panel.delegate = self
@@ -69,6 +85,33 @@ import WebKit
         panel.contentView?.addSubview(web)
         if let bounds = NSScreen.main?.visibleFrame { panel.setFrameTopLeftPoint(NSPoint(x: bounds.maxX - 440, y: bounds.maxY - 20)) }
         return panel
+    }
+    static func exerciseHiddenThemeFixture() async throws -> [String: Any] {
+        let remote = RemoteWindow(); try remote.setTheme("dark")
+        guard remote.panel == nil else { throw HostError.code("WORKSPACE_THEME_OPENED_REMOTE") }
+        let web = WKWebView(frame: .zero, configuration: remote.configuration())
+        let panel = remote.makePanel(web: web); remote.web = web; remote.panel = panel
+        defer { remote.close(notify: false) }
+        web.loadHTMLString("<!doctype html><html><head><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'\"></head><body><textarea id='answer'></textarea></body></html>", baseURL: nil)
+        let deadline = Date().addingTimeInterval(20)
+        var ready = false
+        while Date() < deadline {
+            if (try? await web.evaluateJavaScript("document.readyState==='complete' && !!document.getElementById('answer')")) as? Bool == true { ready = true; break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        guard ready, (try await web.evaluateJavaScript("window.lectureProjectorNative.theme")) as? String == "dark",
+              panel.appearance?.name == .darkAqua, !panel.isVisible else { throw HostError.code("WORKSPACE_INITIAL_THEME") }
+        _ = try await web.evaluateJavaScript("document.getElementById('answer').value='Сохранённый ответ';window.addEventListener('lecture-projector-theme',e=>{document.documentElement.dataset.fixtureTheme=e.detail.theme});")
+        try remote.setTheme("light")
+        guard (try await web.evaluateJavaScript("document.documentElement.dataset.fixtureTheme")) as? String == "light",
+              (try await web.evaluateJavaScript("document.getElementById('answer').value")) as? String == "Сохранённый ответ",
+              panel.appearance?.name == .aqua, !panel.isVisible else { throw HostError.code("WORKSPACE_LIVE_THEME_RELOADED") }
+        do { try remote.setTheme("unknown"); throw HostError.code("WORKSPACE_INVALID_THEME_ACCEPTED") }
+        catch HostError.code(let code) { guard code == "REMOTE_THEME_REJECTED" else { throw HostError.code(code) } }
+        remote.close(notify: false)
+        guard remote.panel == nil, remote.web == nil else { throw HostError.code("WORKSPACE_REMOTE_CLOSE") }
+        return ["initialThemeBeforeWebBootstrap": true, "themeUpdatedWithoutReload": true, "answerPreserved": true,
+                "invalidThemeRejected": true, "nativeAppearanceUpdated": true, "allWindowsHidden": true]
     }
     /// Exercises the same window factory with local content only. No institution/session is opened.
     static func exerciseLocalFixture() async throws -> [String: Any] {
@@ -145,11 +188,11 @@ import WebKit
         case "resize": resize(width: (value["width"] as? NSNumber)?.doubleValue ?? 420, height: (value["height"] as? NSNumber)?.doubleValue ?? 560)
         case "close": close()
         case "drag": if let event = NSApp.currentEvent { panel?.performDrag(with: event) }
-        case "chooseSource", "publish", "stopCapture", "pause", "ready", "capabilities", "screenRecordingSettings", "focusProjection": command?(value)
+        case "chooseSource", "publish", "stopCapture", "stopProjection", "pause", "ready", "capabilities", "screenRecordingSettings", "focusProjection": command?(value)
         default: break
         }
     }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { emit(["type": "capabilities", "platform": "MACOS", "nativeCapture": true, "captureExclusion": ["supported": true, "enabled": true]]) }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { applyTheme(); emit(["type": "capabilities", "platform": "MACOS", "nativeCapture": true, "theme": theme, "captureExclusion": ["supported": true, "enabled": true]]) }
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
         guard action.targetFrame?.isMainFrame == true, action.request.url == allowedURL else { decisionHandler(.cancel); return }
         decisionHandler(.allow)

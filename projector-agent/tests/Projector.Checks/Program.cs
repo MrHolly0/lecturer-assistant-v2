@@ -355,6 +355,7 @@ if (!OperatingSystem.IsWindows())
     finally { Directory.Delete(installSandbox, true); }
 }
 passed += BootstrapChecks.Run();
+passed += AppearanceChecks.Run();
 Console.WriteLine($"{passed} checks passed. No OS display mutation, startup registration or production network request performed.");
 internal sealed class FakeHost : IProjectionHost {
     public int Executions { get; private set; }

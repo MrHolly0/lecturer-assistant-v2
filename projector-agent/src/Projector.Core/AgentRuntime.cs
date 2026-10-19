@@ -20,6 +20,7 @@ public sealed class AgentRuntime
         executor = new(origin, host, activity); health = UpdateHealthReporter.FromEnvironment(version); updates = new(version);
     }
     private DateTimeOffset? leaseUntil;
+    private string? remoteTheme;
     private readonly SemaphoreSlim execution = new(1);
     public async Task Run(CancellationToken ct)
     {
@@ -60,6 +61,11 @@ public sealed class AgentRuntime
                     {
                         boundedLease.AuthenticatedPoll(poll.LeaseUntil, receivedTimestamp, receivedUtc);
                         leaseUntil = poll.LeaseUntil;
+                        if (poll.RemoteTheme is "light" or "dark" && poll.RemoteTheme != remoteTheme)
+                        {
+                            var themed = await host.Execute(new(Guid.NewGuid().ToString(), "SET_THEME", Theme: poll.RemoteTheme), ct);
+                            if (themed.Success) remoteTheme = poll.RemoteTheme;
+                        }
                         if (poll.MustStop || !poll.Policy.Allowed || poll.LeaseUntil <= DateTimeOffset.UtcNow)
                             await executor.NeutralStop(ct);
                         // One outstanding receipt per poll; server re-delivers the next command only after acknowledgement.

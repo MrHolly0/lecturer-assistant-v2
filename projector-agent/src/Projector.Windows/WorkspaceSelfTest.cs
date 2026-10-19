@@ -40,7 +40,8 @@ internal static class WorkspaceSelfTest
             finally { Environment.Exit(1); } // Only this explicitly launched, isolated fixture process.
         }, null, TimeSpan.FromSeconds(90), Timeout.InfiniteTimeSpan);
         ApplicationConfiguration.Initialize();
-        using var remote = new RemoteForm(origin, scene);
+        ProjectionForm? fixtureProjection = null; var stopRequests = 0;
+        using var remote = new RemoteForm(origin, scene, stopProjection: () => { stopRequests++; ProjectionForm.CloseOwned(ref fixtureProjection); }, theme: "dark");
         remote.Shown += async (_, _) => {
             try
             {
@@ -83,12 +84,33 @@ internal static class WorkspaceSelfTest
                 exclusion = remote.Exclusion;
                 if (exclusion.Supported && exclusion.Error != "DESKTOP_COMPOSITION_UNAVAILABLE") Assert(exclusion.Enabled, "capture affinity verified");
                 Passed(exclusion.Enabled ? "owned HWND capture exclusion verified by Windows API" : "capture exclusion explicitly unavailable");
-                await remote.LoadRemote("<!doctype html><meta charset=utf-8><title>Проверка пульта</title><h2>Пульт</h2><p>Изолированная проверка WebView2</p>", Stage);
+                await remote.LoadRemote("""
+                    <!doctype html><meta charset=utf-8><title>Проверка пульта</title>
+                    <script>
+                      window.fixtureInitialTheme = window.lectureProjectorNative.theme;
+                      window.fixtureStoredTheme = localStorage.getItem('la_theme_preference');
+                      window.fixtureThemeEvents = [];
+                      window.fixtureCapabilityEvents = [];
+                      window.addEventListener('lecture-projector-theme', event => window.fixtureThemeEvents.push(event.detail.theme));
+                      window.addEventListener('lecture-projector-native', event => window.fixtureCapabilityEvents.push(event.detail.platform));
+                    </script>
+                    <h2>Пульт</h2><p>Изолированная проверка WebView2</p>
+                    """, Stage);
                 Stage("waiting for local fixture navigation");
                 Assert(await remote.Ready.WaitAsync(TimeSpan.FromSeconds(30)), "WebView2 fixture loaded");
                 Stage("reading native bridge");
                 var bridge = await remote.RunFixtureScript("JSON.stringify({platform:window.lectureProjectorNative.platform,nativeCapture:window.lectureProjectorNative.nativeCapture,resize:typeof window.lectureProjectorNative.resize,post:typeof window.lectureProjectorNative.postMessage})");
                 Assert(bridge.Contains("WINDOWS", StringComparison.Ordinal) && bridge.Contains("function", StringComparison.Ordinal) && bridge.Contains("false", StringComparison.Ordinal), "real bridge available");
+                await remote.RunFixtureScript("window.lectureProjectorNative.capabilities()");
+                await WaitForFixture(remote, "window.fixtureCapabilityEvents.includes('WINDOWS')");
+                Stage("checking inherited theme before application bootstrap");
+                Assert(await remote.RunFixtureScript("window.fixtureInitialTheme === 'dark' && window.fixtureStoredTheme === 'dark' && window.lectureProjectorNative.theme === 'dark' && matchMedia('(prefers-color-scheme: dark)').matches") == "true", "site theme available before bootstrap");
+                remote.SetTheme("light");
+                await WaitForFixture(remote, "window.lectureProjectorNative.theme === 'light' && localStorage.getItem('la_theme_preference') === 'light' && window.fixtureThemeEvents.includes('light') && !matchMedia('(prefers-color-scheme: dark)').matches");
+                Assert(await remote.RunFixtureScript("window.fixtureInitialTheme === 'dark' && window.fixtureStoredTheme === 'dark'") == "true", "theme change does not reload the document");
+                var invalidThemeRejected = false; try { remote.SetTheme("invalid"); } catch (InvalidDataException) { invalidThemeRejected = true; }
+                Assert(invalidThemeRejected && await remote.RunFixtureScript("window.lectureProjectorNative.theme === 'light'") == "true", "invalid theme preserves current remote");
+                Passed("inherited and live site theme without reload");
                 Stage("collapsing through native bridge");
                 await remote.RunFixtureScript("window.lectureProjectorNative.resize({height:60,collapsed:true})");
                 await Task.Delay(300); var scale = remote.DeviceDpi / 96d;
@@ -108,10 +130,20 @@ internal static class WorkspaceSelfTest
                 await Task.Delay(100);
                 Assert(Math.Abs(remote.ClientSize.Width - 420 * scale) <= 1 && remote.ClientSize.Height <= Screen.FromHandle(remote.Handle).WorkingArea.Height, "minimized content restores compactly");
                 Passed("content updates preserve minimized state");
+                Stage("stopping the owned public window through the native bridge");
+                fixtureProjection = new ProjectionForm(Screen.PrimaryScreen ?? Screen.AllScreens[0], origin) { TopMost = false, Bounds = new Rectangle(remote.Left, remote.Top, 300, 160) };
+                var stoppedProjection = fixtureProjection;
+                fixtureProjection.Neutral("Изолированная проверка остановки"); fixtureProjection.Show();
+                Assert(fixtureProjection.Visible && !fixtureProjection.IsDisposed, "owned fixture public window is open");
+                await remote.RunFixtureScript("window.lectureProjectorNative.stopProjection()");
+                for (var attempt = 0; stopRequests == 0 && attempt < 30; attempt++) await Task.Delay(100);
+                Assert(stopRequests == 1 && fixtureProjection is null && stoppedProjection.IsDisposed && !stoppedProjection.Visible, "stop bridge closes and releases owned public window");
+                ProjectionForm.CloseOwned(ref fixtureProjection);
+                Passed("explicit native stop closes the public window");
                 success = true;
             }
             catch (Exception ex) { lock (gate) error = (ex is InvalidDataException ? ex.Message : ex.GetType().Name) + " at " + stage; }
-            finally { Stage("closing fixture window"); remote.Close(); }
+            finally { Stage("closing fixture window"); ProjectionForm.CloseOwned(ref fixtureProjection); remote.Close(); }
         };
         Application.Run(remote);
         watchdog.Change(Timeout.Infinite, Timeout.Infinite);
@@ -119,6 +151,15 @@ internal static class WorkspaceSelfTest
         return success ? 0 : 1;
     }
     private static void Assert(bool valid, string name) { if (!valid) throw new InvalidDataException("CHECK_FAILED: " + name); }
+    private static async Task WaitForFixture(RemoteForm remote, string expression)
+    {
+        for (var attempt = 0; attempt < 30; attempt++)
+        {
+            if (await remote.RunFixtureScript(expression) == "true") return;
+            await Task.Delay(100);
+        }
+        throw new InvalidDataException("CHECK_FAILED: remote event delivery");
+    }
     private sealed class NoUiDispatchContext : SynchronizationContext
     {
         private int posts;

@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { MonitorUp, MessageCircle, Square } from "lucide-react";
+import { MonitorUp, SlidersHorizontal, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { LiveSession } from "../app/api/live-api";
-import { nativeBridge, nativeCommand, workspaceShare } from "../app/projection/nativeWorkspace";
+import {
+  nativeBridge,
+  nativeCommand,
+  workspaceShare,
+  stopWorkspaceProjection
+} from "../app/projection/nativeWorkspace";
+import { syncProjectionAppearance } from "../app/projection/projectionAppearance";
 import { useMaxBridge } from "../app/max/context";
 import { getMaxWebApp } from "../app/max/bridge";
 import { openLectureRemoteWindow } from "../app/projection/lectureRemoteWindow";
@@ -47,7 +53,7 @@ export function ScreenShareControls({
       : undefined;
   const hasPreview = Boolean(share.stream || previewFrame);
   const excluded = nativeBridge()?.captureExclusion?.enabled === true;
-  const { isMax } = useMaxBridge();
+  const { isMax, theme } = useMaxBridge();
   const helpers = useQuery({
     queryKey: ["projection-settings"],
     queryFn: getProjectionSettings,
@@ -80,18 +86,24 @@ export function ScreenShareControls({
     nativeDevices.find((device) => device.id === preferredDevice) ??
     (nativeDevices.length === 1 ? nativeDevices[0] : undefined);
   const focusNative = useMutation({
-    mutationFn: () =>
-      sendProjectionCommand(courseId, session.id, {
+    mutationFn: async () => {
+      await syncProjectionAppearance(nativeDevice!.id, theme);
+      return sendProjectionCommand(courseId, session.id, {
         deviceId: nativeDevice!.id,
         requestId: crypto.randomUUID(),
         type: "FOCUS_PRIVATE_REMOTE",
         displayConfirmed: false
-      }),
+      });
+    },
     onError: () =>
       toast.error(
         "Не удалось открыть пульт компонента. Проверьте его подключение в настройке проектора."
       )
   });
+  const nativeDeviceId = nativeDevice?.id;
+  useEffect(() => {
+    if (nativeDeviceId) void syncProjectionAppearance(nativeDeviceId, theme).catch(() => undefined);
+  }, [nativeDeviceId, theme, helpers.dataUpdatedAt]);
   const [pult, setPult] = useState(nativeWorkspace);
   const [confirmed, setConfirmed] = useState(false);
   const [preview, setPreview] = useState(false);
@@ -195,7 +207,16 @@ export function ScreenShareControls({
           }
           title={helperStateTitle}
           aria-busy={helpersUnknown && helpers.isFetching}
-          onClick={ours && share.phase === "publishing" ? () => void controller.stop() : prepare}
+          onClick={
+            ours && share.phase === "publishing"
+              ? () => {
+                  void stopWorkspaceProjection(session.joinCode).then(() => {
+                    setPult(false);
+                    setRemoteWindow(null);
+                  });
+                }
+              : prepare
+          }
         >
           {ours && share.phase === "publishing" ? (
             <Square size={16} aria-hidden="true" />
@@ -213,7 +234,7 @@ export function ScreenShareControls({
           aria-busy={helpersUnknown && helpers.isFetching}
           onClick={openRemote}
         >
-          <MessageCircle size={18} aria-hidden="true" />
+          <SlidersHorizontal size={18} aria-hidden="true" />
           Пульт
         </Button>
       )}
@@ -256,7 +277,9 @@ export function ScreenShareControls({
           ) : (
             <div className="screen-share-preview-empty" role="status">
               {share.phase === "choosing"
-                ? "Выберите источник в окне браузера…"
+                ? nativeBridge()?.nativeCapture
+                  ? "Подтвердите системное разрешение на запись экрана и выберите окно или экран…"
+                  : "Выберите источник в системном окне браузера…"
                 : share.error ||
                   "Выберите приложение с учебным материалом. Оно останется на вашем рабочем экране."}
             </div>

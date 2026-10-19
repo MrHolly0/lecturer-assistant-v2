@@ -87,6 +87,92 @@ class ProjectionIntegrationTest extends LiveFlowTestBase {
     }
 
     @Test
+    void remoteThemeIsPerDeviceAndOldProtocolCanPollWithoutAnAppearancePreference() throws Exception {
+        JsonNode device = readyDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String token = device.get("deviceToken").asText();
+        JsonNode initial = poll(token, "IDLE", null, SCREENS, 200);
+        assertEquals(1, initial.get("protocolVersion").asInt());
+        assertTrue(initial.get("remoteTheme").isNull());
+        String unchanged = deviceStateWithoutTheme(id);
+
+        appearance(id, lecturerToken, "{\"theme\":\"dark\"}", 204);
+        assertEquals(unchanged, deviceStateWithoutTheme(id));
+        assertEquals(0, jdbc.sql("select count(*) from projection.commands").query(Integer.class).single());
+        JsonNode dark = poll(token, "IDLE", null, SCREENS, 200);
+        assertEquals("dark", dark.get("remoteTheme").asText());
+        assertEquals(0, dark.get("commands").size());
+        assertTrue(dark.get("leaseUntil").isNull());
+        assertFalse(dark.get("mustStop").asBoolean());
+
+        JsonNode other = pair(pairing().get("pairingCode").asText(), 201);
+        assertTrue(poll(other.get("deviceToken").asText(), "IDLE", null, SCREENS, 200)
+                .get("remoteTheme").isNull());
+        appearance(id, lecturerToken, "{\"theme\":\"light\"}", 204);
+        assertEquals("light", poll(token, "IDLE", null, SCREENS, 200).get("remoteTheme").asText());
+    }
+
+    @Test
+    void changingRemoteThemeDoesNotOpenOrReplaceActiveOutputOrPrivateControl() throws Exception {
+        JsonNode device = readyWorkspaceDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String token = device.get("deviceToken").asText();
+        startOutput(id, token);
+        String unchanged = deviceStateWithoutTheme(id);
+        int commands = jdbc.sql("select count(*) from projection.commands").query(Integer.class).single();
+        appearance(id, lecturerToken, "{\"theme\":\"dark\"}", 204);
+        appearance(id, lecturerToken, "{\"theme\":\"dark\"}", 204);
+        assertEquals(unchanged, deviceStateWithoutTheme(id));
+        assertEquals(commands, jdbc.sql("select count(*) from projection.commands").query(Integer.class).single());
+        JsonNode showing = poll(token, "SHOWING", null, SCREENS, 200);
+        assertEquals("dark", showing.get("remoteTheme").asText());
+        assertFalse(showing.get("mustStop").asBoolean());
+        assertEquals(0, showing.get("commands").size());
+        assertEquals(sessionId.toString(), settings(lecturerToken).get("devices").get(0)
+                .get("activeSessionId").asText());
+    }
+
+    @Test
+    void remoteThemeRequiresStaffOwnershipAndValidExplicitTheme() throws Exception {
+        JsonNode device = readyDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String token = device.get("deviceToken").asText();
+        appearance(id, null, "{\"theme\":\"dark\"}", 401);
+        appearance(id, token, "{\"theme\":\"dark\"}", 401);
+        appearance(id, maxLogin(822202), "{\"theme\":\"dark\"}", 403);
+        appearance(id, adminToken, "{\"theme\":\"dark\"}", 403);
+        appearance(UUID.randomUUID(), lecturerToken, "{\"theme\":\"dark\"}", 404);
+        for (String invalid : List.of("{}", "{\"theme\":null}", "{\"theme\":\"\"}",
+                "{\"theme\":\"system\"}", "{\"theme\":\"DARK\"}", "{\"theme\":\" dark\"}")) {
+            appearance(id, lecturerToken, invalid, 400);
+        }
+        assertTrue(poll(token, "IDLE", null, SCREENS, 200).get("remoteTheme").isNull());
+        assertEquals(0, jdbc.sql("select count(*) from projection.commands").query(Integer.class).single());
+    }
+
+    @Test
+    void remoteThemeRespectsPolicyAndRevocationWithoutCreatingCommands() throws Exception {
+        JsonNode device = readyDevice();
+        UUID id = UUID.fromString(device.get("deviceId").asText());
+        String token = device.get("deviceToken").asText();
+        appearance(id, lecturerToken, "{\"theme\":\"dark\"}", 204);
+        policy(false, "0.1.0");
+        appearance(id, lecturerToken, "{\"theme\":\"light\"}", 403);
+        JsonNode disabled = poll(token, "IDLE", null, SCREENS, 200);
+        assertTrue(disabled.get("remoteTheme").isNull());
+        assertTrue(disabled.get("mustStop").asBoolean());
+        policy(true, "0.1.0");
+        assertEquals("dark", poll(token, "IDLE", null, SCREENS, 200).get("remoteTheme").asText());
+        json(delete("/api/v1/projection/devices/{deviceId}", id)
+                .header("Authorization", "Bearer " + lecturerToken), 204);
+        appearance(id, lecturerToken, "{\"theme\":\"light\"}", 409);
+        poll(token, "IDLE", null, SCREENS, 401);
+        assertEquals("dark", jdbc.sql("select remote_theme from projection.devices where id = ?")
+                .param(id).query(String.class).single());
+        assertEquals(0, jdbc.sql("select count(*) from projection.commands").query(Integer.class).single());
+    }
+
+    @Test
     void staleExpiredOrDisabledPairingCannotBeExchanged() throws Exception {
         policy(true, "0.1.0");
         String old = pairing().get("pairingCode").asText();
@@ -639,6 +725,18 @@ class ProjectionIntegrationTest extends LiveFlowTestBase {
 
     private JsonNode settings(String jwt) throws Exception {
         return json(get("/api/v1/projection/settings").header("Authorization", "Bearer " + jwt), 200);
+    }
+
+    private void appearance(UUID deviceId, String jwt, String body, int expected) throws Exception {
+        var request = put("/api/v1/projection/devices/{deviceId}/appearance", deviceId)
+                .contentType(MediaType.APPLICATION_JSON).content(body);
+        if (jwt != null) request.header("Authorization", "Bearer " + jwt);
+        json(request, expected);
+    }
+
+    private String deviceStateWithoutTheme(UUID deviceId) {
+        return jdbc.sql("select (to_jsonb(d) - 'remote_theme')::text from projection.devices d where id = ?")
+                .param(deviceId).query(String.class).single();
     }
 
     private JsonNode policy(boolean allowed, String version) throws Exception {

@@ -21,8 +21,8 @@ public sealed record AgentPolicy(bool Allowed, string MinimumVersion);
 public sealed record CommandPayload(string? JoinCode = null, string? TargetScreenId = null, string? TestCode = null, string? ProjectionViewToken = null, string? ControlToken = null, Guid? CourseId = null, Guid? SessionId = null);
 public sealed record AgentCommand(Guid Id, string Type, DateTimeOffset ExpiresAt, CommandPayload Payload);
 public sealed record PollResponse(int ProtocolVersion, int PollAfterMs, DateTimeOffset? LeaseUntil, bool MustStop,
-    AgentPolicy Policy, bool UpdateRequired, JsonElement? Release, AgentCommand[] Commands);
-public sealed record HostAction(string Id, string Type, string? TargetScreenId = null, string? Url = null, string? TestCode = null, string? UpdateEnvelopePath = null, string? UpdatePackagePath = null, string? MinimumVersion = null, string? RemoteUrl = null, string? ControlToken = null, Guid? CourseId = null, Guid? SessionId = null);
+    AgentPolicy Policy, bool UpdateRequired, JsonElement? Release, AgentCommand[] Commands, string? RemoteTheme = null);
+public sealed record HostAction(string Id, string Type, string? TargetScreenId = null, string? Url = null, string? TestCode = null, string? UpdateEnvelopePath = null, string? UpdatePackagePath = null, string? MinimumVersion = null, string? RemoteUrl = null, string? ControlToken = null, Guid? CourseId = null, Guid? SessionId = null, string? Theme = null);
 
 public static class LectureWorkspace
 {

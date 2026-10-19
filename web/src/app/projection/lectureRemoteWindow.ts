@@ -221,9 +221,14 @@ export function prepareLectureRemoteWindow(target: Window): () => void {
   }
   const theme = () => {
     doc.documentElement.className = document.documentElement.className;
+    doc.documentElement.style.cssText = document.documentElement.style.cssText;
+    doc.documentElement.dataset.appTheme = document.documentElement.dataset.appTheme;
   };
   theme();
   const observer = new MutationObserver(theme);
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class", "style", "data-app-theme"]
+  });
   return () => observer.disconnect();
 }

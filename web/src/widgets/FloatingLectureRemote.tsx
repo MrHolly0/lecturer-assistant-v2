@@ -24,7 +24,12 @@ import { endLiveSession, type LiveSession } from "../app/api/live-api";
 import { userErrorMessage } from "../app/api/errors";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
-import { nativeBridge, nativeCommand, workspaceShare } from "../app/projection/nativeWorkspace";
+import {
+  nativeBridge,
+  nativeCommand,
+  workspaceShare,
+  stopWorkspaceProjection
+} from "../app/projection/nativeWorkspace";
 import { openProjectionWindow } from "../app/projection/browserProjection";
 import { formatSessionTime, useSessionTimers } from "../app/live/useSessionTimers";
 import { LectureRemoteTools, type LectureRemoteSection } from "./LectureRemoteTools";
@@ -495,7 +500,11 @@ export function FloatingLectureRemote({
             variant="outline"
             className={sharing ? "floating-remote-stop" : undefined}
             disabled={!sharing && disabled}
-            onClick={() => (sharing ? void controller.stop() : onChooseSource?.())}
+            onClick={() =>
+              sharing
+                ? void stopWorkspaceProjection(session.joinCode).then(onClose)
+                : onChooseSource?.()
+            }
           >
             <Square size={18} />
             {sharing ? "Остановить показ" : "Демонстрация"}

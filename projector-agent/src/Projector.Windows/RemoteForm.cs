@@ -12,6 +12,8 @@ internal sealed class RemoteForm : Form
     private readonly Uri origin;
     private readonly Uri scene;
     private readonly Action? focusProjection;
+    private readonly Action? stopProjection;
+    private string theme;
     private readonly string profileRoot = Path.Combine(Path.GetTempPath(), "LecturerProjectorRemote", Guid.NewGuid().ToString("N"));
     private WebView2? web;
     private bool collapsed;
@@ -22,14 +24,15 @@ internal sealed class RemoteForm : Form
     internal bool MatchesScene(Uri candidate) => StringComparer.Ordinal.Equals(scene.AbsoluteUri, candidate.AbsoluteUri);
     public CaptureExclusion Exclusion { get; private set; } = new(false, false, "WINDOW_NOT_READY");
 
-    public RemoteForm(Uri origin, Uri scene, Action? focusProjection = null)
+    public RemoteForm(Uri origin, Uri scene, Action? focusProjection = null, Action? stopProjection = null, string theme = "light")
     {
         if (!AllowedScene(origin, scene)) throw new InvalidDataException("REMOTE_URL_REJECTED");
-        this.origin = origin; this.scene = scene; this.focusProjection = focusProjection;
+        if (theme is not ("light" or "dark")) throw new InvalidDataException("REMOTE_THEME_REJECTED");
+        this.origin = origin; this.scene = scene; this.focusProjection = focusProjection; this.stopProjection = stopProjection; this.theme = theme;
         Text = "Lecturer Assistant — пульт"; FormBorderStyle = FormBorderStyle.None;
         AutoScaleMode = AutoScaleMode.None; StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = true; TopMost = true; MaximizeBox = false; MinimizeBox = false;
-        WindowState = FormWindowState.Normal; BackColor = Color.White;
+        WindowState = FormWindowState.Normal; BackColor = ThemeBackground;
         var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
         ClientSize = new Size(420, 400);
         Location = new Point(area.Right - Width - 24, area.Top + 24);
@@ -45,7 +48,7 @@ internal sealed class RemoteForm : Form
     public async Task LoadRemote(string? fixtureHtml = null, Action<string>? progress = null)
     {
         if (!ProjectionForm.RuntimeAvailable()) throw new InvalidDataException("WEBVIEW2_RUNTIME_MISSING");
-        var control = new WebView2 { Dock = DockStyle.Fill }; web = control; Controls.Add(control);
+        var control = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = ThemeBackground }; web = control; Controls.Add(control);
         progress?.Invoke("creating WebView2 environment");
         var environment = await CoreWebView2Environment.CreateAsync(null, profileRoot).WaitAsync(TimeSpan.FromSeconds(25));
         environment.BrowserProcessExited += (_, _) => DeleteProfile();
@@ -55,6 +58,7 @@ internal sealed class RemoteForm : Form
         await control.EnsureCoreWebView2Async(environment, options).WaitAsync(TimeSpan.FromSeconds(25));
         if (disposed) return;
         var core = control.CoreWebView2;
+        ApplyNativeTheme();
         if (fixtureHtml is not null)
         {
             core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
@@ -83,7 +87,7 @@ internal sealed class RemoteForm : Form
         core.ProcessFailed += (_, _) => Close();
         progress?.Invoke("injecting native bridge");
         await core.AddScriptToExecuteOnDocumentCreatedAsync(BridgeScript()).WaitAsync(TimeSpan.FromSeconds(10));
-        core.NavigationCompleted += async (_, args) => { loaded.TrySetResult(args.IsSuccess); await SendCapabilities(); };
+        core.NavigationCompleted += async (_, args) => { loaded.TrySetResult(args.IsSuccess); SendTheme(); await SendCapabilities(); };
         progress?.Invoke("navigating remote document");
         core.Navigate(scene.AbsoluteUri);
     }
@@ -118,6 +122,10 @@ internal sealed class RemoteForm : Form
                 case "close": Close(); break;
                 case "minimize": WindowState = FormWindowState.Minimized; break;
                 case "focusProjection": focusProjection?.Invoke(); break;
+                case "stopProjection":
+                    // Closing the controller must happen after this WebView2 callback returns.
+                    BeginInvoke(() => { if (!disposed && !IsDisposed) stopProjection?.Invoke(); });
+                    break;
             }
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException) { }
@@ -145,29 +153,68 @@ internal sealed class RemoteForm : Form
     internal static bool AllowedScene(Uri origin, Uri candidate) =>
         origin.Scheme == "https" && LectureWorkspace.Allowed(origin, candidate);
 
+    private Color ThemeBackground => theme == "dark" ? Color.FromArgb(17, 24, 39) : Color.White;
+    internal void SetTheme(string value)
+    {
+        if (value is not ("light" or "dark")) throw new InvalidDataException("REMOTE_THEME_REJECTED");
+        if (disposed || theme == value) return;
+        theme = value; BackColor = ThemeBackground; ApplyNativeTheme(); SendTheme();
+    }
+    private void ApplyNativeTheme()
+    {
+        if (disposed || web?.CoreWebView2 is null) return;
+        web.DefaultBackgroundColor = ThemeBackground;
+        web.CoreWebView2.Profile.PreferredColorScheme = theme == "dark" ? CoreWebView2PreferredColorScheme.Dark : CoreWebView2PreferredColorScheme.Light;
+    }
+    private void SendTheme()
+    {
+        if (disposed || web?.CoreWebView2 is null) return;
+        try { web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "LECTURE_PROJECTOR_THEME", theme }, Wire.Json)); }
+        catch (InvalidOperationException) { }
+    }
+
     private string BridgeScript()
     {
         var capabilities = JsonSerializer.Serialize(new { platform = "WINDOWS", nativeCapture = false, captureExclusion = Exclusion,
-            capture = "webview2-user-picker", version = ReleaseInfo.Version }, Wire.Json);
+            capture = "webview2-user-picker", theme, version = ReleaseInfo.Version }, Wire.Json);
         return """
             (() => {
               if (window.top !== window) return;
+              const capabilities = __NATIVE_CAPABILITIES_JSON__;
+              let theme = capabilities.theme;
+              const applyTheme = (next) => {
+                if (next !== 'light' && next !== 'dark') return;
+                theme = next;
+                try { localStorage.setItem('la_theme_preference', theme); } catch {}
+                const root = document.documentElement;
+                if (root) {
+                  root.dataset.appTheme = theme;
+                  root.style.colorScheme = theme;
+                  root.classList.toggle('dark', theme === 'dark');
+                }
+              };
+              applyTheme(theme);
               const post = (action, extra = {}) => window.chrome.webview.postMessage({type:'LECTURE_REMOTE', action, ...extra});
               const bridge = Object.freeze({
-                ...CAPABILITIES,
+                ...capabilities, get theme() { return theme; },
                 postMessage: (message) => window.chrome.webview.postMessage({...message, type:'LECTURE_REMOTE'}),
                 resize: ({width = 420, height = 400, collapsed = false} = {}) => post('resize', {width, height, collapsed}),
                 drag: () => post('drag'), close: () => post('close'), minimize: () => post('minimize'),
                 focusProjection: () => post('focusProjection'),
+                stopProjection: () => post('stopProjection'),
                 capabilities: () => post('capabilities')
               });
               Object.defineProperty(window, 'lectureProjectorNative', {value: bridge, configurable: false, writable: false});
               window.chrome.webview.addEventListener('message', ({data}) => {
+                if (data?.type === 'LECTURE_PROJECTOR_THEME' && (data.theme === 'light' || data.theme === 'dark')) {
+                  applyTheme(data.theme);
+                  window.dispatchEvent(new CustomEvent('lecture-projector-theme', {detail: {theme}}));
+                }
                 if (data?.type === 'LECTURE_NATIVE_CAPABILITIES')
                   window.dispatchEvent(new CustomEvent('lecture-projector-native', {detail: data}));
               });
             })();
-            """.Replace("CAPABILITIES", capabilities, StringComparison.Ordinal);
+            """.Replace("__NATIVE_CAPABILITIES_JSON__", capabilities, StringComparison.Ordinal);
     }
 
     private async Task SendCapabilities()
@@ -175,7 +222,7 @@ internal sealed class RemoteForm : Form
         if (disposed || web?.CoreWebView2 is null) return;
         Exclusion = CaptureExclusion.Apply(Handle);
         try { web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "LECTURE_NATIVE_CAPABILITIES", platform = "WINDOWS", nativeCapture = false,
-            captureExclusion = Exclusion, version = ReleaseInfo.Version }, Wire.Json)); }
+            captureExclusion = Exclusion, theme, version = ReleaseInfo.Version }, Wire.Json)); }
         catch (InvalidOperationException) { }
         await Task.CompletedTask;
     }

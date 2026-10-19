@@ -2332,6 +2332,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/projection/devices/{deviceId}/appearance": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Store the owned helper's remote theme without opening windows or changing projection. */
+    put: operations["updateProjectionAppearance"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/sessions/{sessionId}/projection/commands": {
     parameters: {
       query?: never;
@@ -2860,6 +2877,10 @@ export interface components {
       screens: components["schemas"]["ProjectionScreen"][];
       ack?: components["schemas"]["ProjectionCommandAck"];
     };
+    ProjectionAppearanceUpdate: {
+      /** @enum {string} */
+      theme: "light" | "dark";
+    };
     /** @description Direct signed update metadata. The native embedded SPKI trust verifies ECDSA P-256/SHA-256 IEEE-P1363 before trusting the exact base64-decoded payload bytes. */
     ProjectionSignedReleaseEnvelope: {
       keyId: string;
@@ -2883,6 +2904,11 @@ export interface components {
       updateRequired: boolean;
       release?: components["schemas"]["ProjectionSignedReleaseEnvelope"] | null;
       commands: components["schemas"]["ProjectionCommand"][];
+      /**
+       * @description Persistent remote appearance for this device. Apply before commands without opening a window or changing capture/output. Null or omitted preserves the helper's current theme for backward compatibility. Null while helper use is forbidden.
+       * @enum {string|null}
+       */
+      remoteTheme?: "light" | "dark" | null;
     };
     /** @enum {string} */
     UnitKind: "UNIT" | "FACULTY" | "DEPARTMENT";
@@ -7992,6 +8018,65 @@ export interface operations {
       };
       /** @description Caller does not own this device. */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  updateProjectionAppearance: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        deviceId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProjectionAppearanceUpdate"];
+      };
+    };
+    responses: {
+      /** @description Saved for the next helper poll; no display command is enqueued. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Theme must be light or dark. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Staff authentication required; a helper token is not a staff credential. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Active staff ownership or helper policy denied. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Device not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Device credential was revoked. */
+      409: {
         headers: {
           [name: string]: unknown;
         };

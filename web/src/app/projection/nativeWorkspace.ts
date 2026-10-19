@@ -1,8 +1,10 @@
 import { screenShare, type ShareSnapshot } from "../sharing/screenShare";
+import { closePublicProjection } from "./browserProjection";
 
 type NativeBridge = {
   platform: "MACOS" | "WINDOWS";
   nativeCapture: boolean;
+  theme?: "light" | "dark";
   captureExclusion?: { supported: boolean; enabled: boolean; error?: string };
   postMessage: (message: Record<string, unknown>) => void;
 };
@@ -17,7 +19,7 @@ export function nativeBridge(): NativeBridge | undefined {
 export function nativeCommand(action: string, values: Record<string, unknown> = {}): void {
   nativeBridge()?.postMessage({ type: "LECTURE_REMOTE", action, ...values });
 }
-type NativeSnapshot = ShareSnapshot & { previewFrame?: string };
+type NativeSnapshot = ShareSnapshot & { previewFrame?: string; permissionPending?: boolean };
 class NativeCapture {
   private state: NativeSnapshot = {
     phase: "idle",
@@ -54,6 +56,7 @@ class NativeCapture {
     if (detail.type === "preview")
       this.update({
         phase: "preview",
+        permissionPending: false,
         error: null,
         ...(typeof detail.frameUrl === "string" &&
         detail.frameUrl.startsWith("data:image/jpeg;base64,")
@@ -63,14 +66,28 @@ class NativeCapture {
       });
     if (detail.type === "capture-state") {
       const phase = detail.phase;
-      if (phase === "idle") this.update({ phase: "idle", previewFrame: undefined, paused: false });
-      if (phase === "preview") this.update({ phase: "preview" });
+      if (phase === "permission")
+        this.update({ phase: "choosing", permissionPending: true, error: null });
+      if (phase === "idle")
+        this.update({
+          phase: "idle",
+          previewFrame: undefined,
+          paused: false,
+          permissionPending: false
+        });
+      if (phase === "preview") this.update({ phase: "preview", permissionPending: false });
       if (phase === "live" || phase === "paused")
-        this.update({ phase: "publishing", paused: phase === "paused", error: null });
+        this.update({
+          phase: "publishing",
+          paused: phase === "paused",
+          error: null,
+          permissionPending: false
+        });
     }
     if (detail.type === "error")
       this.update({
         phase: "error",
+        permissionPending: false,
         error:
           typeof detail.message === "string"
             ? detail.message
@@ -80,12 +97,19 @@ class NativeCapture {
       });
   };
   async choose(scope: NonNullable<ShareSnapshot["scope"]>) {
-    this.update({ phase: "choosing", scope, error: null, previewFrame: undefined });
+    this.update({
+      phase: "choosing",
+      scope,
+      error: null,
+      previewFrame: undefined,
+      permissionPending: false
+    });
     nativeCommand("chooseSource");
   }
   async publish() {
     if (this.state.phase !== "preview") return;
     nativeCommand("publish");
+    if (["publishing", "error"].includes(this.getSnapshot().phase)) return;
     await new Promise<void>((resolve) => {
       const finish = () => {
         clearTimeout(timer);
@@ -106,7 +130,13 @@ class NativeCapture {
   }
   async stop() {
     nativeCommand("stopCapture");
-    this.update({ phase: "idle", previewFrame: undefined, paused: false, error: null });
+    this.update({
+      phase: "idle",
+      previewFrame: undefined,
+      paused: false,
+      error: null,
+      permissionPending: false
+    });
   }
   setPaused(paused: boolean) {
     if (this.state.paused === paused) return;
@@ -117,4 +147,10 @@ class NativeCapture {
 export const nativeCapture = new NativeCapture();
 export function workspaceShare(): typeof screenShare | NativeCapture {
   return nativeBridge()?.nativeCapture ? nativeCapture : screenShare;
+}
+
+export async function stopWorkspaceProjection(joinCode: string): Promise<void> {
+  await workspaceShare().stop();
+  if (nativeBridge()) nativeCommand("stopProjection");
+  else closePublicProjection(joinCode);
 }

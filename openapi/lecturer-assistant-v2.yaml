@@ -2954,6 +2954,37 @@ paths:
           description: Own device credential revoked.
         "403":
           description: Caller does not own this device.
+  /projection/devices/{deviceId}/appearance:
+    put:
+      operationId: updateProjectionAppearance
+      tags: [projection]
+      summary: Store the owned helper's remote theme without opening windows or changing projection.
+      parameters:
+        - in: path
+          name: deviceId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectionAppearanceUpdate"
+      responses:
+        "204":
+          description: Saved for the next helper poll; no display command is enqueued.
+        "400":
+          description: Theme must be light or dark.
+        "401":
+          description: Staff authentication required; a helper token is not a staff credential.
+        "403":
+          description: Active staff ownership or helper policy denied.
+        "404":
+          description: Device not found.
+        "409":
+          description: Device credential was revoked.
   /courses/{courseId}/sessions/{sessionId}/projection/commands:
     post:
       operationId: sendProjectionCommand
@@ -4231,6 +4262,13 @@ components:
             $ref: "#/components/schemas/ProjectionScreen"
         ack:
           $ref: "#/components/schemas/ProjectionCommandAck"
+    ProjectionAppearanceUpdate:
+      type: object
+      required: [theme]
+      properties:
+        theme:
+          type: string
+          enum: [light, dark]
     ProjectionSignedReleaseEnvelope:
       type: object
       required: [keyId, payload, signature]
@@ -4282,6 +4320,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProjectionCommand"
+        remoteTheme:
+          type: string
+          nullable: true
+          enum: [light, dark]
+          description: Persistent remote appearance for this device. Apply before commands without opening a window or changing capture/output. Null or omitted preserves the helper's current theme for backward compatibility. Null while helper use is forbidden.
     UnitKind:
       type: string
       enum:

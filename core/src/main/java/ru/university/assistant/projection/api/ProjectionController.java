@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ru.university.assistant.iam.api.AuthenticatedUser;
+import ru.university.assistant.projection.api.ProjectionContracts.AppearanceUpdate;
 import ru.university.assistant.projection.api.ProjectionContracts.Command;
 import ru.university.assistant.projection.api.ProjectionContracts.CommandRequest;
 import ru.university.assistant.projection.api.ProjectionContracts.Pairing;
@@ -49,6 +50,13 @@ public class ProjectionController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void revoke(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID deviceId) {
         projection.revoke(user, deviceId);
+    }
+
+    @PutMapping("/api/v1/projection/devices/{deviceId}/appearance")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void appearance(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID deviceId,
+            @Valid @RequestBody AppearanceUpdate request) {
+        projection.appearance(user, deviceId, request);
     }
 
     @PostMapping("/api/v1/courses/{courseId}/sessions/{sessionId}/projection/commands")

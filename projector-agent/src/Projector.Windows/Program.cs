@@ -69,6 +69,7 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
     private ProjectionForm? projection;
     private RemoteForm? remote;
     private RemoteForm? openingRemote;
+    private string remoteTheme = "light";
     private ScreenIdentification? identification;
     private Uri? origin;
     private CancellationTokenSource? cancellation;
@@ -104,7 +105,7 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
         }
         if (requestedPair is not null) dispatcher.BeginInvoke(async () => await PairFromLink(requestedPair));
     }
-    private void OnScreensChanged(object? sender, EventArgs args) => dispatcher.BeginInvoke(() => { identification?.Dispose(); identification = null; projection?.Neutral(); status = "Экраны изменились — повторите проверку"; UpdateMenu(); });
+    private void OnScreensChanged(object? sender, EventArgs args) => dispatcher.BeginInvoke(() => { identification?.Dispose(); identification = null; ProjectionForm.CloseOwned(ref projection); status = "Экраны изменились — повторите проверку"; UpdateMenu(); });
     private void UpdateMenu()
     {
         var menu = new ContextMenuStrip(); menu.Items.Add(status).Enabled = false;
@@ -112,7 +113,7 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
         menu.Items.Add("Подключить к учреждению…", null, async (_, _) => await Pair());
         menu.Items.Add("Подготовить отдельный экран…", null, (_, _) => { try { Prepare(); } catch { MessageBox.Show(status, "Настройка проектора", MessageBoxButtons.OK, MessageBoxIcon.Warning); } });
         menu.Items.Add("Показать пульт", null, (_, _) => { if (remote is { IsDisposed: false }) { remote.WindowState = FormWindowState.Normal; remote.Show(); remote.Activate(); } }).Enabled = remote is { IsDisposed: false };
-        menu.Items.Add("Остановить показ", null, (_, _) => { pendingLocalStop = true; projection?.Neutral(); CloseRemote(); status = "Показ остановлен локально"; UpdateMenu(); });
+        menu.Items.Add("Остановить показ", null, (_, _) => StopProjection());
         menu.Items.Add("Вернуть настройку экранов…", null, (_, _) => { try { Restore(); } catch { MessageBox.Show(status, "Настройка проектора", MessageBoxButtons.OK, MessageBoxIcon.Warning); } });
         using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         var startup = new ToolStripMenuItem("Запускать при входе") { Checked = key?.GetValue(StartupName) is string, CheckOnClick = false };
@@ -176,7 +177,7 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
             using var http = Http();
             try { await new AgentRuntime(new AgentClient(http, selectedOrigin, token), selectedOrigin, new GenerationHost(this, currentGeneration), ReleaseInfo.Version).Run(ct); }
             catch (OperationCanceledException) { }
-            catch { dispatcher.BeginInvoke(() => { projection?.Neutral(); CloseRemote(); status = "Связь остановлена — используйте сайт"; UpdateMenu(); }); }
+            catch { dispatcher.BeginInvoke(() => { ProjectionForm.CloseOwned(ref projection); CloseRemote(); status = "Связь остановлена — используйте сайт"; UpdateMenu(); }); }
         });
     }
     public Task<HostResult> Execute(HostAction action, CancellationToken ct) => ExecuteFor(action, ct, generation);
@@ -195,6 +196,10 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
                 }
                 switch (action.Type)
                 {
+                    case "SET_THEME":
+                        if (action.Theme is not ("light" or "dark")) throw new InvalidDataException("REMOTE_THEME_REJECTED");
+                        remoteTheme = action.Theme; remote?.SetTheme(remoteTheme); openingRemote?.SetTheme(remoteTheme);
+                        completion.TrySetResult(new(action.Id, true)); return;
                     case "PREPARE_DISPLAYS":
                         if (!Prepare()) { completion.TrySetResult(new(action.Id, false, "LOCAL_PREPARATION_CANCELLED")); return; }
                         break;
@@ -217,19 +222,16 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
                         var target = Screen.AllScreens.FirstOrDefault(s => ScreenId(s) == action.TargetScreenId && !s.Primary)
                             ?? throw new InvalidDataException("TARGET_NOT_INDEPENDENT_EXTERNAL");
                         if (origin is null) throw new InvalidDataException("PAIRING_REQUIRED");
-                        projection?.Close(); projection?.Dispose(); projection = new(target, origin);
+                        ProjectionForm.CloseOwned(ref projection); projection = new(target, origin);
                         if (action.Type == "TEST_TARGET") projection.Neutral("Проверка проектора\n\n" + action.TestCode + "\n\nПодтвердите этот код на компьютере преподавателя.");
                         projection.Show();
                         if (action.Type == "START_PUBLIC_PROJECTION")
-                        {
                             await projection.ShowScene(new Uri(action.Url!));
-                            if (action.RemoteUrl is { } remoteAddress) await ShowRemote(new Uri(remoteAddress));
-                        }
                         status = action.Type == "TEST_TARGET" ? "Проверка экрана" : "Идёт показ"; break;
-                    case "NEUTRAL_STOP": projection?.Neutral(); CloseRemote(); identification?.Dispose(); identification = null; status = "Показ остановлен"; break;
+                    case "NEUTRAL_STOP": ProjectionForm.CloseOwned(ref projection); CloseRemote(); identification?.Dispose(); identification = null; status = "Показ остановлен"; break;
                     case "TARGET_HELP": status = "Основной экран: выберите проектор в браузерном мастере"; break;
                     case "UPDATE_READY":
-                        projection?.Neutral(); CloseRemote();
+                        ProjectionForm.CloseOwned(ref projection); CloseRemote();
                         var updaterPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "updater", "Projector.Updater.exe"));
                         if (pendingUpdate is not null) throw new InvalidDataException("UPDATER_ALREADY_PREPARING");
                         pendingUpdate = NativeUpdateHandoff.StartUpdater(action, updaterPath, RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "WINDOWS_ARM64" : "WINDOWS_X64", Environment.OSVersion.Version.ToString());
@@ -243,7 +245,7 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
             catch (Exception ex)
             {
                 // Failure to focus the private controller must not interrupt an existing show.
-                if (action.Type != "FOCUS_PRIVATE_REMOTE")
+                if (action.Type is not ("FOCUS_PRIVATE_REMOTE" or "SET_THEME"))
                 {
                     projection?.Neutral(); CloseRemote();
                     if (ex is InvalidDataException { Message: "WEBVIEW2_RUNTIME_MISSING" }) { status = "Для показа нужен Microsoft WebView2 — откройте помощь в меню"; UpdateMenu(); }
@@ -259,7 +261,7 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
         if (origin is null) throw new InvalidDataException("PAIRING_REQUIRED");
         if (openingRemote is not null) throw new InvalidDataException("REMOTE_ALREADY_OPENING");
         var prior = remote; var expectedGeneration = generation;
-        var form = new RemoteForm(origin, scene, () => { projection?.Show(); projection?.Activate(); }); openingRemote = form;
+        var form = new RemoteForm(origin, scene, () => { projection?.Show(); projection?.Activate(); }, StopProjection, remoteTheme); openingRemote = form;
         form.FormClosed += (_, _) => {
             if (ReferenceEquals(openingRemote, form)) openingRemote = null;
             if (ReferenceEquals(remote, form)) { remote = null; UpdateMenu(); }
@@ -283,23 +285,28 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
         var pending = openingRemote; openingRemote = null; pending?.Close(); pending?.Dispose();
         var prior = remote; remote = null; prior?.Close(); prior?.Dispose();
     }
+    private void StopProjection()
+    {
+        pendingLocalStop = true; ProjectionForm.CloseOwned(ref projection); CloseRemote(); identification?.Dispose(); identification = null;
+        status = "Показ остановлен локально"; UpdateMenu();
+    }
     private static string ScreenId(Screen screen) => DisplaySafety.Fingerprint($"{NativeDisplays.ScreenIdentity(screen)}@{screen.Bounds.X},{screen.Bounds.Y}:{screen.Bounds.Width}x{screen.Bounds.Height}");
     private bool Prepare()
     {
         if (MessageBox.Show("Зеркальные экраны временно станут отдельными. Исходная конфигурация сохранится. Проектор сначала нужно проверить кодом. Вернуть настройки можно отдельно после скрытия служебного окна.", "Подготовить отдельный экран?", MessageBoxButtons.OKCancel) != DialogResult.OK) return false;
-        try { projection?.Neutral(); display.PrepareIndependent(); status = "Выберите и проверьте экран на сайте"; }
+        try { ProjectionForm.CloseOwned(ref projection); CloseRemote(); display.PrepareIndependent(); status = "Выберите и проверьте экран на сайте"; }
         catch { status = "Подготовка не удалась — используйте браузерный мастер"; UpdateMenu(); throw; }
         UpdateMenu(); return true;
     }
     private bool Restore()
     {
-        projection?.Neutral(); CloseRemote();
+        ProjectionForm.CloseOwned(ref projection); CloseRemote();
         if (MessageBox.Show("Скройте служебное окно преподавателя. Если вернётся дублирование, аудитория увидит основной экран. Изменённые вами вручную настройки не будут перезаписаны.\n\nСлужебное окно скрыто — вернуть?", "Вернуть экраны", MessageBoxButtons.OKCancel) != DialogResult.OK) return false;
         try
         {
             var result = display.Restore(true);
             if (result is not ("Restore" or "Unchanged" or "UNCHANGED")) throw new InvalidDataException("DISPLAY_CONFIGURATION_CHANGED_RESTORE_SKIPPED");
-            status = "Настройка возвращена"; projection?.Close(); projection?.Dispose(); projection = null;
+            status = "Настройка возвращена";
         }
         catch { status = "Возврат пропущен — проверьте настройки Windows. Изменённая вами конфигурация сохранена."; UpdateMenu(); throw; }
         UpdateMenu(); return true;
@@ -346,7 +353,7 @@ internal sealed class TrayApplication : ApplicationContext, IProjectionHost
         try { Process.Start(new ProcessStartInfo(uninstaller) { UseShellExecute = true }); Stop(); ExitThread(); }
         catch { MessageBox.Show("Не удалось открыть удаление. Выйдите из помощника и откройте «Установленные приложения» в настройках Windows.", "Удаление помощника"); }
     }
-    private void Stop() { generation++; cancellation?.Cancel(); projection?.Neutral(); CloseRemote(); identification?.Dispose(); identification = null; status = "Показ остановлен локально"; UpdateMenu(); }
+    private void Stop() { generation++; cancellation?.Cancel(); ProjectionForm.CloseOwned(ref projection); CloseRemote(); identification?.Dispose(); identification = null; status = "Показ остановлен локально"; UpdateMenu(); }
     private sealed class GenerationHost(TrayApplication owner, long expectedGeneration) : IProjectionHost
     {
         public Task<HostResult> Execute(HostAction action, CancellationToken ct) => owner.ExecuteFor(action, ct, expectedGeneration);

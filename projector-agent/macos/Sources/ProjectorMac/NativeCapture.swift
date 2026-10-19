@@ -146,19 +146,25 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
     private var lastPreview = -Double.infinity
     private var lastFrame = -Double.infinity
     private var pollTimer: Timer?
+    private var choosingSource = false
+    private var selectionAlert: NSAlert?
     private let imageContext = CIContext(options: [.cacheIntermediates: false])
     private let sampleQueue = DispatchQueue(label: "ru.university.lecturer.capture", qos: .userInitiated)
-    var isActive: Bool { stream != nil || publisher != nil }
+    var isActive: Bool { choosingSource || stream != nil || publisher != nil }
 
     func bind(_ scope: NativeCaptureScope) {
         if let previous = currentScope, previous.sessionID != scope.sessionID || previous.courseID != scope.courseID || previous.origin != scope.origin || previous.token != scope.token { Task { await stop() } }
         currentScope = scope
     }
     func chooseSource() async {
+        guard !choosingSource else { return }
         await stop()
-        guard CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess() else { emitError("SCREEN_RECORDING_PERMISSION_REQUIRED"); return }
+        let selection = generation; choosingSource = true
+        defer { if generation == selection { choosingSource = false } }
+        guard await authorizeScreenCapture(selection: selection), generation == selection else { return }
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+            guard generation == selection else { return }
             let ownPID = ProcessInfo.processInfo.processIdentifier
             let ownApps = content.applications.filter { $0.processID == ownPID }
             let choices: [(String, SCDisplay?, SCWindow?)] = content.displays.map { display in
@@ -176,7 +182,7 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
             alert.informativeText = "Выберите учебное окно или экран. Нативный пульт и окно проектора исключаются из захвата. Сначала появится предпросмотр; показ студентам начнётся после подтверждения."
             let select = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 460, height: 32)); choices.forEach { select.addItem(withTitle: $0.0) }; alert.accessoryView = select
             alert.addButton(withTitle: "Проверить кадр"); alert.addButton(withTitle: "Отмена")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            guard presentSelectionAlert(alert) == .alertFirstButtonReturn, generation == selection else { status(); return }
             let choice = choices[select.indexOfSelectedItem]
             let filter: SCContentFilter
             let width: Int, height: Int
@@ -199,8 +205,35 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: sampleQueue)
             self.stream = stream; sourceName = choice.0
             try await stream.startCapture()
+            guard generation == selection else { try? await stream.stopCapture(); return }
             event?(["type": "capture-state", "phase": "preview", "sourceName": sourceName, "captureExcludesRemote": true, "previewOnly": true])
-        } catch { await stop(); emitError("CAPTURE_SOURCE_FAILED") }
+        } catch {
+            guard generation == selection else { return }
+            await stop()
+            let nativeError = error as NSError
+            emitError(nativeError.domain == SCStreamErrorDomain && nativeError.code == -3801 ? "SCREEN_RECORDING_PERMISSION_REQUIRED" : "CAPTURE_SOURCE_FAILED")
+        }
+    }
+    private func authorizeScreenCapture(selection: UUID) async -> Bool {
+        event?(["type": "capture-state", "phase": "permission", "permissionPending": true])
+        let granted = CaptureAuthorization.request(preflight: { CGPreflightScreenCaptureAccess() }, activate: { NSApp.activate(ignoringOtherApps: true) }, prompt: { CGRequestScreenCaptureAccess() })
+        if granted { return true }
+        guard generation == selection else { return false }
+        let alert = NSAlert(); alert.messageText = "Разрешить запись экрана"
+        alert.informativeText = "macOS пока не разрешила помощнику показывать учебные окна. Откройте настройки и включите Lecturer Projector в разделе «Запись экрана». После разрешения выбор окна продолжится автоматически. Если macOS предложит закрыть и открыть помощник, согласитесь, затем выберите источник снова."
+        alert.addButton(withTitle: "Открыть настройки"); alert.addButton(withTitle: "Отмена")
+        guard presentSelectionAlert(alert) == .alertFirstButtonReturn, generation == selection else { status(); return false }
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"), NSWorkspace.shared.open(url) else { emitError("SCREEN_RECORDING_PERMISSION_REQUIRED"); return false }
+        let allowed = await CaptureAuthorization.waitForGrant(attempts: 240, preflight: { CGPreflightScreenCaptureAccess() }, cancelled: { self.generation != selection }, pause: { try await Task.sleep(for: .milliseconds(500)) })
+        guard generation == selection else { return false }
+        if !allowed { emitError("SCREEN_RECORDING_PERMISSION_REQUIRED") }
+        return allowed
+    }
+    private func presentSelectionAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        selectionAlert = alert
+        defer { if selectionAlert === alert { selectionAlert = nil }; alert.window.close() }
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal()
     }
     func startPublishing() async {
         guard stream != nil, publisher == nil, let scope = currentScope else { emitError("CAPTURE_SELECT_SOURCE_FIRST"); return }
@@ -296,7 +329,11 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         Task { @MainActor [weak self] in guard let self, self.stream === stream else { return }; await self.stop(); self.emitError("CAPTURE_SOURCE_STOPPED") }
     }
     func stop() async {
-        generation = UUID(); pollTimer?.invalidate(); pollTimer = nil
+        generation = UUID(); choosingSource = false; pollTimer?.invalidate(); pollTimer = nil
+        if let selectionAlert {
+            if NSApp.modalWindow === selectionAlert.window { NSApp.abortModal() }
+            selectionAlert.window.close(); self.selectionAlert = nil
+        }
         let active = stream; stream = nil; latestBuffer = nil
         frameTimer?.invalidate(); frameTimer = nil; writerInput?.markAsFinished(); writer?.cancelWriting(); writerInput = nil; adaptor = nil; writer = nil; firstPTS = nil
         let previous = publisher; publisher = nil; paused = false

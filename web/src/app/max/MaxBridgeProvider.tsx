@@ -13,6 +13,8 @@ import type { MaxColorScheme } from "./types";
 const THEME_KEY = "la_theme_preference";
 
 function readPreferredTheme(): MaxColorScheme | null {
+  const inherited = window.lectureProjectorNative?.theme;
+  if (inherited === "light" || inherited === "dark") return inherited;
   try {
     const value = localStorage.getItem(THEME_KEY);
     return value === "light" || value === "dark" ? value : null;
@@ -94,13 +96,20 @@ export function MaxBridgeProvider({ children }: { children: ReactNode }) {
       const theme = readTheme(isMaxLaunch(webApp) ? webApp : null);
       setEnvironment((current) => (current.theme === theme ? current : { ...current, theme }));
     };
+    const inheritNativeTheme = (event: Event) => {
+      const next = (event as CustomEvent<{ theme?: unknown }>).detail?.theme;
+      if (window.lectureProjectorNative && (next === "light" || next === "dark"))
+        setPreferredThemeState(next);
+    };
 
     media.addEventListener("change", updateTheme);
     webApp?.onEvent?.("themeChanged", updateTheme);
+    window.addEventListener("lecture-projector-theme", inheritNativeTheme);
 
     return () => {
       media.removeEventListener("change", updateTheme);
       webApp?.offEvent?.("themeChanged", updateTheme);
+      window.removeEventListener("lecture-projector-theme", inheritNativeTheme);
     };
   }, []);
 
