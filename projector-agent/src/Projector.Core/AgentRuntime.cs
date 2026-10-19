@@ -24,7 +24,7 @@ public sealed class AgentRuntime
     private readonly SemaphoreSlim execution = new(1);
     public async Task Run(CancellationToken ct)
     {
-        using var runtimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var runtimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, host.Closed);
         ct = runtimeCancellation.Token;
         using var watchdogCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var timer = WatchLease(watchdogCancellation.Token, runtimeCancellation.Cancel);
@@ -86,6 +86,11 @@ public sealed class AgentRuntime
                     }
                     finally { execution.Release(); }
                 }
+                catch (InvalidDataException ex) when (ex.Message == "NATIVE_HOST_CLOSED")
+                {
+                    runtimeCancellation.Cancel();
+                    throw new NativeHostClosedException();
+                }
                 catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidDataException)
                 {
                     if (ct.IsCancellationRequested) break;
@@ -101,14 +106,17 @@ public sealed class AgentRuntime
                 await Task.Delay(delay, ct);
             }
         }
+        catch (OperationCanceledException) when (host.Closed.IsCancellationRequested) { }
         finally
         {
             watchdogCancellation.Cancel();
             try { await timer; } catch (OperationCanceledException) { }
             using var stopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-            try { await executor.NeutralStop(stopTimeout.Token); } catch (Exception) { /* Native parent neutralizes if the coordinator exits. */ }
-            if (executor.Status == "IDLE") activity?.Dispose();
+            if (!host.Closed.IsCancellationRequested)
+                try { await executor.NeutralStop(stopTimeout.Token); } catch (Exception) { /* Native parent neutralizes if the coordinator exits. */ }
+            if (executor.Status == "IDLE" || host.Closed.IsCancellationRequested) activity?.Dispose();
         }
+        if (host.Closed.IsCancellationRequested) throw new NativeHostClosedException();
     }
     public async Task StopLocal(CancellationToken ct)
     {

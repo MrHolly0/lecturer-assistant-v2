@@ -1,4 +1,5 @@
-import { useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -26,6 +27,9 @@ import {
 } from "../shared/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import { ProjectorHelperSettings } from "./ProjectorHelperSettings";
+import { getLiveSession } from "../app/api/live-api";
+import { getProjectionSettings } from "../app/api/projection-api";
+import { preferredNativeProjectionDevice } from "../app/projection/nativeProjectionPreference";
 
 type GuideOs = "windows" | "mac-modern" | "mac-monterey" | "mac-older" | "other";
 const osLabels: Record<GuideOs, string> = {
@@ -260,6 +264,54 @@ export function ProjectorSetup({
   const [numbers, setNumbers] = useState<{ opened: number; total: number } | null>(null);
   const [manualResult, setManualResult] = useState<"opened" | "blocked" | null>(null);
   const [helperReady, setHelperReady] = useState(false);
+  const readyHelper = useQuery({
+    queryKey: ["projector-ready-settings", courseId, sessionId],
+    queryFn: getProjectionSettings,
+    enabled: view === "ready" && helperReady && Boolean(courseId && sessionId),
+    staleTime: 0,
+    refetchInterval: 3000,
+    refetchOnWindowFocus: true,
+    retry: false
+  });
+  const readySession = useQuery({
+    queryKey: ["projector-ready-session", courseId, sessionId],
+    queryFn: () => getLiveSession(courseId!, sessionId!),
+    enabled: view === "ready" && helperReady && Boolean(courseId && sessionId),
+    staleTime: 0,
+    refetchInterval: 3000,
+    refetchOnWindowFocus: true,
+    retry: false
+  });
+  const preferredDeviceId =
+    courseId && sessionId ? preferredNativeProjectionDevice(courseId, sessionId) : null;
+  const readyDevices = readyHelper.data?.devices ?? [];
+  const activeReadyDevices = readyDevices.filter(
+    (device) =>
+      device.activeSessionId === sessionId &&
+      (device.status === "SHOWING" || device.status === "PAUSED")
+  );
+  const readyDevice = preferredDeviceId
+    ? readyDevices.find((device) => device.id === preferredDeviceId)
+    : activeReadyDevices.length === 1
+      ? activeReadyDevices[0]
+      : undefined;
+  useEffect(() => {
+    if (view !== "ready" || !helperReady) return;
+    const sessionEnded = Boolean(
+      readySession.data && !["LIVE", "PAUSED"].includes(readySession.data.status)
+    );
+    const helperStopped =
+      readyHelper.data &&
+      (!readyDevice ||
+        !readyDevice.connected ||
+        readyDevice.revoked ||
+        readyDevice.activeSessionId !== sessionId ||
+        !["SHOWING", "PAUSED"].includes(readyDevice.status));
+    if (sessionEnded || helperStopped) {
+      setHelperReady(false);
+      setView("helper");
+    }
+  }, [helperReady, readyDevice, readyHelper.data, readySession.data, sessionId, view]);
   const trainingTrigger = useRef<HTMLButtonElement>(null);
   const active = state.phase === "showing";
   const busy = state.phase === "requesting" || state.phase === "opening";

@@ -31,6 +31,7 @@ public sealed class AgentClient(HttpClient http, Uri origin, string? token = nul
 
 public interface IProjectionHost
 {
+    CancellationToken Closed => CancellationToken.None;
     Task<HostResult> Execute(HostAction action, CancellationToken ct);
 }
 
@@ -117,7 +118,7 @@ public sealed class CommandExecutor(Uri origin, IProjectionHost host, OutputActi
             else Status = "SHOWING";
             result = new(command.Id, "COMPLETED");
         }
-        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
+        catch (Exception ex) when ((ex is InvalidDataException or InvalidOperationException) && ex.Message != "NATIVE_HOST_CLOSED")
         { result = new(command.Id, "FAILED", ex.Message); }
         return Remember(result);
     }

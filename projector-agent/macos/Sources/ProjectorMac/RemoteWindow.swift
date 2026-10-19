@@ -57,7 +57,7 @@ import WebKit
         config.websiteDataStore = .nonPersistent()
         config.mediaTypesRequiringUserActionForPlayback = []
         config.userContentController.add(self, name: "lectureNative")
-        config.userContentController.addUserScript(WKUserScript(source: "window.lectureProjectorNative={platform:'MACOS',nativeCapture:true,theme:'\(theme)',captureExclusion:{supported:true,enabled:true},postMessage:function(message){window.webkit.messageHandlers.lectureNative.postMessage(message)}};", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        config.userContentController.addUserScript(WKUserScript(source: "window.lectureProjectorNative={platform:'MACOS',nativeCapture:true,captureModes:{window:true,application:true,protectedDisplay:true},theme:'\(theme)',captureExclusion:{supported:true,enabled:true},postMessage:function(message){window.webkit.messageHandlers.lectureNative.postMessage(message)}};", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         return config
     }
     func setTheme(_ value: String) throws {
@@ -197,11 +197,11 @@ import WebKit
         case "resize": resize(width: (value["width"] as? NSNumber)?.doubleValue ?? 420, height: (value["height"] as? NSNumber)?.doubleValue ?? 560)
         case "close": close()
         case "drag": if let event = NSApp.currentEvent { panel?.performDrag(with: event) }
-        case "chooseSource", "publish", "stopCapture", "stopProjection", "pause", "ready", "capabilities", "screenRecordingSettings", "focusProjection": command?(value)
+        case "chooseSource", "chooseDisplay", "publish", "stopCapture", "stopProjection", "pause", "ready", "capabilities", "screenRecordingSettings", "focusProjection": command?(value)
         default: break
         }
     }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { applyTheme(); emit(["type": "capabilities", "platform": "MACOS", "nativeCapture": true, "theme": theme, "captureExclusion": ["supported": true, "enabled": true]]) }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { applyTheme(); var value = NativeCapture.capabilities; value["theme"] = theme; emit(value) }
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
         guard action.targetFrame?.isMainFrame == true, action.request.url == allowedURL else { decisionHandler(.cancel); return }
         decisionHandler(.allow)

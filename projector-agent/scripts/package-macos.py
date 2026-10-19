@@ -58,6 +58,7 @@ def write_plist(bundle, version, role, mode):
                  LSUIElement=True, LSMinimumSystemVersion="14.0", NSHighResolutionCapable=True,
                  LAReleaseMode=mode)
     if role == "bootstrap":
+        value["LABootstrapCompatibilityGeneration"] = 1
         value["CFBundleURLTypes"] = [dict(CFBundleURLName="Lecturer Projector pairing", CFBundleURLSchemes=["lecturer-projector"], CFBundleTypeRole="Viewer")]
     elif host:
         value["NSScreenCaptureUsageDescription"] = "Передача выбранного учебного окна или экрана студентам. Пульт и окно проектора исключаются из захвата."

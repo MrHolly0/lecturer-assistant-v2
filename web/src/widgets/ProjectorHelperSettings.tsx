@@ -20,6 +20,11 @@ import {
 import { ApiError, userErrorMessage } from "../app/api/errors";
 import { useMaxBridge } from "../app/max/context";
 import { rememberNativeProjectionDevice } from "../app/projection/nativeProjectionPreference";
+import {
+  helperShowAcknowledged,
+  reconcileHelperWizardStep,
+  type HelperWizardStep
+} from "../app/projection/helperWizardState";
 import { syncProjectionAppearance } from "../app/projection/projectionAppearance";
 import { Button } from "../shared/ui/button";
 import {
@@ -86,9 +91,9 @@ function HelperDeviceControls({
   const [confirmed, setConfirmed] = useState(false);
   const [notice, setNotice] = useState("");
   const [waitingForShow, setWaitingForShow] = useState<number | null>(null);
-  const [step, setStep] = useState<
-    "prepare" | "identify" | "confirm" | "waiting" | "manage" | "stopped"
-  >(() => (device.status === "SHOWING" || device.status === "PAUSED" ? "manage" : "prepare"));
+  const [step, setStep] = useState<HelperWizardStep>(() =>
+    device.status === "SHOWING" || device.status === "PAUSED" ? "manage" : "prepare"
+  );
   const topology = JSON.stringify(
     [...device.screens].sort((left, right) => left.id.localeCompare(right.id))
   );
@@ -104,6 +109,35 @@ function HelperDeviceControls({
     context?.active &&
     selected &&
     !selected.isPrimary;
+  useEffect(() => {
+    if (!wizard) return;
+    const nextStep = reconcileHelperWizardStep(step, device, context);
+    if (!nextStep || nextStep === step) return;
+
+    setStep(nextStep);
+    setWaitingForShow(null);
+    setTest(null);
+    setCode("");
+    setConfirmed(false);
+    if (target && !device.screens.some((screen) => screen.id === target)) setTarget("");
+
+    if (!device.connected) {
+      setNotice(
+        "Связь с помощником потеряна. После подключения проверьте его статус перед новым показом."
+      );
+    } else if (!context?.active) {
+      setNotice("Занятие завершено. Новый показ можно настроить после запуска занятия.");
+    } else if (device.status === "IDLE" || device.status === "ERROR") {
+      const selectedTargetIsAvailable = device.screens.some((screen) => screen.id === target);
+      setNotice(
+        selectedTargetIsAvailable
+          ? "Показ остановлен. Выбранный экран сохранён; повторите проверку кода перед запуском."
+          : device.screens.length > 1
+            ? "Показ остановлен. Выберите экран и повторите проверку кода перед запуском."
+            : "Показ остановлен. Настройте экраны помощника перед новым запуском."
+      );
+    }
+  }, [wizard, step, device, context, target]);
   const command = useMutation({
     mutationFn: async (
       request: Omit<ProjectionCommandRequest, "deviceId" | "requestId" | "displayConfirmed"> & {
@@ -166,34 +200,32 @@ function HelperDeviceControls({
     }
   });
   useEffect(() => {
-    if (
-      waitingForShow &&
-      device.connected &&
-      device.status === "SHOWING" &&
-      Date.parse(device.lastSeenAt ?? "") >= waitingForShow
-    ) {
+    if (helperShowAcknowledged(waitingForShow, device, context)) {
       setWaitingForShow(null);
+      setStep("manage");
       if (context) rememberNativeProjectionDevice(context.courseId, context.sessionId, device.id);
       onProjectionReady?.();
     }
-  }, [
-    waitingForShow,
-    device.connected,
-    device.status,
-    device.lastSeenAt,
-    device.id,
-    context,
-    onProjectionReady
-  ]);
+  }, [waitingForShow, device, context, onProjectionReady]);
   useEffect(() => {
     if (!waitingForShow) return;
-    const timeout = window.setTimeout(() => {
-      setWaitingForShow(null);
-      setStep("confirm");
-      setNotice("Помощник пока не подтвердил показ. Проверьте его окно и повторите запуск.");
-    }, 20000);
+    const timeout = window.setTimeout(
+      () => {
+        setWaitingForShow(null);
+        setTest(null);
+        setCode("");
+        setConfirmed(false);
+        setStep(
+          device.connected && context?.active && device.screens.length > 1 ? "identify" : "prepare"
+        );
+        setNotice(
+          "Помощник не подтвердил показ. Проверьте связь и повторите проверку экрана и кода."
+        );
+      },
+      Math.max(0, waitingForShow + 20000 - Date.now())
+    );
     return () => window.clearTimeout(timeout);
-  }, [waitingForShow]);
+  }, [waitingForShow, device, context]);
   const changeTarget = (value: string) => {
     setTarget(value);
     setTest(null);
@@ -390,7 +422,10 @@ function HelperDeviceControls({
               )}
             </form>
           )}
-          {(!wizard || step === "manage" || step === "stopped") && (
+          {wizard && step === "stopped" && (
+            <p role="status">Останавливаем показ. Статус обновится после ответа помощника.</p>
+          )}
+          {(!wizard || step === "manage") && (
             <>
               <div className="projector-helper-actions">
                 <Button

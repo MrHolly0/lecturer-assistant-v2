@@ -31,34 +31,15 @@ try
         // Anonymous pipe to the native host: private user file on Mac, DPAPI on Windows. Never log it.
         Console.WriteLine(JsonSerializer.Serialize(new { id = "pair", type = "PAIR_RESULT", deviceToken = token, deviceId = paired.DeviceId }, Wire.Json));
     }
-    var host = new StdioHost();
+    using var host = new StdioProjectionHost(Console.In, Console.Out);
     await new AgentRuntime(new AgentClient(http, origin, token), origin, host, version).Run(CancellationToken.None);
 }
 catch (Exception ex)
 {
     // Error messages from HTTP and OS APIs may contain paths. Return a stable nonsecret code only.
-    Console.Error.WriteLine(ex is InvalidDataException ? ex.Message : "COORDINATOR_FAILED");
+    Console.Error.WriteLine(ex is InvalidDataException or NativeHostClosedException ? ex.Message : "COORDINATOR_FAILED");
     Environment.ExitCode = 1;
 }
 
 internal sealed record Bootstrap(string Origin, string Name, string Platform, string? DeviceToken = null, string? PairingCode = null,
     Guid? InstallationId = null, string? PreviousDeviceToken = null);
-internal sealed class StdioHost : IProjectionHost
-{
-    private readonly SemaphoreSlim gate = new(1);
-    public async Task<HostResult> Execute(HostAction action, CancellationToken ct)
-    {
-        await gate.WaitAsync(ct);
-        try
-        {
-            Console.WriteLine(JsonSerializer.Serialize(action, Wire.Json));
-            var timeout = action.Type is "PREPARE_DISPLAYS" or "RESTORE_DISPLAYS" ? 120 : 15;
-            var line = await Console.In.ReadLineAsync(ct).AsTask().WaitAsync(TimeSpan.FromSeconds(timeout), ct) ?? throw new InvalidDataException("NATIVE_HOST_CLOSED");
-            if (line.Length > 65_536) throw new InvalidDataException("NATIVE_REPLY_TOO_LARGE");
-            var result = JsonSerializer.Deserialize<HostResult>(line, Wire.Json) ?? throw new InvalidDataException("BAD_NATIVE_REPLY");
-            if (result.Id != action.Id) throw new InvalidDataException("NATIVE_REPLY_MISMATCH");
-            return result;
-        }
-        finally { gate.Release(); }
-    }
-}

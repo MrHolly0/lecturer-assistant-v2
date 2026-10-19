@@ -11,6 +11,7 @@ internal static class Program
     {
         if (args is ["--preflight", _]) return Preflight(args);
         if (args is ["--workspace-self-test", var report]) return WorkspaceSelfTest.Run(report);
+        if (args is ["--video-publisher-self-test", var fixture, var videoReport]) return VideoPublisherSelfTest.Run(fixture, videoReport);
         if (args.Length > 1) return 1;
         PairLink? requestedPair = null;
         if (args is [var pairAddress])

@@ -6,6 +6,7 @@ import type { LiveSession } from "../app/api/live-api";
 import {
   nativeBridge,
   nativeCommand,
+  nativeCapture,
   workspaceShare,
   stopWorkspaceProjection
 } from "../app/projection/nativeWorkspace";
@@ -51,8 +52,14 @@ export function ScreenShareControls({
     "previewFrame" in share && typeof share.previewFrame === "string"
       ? share.previewFrame
       : undefined;
+  const nativeSourceKind = "sourceKind" in share ? share.sourceKind : undefined;
+  const displayPermissionDenied = "permissionDenied" in share && share.permissionDenied === true;
   const hasPreview = Boolean(share.stream || previewFrame);
-  const excluded = nativeBridge()?.captureExclusion?.enabled === true;
+  const nativeCapabilities = nativeBridge();
+  const systemWindowPickerAvailable =
+    nativeCapabilities?.platform === "MACOS" &&
+    nativeCapabilities.captureModes?.window === true &&
+    nativeCapabilities.captureModes.application === true;
   const { isMax, theme } = useMaxBridge();
   const helpers = useQuery({
     queryKey: ["projection-settings"],
@@ -170,7 +177,7 @@ export function ScreenShareControls({
   useEffect(() => {
     if (share.phase === "publishing" && ours) setPreview(false);
   }, [share.phase, ours]);
-  const choose = () => {
+  const choose = (mode: "window" | "display" = "window") => {
     if (helpersUnknown || handoffToNativeRemote()) return;
     setConfirmed(false);
     if (isMax) {
@@ -181,7 +188,9 @@ export function ScreenShareControls({
     }
     if (ours && share.phase === "publishing") void controller.stop();
     setPreview(true);
-    void controller.choose({ courseId, sessionId: session.id, joinCode: session.joinCode });
+    const scope = { courseId, sessionId: session.id, joinCode: session.joinCode };
+    if (nativeBridge()?.nativeCapture) void nativeCapture.choose(scope, mode);
+    else void controller.choose(scope);
   };
   const prepare = () => {
     if (helpersUnknown || handoffToNativeRemote()) return;
@@ -265,9 +274,9 @@ export function ScreenShareControls({
               {share.phase === "preview" ? "Проверьте исходящий кадр" : "Что показать аудитории?"}
             </DialogTitle>
             <DialogDescription>
-              Можно показать весь экран, окно приложения или вкладку. Сначала проверьте, что увидит
-              аудитория. Выбирайте приложение с учебным материалом. Окно «Проектор» получает
-              демонстрацию, его не нужно выбирать источником.
+              {systemWindowPickerAvailable
+                ? "Выберите отдельное окно с учебным материалом. Окно «Проектор» получает показ автоматически."
+                : "Можно показать весь экран, окно приложения или вкладку. Сначала проверьте, что увидит аудитория. Выбирайте приложение с учебным материалом. Окно «Проектор» получает демонстрацию, его не нужно выбирать источником."}
             </DialogDescription>
           </DialogHeader>
           {previewFrame ? (
@@ -278,21 +287,39 @@ export function ScreenShareControls({
             <div className="screen-share-preview-empty" role="status">
               {share.phase === "choosing"
                 ? nativeBridge()?.nativeCapture
-                  ? "Подтвердите системное разрешение на запись экрана и выберите окно или экран…"
+                  ? "permissionPending" in share && share.permissionPending
+                    ? nativeBridge()?.platform === "MACOS"
+                      ? "Подтвердите запрос macOS на захват всего экрана…"
+                      : "Подтвердите системный запрос на захват всего экрана…"
+                    : systemWindowPickerAvailable
+                      ? "Выберите окно или приложение в системном меню…"
+                      : "Выберите источник в системном меню…"
                   : "Выберите источник в системном окне браузера…"
                 : share.error ||
                   "Выберите приложение с учебным материалом. Оно останется на вашем рабочем экране."}
             </div>
           )}
-          {share.error && share.stream && <p role="alert">{share.error}</p>}
+          {share.sourceName && share.phase === "preview" && (
+            <p className="screen-share-source-name" role="status">
+              Источник: {share.sourceName}
+            </p>
+          )}
+          {nativeSourceKind === "application" && share.phase === "preview" && (
+            <p className="screen-share-capture-note" role="note">
+              Будут видны окна выбранного приложения. Чтобы показать одну вкладку, выберите её
+              отдельное окно.
+            </p>
+          )}
+          {share.error && <p role="alert">{share.error}</p>}
           {hasPreview && capturesScreen && (
             <p className="screen-share-capture-note" role="note">
-              {share.surface === "monitor"
-                ? "Выбран весь экран."
-                : "Браузер не указал тип источника."}{" "}
-              {excluded
-                ? "Компонент исключает собственный пульт из захвата. Сверните вкладку лекции и другие личные окна перед показом. Проверьте кадр: остальные окна экрана будут видны."
-                : "Пульт и другие окна этого экрана будут видны. Для приватного управления установите компонент в настройке проектора или выберите отдельное окно приложения."}
+              {nativeBridge()?.nativeCapture
+                ? share.surface === "monitor"
+                  ? "Выбран весь экран. Компонент исключает свой пульт, но другие окна будут видны аудитории. Сверните личные окна и проверьте кадр."
+                  : "Браузер не указал тип источника. Другие окна могут быть видны аудитории. Проверьте кадр."
+                : share.surface === "monitor"
+                  ? "Выбран весь экран. Пульт и другие окна этого экрана будут видны. Для приватного управления установите компонент в настройке проектора или выберите отдельное окно приложения."
+                  : "Браузер не указал тип источника. Пульт и другие окна могут быть видны аудитории. Для приватного управления установите компонент в настройке проектора или выберите отдельное окно приложения."}
             </p>
           )}
           <label className="screen-share-confirm">
@@ -303,9 +330,13 @@ export function ScreenShareControls({
               disabled={!hasPreview || publishing}
             />
             <span>
-              {capturesScreen && !excluded
+              {capturesScreen && share.surface === "monitor"
                 ? "Понимаю, что видны все окна выбранного экрана"
-                : "В кадре только материал для аудитории"}
+                : share.surface === "unknown"
+                  ? "Понимаю, что кадр может содержать другие окна"
+                  : nativeSourceKind === "application"
+                    ? "Понимаю, что видны окна всего выбранного приложения"
+                    : "В кадре только материал для аудитории"}
             </span>
           </label>
           <p className="screen-share-network-note">
@@ -317,10 +348,26 @@ export function ScreenShareControls({
               variant="outline"
               disabled={publishing || share.phase === "choosing" || helpersUnknown}
               title={helperStateTitle}
-              onClick={choose}
+              onClick={() => choose("window")}
             >
-              {hasPreview ? "Другой источник" : "Выбрать окно или экран"}
+              {hasPreview
+                ? "Другой источник"
+                : nativeBridge()?.nativeCapture && systemWindowPickerAvailable
+                  ? "Выбрать окно или приложение"
+                  : "Выбрать окно или экран"}
             </Button>
+            {nativeBridge()?.nativeCapture &&
+              nativeBridge()?.captureModes?.protectedDisplay === true &&
+              !displayPermissionDenied && (
+                <Button
+                  variant="outline"
+                  disabled={publishing || share.phase === "choosing" || helpersUnknown}
+                  title={helperStateTitle}
+                  onClick={() => choose("display")}
+                >
+                  Выбрать весь экран
+                </Button>
+              )}
             <Button
               disabled={
                 !confirmed ||

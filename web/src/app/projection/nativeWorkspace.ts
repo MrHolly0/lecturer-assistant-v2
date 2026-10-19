@@ -6,6 +6,7 @@ type NativeBridge = {
   nativeCapture: boolean;
   theme?: "light" | "dark";
   captureExclusion?: { supported: boolean; enabled: boolean; error?: string };
+  captureModes?: { window?: boolean; application?: boolean; protectedDisplay?: boolean };
   postMessage: (message: Record<string, unknown>) => void;
 };
 declare global {
@@ -19,7 +20,13 @@ export function nativeBridge(): NativeBridge | undefined {
 export function nativeCommand(action: string, values: Record<string, unknown> = {}): void {
   nativeBridge()?.postMessage({ type: "LECTURE_REMOTE", action, ...values });
 }
-type NativeSnapshot = ShareSnapshot & { previewFrame?: string; permissionPending?: boolean };
+type NativeSnapshot = ShareSnapshot & {
+  previewFrame?: string;
+  permissionPending?: boolean;
+  permissionDenied?: boolean;
+  sourceKind?: "window" | "application" | "display";
+  captureExcludesRemote?: boolean;
+};
 class NativeCapture {
   private state: NativeSnapshot = {
     phase: "idle",
@@ -34,6 +41,9 @@ class NativeCapture {
   };
   private listeners = new Set<() => void>();
   private bound = false;
+  private awaitingSourceChoice = false;
+  private sourcePickerOpened = false;
+  private pendingChoicePermission = false;
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -53,29 +63,83 @@ class NativeCapture {
   private event = (event: Event) => {
     const detail = (event as CustomEvent<Record<string, unknown>>).detail;
     if (!detail || typeof detail !== "object") return;
-    if (detail.type === "preview")
+    if (detail.type === "preview") {
+      this.awaitingSourceChoice = false;
+      this.sourcePickerOpened = false;
+      this.pendingChoicePermission = false;
       this.update({
         phase: "preview",
         permissionPending: false,
+        permissionDenied: false,
         error: null,
+        ...(detail.sourceKind === "window" ||
+        detail.sourceKind === "application" ||
+        detail.sourceKind === "display"
+          ? {
+              sourceKind: detail.sourceKind,
+              surface: detail.sourceKind === "display" ? "monitor" : "window"
+            }
+          : {}),
+        ...(typeof detail.captureExcludesRemote === "boolean"
+          ? { captureExcludesRemote: detail.captureExcludesRemote }
+          : {}),
         ...(typeof detail.frameUrl === "string" &&
         detail.frameUrl.startsWith("data:image/jpeg;base64,")
           ? { previewFrame: detail.frameUrl }
           : {}),
         ...(typeof detail.sourceName === "string" ? { sourceName: detail.sourceName } : {})
       });
+    }
     if (detail.type === "capture-state") {
       const phase = detail.phase;
-      if (phase === "permission")
-        this.update({ phase: "choosing", permissionPending: true, error: null });
-      if (phase === "idle")
+      if (phase === "permission" || phase === "choosing")
         this.update({
-          phase: "idle",
+          phase: "choosing",
+          permissionPending: phase === "permission",
+          error: null
+        });
+      if (phase === "choosing" || phase === "permission") this.sourcePickerOpened = true;
+      if (phase === "idle" && this.awaitingSourceChoice && !this.sourcePickerOpened) {
+        // The native helper first tears down the previous capture. Keep the newly selected
+        // lesson scope through that internal reset; a later idle after the picker opens is
+        // a real cancellation and clears it.
+        this.awaitingSourceChoice = false;
+        this.update({
+          phase: "choosing",
+          sourceName: "",
+          sourceKind: undefined,
+          captureExcludesRemote: undefined,
           previewFrame: undefined,
           paused: false,
-          permissionPending: false
+          permissionPending: this.pendingChoicePermission,
+          permissionDenied: false,
+          error: null
         });
-      if (phase === "preview") this.update({ phase: "preview", permissionPending: false });
+      } else if (phase === "idle") {
+        this.awaitingSourceChoice = false;
+        this.sourcePickerOpened = false;
+        this.pendingChoicePermission = false;
+        this.update({
+          phase: "idle",
+          sourceName: "",
+          sourceKind: undefined,
+          captureExcludesRemote: undefined,
+          previewFrame: undefined,
+          paused: false,
+          permissionPending: false,
+          permissionDenied: false,
+          error: null,
+          scope: null,
+          localChannelId: null,
+          viewers: 0
+        });
+      }
+      if (phase === "preview") {
+        this.awaitingSourceChoice = false;
+        this.sourcePickerOpened = false;
+        this.pendingChoicePermission = false;
+        this.update({ phase: "preview", permissionPending: false });
+      }
       if (phase === "live" || phase === "paused")
         this.update({
           phase: "publishing",
@@ -84,27 +148,43 @@ class NativeCapture {
           permissionPending: false
         });
     }
-    if (detail.type === "error")
+    if (detail.type === "error") {
+      this.awaitingSourceChoice = false;
+      this.sourcePickerOpened = false;
+      this.pendingChoicePermission = false;
+      const permissionDenied = detail.code === "SCREEN_RECORDING_PERMISSION_REQUIRED";
+      const canChooseWindowWithoutGlobalPermission =
+        nativeBridge()?.platform === "MACOS" &&
+        nativeBridge()?.captureModes?.window === true &&
+        nativeBridge()?.captureModes?.application === true;
       this.update({
         phase: "error",
         permissionPending: false,
+        permissionDenied,
         error:
-          typeof detail.message === "string"
-            ? detail.message
-            : detail.code === "SCREEN_RECORDING_PERMISSION_REQUIRED"
-              ? "Разрешите запись экрана для Lecturer Projector в настройках macOS и выберите источник снова."
+          permissionDenied && canChooseWindowWithoutGlobalPermission
+            ? "macOS не разрешила захват всего экрана. Выберите окно или приложение в системном меню; повторно выдавать разрешение не нужно."
+            : typeof detail.message === "string"
+              ? detail.message
               : "Компонент не смог начать показ. Выберите источник снова."
       });
+    }
   };
-  async choose(scope: NonNullable<ShareSnapshot["scope"]>) {
+  async choose(scope: NonNullable<ShareSnapshot["scope"]>, mode: "window" | "display" = "window") {
+    this.awaitingSourceChoice = true;
+    this.sourcePickerOpened = false;
+    this.pendingChoicePermission = mode === "display";
     this.update({
       phase: "choosing",
       scope,
       error: null,
       previewFrame: undefined,
-      permissionPending: false
+      permissionPending: mode === "display",
+      permissionDenied: false,
+      captureExcludesRemote: undefined,
+      sourceKind: undefined
     });
-    nativeCommand("chooseSource");
+    nativeCommand(mode === "display" ? "chooseDisplay" : "chooseSource");
   }
   async publish() {
     if (this.state.phase !== "preview") return;
@@ -129,13 +209,23 @@ class NativeCapture {
     });
   }
   async stop() {
+    this.awaitingSourceChoice = false;
+    this.sourcePickerOpened = false;
+    this.pendingChoicePermission = false;
     nativeCommand("stopCapture");
     this.update({
       phase: "idle",
+      sourceName: "",
+      sourceKind: undefined,
+      captureExcludesRemote: undefined,
       previewFrame: undefined,
       paused: false,
       error: null,
-      permissionPending: false
+      permissionPending: false,
+      permissionDenied: false,
+      scope: null,
+      localChannelId: null,
+      viewers: 0
     });
   }
   setPaused(paused: boolean) {

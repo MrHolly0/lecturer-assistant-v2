@@ -16,6 +16,11 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
     static var userApplication: URL { files.homeDirectoryForCurrentUser.appendingPathComponent("Applications/" + name) }
     static var data: URL { files.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("LecturerProjector", isDirectory: true) }
     static var root: URL { data.appendingPathComponent("install", isDirectory: true) }
+    static func installationTarget(candidates: [URL]? = nil) throws -> URL {
+        let existing = (candidates ?? [userApplication, URL(fileURLWithPath: "/Applications/" + name)]).filter { files.fileExists(atPath: $0.path) }
+        guard existing.count <= 1 else { throw BootstrapFailure.code("MULTIPLE_MATCHING_INSTALLATIONS") }
+        return existing.first ?? userApplication
+    }
     static func shouldActivateSeed(installedVersion: String?, seedVersion: String) -> Bool {
         installedVersion == nil || installedVersion!.compare(seedVersion, options: .numeric) == .orderedAscending
     }
@@ -91,7 +96,10 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
         guard values.isDirectory == true, values.isSymbolicLink != true else { throw BootstrapFailure.code("UNSAFE_INSTALL_DIRECTORY") }
     }
     static func checkParents(_ url: URL) throws {
-        var item = url.standardizedFileURL
+        // Foundation's standardizedFileURL folds /private/tmp into the /tmp
+        // symlink. Validate the supplied absolute path, without creating aliases.
+        guard url.isFileURL, url.path.hasPrefix("/"), !url.pathComponents.contains(".."), !url.pathComponents.contains(".") else { throw BootstrapFailure.code("UNSAFE_INSTALL_DIRECTORY") }
+        var item = URL(fileURLWithPath: url.path)
         while item.path != "/" {
             if files.fileExists(atPath: item.path) { try requirePlainDirectory(item) }
             item.deleteLastPathComponent()
@@ -269,9 +277,11 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
         catch { Self.showError("INSTALLATION_FAILED"); NSApp.terminate(nil) }
     }
     private func install(from bundle: URL) throws {
-        let target = Installation.userApplication
+        let target = try Installation.installationTarget()
         let exists = Installation.files.fileExists(atPath: target.path)
-        let installedVersion = Bundle(url: target)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        let bootstrapVersion = Bundle(url: target)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        let hostVersion = StableBootstrapUpgrade.currentHostVersion(root: Installation.root) ?? "0.0.0"
+        let installedVersion = bootstrapVersion.compare(hostVersion, options: .numeric) == .orderedAscending ? hostVersion : bootstrapVersion
         let candidateVersion = Bundle(url: bundle)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
         let upgrade = exists && installedVersion.compare(candidateVersion, options: .numeric) == .orderedAscending
         let alert = NSAlert(); alert.messageText = upgrade ? "Обновить помощник до " + candidateVersion + "?" : (exists ? "Помощник уже установлен" : "Установить помощник проектора?")
@@ -283,24 +293,16 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
             try Installation.requirePlainDirectory(target)
             guard Bundle(url: target)?.bundleIdentifier == Installation.identifier else { throw BootstrapFailure.code("INSTALLATION_NAME_IN_USE") }
         }
-        if !exists || upgrade {
+        if exists && upgrade {
+            try StableBootstrapUpgrade.installHost(incoming: bundle, preserving: target, installRoot: Installation.root)
+        } else if !exists {
             let parent = target.deletingLastPathComponent()
             try Installation.checkParents(parent)
             try Installation.files.createDirectory(at: parent, withIntermediateDirectories: true)
             let temporary = parent.appendingPathComponent(".LecturerProjector-" + UUID().uuidString + ".app")
             defer { try? Installation.files.removeItem(at: temporary) }
-            if upgrade {
-                let resources = bundle.appendingPathComponent("Contents/Resources")
-                _ = try Installation.run(bundle.appendingPathComponent("Contents/MacOS/launcher/Projector.Launcher"), ["bootstrap-check", Installation.root.path, resources.appendingPathComponent("bootstrap.json").path])
-            }
             try Installation.files.copyItem(at: bundle, to: temporary)
-            if exists {
-                let backup = parent.appendingPathComponent(".LecturerProjector-previous-" + UUID().uuidString + ".app")
-                try Installation.files.moveItem(at: target, to: backup)
-                do { try Installation.files.moveItem(at: temporary, to: target) }
-                catch { try? Installation.files.moveItem(at: backup, to: target); throw error }
-                try? Installation.files.removeItem(at: backup)
-            } else { try Installation.files.moveItem(at: temporary, to: target) }
+            try Installation.files.moveItem(at: temporary, to: target)
         }
         Task { @MainActor in
             do {
@@ -315,6 +317,7 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
         let explanation: String
         switch code {
         case "PAIR_HANDLER_REGISTRATION_FAILED", "PAIR_HANDLER_SELECTION_DENIED", "PAIR_HANDLER_SELECTION_UNVERIFIED", "PAIR_HANDLER_UNSAFE_TARGET", "PAIR_HANDLER_UNDECLARED_SCHEME": explanation = "macOS не связала ссылки сайта с установленным помощником. Откройте Lecturer Projector из ваших «Приложений» и повторите. Подключение вручную по 12-символьному коду доступно в настройке проектора на сайте. Другие приложения и настройки экранов не изменены."
+        case "BOOTSTRAP_COMPATIBILITY_REQUIRES_EXPLICIT_UPGRADE", "BOOTSTRAP_SIGNER_REJECTED", "BOOTSTRAP_IDENTITY_REJECTED": explanation = "Установленный запускающий компонент несовместим с этим пакетом или имеет другую подпись. Он не заменён, чтобы сохранить разрешения macOS. Сохраните код ошибки и обратитесь в поддержку для отдельного обновления компонента. Сайт продолжает работать."
         case "MULTIPLE_MATCHING_INSTALLATIONS": explanation = "Найдены две одинаковые установки: в ваших «Приложениях» и общих /Applications. Оставьте одну установку и откройте её снова. Помощник не выбирает копию за вас."
         case "UPDATE_RECOVERY_REQUIRED": explanation = "Предыдущее обновление не завершилось. Не удаляйте сохранённые файлы вручную: передайте код в поддержку. Браузерный мастер доступен."
         case "HELPER_RUNNING", "INSTALLATION_BUSY", "ACTIVE_SHOW", "SHOW_ACTIVE", "AGENT_RUNNING", "INSTALL_INSTANCE_ACTIVE": explanation = "Помощник уже запущен: найдите значок LA в строке меню. Перед переустановкой завершите показ и выйдите из помощника."
@@ -330,7 +333,10 @@ struct PairingRequest: Sendable { let origin: String; let code: String }
     }
 }
 
-if CommandLine.arguments.contains("--self-test") {
+if let index = CommandLine.arguments.firstIndex(of: "--stable-bootstrap-self-test"), CommandLine.arguments.count > index + 2 {
+    let previous = CommandLine.arguments.count > index + 3 ? URL(fileURLWithPath: CommandLine.arguments[index + 3]) : nil
+    try StableBootstrapSelfTest.run(reference: URL(fileURLWithPath: CommandLine.arguments[index + 1]), previous: previous, report: URL(fileURLWithPath: CommandLine.arguments[index + 2]))
+} else if CommandLine.arguments.contains("--self-test") {
     try Installation.selfTest()
 } else if let index = CommandLine.arguments.firstIndex(of: "--installer-self-test"), CommandLine.arguments.count > index + 3 {
     InstallerPayload.selfTest(installer: URL(fileURLWithPath: CommandLine.arguments[index + 1]), report: URL(fileURLWithPath: CommandLine.arguments[index + 2]), referenceCanonical: URL(fileURLWithPath: CommandLine.arguments[index + 3]))

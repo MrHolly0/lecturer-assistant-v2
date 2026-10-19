@@ -35,6 +35,7 @@ import Darwin
     private var pairingError: String?
     private var savedConnectionAccount: String?
     private var savedCredentialError: String?
+    private var terminationSignal: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("LecturerProjector", isDirectory: true)
@@ -42,6 +43,9 @@ import Darwin
         catch { NSApp.terminate(nil); return }
         instanceLock = open(directory.appendingPathComponent("instance.lock").path, O_CREAT | O_RDWR, 0o600)
         guard instanceLock >= 0, flock(instanceLock, LOCK_EX | LOCK_NB) == 0 else { NSApp.terminate(nil); return }
+        signal(SIGTERM, SIG_IGN)
+        let signalSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        signalSource.setEventHandler { NSApp.terminate(nil) }; signalSource.resume(); terminationSignal = signalSource
         display = DisplayController(directory: directory)
         capture.event = { [weak self] event in self?.remote.emit(event) }
         capture.presentationWindow = { [weak self] in self?.remote.presentationWindow }
@@ -89,12 +93,13 @@ import Darwin
         guard let action = value["action"] as? String else { return }
         switch action {
         case "chooseSource": await capture.chooseSource()
+        case "chooseDisplay": await capture.chooseDisplay()
         case "publish": await capture.startPublishing()
         case "stopCapture": await capture.stop()
         case "stopProjection": stop()
         case "pause": await capture.setPaused(value["paused"] as? Bool ?? true)
         case "focusProjection": projection.focus()
-        case "ready", "capabilities": remote.emit(["type": "capabilities", "platform": "MACOS", "nativeCapture": true, "captureExclusion": ["supported": true, "enabled": true]]); capture.status()
+        case "ready", "capabilities": remote.emit(NativeCapture.capabilities); capture.status()
         case "screenRecordingSettings": if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") { NSWorkspace.shared.open(url) }
         default: break
         }
@@ -302,7 +307,7 @@ import Darwin
         self.origin = origin
         lastRemoteAction = nil
         generation = UUID(); let currentGeneration = generation
-        process?.terminate(); projection.neutralize(); remote.close(); Task { await capture.stop() }; pending.removeAll()
+        CoordinatorShutdown.stop(process, input: input); process = nil; input = nil; projection.neutralize(); remote.close(); Task { await capture.stop() }; pending.removeAll()
         let coordinator = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/coordinator/Projector.Agent")
         guard FileManager.default.isExecutableFile(atPath: coordinator.path) else { status = "Компонент сборки отсутствует — используйте сайт"; rebuildMenu(); pairingFailedIfNeeded(); return }
         let process = Process(); let input = Pipe(); let output = Pipe()
@@ -520,7 +525,7 @@ import Darwin
         startupStatus = (try? bootstrapCommand("--login-status")) ?? "UNAVAILABLE"; rebuildMenu()
     }
     @objc private func unpair() {
-        stop(); generation = UUID(); process?.terminate()
+        stop(); generation = UUID(); CoordinatorShutdown.stop(process, input: input); process = nil; input = nil
         do {
             if let origin { try DeviceCredentialStore(directory: directory).disconnect(account: origin.absoluteString) }
         } catch { status = "Не удалось удалить локальный ключ — отзовите устройство на сайте"; rebuildMenu(); return }
@@ -565,7 +570,7 @@ import Darwin
             let root = URL(fileURLWithPath: rootPath).standardizedFileURL
             guard (try root.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { throw HostError.code("UNSAFE_INSTALL_DIRECTORY") }
             let bundle = executable.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            stop(); generation = UUID(); process?.terminate(); process?.waitUntilExit(); process = nil
+            stop(); generation = UUID(); CoordinatorShutdown.stop(process, input: input); process = nil; input = nil
             if instanceLock >= 0 { flock(instanceLock, LOCK_UN) }
             do {
                 let check = Process(); let output = Pipe()
@@ -595,10 +600,12 @@ import Darwin
         }
     }
     @objc private func quit() { stop(); NSApp.terminate(nil) }
-    func applicationWillTerminate(_ notification: Notification) { projection.neutralize(); remote.close(); identification.dismiss(); process?.terminate(); if instanceLock >= 0 { close(instanceLock) } }
+    func applicationWillTerminate(_ notification: Notification) { projection.neutralize(); remote.close(); identification.dismiss(); generation = UUID(); CoordinatorShutdown.stop(process, input: input); process = nil; input = nil; terminationSignal?.cancel(); terminationSignal = nil; if instanceLock >= 0 { close(instanceLock) } }
 }
 
-if let index = CommandLine.arguments.firstIndex(of: "--credential-storage-self-test"), CommandLine.arguments.count > index + 1 {
+if let index = CommandLine.arguments.firstIndex(of: "--capture-modes-self-test"), CommandLine.arguments.count > index + 1 {
+    CaptureModesSelfTest.run(report: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if let index = CommandLine.arguments.firstIndex(of: "--credential-storage-self-test"), CommandLine.arguments.count > index + 1 {
     try CredentialStorageSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if let index = CommandLine.arguments.firstIndex(of: "--keychain-recovery-self-test"), CommandLine.arguments.count > index + 1 {
     try KeychainRecoverySelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))

@@ -149,6 +149,9 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
     private var pollTimer: Timer?
     private var choosingSource = false
     private let selectionDialog = CaptureDialog()
+    private let systemPicker = SystemSourcePicker()
+    private let displayAuthorization = DisplayCaptureAuthorization()
+    private var sourceKind = "window"
     private let imageContext = CIContext(options: [.cacheIntermediates: false])
     private let sampleQueue = DispatchQueue(label: "ru.university.lecturer.capture", qos: .userInitiated)
     var isActive: Bool { choosingSource || stream != nil || publisher != nil }
@@ -157,80 +160,109 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
         if let previous = currentScope, previous.sessionID != scope.sessionID || previous.courseID != scope.courseID || previous.origin != scope.origin || previous.token != scope.token { Task { await stop() } }
         currentScope = scope
     }
-    func chooseSource() async {
+    static var capabilities: [String: Any] {
+        ["type": "capabilities", "platform": "MACOS", "nativeCapture": true,
+         "captureExclusion": ["supported": true, "enabled": true],
+         "captureModes": ["window": true, "application": true, "protectedDisplay": true],
+         "displayPermissionRequired": !CGPreflightScreenCaptureAccess()]
+    }
+    func chooseSource(selection: (() async throws -> SCContentFilter?)? = nil) async {
         guard !choosingSource else { return }
-        await stop()
+        await stop(emitState: false)
+        let selectionID = generation; choosingSource = true
+        defer { if generation == selectionID { choosingSource = false } }
+        event?(["type": "capture-state", "phase": "choosing", "permissionPending": false])
+        do {
+            let filter: SCContentFilter?
+            if let selection { filter = try await selection() } else { filter = try await systemPicker.select() }
+            guard generation == selectionID else { return }
+            guard let filter else { systemPicker.deactivate(); status(); return }
+            guard filter.style == .window || filter.style == .application else { throw HostError.code("CAPTURE_UNPROTECTED_DISPLAY_REJECTED") }
+            let ownPID = ProcessInfo.processInfo.processIdentifier
+            var name = filter.style == .application ? "Приложение" : "Окно"
+            if #available(macOS 15.2, *) {
+                guard !filter.includedApplications.contains(where: { $0.processID == ownPID || ["ru.university.lecturer-projector.host", "ru.university.lecturer-projector"].contains($0.bundleIdentifier) }),
+                      !filter.includedWindows.contains(where: { $0.owningApplication?.processID == ownPID }) else { throw HostError.code("CAPTURE_PRIVATE_SOURCE_REJECTED") }
+                if filter.style == .window { name = filter.includedWindows.first?.title ?? name }
+                else { name = filter.includedApplications.first?.applicationName ?? name }
+            }
+            let scale = Double(filter.pointPixelScale), rect = filter.contentRect
+            guard rect.width.isFinite, rect.height.isFinite, scale.isFinite, rect.width > 0, rect.height > 0, scale > 0,
+                  Double(rect.width) * scale <= 100_000, Double(rect.height) * scale <= 100_000 else { throw HostError.code("CAPTURE_SOURCE_GONE") }
+            sourceKind = filter.style == .application ? "application" : "window"
+            try await startPreview(filter: filter, width: Int(Double(rect.width) * scale), height: Int(Double(rect.height) * scale), name: String(name.prefix(120)), selectionID: selectionID)
+        } catch {
+            guard generation == selectionID else { return }
+            await stop(); emitError((error as? HostError).flatMap { if case .code(let code) = $0 { return code }; return nil } ?? "CAPTURE_SOURCE_FAILED")
+        }
+    }
+    func chooseDisplay() async {
+        guard !choosingSource else { return }
+        await stop(emitState: false)
         let selection = generation; choosingSource = true
         defer { if generation == selection { choosingSource = false } }
         guard await authorizeScreenCapture(selection: selection), generation == selection else { return }
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
             guard generation == selection else { return }
-            let ownPID = ProcessInfo.processInfo.processIdentifier
-            let ownApps = content.applications.filter { $0.processID == ownPID }
-            let choices: [(String, SCDisplay?, SCWindow?)] = content.displays.map { display in
-                let matched = NSScreen.screens.firstIndex { screen in
-                    (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display.displayID
-                }
-                let label: String
-                if let matched { label = "Экран \(matched + 1) · " + NSScreen.screens[matched].localizedName }
-                else { label = "Дисплей без номера · \(display.width)×\(display.height)" }
-                return (String(label.prefix(120)), display, nil)
+            let ownApps = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
+            guard !ownApps.isEmpty else { throw HostError.code("CAPTURE_PRIVATE_WINDOW_EXCLUSION_UNAVAILABLE") }
+            let choices = content.displays.map { display -> (String, SCDisplay) in
+                let matched = NSScreen.screens.firstIndex { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display.displayID }
+                let label = matched.map { "Экран \($0 + 1) · " + NSScreen.screens[$0].localizedName } ?? "Дисплей без номера · \(display.width)×\(display.height)"
+                return (String(label.prefix(120)), display)
             }
-                + content.windows.filter { $0.owningApplication?.processID != ownPID && $0.windowLayer == 0 && $0.frame.width >= 100 && $0.frame.height >= 100 }.prefix(100).map { (String((($0.owningApplication?.applicationName ?? "Окно") + " · " + ($0.title ?? "")).prefix(120)), nil, $0) }
             guard !choices.isEmpty else { throw HostError.code("CAPTURE_NO_SOURCES") }
-            let alert = NSAlert(); alert.messageText = "Что показать аудитории?"
-            alert.informativeText = "Выберите учебное окно или экран. Нативный пульт и окно проектора исключаются из захвата. Сначала появится предпросмотр; показ студентам начнётся после подтверждения."
+            let alert = NSAlert(); alert.messageText = "Какой экран показать?"
+            alert.informativeText = "Пульт и окно проектора будут исключены из показа. Остальные окна выбранного экрана будут видны. Сначала проверьте предпросмотр."
             let select = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 460, height: 32)); choices.forEach { select.addItem(withTitle: $0.0) }; alert.accessoryView = select
             alert.addButton(withTitle: "Проверить кадр"); alert.addButton(withTitle: "Отмена")
             guard await presentSelectionAlert(alert) == .alertFirstButtonReturn, generation == selection else { status(); return }
             let choice = choices[select.indexOfSelectedItem]
-            let filter: SCContentFilter
-            let width: Int, height: Int
-            if let display = choice.1 {
-                // Exclude the entire helper application, including subsequently opened remote dialogs.
-                guard !ownApps.isEmpty else { throw HostError.code("CAPTURE_PRIVATE_WINDOW_EXCLUSION_UNAVAILABLE") }
-                filter = SCContentFilter(display: display, excludingApplications: ownApps, exceptingWindows: [])
-                width = display.width; height = display.height
-            } else if let window = choice.2 {
-                guard window.owningApplication?.processID != ownPID else { throw HostError.code("CAPTURE_PRIVATE_SOURCE_REJECTED") }
-                filter = SCContentFilter(desktopIndependentWindow: window)
-                width = Int(window.frame.width * CGFloat(filter.pointPixelScale)); height = Int(window.frame.height * CGFloat(filter.pointPixelScale))
-            } else { throw HostError.code("CAPTURE_SOURCE_GONE") }
-            let scale = min(1, min(1920.0 / Double(width), 1080.0 / Double(height)))
-            dimensions = (max(2, Int(Double(width) * scale) / 2 * 2), max(2, Int(Double(height) * scale) / 2 * 2))
-            let config = SCStreamConfiguration(); config.width = dimensions.width; config.height = dimensions.height
-            config.minimumFrameInterval = CMTime(value: 1, timescale: 15); config.queueDepth = 4
-            config.pixelFormat = kCVPixelFormatType_32BGRA; config.showsCursor = true; config.capturesAudio = false
-            let stream = SCStream(filter: filter, configuration: config, delegate: self)
-            try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: sampleQueue)
-            self.stream = stream; sourceName = choice.0
-            try await stream.startCapture()
-            guard generation == selection else { try? await stream.stopCapture(); return }
-            event?(["type": "capture-state", "phase": "preview", "sourceName": sourceName, "captureExcludesRemote": true, "previewOnly": true])
+            let filter = try Self.protectedDisplayFilter(display: choice.1, applications: ownApps)
+            sourceKind = "display"
+            try await startPreview(filter: filter, width: choice.1.width, height: choice.1.height, name: choice.0, selectionID: selection)
         } catch {
             guard generation == selection else { return }
-            await stop()
-            let nativeError = error as NSError
-            emitError(nativeError.domain == SCStreamErrorDomain && nativeError.code == -3801 ? "SCREEN_RECORDING_PERMISSION_REQUIRED" : "CAPTURE_SOURCE_FAILED")
+            await stop(); emitError((error as? HostError).flatMap { if case .code(let code) = $0 { return code }; return nil } ?? "CAPTURE_SOURCE_FAILED")
         }
+    }
+    private func startPreview(filter: SCContentFilter, width: Int, height: Int, name: String, selectionID: UUID) async throws {
+        guard width > 0, height > 0 else { throw HostError.code("CAPTURE_SOURCE_GONE") }
+        let scale = min(1, min(1920.0 / Double(width), 1080.0 / Double(height)))
+        dimensions = (max(2, Int(Double(width) * scale) / 2 * 2), max(2, Int(Double(height) * scale) / 2 * 2))
+        let config = SCStreamConfiguration(); config.width = dimensions.width; config.height = dimensions.height
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 15); config.queueDepth = 4
+        config.pixelFormat = kCVPixelFormatType_32BGRA; config.showsCursor = true; config.capturesAudio = false
+        let active = SCStream(filter: filter, configuration: config, delegate: self)
+        try active.addStreamOutput(self, type: .screen, sampleHandlerQueue: sampleQueue)
+        self.stream = active; sourceName = name
+        if sourceKind != "display" { SCContentSharingPicker.shared.setConfiguration(SystemSourcePicker.configuration(windowIDs: NSApp.windows.map(\.windowNumber)), for: active) }
+        try await active.startCapture()
+        guard generation == selectionID else { try? await active.stopCapture(); return }
+        event?(["type": "capture-state", "phase": "preview", "sourceName": sourceName, "sourceKind": sourceKind,
+                "captureExcludesRemote": true, "permissionPending": false, "previewOnly": true])
+    }
+    func beginOwnPreviewFixture(window: SCWindow) async throws {
+        guard window.owningApplication?.processID == ProcessInfo.processInfo.processIdentifier else { throw HostError.code("CAPTURE_FIXTURE_NOT_OWN_WINDOW") }
+        await stop(); sourceKind = "window"
+        let filter = SCContentFilter(desktopIndependentWindow: window), rect = filter.contentRect
+        try await startPreview(filter: filter, width: Int(rect.width * CGFloat(filter.pointPixelScale)), height: Int(rect.height * CGFloat(filter.pointPixelScale)), name: "Own fixture", selectionID: generation)
+    }
+    static func protectedDisplayFilter(display: SCDisplay, applications: [SCRunningApplication]) throws -> SCContentFilter {
+        let own = applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
+        guard !own.isEmpty else { throw HostError.code("CAPTURE_PRIVATE_WINDOW_EXCLUSION_UNAVAILABLE") }
+        return SCContentFilter(display: display, excludingApplications: own, exceptingWindows: [])
     }
     private func authorizeScreenCapture(selection: UUID) async -> Bool {
         event?(["type": "capture-state", "phase": "permission", "permissionPending": true])
-        let granted = await CaptureAuthorization.request(preflight: { CGPreflightScreenCaptureAccess() }, activate: { NSApp.activate(ignoringOtherApps: true) }, prompt: {
+        let granted = await displayAuthorization.request(preflight: { CGPreflightScreenCaptureAccess() }, activate: { NSApp.activate(ignoringOtherApps: true) }, prompt: {
             await CaptureAuthorization.offMainPrompt { CGRequestScreenCaptureAccess() }
         })
         if granted { return true }
         guard generation == selection else { return false }
-        let alert = NSAlert(); alert.messageText = "Разрешить запись экрана"
-        alert.informativeText = "macOS пока не разрешила помощнику показывать учебные окна. Откройте настройки и включите Lecturer Projector в разделе «Запись экрана». После разрешения выбор окна продолжится автоматически. Если macOS предложит закрыть и открыть помощник, согласитесь, затем выберите источник снова."
-        alert.addButton(withTitle: "Открыть настройки"); alert.addButton(withTitle: "Отмена")
-        guard await presentSelectionAlert(alert) == .alertFirstButtonReturn, generation == selection else { status(); return false }
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"), NSWorkspace.shared.open(url) else { emitError("SCREEN_RECORDING_PERMISSION_REQUIRED"); return false }
-        let allowed = await CaptureAuthorization.waitForGrant(attempts: 240, preflight: { CGPreflightScreenCaptureAccess() }, cancelled: { self.generation != selection }, pause: { try await Task.sleep(for: .milliseconds(500)) })
-        guard generation == selection else { return false }
-        if !allowed { emitError("SCREEN_RECORDING_PERMISSION_REQUIRED") }
-        return allowed
+        emitError("SCREEN_RECORDING_PERMISSION_REQUIRED")
+        return false
     }
     private func presentSelectionAlert(_ alert: NSAlert) async -> NSApplication.ModalResponse {
         guard let parent = presentationWindow?() else { emitError("CAPTURE_REMOTE_REQUIRED"); return .cancel }
@@ -330,26 +362,28 @@ private struct CapturedSample: @unchecked Sendable { let value: CMSampleBuffer }
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
         Task { @MainActor [weak self] in guard let self, self.stream === stream else { return }; await self.stop(); self.emitError("CAPTURE_SOURCE_STOPPED") }
     }
-    func stop() async {
+    func stop(emitState: Bool = true) async {
         generation = UUID(); choosingSource = false; pollTimer?.invalidate(); pollTimer = nil
         selectionDialog.cancel()
         let active = stream; stream = nil; latestBuffer = nil
+        systemPicker.deactivate()
         frameTimer?.invalidate(); frameTimer = nil; writerInput?.markAsFinished(); writer?.cancelWriting(); writerInput = nil; adaptor = nil; writer = nil; firstPTS = nil
         let previous = publisher; publisher = nil; paused = false
-        event?(["type": "capture-state", "phase": "idle"])
+        if emitState { event?(["type": "capture-state", "phase": "idle"]) }
         try? await active?.stopCapture(); await previous?.stop()
     }
     func status() { event?(["type": "capture-state", "phase": publisher == nil ? (stream == nil ? "idle" : "preview") : (paused ? "paused" : "live"), "sourceName": sourceName, "captureExcludesRemote": true]) }
     private func emitError(_ code: String) {
         let message: String
         switch code {
-        case "SCREEN_RECORDING_PERMISSION_REQUIRED": message = "Разрешите Lecturer Projector запись экрана: Системные настройки → Конфиденциальность и безопасность → Запись экрана. После первого разрешения macOS может попросить перезапустить помощник."
+        case "SCREEN_RECORDING_PERMISSION_REQUIRED": message = "Для всего экрана требуется отдельное разрешение macOS. Можно продолжить через «Окно или приложение» без изменения настроек. Если доступ уже выдан, сохраните диагностику — повторно переключать его не нужно."
+        case "CAPTURE_PRIVATE_WINDOW_EXCLUSION_UNAVAILABLE", "CAPTURE_PRIVATE_SOURCE_REJECTED", "CAPTURE_UNPROTECTED_DISPLAY_REJECTED": message = "Этот источник нельзя показать, сохранив пульт приватным. Выберите отдельное учебное окно или приложение. Пульт не будет опубликован."
         case "CAPTURE_SELECT_SOURCE_FIRST": message = "Сначала выберите окно или экран и проверьте предпросмотр."
         case "CAPTURE_CONNECTION_TOO_SLOW", "CAPTURE_UPLOAD_FAILED", "CAPTURE_LEASE_LOST": message = "Демонстрация остановлена: нет устойчивой связи с сервером. Проверьте подключение и запустите показ заново."
         case "CAPTURE_SOURCE_STOPPED", "CAPTURE_SOURCE_FAILED": message = "Источник больше недоступен или macOS не разрешила запись. Выберите окно или экран заново."
         case "CAPTURE_PAUSE_FAILED": message = "Не удалось изменить паузу. Проверьте состояние занятия на сайте."
         default: message = "Не удалось продолжить демонстрацию. Выберите источник заново. Код: " + code
         }
-        event?(["type": "error", "code": code, "message": message])
+        event?(["type": "error", "code": code, "message": message, "permissionPending": false])
     }
 }

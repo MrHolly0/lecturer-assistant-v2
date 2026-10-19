@@ -1,5 +1,15 @@
 import Foundation
 
+@MainActor final class DisplayCaptureAuthorization {
+    private var requested = false
+    func request(preflight: () -> Bool, activate: () -> Void, prompt: () async -> Bool) async -> Bool {
+        if preflight() { return true }
+        guard !requested else { return false }
+        requested = true
+        return await CaptureAuthorization.request(preflight: preflight, activate: activate, prompt: prompt)
+    }
+}
+
 /// Injectable permission checks keep isolated tests away from the user's TCC database.
 @MainActor enum CaptureAuthorization {
     static func request(preflight: () -> Bool, activate: () -> Void, prompt: () async -> Bool) async -> Bool {

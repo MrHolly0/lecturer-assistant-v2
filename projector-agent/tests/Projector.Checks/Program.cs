@@ -367,6 +367,7 @@ passed += BootstrapChecks.Run();
 passed += AppearanceChecks.Run();
 passed += InstallationIdentityChecks.Run();
 passed += ProcessStartIdentityChecks.Run();
+passed += NativeHostLifetimeChecks.Run();
 Check("pairing identity fields remain optional for old helpers and cross native bootstrap wire", () => {
     var old = JsonSerializer.Deserialize<PairRequest>("{\"pairingCode\":\"ABCDEFGHJKLM\",\"name\":\"Computer\",\"platform\":\"MACOS_ARM64\",\"version\":\"0.2.4\",\"osVersion\":\"14.0\",\"protocolVersion\":1}", Wire.Json)!;
     Equal<Guid?>(null, old.InstallationId); Equal<string?>(null, old.PreviousDeviceToken);
