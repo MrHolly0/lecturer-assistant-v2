@@ -728,8 +728,11 @@ export function ProjectorHelperSettings({
               ) : (
                 <>
                   <p className="projector-helper-note">
-                    Версия для испытаний. Установите пакет для этого компьютера и запустите
-                    помощник. Системный запрос на запуск нужно подтвердить самостоятельно.
+                    {/mac/i.test(navigator.platform)
+                      ? "Скачайте и откройте DMG. Внутри образа запустите Install Lecturer Projector и нажмите «Установить» или «Обновить». Затем подключите компьютер кнопкой ниже."
+                      : "Скачайте установщик и запустите его. Дождитесь завершения установки, затем подключите компьютер кнопкой ниже."}{" "}
+                    Версия для испытаний. Системный запрос на запуск нужно подтвердить
+                    самостоятельно.
                   </p>
                   <div className="projector-helper-actions projector-installer-options">
                     {installers
@@ -749,7 +752,7 @@ export function ProjectorHelperSettings({
                         >
                           <a href={installer.url} rel="noreferrer">
                             <Download size={18} aria-hidden="true" />
-                            Установить · {platformLabels[installer.platform]} · ОС от{" "}
+                            Скачать · {platformLabels[installer.platform]} · ОС от{" "}
                             {installer.minimumOsVersion}
                           </a>
                         </Button>
