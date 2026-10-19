@@ -517,6 +517,8 @@ if CommandLine.arguments.contains("--journal-self-test") {
     RemoteSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if let index = CommandLine.arguments.firstIndex(of: "--connection-self-test"), CommandLine.arguments.count > index + 1 {
     ConnectionSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+} else if let index = CommandLine.arguments.firstIndex(of: "--placement-self-test"), CommandLine.arguments.count > index + 1 {
+    PlacementSelfTest.run(reportURL: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
 } else if CommandLine.arguments.contains("--preflight") {
     let data = try JSONSerialization.data(withJSONObject: ["platform": "macOS", "mutation": false, "screens": DisplayController.screens()], options: [.sortedKeys])
     print(String(decoding: data, as: UTF8.self))

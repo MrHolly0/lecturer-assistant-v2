@@ -52,11 +52,7 @@ import WebKit
         return screen
     }
     private func createWindow(_ screen: NSScreen) -> NSWindow {
-        let window = NSWindow(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false, screen: screen)
-        window.backgroundColor = .black; window.level = .screenSaver
-        window.collectionBehavior = [.canJoinAllSpaces, .stationary]
-        window.isReleasedWhenClosed = false
-        return window
+        DisplayWindowPlacement.projection(frame: screen.frame, screen: screen)
     }
     static func allowed(_ candidate: URL, origin: URL) -> Bool {
         guard candidate.scheme == "https", candidate.scheme == origin.scheme, candidate.host == origin.host,

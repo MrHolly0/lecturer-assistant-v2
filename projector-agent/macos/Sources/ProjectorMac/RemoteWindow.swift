@@ -162,14 +162,8 @@ import WebKit
     func show() {
         dismiss()
         for (index, screen) in NSScreen.screens.prefix(16).enumerated() {
-            let width: CGFloat = 260, height: CGFloat = 200
-            let panel = NSPanel(contentRect: NSRect(x: screen.frame.midX - width / 2, y: screen.frame.midY - height / 2, width: width, height: height), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false, screen: screen)
-            panel.isOpaque = false; panel.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.96)
-            panel.level = .screenSaver; panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]; panel.ignoresMouseEvents = true; panel.isReleasedWhenClosed = false
-            let label = NSTextField(labelWithString: "\(index + 1)\n" + screen.localizedName)
-            label.font = .systemFont(ofSize: 44, weight: .bold); label.alignment = .center
-            label.frame = NSRect(x: 16, y: 20, width: width - 32, height: height - 40)
-            panel.contentView?.addSubview(label); panel.orderFrontRegardless(); overlays.append(panel)
+            let panel = DisplayWindowPlacement.identification(frame: screen.frame, screen: screen, number: index + 1, name: screen.localizedName)
+            panel.orderFrontRegardless(); overlays.append(panel)
         }
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: false) { [weak self] _ in Task { @MainActor in self?.dismiss() } }
     }
