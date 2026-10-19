@@ -282,7 +282,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if ((maxAuthChoice === "session" && !startLinkCode) || maxAuthChoice === "password") {
         getCurrentUser()
           .then((currentUser) => {
-            if (active) setUserState(currentUser);
+            if (!active) return;
+            setUserState(currentUser);
+            // Existing sessions also need a hint before MAX recreates the WebView.
+            writeMaxResume(
+              initData,
+              String(currentUser.id),
+              maxAuthChoice === "password" ? "password" : "max"
+            );
           })
           .catch((error: unknown) => {
             if (!active) return;
