@@ -85,14 +85,27 @@ jobs:
         timeout-minutes: 8
         shell: pwsh
         run: |
+          function Invoke-WorkspaceProcess([string]$Executable, [string[]]$Arguments, [int]$TimeoutSeconds) {
+            $created = Start-Process -FilePath $Executable -ArgumentList $Arguments -PassThru
+            Write-Host "Started $([IO.Path]::GetFileName($Executable)) PID $($created.Id), timeout $TimeoutSeconds seconds"
+            try {
+              if (-not $created.WaitForExit($TimeoutSeconds * 1000)) {
+                $diagnostic = Join-Path $env:PROJECTOR_INSTALL_SMOKE_ROOT ("workspace-process-timeout-$($created.Id).json")
+                [ordered]@{ executable = $Executable; processId = $created.Id; timeoutSeconds = $TimeoutSeconds; processTerminated = $false } | ConvertTo-Json | Set-Content -LiteralPath $diagnostic -Encoding utf8NoBOM
+                throw "Workspace process timed out (PID $($created.Id)); see $diagnostic. No process was terminated."
+              }
+              return $created.ExitCode
+            }
+            finally { $created.Dispose() }
+          }
           $fixtureRoot = Join-Path $env:RUNNER_TEMP ('projector-workspace-' + [Guid]::NewGuid().ToString('N'))
           Expand-Archive -LiteralPath 'projector-agent/packages/${{ matrix.runtime }}/lecturer-projector-${{ matrix.runtime }}-0.2.0-update-unsigned.zip' -DestinationPath $fixtureRoot
           $helper = Join-Path $fixtureRoot 'app/Projector.Windows.exe'
           if (-not (Test-Path -LiteralPath $helper)) { throw 'Native helper executable missing from update package' }
           if (-not $env:PROJECTOR_INSTALL_SMOKE_ROOT) { throw 'Installer smoke diagnostics directory missing' }
           $preflight = Join-Path $env:PROJECTOR_INSTALL_SMOKE_ROOT 'workspace-runtime-before.json'
-          $probe = Start-Process -FilePath $helper -ArgumentList @('--preflight', "`"$preflight`"") -Wait -PassThru
-          if ($probe.ExitCode -ne 0) { throw 'Native runtime preflight failed' }
+          $probe = Invoke-WorkspaceProcess $helper @('--preflight', "`"$preflight`"") 30
+          if ($probe -ne 0) { throw 'Native runtime preflight failed' }
           $runtime = (Get-Content -LiteralPath $preflight -Raw | ConvertFrom-Json).webView2
           $runtimeVersion = $null
           if ($runtime.status -ne 'AVAILABLE' -or -not [Version]::TryParse(($runtime.version -split ' ')[0], [ref]$runtimeVersion) -or $runtimeVersion.Major -lt 132) {
@@ -100,21 +113,21 @@ jobs:
             Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrapper
             $signature = Get-AuthenticodeSignature -LiteralPath $bootstrapper
             if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation(?:,|$)') { throw 'WebView2 bootstrapper is not signed by Microsoft' }
-            $installation = Start-Process -FilePath $bootstrapper -ArgumentList @('/silent', '/install') -Wait -PassThru
-            if ($installation.ExitCode -ne 0) { throw 'Microsoft WebView2 Runtime installation failed on isolated runner' }
+            $installation = Invoke-WorkspaceProcess $bootstrapper @('/silent', '/install') 180
+            if ($installation -ne 0) { throw 'Microsoft WebView2 Runtime installation failed on isolated runner' }
             $preflight = Join-Path $env:PROJECTOR_INSTALL_SMOKE_ROOT 'workspace-runtime-after.json'
-            $probe = Start-Process -FilePath $helper -ArgumentList @('--preflight', "`"$preflight`"") -Wait -PassThru
-            if ($probe.ExitCode -ne 0) { throw 'Installed WebView2 Runtime preflight failed' }
+            $probe = Invoke-WorkspaceProcess $helper @('--preflight', "`"$preflight`"") 30
+            if ($probe -ne 0) { throw 'Installed WebView2 Runtime preflight failed' }
             $runtime = (Get-Content -LiteralPath $preflight -Raw | ConvertFrom-Json).webView2
             $runtimeVersion = $null
             if ($runtime.status -ne 'AVAILABLE' -or -not [Version]::TryParse(($runtime.version -split ' ')[0], [ref]$runtimeVersion) -or $runtimeVersion.Major -lt 132) { throw 'WebView2 Runtime 132+ remains unavailable' }
           }
           $report = Join-Path $env:PROJECTOR_INSTALL_SMOKE_ROOT 'workspace-self-test.json'
-          $fixture = Start-Process -FilePath $helper -ArgumentList @('--workspace-self-test', "`"$report`"") -Wait -PassThru
-          if ($fixture.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $report)) { throw 'Native workspace fixture failed' }
+          $fixture = Invoke-WorkspaceProcess $helper @('--workspace-self-test', "`"$report`"") 120
+          if (Test-Path -LiteralPath $report) { Get-Content -LiteralPath $report }
+          if ($fixture -ne 0 -or -not (Test-Path -LiteralPath $report)) { throw 'Native workspace fixture failed' }
           $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
           if ($result.success -ne $true) { throw 'Native workspace fixture did not confirm success' }
-          Get-Content -LiteralPath $report
       - name: Save installer smoke diagnostics
         if: always() && env.PROJECTOR_INSTALL_SMOKE_ROOT != ''
         uses: actions/upload-artifact@v4

@@ -10,7 +10,13 @@ internal sealed class PairLinkPipe : IDisposable
     private readonly CancellationTokenSource stopped = new();
     private static string Name => "LecturerAssistantProjectorPair-" + WindowsIdentity.GetCurrent().User?.Value;
 
-    public PairLinkPipe(Action<PairLink> receive, string? fixtureChannel = null) => _ = Listen(receive, fixtureChannel ?? Name, stopped.Token);
+    public PairLinkPipe(Action<PairLink> receive, string? fixtureChannel = null)
+    {
+        var channel = fixtureChannel ?? Name;
+        var ct = stopped.Token;
+        // Pipe reads must not depend on the window thread that may be sending a link.
+        _ = Task.Run(() => Listen(receive, channel, ct));
+    }
 
     public static bool Forward(string link, string? fixtureChannel = null)
     {

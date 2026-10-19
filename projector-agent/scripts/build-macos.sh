@@ -78,7 +78,37 @@ else
 fi
 projector_image="$projector_output/lecturer-projector-$projector_rid-$projector_version-$projector_mode.dmg"
 if [ -f "$projector_image" ]; then rm "$projector_image"; fi
-hdiutil create -volname 'Lecturer Projector' -srcfolder "$projector_work/disk" -format UDZO -ov "$projector_image"
+# A hosted Mac can briefly retain a DiskImages helper after an unsuccessful create.
+# Retry only EBUSY in development; never detach disks or stop shared system helpers.
+projector_create_development_dmg() {
+    projector_dmg_attempt=1
+    while [ "$projector_dmg_attempt" -le 4 ]; do
+        projector_dmg_stage="$projector_work/dmg-attempt-$projector_dmg_attempt.dmg"
+        projector_dmg_log="$projector_work/dmg-create-$projector_dmg_attempt.log"
+        if LC_ALL=C hdiutil create -volname 'Lecturer Projector' -srcfolder "$projector_work/disk" -format UDZO -ov "$projector_dmg_stage" > "$projector_dmg_log" 2>&1; then
+            cat "$projector_dmg_log"
+            mv "$projector_dmg_stage" "$projector_image"
+            return 0
+        else
+            projector_dmg_status=$?
+            cat "$projector_dmg_log" >&2
+        fi
+        if [ "$projector_dmg_attempt" -ge 4 ] || ! LC_ALL=C grep -Fq 'hdiutil: create failed - Resource busy' "$projector_dmg_log"; then
+            return "$projector_dmg_status"
+        fi
+        projector_dmg_delay=$((projector_dmg_attempt * 3))
+        printf '%s\n' "Disk image resource busy; retrying create in $projector_dmg_delay seconds (attempt $projector_dmg_attempt of 4)." >&2
+        sleep "$projector_dmg_delay"
+        # Only the partial output from this attempt is ours to remove.
+        if [ -f "$projector_dmg_stage" ]; then rm "$projector_dmg_stage"; fi
+        projector_dmg_attempt=$((projector_dmg_attempt + 1))
+    done
+}
+if [ "$projector_mode" = development ]; then
+    projector_create_development_dmg
+else
+    hdiutil create -volname 'Lecturer Projector' -srcfolder "$projector_work/disk" -format UDZO -ov "$projector_image"
+fi
 hdiutil verify "$projector_image"
 if [ "$projector_mode" = production ]; then
     codesign --sign "$PROJECTOR_MAC_SIGN_IDENTITY" --timestamp "$projector_image"

@@ -42,15 +42,17 @@ internal sealed class RemoteForm : Form
         FormClosed += (_, _) => disposed = true;
     }
 
-    public async Task LoadRemote(string? fixtureHtml = null)
+    public async Task LoadRemote(string? fixtureHtml = null, Action<string>? progress = null)
     {
         if (!ProjectionForm.RuntimeAvailable()) throw new InvalidDataException("WEBVIEW2_RUNTIME_MISSING");
         var control = new WebView2 { Dock = DockStyle.Fill }; web = control; Controls.Add(control);
-        var environment = await CoreWebView2Environment.CreateAsync(null, profileRoot);
+        progress?.Invoke("creating WebView2 environment");
+        var environment = await CoreWebView2Environment.CreateAsync(null, profileRoot).WaitAsync(TimeSpan.FromSeconds(25));
         environment.BrowserProcessExited += (_, _) => DeleteProfile();
         if (disposed) return;
         var options = environment.CreateCoreWebView2ControllerOptions(); options.IsInPrivateModeEnabled = true;
-        await control.EnsureCoreWebView2Async(environment, options);
+        progress?.Invoke("creating WebView2 controller");
+        await control.EnsureCoreWebView2Async(environment, options).WaitAsync(TimeSpan.FromSeconds(25));
         if (disposed) return;
         var core = control.CoreWebView2;
         if (fixtureHtml is not null)
@@ -79,11 +81,13 @@ internal sealed class RemoteForm : Form
         core.WindowCloseRequested += (_, _) => Close();
         core.WebMessageReceived += Receive;
         core.ProcessFailed += (_, _) => Close();
-        await core.AddScriptToExecuteOnDocumentCreatedAsync(BridgeScript());
+        progress?.Invoke("injecting native bridge");
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(BridgeScript()).WaitAsync(TimeSpan.FromSeconds(10));
         core.NavigationCompleted += async (_, args) => { loaded.TrySetResult(args.IsSuccess); await SendCapabilities(); };
+        progress?.Invoke("navigating remote document");
         core.Navigate(scene.AbsoluteUri);
     }
-    internal Task<string> RunFixtureScript(string script) => web?.CoreWebView2?.ExecuteScriptAsync(script) ?? throw new InvalidOperationException("REMOTE_NOT_READY");
+    internal Task<string> RunFixtureScript(string script) => web?.CoreWebView2?.ExecuteScriptAsync(script).WaitAsync(TimeSpan.FromSeconds(10)) ?? throw new InvalidOperationException("REMOTE_NOT_READY");
 
     private void Receive(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
     {
@@ -104,7 +108,13 @@ internal sealed class RemoteForm : Form
                         ApplyContentSize(isCollapsed ? 264 : 420, requestedHeight, isCollapsed);
                     }
                     break;
-                case "drag": ReleaseCapture(); SendMessage(Handle, 0x00A1, new IntPtr(2), IntPtr.Zero); break;
+                case "drag":
+                    // The native move loop must start after WebView2's callback returns.
+                    BeginInvoke(() => {
+                        if (disposed || IsDisposed || !IsHandleCreated) return;
+                        ReleaseCapture(); SendMessage(Handle, 0x00A1, new IntPtr(2), IntPtr.Zero);
+                    });
+                    break;
                 case "close": Close(); break;
                 case "minimize": WindowState = FormWindowState.Minimized; break;
                 case "focusProjection": focusProjection?.Invoke(); break;
