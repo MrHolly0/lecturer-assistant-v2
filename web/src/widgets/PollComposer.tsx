@@ -1,7 +1,8 @@
+import { questionAvailability } from "../shared/lib/questionAvailability";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Plus, Search, X } from "lucide-react";
-import { listQuestions, type QuestionBankEntry } from "../app/api/interaction-api";
+import { listQuestions } from "../app/api/interaction-api";
 import { userErrorMessage } from "../app/api/errors";
 import { pluralizeRu } from "../shared/lib/plural";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
@@ -32,7 +33,7 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
     () =>
       (questionsQuery.data ?? []).filter((item) => {
         const matchesSearch = item.text.toLocaleLowerCase("ru-RU").includes(search.toLowerCase());
-        return !item.archived && eligibleForQuickPoll(item) && matchesSearch;
+        return !item.archived && !questionAvailability(item) && matchesSearch;
       }),
     [questionsQuery.data, search]
   );
@@ -177,17 +178,5 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
         </TabsContent>
       </Tabs>
     </div>
-  );
-}
-
-function eligibleForQuickPoll(question: QuestionBankEntry) {
-  const supportedType =
-    question.questionType === "CHOICE" || question.questionType === "TRUE_FALSE";
-  const correctOptions = question.options.filter((option) => option.correct).length;
-  return (
-    supportedType &&
-    question.options.length >= 2 &&
-    question.options.length <= 6 &&
-    correctOptions === 1
   );
 }

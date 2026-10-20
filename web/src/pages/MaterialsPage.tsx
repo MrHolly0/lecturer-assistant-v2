@@ -280,7 +280,27 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     }
   }
 
-  if (viewerOpen && selectedDeck) {
+  if (viewerOpen && (deckQuery.isLoading || deckQuery.isError)) {
+    return (
+      <div className="page page--wide preparation-page">
+        <Button variant="ghost" onClick={() => setViewerOpen(false)}>
+          ← Лекции и материалы
+        </Button>
+        {deckQuery.isError ? (
+          <div role="alert">
+            <p>Не удалось открыть презентацию.</p>
+            <Button variant="outline" onClick={() => void deckQuery.refetch()}>
+              Повторить
+            </Button>
+          </div>
+        ) : (
+          <p role="status">Загрузка презентации…</p>
+        )}
+      </div>
+    );
+  }
+
+  if (viewerOpen && selectedDeck && selectedDeck.id === selectedDeckId) {
     return (
       <div className="page page--wide preparation-page materials-page materials-page--viewer">
         <header className="page-header preparation-viewer-header">
@@ -374,6 +394,12 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
             onRestore={(lectureId) => restoreLectureMut.mutate(lectureId)}
             onHardDelete={(lectureId) => hardDeleteLectureMut.mutate(lectureId)}
             onAddPresentation={openUpload}
+            onOpenDeck={(deckId) => {
+              setSelectedDeckId(deckId);
+              setActiveSlide(0);
+              setNotesOpen(true);
+              setViewerOpen(true);
+            }}
             partialImportWarning={lectureDeckId === partialDeckId ? partialWarning : undefined}
             partialReviewAccepted={partialReviewAccepted}
             onPartialReviewAccepted={setPartialReviewAccepted}
@@ -402,7 +428,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
           {showLibrary && (
             <div className="section-heading materials-workspace__heading">
               <div>
-                <h2 id="materials-workspace-title">Презентации</h2>
+                <h2 id="materials-workspace-title">Библиотека презентаций</h2>
                 <p className="muted">Файлы слайдов, версии и заметки преподавателя.</p>
               </div>
               {canManage && (
@@ -541,6 +567,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
           {showLibrary && !decksQuery.isError && !decksQuery.isLoading && (
             <DeckListPanel
               decks={decks}
+              lectures={lecturesQuery.isSuccess ? lectures : undefined}
               selectedDeckId={selectedDeckId}
               canManage={canManage}
               archivePending={archiveDeckMut.isPending}

@@ -1,46 +1,53 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ListChecks, Plus, Pencil, Trash2, Tag } from "lucide-react";
+import { Archive, Check, ChevronDown, ListChecks, Plus, Pencil, Tag } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { archiveQuestion, listQuestions, type QuestionBankEntry } from "../app/api/interaction-api";
-import { Button, IconButton } from "../shared/ui/button";
+import { Button } from "../shared/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
-import { SearchField } from "../widgets/ListControls";
-import { includesQuery } from "../shared/lib/usePagedList";
+import { PaginationBar, SearchField } from "../widgets/ListControls";
+import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import { Badge } from "../shared/ui/badge";
 import { QUESTION_TYPES } from "../shared/lib/questionTypes";
+import { questionAvailability } from "../shared/lib/questionAvailability";
 import { QuestionDialog } from "../widgets/QuestionDialog";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import { ConfirmActionButton } from "../widgets/ConfirmActionButton";
 import { getCourse } from "../app/api/courses-api";
+import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 
-interface Props {
-  courseId: string;
-}
-
-export function QuestionBankPage({ courseId }: Props) {
+export function QuestionBankPage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
   const [query, setQuery] = useState("");
-  const [tagFilter, setTagFilter] = useState<string | undefined>(undefined);
+  const [tagFilter, setTagFilter] = useState("__all__");
+  const [typeFilter, setTypeFilter] = useState("__all__");
+  const [readyOnly, setReadyOnly] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<QuestionBankEntry | null>(null);
   const [creating, setCreating] = useState(false);
   const courseQuery = useQuery({
     queryKey: ["courses", courseId],
     queryFn: () => getCourse(courseId)
   });
-
   const questionsQuery = useQuery({
-    queryKey: ["questions", courseId, tagFilter],
-    queryFn: () => listQuestions(courseId, tagFilter)
+    queryKey: ["questions", courseId],
+    queryFn: () => listQuestions(courseId)
   });
   const questions = questionsQuery.data ?? [];
-  const visibleQuestions = questions.filter((question) =>
-    includesQuery(query, question.text, ...question.tags)
+  const filtered = questions.filter(
+    (question) =>
+      includesQuery(query, question.text, ...question.tags) &&
+      (tagFilter === "__all__" || question.tags.includes(tagFilter)) &&
+      (typeFilter === "__all__" || question.questionType === typeFilter)
   );
-
-  const allTags = [...new Set(questions.flatMap((q) => q.tags))].sort();
-
+  const ready = filtered.filter((question) => !questionAvailability(question));
+  const visible = readyOnly ? ready : filtered;
+  const paged = usePagedList(visible, 20);
+  const hasFilters = Boolean(
+    query || tagFilter !== "__all__" || typeFilter !== "__all__" || readyOnly
+  );
+  const allTags = [...new Set(questions.flatMap((question) => question.tags))].sort();
   const archiveMut = useMutation({
     mutationFn: (id: string) => archiveQuestion(courseId, id),
     onSuccess: () => {
@@ -49,9 +56,9 @@ export function QuestionBankPage({ courseId }: Props) {
     },
     onError: () => toast.error("Не удалось архивировать вопрос.")
   });
-
+  const canManage = !courseQuery.isError && courseQuery.data?.canManage;
   return (
-    <div className="page page--wide qbank-shell course-workflows preparation-page">
+    <div className="page page--wide qbank-shell course-workflows preparation-page question-catalog">
       <header className="page-header qbank-page-header course-workflow-header">
         <div className="course-workflow-header__copy">
           <Link to={`/courses/${courseId}`} className="breadcrumb">
@@ -59,156 +66,240 @@ export function QuestionBankPage({ courseId }: Props) {
           </Link>
           <h1>Банк вопросов</h1>
         </div>
-        {!courseQuery.isError &&
-          courseQuery.data?.canManage &&
-          (questions.length > 0 || Boolean(query || tagFilter)) && (
-            <Button onClick={() => setCreating(true)}>
-              <Plus size={18} /> Новый вопрос
-            </Button>
-          )}
+        {canManage && (
+          <Button onClick={() => setCreating(true)}>
+            <Plus size={18} /> Новый вопрос
+          </Button>
+        )}
       </header>
       <CourseSectionNav courseId={courseId} canManage={courseQuery.data?.canManage} />
       {courseQuery.isError && (
         <div className="qbank-load-error" role="alert">
           <p>Не удалось загрузить курс и проверить доступ к банку вопросов.</p>
-          <Button type="button" variant="outline" onClick={() => void courseQuery.refetch()}>
+          <Button variant="outline" onClick={() => void courseQuery.refetch()}>
             Повторить
           </Button>
         </div>
       )}
-      {(questions.length > 0 || Boolean(query || tagFilter)) && (
-        <div className="qbank-toolbar">
-          <SearchField value={query} onChange={setQuery} placeholder="Поиск по тексту вопроса" />
-          {!courseQuery.isError && questions.length > 0 && (
-            <div className="qbank-filters">
-              <Select
-                value={tagFilter ?? "__all__"}
-                onValueChange={(v) => setTagFilter(v === "__all__" ? undefined : v)}
+      {!courseQuery.isError && (
+        <>
+          <div className="question-catalog__filters">
+            <SearchField value={query} onChange={setQuery} placeholder="Поиск по тексту вопроса" />
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger aria-label="Тип вопросов">
+                <ListChecks size={17} />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Все типы</SelectItem>
+                {QUESTION_TYPES.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={tagFilter} onValueChange={setTagFilter}>
+              <SelectTrigger aria-label="Тег вопросов">
+                <Tag size={17} />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Все теги</SelectItem>
+                {allTags.map((tag) => (
+                  <SelectItem key={tag} value={tag}>
+                    {tag}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="question-catalog__scope">
+            <Tabs
+              value={readyOnly ? "ready" : "all"}
+              onValueChange={(value) => setReadyOnly(value === "ready")}
+            >
+              <TabsList>
+                <TabsTrigger value="all">
+                  Все{questionsQuery.data ? ` (${filtered.length})` : ""}
+                </TabsTrigger>
+                <TabsTrigger value="ready">
+                  Доступны для занятия{questionsQuery.data ? ` (${ready.length})` : ""}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {hasFilters && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setQuery("");
+                  setTagFilter("__all__");
+                  setTypeFilter("__all__");
+                  setReadyOnly(false);
+                }}
               >
-                <SelectTrigger className="qbank-tag-filter">
-                  <Tag size={14} />
-                  <SelectValue placeholder="Все теги" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Все теги</SelectItem>
-                  {allTags.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                Сбросить фильтры
+              </Button>
+            )}
+          </div>
+          {questionsQuery.isLoading && (
+            <p className="muted" role="status">
+              Загрузка вопросов…
+            </p>
+          )}
+          {questionsQuery.isError && (
+            <div className="qbank-load-error" role="alert">
+              <p>Не удалось загрузить банк вопросов.</p>
+              <Button variant="outline" onClick={() => void questionsQuery.refetch()}>
+                Повторить
+              </Button>
             </div>
           )}
-        </div>
-      )}
-
-      {questionsQuery.isLoading && !courseQuery.isError && (
-        <p className="muted" role="status">
-          Загрузка вопросов…
-        </p>
-      )}
-      {questionsQuery.isError && !courseQuery.isError && (
-        <div className="qbank-load-error" role="alert">
-          <p>Не удалось загрузить банк вопросов. Ваши изменения не потеряны.</p>
-          <Button type="button" variant="outline" onClick={() => void questionsQuery.refetch()}>
-            Повторить
-          </Button>
-        </div>
-      )}
-
-      {!questionsQuery.isError && !courseQuery.isError && (
-        <ul className="qbank-list">
-          {visibleQuestions.map((q) => (
-            <li key={q.id} className="qbank-item">
-              <div className="qbank-item-meta">
-                <span className="qbank-type-badge">
-                  {QUESTION_TYPES.find((t) => t.value === q.questionType)?.label ?? q.questionType}
-                </span>
-                {q.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-              <p className="qbank-item-text">{q.text}</p>
-              <div className="qbank-item-options">
-                {q.options.map((opt, idx) => (
-                  <span
-                    key={idx}
-                    className={`qbank-option${opt.correct ? " qbank-option--correct" : ""}`}
-                  >
-                    {opt.text}
-                  </span>
-                ))}
-              </div>
-              {courseQuery.data?.canManage && !query && !tagFilter && (
-                <div className="qbank-item-actions">
-                  <IconButton onClick={() => setEditing(q)} label="Редактировать вопрос">
-                    <Pencil size={16} />
-                  </IconButton>
-                  <ConfirmActionButton
-                    title="Архивировать вопрос?"
-                    description="Вопрос исчезнет из активного банка."
-                    confirmLabel="Архивировать"
-                    variant="ghost"
-                    size="icon"
-                    label="Архивировать вопрос"
-                    disabled={archiveMut.isPending}
-                    onConfirm={() => archiveMut.mutate(q.id)}
-                  >
-                    <Trash2 size={16} />
-                  </ConfirmActionButton>
+          {!questionsQuery.isLoading && !questionsQuery.isError && (
+            <>
+              {visible.length > 0 && (
+                <div className="question-catalog__head" aria-hidden="true">
+                  <span>Вопрос</span>
+                  <span>Тип</span>
+                  <span>Теги</span>
+                  <span>Действия</span>
                 </div>
               )}
-            </li>
-          ))}
-          {!questionsQuery.isLoading && visibleQuestions.length === 0 && (
-            <li className="qbank-empty">
-              <span className="qbank-empty__icon" aria-hidden="true">
-                <ListChecks size={28} />
-              </span>
-              <div>
-                <strong>
-                  {query || tagFilter
-                    ? "Вопросов по запросу нет"
-                    : courseQuery.data?.canManage
-                      ? "Соберите первую проверку"
-                      : "Вопросов пока нет"}
-                </strong>
-                <p className="muted">
-                  {query || tagFilter
-                    ? "Попробуйте другой запрос или выберите все теги."
-                    : "Подготовьте текст и варианты ответа для занятия."}
-                </p>
-              </div>
-              {courseQuery.data?.canManage && (
-                <Button onClick={() => setCreating(true)}>
-                  <Plus size={16} aria-hidden="true" /> Создать вопрос
-                </Button>
+              <ul className="question-catalog__list">
+                {paged.pageItems.map((question) => {
+                  const open = expanded === question.id;
+                  const availability = questionAvailability(question);
+                  return (
+                    <li
+                      key={question.id}
+                      className={`question-catalog__item${open ? " is-expanded" : ""}`}
+                    >
+                      <div className="question-catalog__row">
+                        <button
+                          className="question-catalog__open"
+                          type="button"
+                          aria-expanded={open}
+                          aria-controls={`answers-${question.id}`}
+                          onClick={() => setExpanded(open ? null : question.id)}
+                        >
+                          <ChevronDown size={18} aria-hidden="true" />
+                          <span>
+                            <strong>{question.text}</strong>
+                            <small>
+                              {question.questionType === "SHORT_ANSWER"
+                                ? `Допустимых ответов: ${question.options.filter((option) => option.correct).length}`
+                                : `Вариантов: ${question.options.length} · правильных: ${question.options.filter((option) => option.correct).length}`}
+                            </small>
+                          </span>
+                        </button>
+                        <span className="question-catalog__type">
+                          {QUESTION_TYPES.find((type) => type.value === question.questionType)
+                            ?.label ?? question.questionType}
+                        </span>
+                        <div className="question-catalog__tags">
+                          {question.tags.map((tag) => (
+                            <Badge key={tag} variant="secondary">
+                              {tag}
+                            </Badge>
+                          ))}
+                          {!question.tags.length && <span className="muted">Без тегов</span>}
+                        </div>
+                        <div className="question-catalog__actions">
+                          {canManage && (
+                            <>
+                              <Button variant="outline" onClick={() => setEditing(question)}>
+                                <Pencil size={16} /> Редактировать
+                              </Button>
+                              <ConfirmActionButton
+                                title="Архивировать вопрос?"
+                                description="Вопрос исчезнет из активного банка."
+                                confirmLabel="Архивировать"
+                                variant="ghost"
+                                size="icon"
+                                label={`Архивировать вопрос: ${question.text}`}
+                                disabled={archiveMut.isPending}
+                                onConfirm={() => archiveMut.mutate(question.id)}
+                              >
+                                <Archive size={17} />
+                              </ConfirmActionButton>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {open && (
+                        <section
+                          id={`answers-${question.id}`}
+                          className="question-catalog__answers"
+                          aria-label="Ответы"
+                        >
+                          <h3>
+                            {question.questionType === "SHORT_ANSWER"
+                              ? "Допустимые ответы"
+                              : "Ответы"}
+                          </h3>
+                          {question.options
+                            .filter(
+                              (option) => question.questionType !== "SHORT_ANSWER" || option.correct
+                            )
+                            .map((option, index) => (
+                              <div
+                                key={index}
+                                className={`question-catalog__answer${option.correct ? " is-correct" : ""}`}
+                              >
+                                {option.correct && <Check size={18} aria-hidden="true" />}
+                                <span>{option.text}</span>
+                                {option.correct && (
+                                  <small>
+                                    {question.questionType === "SHORT_ANSWER"
+                                      ? "Допустимый ответ"
+                                      : "Правильный ответ"}
+                                  </small>
+                                )}
+                              </div>
+                            ))}
+                          {availability && <p className="muted">{availability}</p>}
+                        </section>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              {visible.length === 0 && (
+                <div className="qbank-empty">
+                  <ListChecks size={28} />
+                  <div>
+                    <strong>{hasFilters ? "Вопросов по запросу нет" : "Вопросов пока нет"}</strong>
+                    <p className="muted">
+                      {hasFilters
+                        ? "Измените запрос или сбросьте фильтры."
+                        : "Подготовьте текст и варианты ответа для занятия."}
+                    </p>
+                  </div>
+                  {canManage && !hasFilters && (
+                    <Button onClick={() => setCreating(true)}>Создать вопрос</Button>
+                  )}
+                </div>
               )}
-            </li>
+              <PaginationBar {...paged} onPageChange={paged.setPage} />
+              <p className="question-catalog__rule muted">
+                Для запуска в занятии: «Один правильный» или «Верно / Неверно», от 2 до 6 вариантов
+                и ровно один правильный ответ.
+              </p>
+            </>
           )}
-        </ul>
+        </>
       )}
-
-      <QuestionDialog
-        courseId={courseId}
-        open={creating}
-        onClose={() => setCreating(false)}
-        onSaved={() => {
-          setCreating(false);
-          void qc.invalidateQueries({ queryKey: ["questions", courseId] });
-        }}
-      />
-
-      {editing && (
+      {canManage && (
         <QuestionDialog
           courseId={courseId}
-          open
-          initial={editing}
-          onClose={() => setEditing(null)}
+          open={creating || Boolean(editing)}
+          initial={editing ?? undefined}
+          onClose={() => {
+            setCreating(false);
+            setEditing(null);
+          }}
           onSaved={() => {
+            setCreating(false);
             setEditing(null);
             void qc.invalidateQueries({ queryKey: ["questions", courseId] });
           }}

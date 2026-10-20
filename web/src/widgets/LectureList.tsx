@@ -35,6 +35,7 @@ interface LectureListProps {
   onRestore: (lectureId: string) => void;
   onHardDelete: (lectureId: string) => void;
   onAddPresentation: () => void;
+  onOpenDeck: (deckId: string) => void;
   createOpen?: boolean;
   onCreateOpenChange?: (open: boolean) => void;
   partialImportWarning?: string;
@@ -58,6 +59,7 @@ export function LectureList({
   onRestore,
   onHardDelete,
   onAddPresentation,
+  onOpenDeck,
   createOpen,
   onCreateOpenChange,
   partialImportWarning,
@@ -95,8 +97,9 @@ export function LectureList({
     <section className="material-section lecture-hub" aria-labelledby="lecture-hub-title">
       <div className="section-heading lecture-hub__header">
         <div>
-          <h2 id="lecture-hub-title">Лекции</h2>
-          <p className="muted">Лекции используют выбранную версию презентации.</p>
+          <h2 id="lecture-hub-title">
+            Готовые лекции <span className="muted">({activeLectures.length})</span>
+          </h2>
         </div>
         {canManage && decks.length > 0 && activeLectures.length > 0 && (
           <Button type="button" variant="outline" onClick={() => setShowCreate(true)}>
@@ -108,7 +111,11 @@ export function LectureList({
       {(showTabs || showSearch) && (
         <div className="list-toolbar lecture-hub__toolbar">
           {showSearch && (
-            <SearchField value={query} onChange={setQuery} placeholder="Найти лекцию" />
+            <SearchField
+              value={query}
+              onChange={setQuery}
+              placeholder="Найти лекцию или презентацию"
+            />
           )}
           {showTabs && (
             <Tabs
@@ -163,6 +170,8 @@ export function LectureList({
       ) : (
         <>
           <LectureRows
+            decks={decks}
+            onOpenDeck={onOpenDeck}
             lectures={paged.pageItems}
             empty={tab === "archive" ? "В архиве лекций нет." : "По запросу лекций нет."}
             canManage={canManage}
@@ -299,6 +308,8 @@ export function LectureList({
 }
 
 interface LectureRowsProps {
+  decks: SlideDeck[];
+  onOpenDeck: (deckId: string) => void;
   lectures: Lecture[];
   empty: string;
   canManage: boolean;
@@ -309,6 +320,8 @@ interface LectureRowsProps {
 }
 
 function LectureRows({
+  decks,
+  onOpenDeck,
   lectures,
   empty,
   canManage,
@@ -318,53 +331,82 @@ function LectureRows({
   onHardDelete
 }: LectureRowsProps) {
   return (
-    <ul className="card-list">
-      {lectures.length === 0 && empty && <li className="muted">{empty}</li>}
-      {lectures.map((lecture) => (
-        <li key={lecture.id} className="lecture-row">
-          <div className="lecture-row__copy">
-            <strong>{lecture.title}</strong>
-            <span className="muted">
-              {lecture.deckTitle} · версия {lecture.deckVersion}
-            </span>
-          </div>
-          {canManage && !lecture.archived && (
-            <div className="lecture-row__actions">
-              <Button type="button" variant="outline" onClick={() => onStart?.(lecture)}>
-                <Play size={16} aria-hidden="true" />
-                Провести занятие
-              </Button>
-              <ConfirmActionButton
-                title="Архивировать лекцию?"
-                description="Лекция уйдёт в архив, её можно будет восстановить."
-                confirmLabel="Архивировать"
-                variant="ghost"
-                size="icon"
-                label={`Архивировать лекцию ${lecture.title}`}
-                onConfirm={() => onArchive?.(lecture.id)}
-              >
-                <Archive size={18} aria-hidden="true" />
-              </ConfirmActionButton>
+    <div className="lecture-table">
+      {lectures.length > 0 && (
+        <div className="lecture-table__head" aria-hidden="true">
+          <span>Лекция</span>
+          <span>Презентация и версия</span>
+          <span>Действия</span>
+        </div>
+      )}
+      <ul className="card-list">
+        {lectures.length === 0 && empty && <li className="muted">{empty}</li>}
+        {lectures.map((lecture) => (
+          <li key={lecture.id} className="lecture-row">
+            <div className="lecture-row__copy">
+              <strong>{lecture.title}</strong>
             </div>
-          )}
-          {canManage && lecture.archived && (
-            <div className="lecture-row__actions">
-              <Button type="button" variant="outline" onClick={() => onRestore?.(lecture.id)}>
-                <RotateCcw size={16} aria-hidden="true" /> Восстановить
-              </Button>
-              <ConfirmActionButton
-                title="Удалить лекцию навсегда?"
-                description="История сессий и вложения этой лекции будут удалены."
-                confirmLabel="Удалить навсегда"
-                variant="destructive"
-                onConfirm={() => onHardDelete?.(lecture.id)}
+            <div className="lecture-row__deck">
+              <button
+                type="button"
+                className="lecture-deck-link"
+                onClick={() => onOpenDeck(lecture.deckId)}
               >
-                <Trash2 size={16} aria-hidden="true" /> Удалить навсегда
-              </ConfirmActionButton>
+                <Presentation size={17} aria-hidden="true" />
+                <span>{lecture.deckTitle}</span>
+                <span className="material-version">v{lecture.deckVersion}</span>
+              </button>
+              {decks.some(
+                (deck) => deck.title === lecture.deckTitle && deck.version > lecture.deckVersion
+              ) && (
+                <small className="muted">
+                  Доступна v
+                  {Math.max(
+                    ...decks
+                      .filter((deck) => deck.title === lecture.deckTitle)
+                      .map((deck) => deck.version)
+                  )}
+                </small>
+              )}
             </div>
-          )}
-        </li>
-      ))}
-    </ul>
+            {canManage && !lecture.archived && (
+              <div className="lecture-row__actions">
+                <Button type="button" variant="outline" onClick={() => onStart?.(lecture)}>
+                  <Play size={16} aria-hidden="true" />
+                  Провести занятие
+                </Button>
+                <ConfirmActionButton
+                  title="Архивировать лекцию?"
+                  description="Лекция уйдёт в архив, её можно будет восстановить."
+                  confirmLabel="Архивировать"
+                  variant="ghost"
+                  size="icon"
+                  label={`Архивировать лекцию ${lecture.title}`}
+                  onConfirm={() => onArchive?.(lecture.id)}
+                >
+                  <Archive size={18} aria-hidden="true" />
+                </ConfirmActionButton>
+              </div>
+            )}
+            {canManage && lecture.archived && (
+              <div className="lecture-row__actions">
+                <Button type="button" variant="outline" onClick={() => onRestore?.(lecture.id)}>
+                  <RotateCcw size={16} aria-hidden="true" /> Восстановить
+                </Button>
+                <ConfirmActionButton
+                  title="Удалить лекцию навсегда?"
+                  description="История сессий и вложения этой лекции будут удалены."
+                  confirmLabel="Удалить навсегда"
+                  variant="destructive"
+                  onConfirm={() => onHardDelete?.(lecture.id)}
+                >
+                  <Trash2 size={16} aria-hidden="true" /> Удалить навсегда
+                </ConfirmActionButton>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

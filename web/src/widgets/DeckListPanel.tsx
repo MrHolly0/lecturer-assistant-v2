@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Archive, ChevronDown, History, RotateCcw, Trash2, ExternalLink, Info } from "lucide-react";
-import type { SlideDeck } from "../app/api/content-api";
+import type { Lecture, SlideDeck } from "../app/api/content-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import { Button } from "../shared/ui/button";
@@ -19,6 +19,7 @@ interface DeckVersionGroup {
 
 interface DeckListPanelProps {
   decks: SlideDeck[];
+  lectures?: Lecture[];
   selectedDeckId: string;
   canManage: boolean;
   archivePending: boolean;
@@ -125,7 +126,7 @@ function DeckVersionSection({ group, ...props }: DeckListPanelProps & { group: D
             group.history.length > 0 ? (
               <CollapsibleTrigger asChild>
                 <Button type="button" variant="outline" className="deck-history__trigger">
-                  <History size={16} aria-hidden="true" /> История версий ({group.history.length})
+                  <History size={16} aria-hidden="true" /> Версии ({group.history.length + 1})
                   <ChevronDown className="deck-history__chevron" size={16} aria-hidden="true" />
                 </Button>
               </CollapsibleTrigger>
@@ -145,6 +146,7 @@ function DeckVersionSection({ group, ...props }: DeckListPanelProps & { group: D
 function DeckRow({
   deck,
   context,
+  lectures,
   selectedDeckId,
   canManage,
   archivePending,
@@ -175,6 +177,7 @@ function DeckRow({
           {pluralizeRu(deck.slideCount, "слайд", "слайда", "слайдов")}
         </small>
       </button>
+      <DeckUsage lectures={lectures} deckId={deck.id} />
       <div className="deck-pill__actions">
         <Button type="button" variant="outline" onClick={() => onSelect(deck.id)}>
           <ExternalLink size={17} aria-hidden="true" /> Открыть
@@ -221,6 +224,25 @@ function DeckRow({
         )}
       </div>
     </div>
+  );
+}
+
+function DeckUsage({ lectures, deckId }: { lectures?: Lecture[]; deckId: string }) {
+  if (!lectures) return <span className="deck-usage muted">Привязки лекций не загружены</span>;
+  const bound = lectures.filter((lecture) => lecture.deckId === deckId);
+  if (!bound.length) return <span className="deck-usage muted">Не используется в лекциях</span>;
+  return (
+    <details className="deck-usage">
+      <summary>В лекциях: {bound.length}</summary>
+      <ul>
+        {bound.map((lecture) => (
+          <li key={lecture.id}>
+            {lecture.title}
+            {lecture.archived ? " (в архиве)" : ""}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

@@ -12,6 +12,7 @@ import "./styles/live-experience.css";
 import "./styles/redesign-base.css";
 import "./styles/redesign-catalog.css";
 import "./styles/redesign-preparation.css";
+import "./styles/course-preparation-workspace.css";
 import "./styles/redesign-live.css";
 import "./styles/presenter-workspace.css";
 import "./styles/presenter-interactions.css";
