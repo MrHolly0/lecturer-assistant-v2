@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import ru.university.assistant.shared.api.ScreenFrameLimits;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.live.api.MediaViewingAccessApi;
 import ru.university.assistant.projection.api.ShareContracts.Description;
@@ -74,14 +75,14 @@ public class ShareController {
     public ResponseEntity<Void> uploadFrame(@AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId, @PathVariable UUID sessionId, @PathVariable UUID shareId,
             HttpServletRequest request) throws IOException {
-        int maximum = 256 * 1024;
+        int maximum = ScreenFrameLimits.MAX_BYTES;
         if (request.getContentLengthLong() > maximum) {
-            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "Кадр больше 256 КБ");
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "Кадр больше 2 МиБ");
         }
         // Bound the stream before allocating; this also covers a missing or dishonest Content-Length.
         byte[] bytes = request.getInputStream().readNBytes(maximum + 1);
         if (bytes.length > maximum) {
-            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "Кадр больше 256 КБ");
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "Кадр больше 2 МиБ");
         }
         shares.uploadFrame(user, courseId, sessionId, shareId, bytes);
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();

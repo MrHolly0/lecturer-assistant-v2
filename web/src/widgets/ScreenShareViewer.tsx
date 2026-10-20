@@ -1,3 +1,4 @@
+import { SHARE_FRAME_MAX_BYTES } from "../app/sharing/shareQuality";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   answerProjectionShare,
@@ -101,7 +102,7 @@ export function ScreenShareViewer({
         Date.now() - activeSince < 4000
       )
         return;
-      if (!blob.size || blob.size > 524288 || blob.type !== "image/jpeg") return;
+      if (!blob.size || blob.size > SHARE_FRAME_MAX_BYTES || blob.type !== "image/jpeg") return;
       const previous = frameObjectUrl;
       frameObjectUrl = URL.createObjectURL(blob);
       lastFrame = Date.now();

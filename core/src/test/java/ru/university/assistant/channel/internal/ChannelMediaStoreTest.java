@@ -66,9 +66,9 @@ class ChannelMediaStoreTest {
     @Test
     void globalByteCapRejectsAdditionalFilesAndExpiredFilesReleaseCapacity() {
         when(channels.isActiveMaxIdentity(any(), any())).thenReturn(true);
-        byte[] maximum = new byte[256 * 1024];
+        byte[] maximum = new byte[2 * 1024 * 1024];
         ChannelMediaStore.Staged first = null;
-        for (int i = 0; i < 128; i++) {
+        for (int i = 0; i < 16; i++) {
             ChannelMediaStore.Staged next = store.stage(UUID.randomUUID(), identity, share, clock.instant(), maximum);
             if (first == null) first = next;
         }
@@ -83,7 +83,7 @@ class ChannelMediaStoreTest {
         assertStatus(409, () -> store.stage(person, identity, share,
                 clock.instant().plusSeconds(1), new byte[] { 1 }));
         assertStatus(400, () -> store.stage(person, identity, share, clock.instant(), new byte[0]));
-        assertStatus(400, () -> store.stage(person, identity, share, clock.instant(), new byte[256 * 1024 + 1]));
+        assertStatus(400, () -> store.stage(person, identity, share, clock.instant(), new byte[2 * 1024 * 1024 + 1]));
     }
 
     private String token(ChannelMediaStore.Staged file) {

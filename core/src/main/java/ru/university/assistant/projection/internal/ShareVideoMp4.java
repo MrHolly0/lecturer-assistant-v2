@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import ru.university.assistant.shared.api.ScreenFrameLimits;
 
 /** Narrow, bounded single-video-track fragmented MP4 framing checks; never decodes media. */
 final class ShareVideoMp4 {
@@ -36,7 +37,9 @@ final class ShareVideoMp4 {
         Box avc = entries.getFirst();
         if (avc.size() < avc.header() + 78) throw invalid();
         int width = unsignedShort(bytes, avc.payload() + 24), height = unsignedShort(bytes, avc.payload() + 26);
-        if (width < 1 || height < 1 || width > 4096 || height > 2160) throw invalid();
+        if (width < 1 || height < 1 || width > ScreenFrameLimits.MAX_DIMENSION
+                || height > ScreenFrameLimits.MAX_DIMENSION
+                || (long) width * height > ScreenFrameLimits.MAX_PIXELS) throw invalid();
         Box config = required(children(bytes, avc, 78), "avcC");
         if (config.size() < config.header() + 7 || bytes[config.payload()] != 1) throw invalid();
         String actual = String.format(Locale.ROOT, "avc1.%02x%02x%02x", bytes[config.payload() + 1] & 255,

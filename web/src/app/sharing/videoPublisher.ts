@@ -1,3 +1,9 @@
+import {
+  SHARE_FRAME_RATE,
+  SHARE_MAX_PIXELS,
+  shareDimensions,
+  shareVideoBitrate
+} from "./shareQuality";
 import { uploadShareVideoInit, uploadShareVideoSegment } from "../api/share-video-api";
 
 type Scope = { courseId: string; sessionId: string; shareId: string };
@@ -12,16 +18,39 @@ export class ShareVideoPublisher {
   private chain = Promise.resolve();
 
   async start(stream: MediaStream, scope: Scope, onFailure: (error: unknown) => void) {
-    const { Output, NullTarget, Mp4OutputFormat, MediaStreamVideoTrackSource, Quality } =
-      await import("mediabunny");
+    const {
+      Output,
+      NullTarget,
+      Mp4OutputFormat,
+      MediaStreamVideoTrackSource,
+      Quality,
+      canEncodeVideo
+    } = await import("mediabunny");
     if (this.stopped) return;
     const track = stream.getVideoTracks()[0];
     if (!track || typeof VideoEncoder === "undefined")
       throw new Error("Видеокодек недоступен в этом браузере");
     const settings = track.getSettings();
-    const scale = Math.min(1920 / (settings.width || 1920), 1080 / (settings.height || 1080), 1);
-    const width = Math.max(2, Math.floor(((settings.width || 1920) * scale) / 2) * 2);
-    const height = Math.max(2, Math.floor(((settings.height || 1080) * scale) / 2) * 2);
+    let size: { width: number; height: number } | null = null;
+    for (const pixels of [SHARE_MAX_PIXELS, 2560 * 1440, 1920 * 1080]) {
+      const candidate = shareDimensions(settings.width ?? 1920, settings.height ?? 1080, pixels);
+      if (
+        await canEncodeVideo("avc", {
+          ...candidate,
+          frameRate: SHARE_FRAME_RATE,
+          latencyMode: "realtime",
+          contentHint: "text",
+          quality: new Quality({ bitrate: shareVideoBitrate(candidate.width, candidate.height) })
+        })
+      ) {
+        size = candidate;
+        break;
+      }
+      if (this.stopped) return;
+    }
+    if (!size) throw new Error("Видеокодек недоступен для выбранного источника");
+    if (this.stopped) return;
+    const { width, height } = size;
     const epoch = crypto.randomUUID();
     let ftyp: Uint8Array | null = null;
     let moof: Uint8Array | null = null;
@@ -91,20 +120,19 @@ export class ShareVideoPublisher {
     });
     const source = new MediaStreamVideoTrackSource(track, {
       codec: "avc",
-      fullCodecString: codec,
-      quality: new Quality({ bitrate: 4_000_000 }),
+      quality: new Quality({ bitrate: shareVideoBitrate(width, height) }),
       keyFrameInterval: 1,
       latencyMode: "realtime",
-      contentHint: "detail",
+      contentHint: "text",
       sizeChangeBehavior: "contain",
-      transform: { width, height, frameRate: 15 },
+      transform: { width, height, frameRate: SHARE_FRAME_RATE },
       onEncoderConfig: (config) => {
         codec = config.codec;
       }
     });
     this.cancel = () => output.cancel();
     source.errorPromise.catch(fail);
-    output.addVideoTrack(source, { frameRate: 15 });
+    output.addVideoTrack(source, { frameRate: SHARE_FRAME_RATE });
     try {
       await output.start();
       if (this.stopped) await output.cancel();

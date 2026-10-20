@@ -189,8 +189,8 @@ peer path may use an optional low-frame-rate JPEG preview over the existing HTTP
 This is not full-motion video, audio transport or an SFU.
 
 - Staff owner: `PUT /api/v1/courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}/frame`,
-  raw `Content-Type: image/jpeg`. At most 256 KiB and 1920 × 1080, at most two accepted
-  frames per second. Read is bounded at 256 KiB + 1 even without honest Content-Length;
+  raw `Content-Type: image/jpeg`. At most 2 MiB, 3840 pixels per side and 8,294,400 pixels total (landscape or portrait), at most two accepted
+  frames per second. Read is bounded at 2 MiB + 1 even without honest Content-Length;
   metadata dimensions are checked without allocating a raster or caching input on disk.
 - Current student receiver: GET its existing viewer path plus `/frame`, using the current
   participant receipt/account. The viewer must already be registered by signalling.
@@ -203,7 +203,7 @@ This is not full-motion video, audio transport or an SFU.
   than 500 ms, 409 paused. A rate-limit response can be skipped until the next interval.
   A forbidden/expired receiver must close its image/peer, rather than retaining stale video.
 
-Only the latest JPEG is held in each in-memory room (64 rooms × 256 KiB = at most 16 MiB
+Only the latest JPEG is held in each in-memory room (64 rooms × 2 MiB = at most 128 MiB
 of stored preview frames). No frame history, files, database rows or frame-body logging.
 Pause, stop and room lease expiry discard the frame; resume waits for a new upload.
 Frame downloads do not join/rejoin a session or renew a viewer/host lease. Continue the

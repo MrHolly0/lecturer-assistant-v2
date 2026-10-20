@@ -15,6 +15,7 @@ import {
   type CaptureSurface
 } from "./capturePolicy";
 import { gatheredDescription, localShareChannel } from "./rtc";
+import { configureScreenSenders, encodeShareFrame } from "./shareQuality";
 import { ShareVideoPublisher } from "./videoPublisher";
 
 type Scope = { courseId: string; sessionId: string; joinCode: string };
@@ -117,7 +118,7 @@ class ScreenShare {
         { once: true }
       );
       const surface = captureSurface(track.getSettings());
-      if ("contentHint" in track) track.contentHint = "detail";
+      if ("contentHint" in track) track.contentHint = "text";
       const names = {
         monitor: "Экран преподавателя",
         window: "Окно преподавателя",
@@ -247,6 +248,7 @@ class ScreenShare {
           const current = peer;
           void (async () => {
             await current.setLocalDescription(await current.createOffer());
+            await configureScreenSenders(current, false);
             const sdp = await gatheredDescription(current);
             if (generation === this.generation && this.share?.id === share.id)
               await offerShare(scope.courseId, scope.sessionId, share.id, viewer.id, sdp);
@@ -300,19 +302,8 @@ class ScreenShare {
         video.videoWidth > 0 &&
         video.videoHeight > 0
       ) {
-        const scale = Math.min(1920 / video.videoWidth, 1080 / video.videoHeight, 1);
-        canvas.width = Math.max(1, Math.floor(video.videoWidth * scale));
-        canvas.height = Math.max(1, Math.floor(video.videoHeight * scale));
-        canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
-        let blob: Blob | null = null;
-        for (const quality of [0.84, 0.72, 0.58]) {
-          blob = await new Promise<Blob | null>((resolve) =>
-            canvas.toBlob(resolve, "image/jpeg", quality)
-          );
-          if (blob && blob.size <= 256 * 1024) break;
-          if (generation !== this.generation) return;
-        }
-        if (blob && blob.size <= 256 * 1024 && generation === this.generation) {
+        const blob = await encodeShareFrame(video, canvas);
+        if (blob && generation === this.generation) {
           this.channel?.postMessage({ type: "frame", shareId: share.id, frame: blob });
           this.frameAbort = new AbortController();
           await uploadShareFrame(
@@ -328,7 +319,7 @@ class ScreenShare {
       /* WebRTC continues; missing fallback frames expire instead of freezing. */
     }
     if (generation === this.generation)
-      this.frameTimer = setTimeout(() => void this.sendFrame(generation), 600);
+      this.frameTimer = setTimeout(() => void this.sendFrame(generation), 1000);
   }
   private newPeer(id: string, iceServers: RTCIceServer[]) {
     const peer = new RTCPeerConnection({ iceServers });
@@ -384,6 +375,7 @@ class ScreenShare {
       const peer = this.newPeer(id, []);
       try {
         await peer.setLocalDescription(await peer.createOffer());
+        await configureScreenSenders(peer, true);
         const sdp = await gatheredDescription(peer);
         if (generation === this.generation)
           this.channel?.postMessage({ type: "offer", viewerId: id, shareId: this.share?.id, sdp });

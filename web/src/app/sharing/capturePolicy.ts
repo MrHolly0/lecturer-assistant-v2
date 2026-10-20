@@ -15,9 +15,8 @@ export function validateCaptureSurface(settings: { displaySurface?: string }): s
 export const captureOptions = {
   video: {
     displaySurface: "window",
-    frameRate: { ideal: 15, max: 20 },
-    width: { ideal: 1920, max: 2560 },
-    height: { ideal: 1080, max: 1440 }
+    // Do not downscale the source before it reaches the projector or video encoder.
+    frameRate: { ideal: 15, max: 20 }
   },
   audio: false,
   monitorTypeSurfaces: "include",

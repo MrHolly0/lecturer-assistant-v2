@@ -157,17 +157,17 @@ class ShareIntegrationTest extends LiveFlowTestBase {
         json(get(frame).header("X-Participant-Token", receipt), 404);
         json(get(viewerPath(viewer)).header("X-Participant-Token", receipt), 200);
         json(get(frame).header("X-Participant-Token", receipt), 204);
-        byte[] jpeg = FrameFixture.jpeg(1920, 1080);
+        byte[] jpeg = FrameFixture.jpeg(3840, 2160);
         json(put(frameUpload).header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.IMAGE_JPEG).content(jpeg), 403);
         json(put(frameUpload).header("Authorization", "Bearer " + lecturerToken)
                 .contentType(MediaType.IMAGE_PNG).content(jpeg), 415);
         json(put(frameUpload).header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.IMAGE_JPEG).content(new byte[256 * 1024 + 1]), 413);
+                .contentType(MediaType.IMAGE_JPEG).content(new byte[2 * 1024 * 1024 + 1]), 413);
         json(put(frameUpload).header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.IMAGE_JPEG).content(FrameFixture.jpeg(1921, 1080)), 400);
+                .contentType(MediaType.IMAGE_JPEG).content(FrameFixture.jpeg(3841, 2160)), 400);
         json(put(frameUpload).header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.IMAGE_JPEG).content(FrameFixture.jpeg(1920, 1081)), 400);
+                .contentType(MediaType.IMAGE_JPEG).content(FrameFixture.jpeg(2160, 3841)), 400);
         json(put(frameUpload).header("Authorization", "Bearer " + lecturerToken)
                 .contentType(MediaType.IMAGE_JPEG).content(jpeg), 204);
         mockMvc.perform(get(frame).header("X-Participant-Token", receipt))

@@ -8,9 +8,11 @@ public final class VideoFixture {
     private VideoFixture() {}
     public static final String CODEC = "avc1.420028";
 
-    public static byte[] init() {
+    public static byte[] init() { return init(1920, 1080); }
+
+    public static byte[] init(int width, int height) {
         byte[] sample = new byte[78];
-        ByteBuffer.wrap(sample).putShort(24, (short) 1920).putShort(26, (short) 1080);
+        ByteBuffer.wrap(sample).putShort(24, (short) width).putShort(26, (short) height);
         byte[] avc = box("avc1", join(sample, box("avcC", new byte[] {1, 0x42, 0, 0x28, -1, -31, 0})));
         byte[] stsd = box("stsd", join(ints(0, 1), avc));
         byte[] minf = box("minf", box("stbl", stsd));

@@ -3176,7 +3176,7 @@ paths:
         "204":
           description: Latest preview accepted; no persistence.
         "400":
-          description: Invalid JPEG metadata or dimensions greater than 1920 by 1080.
+          description: Invalid JPEG metadata, side longer than 3840 pixels, or more than 8294400 pixels.
         "401":
           description: Staff authentication required.
         "403":
@@ -3186,7 +3186,7 @@ paths:
         "410":
           description: Share lease expired or room ended.
         "413":
-          description: Body exceeds 256 KiB, including requests without Content-Length.
+          description: Body exceeds 2 MiB, including requests without Content-Length.
         "415":
           description: Content-Type must be image/jpeg.
         "429":

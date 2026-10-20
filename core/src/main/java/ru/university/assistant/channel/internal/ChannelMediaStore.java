@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import ru.university.assistant.shared.api.ScreenFrameLimits;
 
 /** Short-lived, adapter-only files requested by a participant; never a screenshot history. */
 @Service
@@ -23,7 +24,7 @@ public class ChannelMediaStore {
     private static final Duration COOLDOWN = Duration.ofSeconds(10);
     private static final int MAX_BYTES = 32 * 1024 * 1024;
     private static final int MAX_FILES = 1024;
-    private static final int MAX_FILE_BYTES = 256 * 1024;
+    private static final int MAX_FILE_BYTES = ScreenFrameLimits.MAX_BYTES;
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final DateTimeFormatter FILE_TIME =
             DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);

@@ -51,6 +51,14 @@ class ShareVideoStoreTest {
     }
 
     @Test
+    void videoSupportsBoth4kOrientationsWithinTheSamePixelBudget() {
+        assertEquals(VideoFixture.CODEC, ShareVideoMp4.init(VideoFixture.init(3840, 2160), VideoFixture.CODEC));
+        assertEquals(VideoFixture.CODEC, ShareVideoMp4.init(VideoFixture.init(2160, 3840), VideoFixture.CODEC));
+        expect(HttpStatus.BAD_REQUEST, () -> ShareVideoMp4.init(VideoFixture.init(3000, 3000), VideoFixture.CODEC));
+        expect(HttpStatus.BAD_REQUEST, () -> ShareVideoMp4.init(VideoFixture.init(3841, 1000), VideoFixture.CODEC));
+    }
+
+    @Test
     void contiguousIdempotentPublicationAndLateJoinStartAtRetainedKeyframe() {
         initialize(epoch);
         assertNull(store.metadata(access, viewer));

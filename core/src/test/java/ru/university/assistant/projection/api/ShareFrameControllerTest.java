@@ -25,7 +25,7 @@ class ShareFrameControllerTest {
         ShareService shares = mock(ShareService.class);
         ShareController controller = new ShareController(shares,
                 mock(MediaViewingAccessApi.class), mock(ProjectionService.class));
-        int maximum = 256 * 1024;
+        int maximum = 2 * 1024 * 1024;
         for (long length : new long[] { -1, 1 }) {
             var source = new ByteArrayInputStream(new byte[maximum + 10]);
             HttpServletRequest request = mock(HttpServletRequest.class);

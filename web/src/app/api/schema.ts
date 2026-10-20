@@ -8382,7 +8382,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Invalid JPEG metadata or dimensions greater than 1920 by 1080. */
+      /** @description Invalid JPEG metadata, side longer than 3840 pixels, or more than 8294400 pixels. */
       400: {
         headers: {
           [name: string]: unknown;
@@ -8417,7 +8417,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Body exceeds 256 KiB, including requests without Content-Length. */
+      /** @description Body exceeds 2 MiB, including requests without Content-Length. */
       413: {
         headers: {
           [name: string]: unknown;

@@ -98,12 +98,13 @@ async function fixture(t, capture) {
     configurable: true,
     value: (id) => intervals.delete(id)
   });
-  const mocks = `const f=globalThis.__laShareTest; export const startShare=(...args)=>{f.requests.push(['start',...args]);return f.api.start(...args)}; export const pollShare=(...args)=>f.api.poll(...args); export const stopShare=(...args)=>{f.requests.push(['stop',...args]);return f.api.stop(...args)}; export const offerShare=async()=>{}; export const uploadShareFrame=async()=>{}; export class ApiError extends Error {status=403}; export const browserProjection=f.projection; export const bindPublicProjection=(...args)=>f.requests.push(['bind',...args]); export const gatheredDescription=async()=>''; export const localShareChannel=f.channel; export class ShareVideoPublisher {async start(){} stop(){}};`;
+  const mocks = `const f=globalThis.__laShareTest; export const startShare=(...args)=>{f.requests.push(['start',...args]);return f.api.start(...args)}; export const pollShare=(...args)=>f.api.poll(...args); export const stopShare=(...args)=>{f.requests.push(['stop',...args]);return f.api.stop(...args)}; export const offerShare=async()=>{}; export const uploadShareFrame=async()=>{}; export class ApiError extends Error {status=403}; export const browserProjection=f.projection; export const bindPublicProjection=(...args)=>f.requests.push(['bind',...args]); export const gatheredDescription=async()=>''; export const configureScreenSenders=async()=>{}; export const encodeShareFrame=async()=>null; export const localShareChannel=f.channel; export class ShareVideoPublisher {async start(){} stop(){}};`;
   const mockUrl = `data:text/javascript,${encodeURIComponent(mocks)}`;
   let source = original
     .replace('from "../projection/browserProjection"', `from ${JSON.stringify(mockUrl)}`)
     .replace('from "../api/http"', `from ${JSON.stringify(mockUrl)}`)
     .replace('from "../api/share-api"', `from ${JSON.stringify(mockUrl)}`)
+    .replace('from "./shareQuality"', `from ${JSON.stringify(mockUrl)}`)
     .replace('from "./rtc"', `from ${JSON.stringify(mockUrl)}`)
     .replace('from "./videoPublisher"', `from ${JSON.stringify(mockUrl)}`)
     .replace(
