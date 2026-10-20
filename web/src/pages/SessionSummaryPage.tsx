@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { getCourse } from "../app/api/courses-api";
 import { getLiveSession } from "../app/api/live-api";
+import { courseAnalyticsParams } from "../shared/lib/analyticsNavigation";
 import { AppHeader } from "../widgets/Layout";
 import { Button } from "../shared/ui/button";
 import { PresenterSessionSummary } from "../widgets/PresenterSessionSummary";
@@ -13,6 +14,7 @@ export function SessionSummaryPage({
   courseId: string;
   sessionId: string;
 }) {
+  const [params] = useSearchParams();
   const courseQuery = useQuery({
     queryKey: ["courses", courseId],
     queryFn: () => getCourse(courseId)
@@ -54,8 +56,8 @@ export function SessionSummaryPage({
       <PresenterSessionSummary
         courseId={courseId}
         session={sessionQuery.data}
-        backTo={`/courses/${courseId}/analytics`}
-        backLabel="К аналитике"
+        backTo={`/courses/${courseId}/analytics?${courseAnalyticsParams(params)}`}
+        backLabel="К аналитике курса"
       />
     </>
   );

@@ -1,10 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChartNoAxesColumn } from "lucide-react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { getCourse } from "../app/api/courses-api";
-import { listSessionHistory } from "../app/api/live-api";
-import { getCourseGroupAnalytics } from "../app/api/analytics-api";
-import { Button, LinkButton } from "../shared/ui/button";
+import { Button } from "../shared/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { CourseSectionNav } from "../widgets/CourseSectionNav";
 import { CourseLearningAnalytics } from "../widgets/CourseLearningAnalytics";
 import { CourseSessionHistory } from "../widgets/CourseSessionHistory";
@@ -16,36 +14,15 @@ export function CourseAnalyticsPage({ courseId }: { courseId: string }) {
     queryFn: () => getCourse(courseId)
   });
   const canManage = courseQuery.data?.canManage ?? false;
-  const historyQuery = useQuery({
-    queryKey: ["live", courseId, "history", "availability"],
-    queryFn: () => listSessionHistory(courseId, 1, 0),
-    enabled: canManage
-  });
-  const activityQuery = useQuery({
-    queryKey: ["analytics", courseId, "groups"],
-    queryFn: () => getCourseGroupAnalytics(courseId),
-    enabled: canManage
-  });
-  const hasHistoryFilters = [
-    "historySearch",
-    "historyGroup",
-    "historyFrom",
-    "historyTo",
-    "student"
-  ].some((key) => searchParams.get(key));
-  const metrics = activityQuery.data;
-  const noActivity =
-    metrics &&
-    [metrics.overall, metrics.unidentified, ...metrics.groups.map((group) => group.metrics)].every(
-      (item) =>
-        item.participantCount + item.signalCount + item.checkAnswers + item.questionsAsked === 0
-    );
-  const empty =
-    !hasHistoryFilters &&
-    !historyQuery.isError &&
-    !activityQuery.isError &&
-    historyQuery.data?.total === 0 &&
-    noActivity;
+  const modeParam = searchParams.get("analyticsView");
+  const mode =
+    modeParam === "groups" || modeParam === "students"
+      ? modeParam
+      : modeParam === "sessions"
+        ? "sessions"
+        : searchParams.get("student")
+          ? "students"
+          : "sessions";
   if (courseQuery.isLoading) return <AnalyticsLoading />;
   if (courseQuery.data && !canManage) return <Navigate to={`/courses/${courseId}`} replace />;
   if (courseQuery.isError || !courseQuery.data) {
@@ -67,37 +44,45 @@ export function CourseAnalyticsPage({ courseId }: { courseId: string }) {
           <h1>Аналитика курса</h1>
         </div>
       </header>
-      <CourseSectionNav courseId={courseId} canManage />
-      {empty ? (
-        <div className="lecture-empty-state">
-          <ChartNoAxesColumn size={28} aria-hidden="true" />
-          <div>
-            <strong>Результаты появятся после первого занятия</strong>
-            <p className="muted">
-              Здесь будут история занятий, обратная связь и результаты проверок.
-            </p>
-          </div>
-          <LinkButton to={`/courses/${courseId}/materials`}>Подготовить занятие</LinkButton>
-        </div>
-      ) : historyQuery.isLoading || activityQuery.isLoading ? (
-        <p role="status" className="muted">
-          Загрузка аналитики…
-        </p>
+      <div className="course-analytics-navigation">
+        <CourseSectionNav courseId={courseId} canManage />
+        <Tabs
+          value={mode}
+          onValueChange={(value) =>
+            setSearchParams((current) => {
+              const next = new URLSearchParams(current);
+              next.set("analyticsView", value);
+              if (value !== "students") next.delete("student");
+              return next;
+            })
+          }
+        >
+          <TabsList aria-label="Раздел аналитики">
+            <TabsTrigger value="sessions">Занятия</TabsTrigger>
+            <TabsTrigger value="groups">Группы</TabsTrigger>
+            <TabsTrigger value="students">Студенты</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+      {mode === "sessions" ? (
+        <CourseSessionHistory key={courseId} courseId={courseId} />
       ) : (
-        <>
-          <CourseLearningAnalytics
-            courseId={courseId}
-            initialStudentId={searchParams.get("student") ?? ""}
-            onStudentChange={(studentId) => {
-              const next = new URLSearchParams(searchParams);
-              if (studentId) next.set("student", studentId);
-              else next.delete("student");
-              setSearchParams(next, { replace: true });
-            }}
-          />
-
-          <CourseSessionHistory key={courseId} courseId={courseId} />
-        </>
+        <CourseLearningAnalytics
+          courseId={courseId}
+          mode={mode}
+          initialStudentId={searchParams.get("student") ?? ""}
+          onStudentChange={(studentId) =>
+            setSearchParams(
+              (current) => {
+                const next = new URLSearchParams(current);
+                if (studentId) next.set("student", studentId);
+                else next.delete("student");
+                return next;
+              },
+              { replace: true }
+            )
+          }
+        />
       )}
     </div>
   );

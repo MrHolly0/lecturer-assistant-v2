@@ -316,6 +316,11 @@ public class StudentWebSessionService {
 
     public QuestionPage questions(
             AuthenticatedUser user, UUID courseId, UUID sessionId, QuestionStatus status, int limit, int offset) {
+        return questions(user, courseId, sessionId, status, limit, offset, "");
+    }
+
+    public QuestionPage questions(AuthenticatedUser user, UUID courseId, UUID sessionId,
+            QuestionStatus status, int limit, int offset, String query) {
         courseAccess.requireManage(user, courseId);
         sessions.findByCourse(courseId, sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
@@ -323,7 +328,11 @@ public class StudentWebSessionService {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "limit must be between 1 and 100 and offset must be non-negative");
         }
-        return questions.list(sessionId, status, limit, offset);
+        String search = query == null ? "" : query;
+        if (search.length() > 200) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Search must not exceed 200 characters");
+        }
+        return questions.list(sessionId, status, limit, offset, search.trim());
     }
 
     @Transactional

@@ -1,20 +1,38 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { BarChart3, CalendarClock } from "lucide-react";
+import { ArrowLeft, BarChart3, CalendarDays } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { listSessionHistory } from "../app/api/live-api";
-import { Button, LinkButton } from "../shared/ui/button";
+import { Button } from "../shared/ui/button";
 import { Input } from "../shared/ui/input";
 import { localDayBoundary } from "../shared/lib/sessionHistoryDates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import { PaginationBar, SearchField } from "./ListControls";
+import { pluralizeRu } from "../shared/lib/plural";
 import { SessionGroups } from "./SessionGroups";
+import { CourseSessionPreview } from "./CourseSessionPreview";
+import { formatSessionDuration } from "../shared/lib/analyticsNavigation";
+import { Popover, PopoverContent, PopoverTrigger } from "../shared/ui/popover";
 
 const PAGE_SIZE = 20;
 const FILTER_KEYS = ["historySearch", "historyGroup", "historyFrom", "historyTo", "historyPage"];
 
 export function CourseSessionHistory({ courseId }: { courseId: string }) {
   const [params, setParams] = useSearchParams();
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const requestedId = params.get("historySession") ?? "";
+  const showDetail = Boolean(requestedId) && params.get("historyList") !== "1";
+  const pendingFocus = useRef(false);
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    pendingFocus.current = false;
+    if (!window.matchMedia("(max-width: 800px)").matches) return;
+    const target = document.querySelector<HTMLElement>(
+      showDetail ? ".session-history__mobile-back" : '.session-history__item[aria-current="true"]'
+    );
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: "nearest" });
+  }, [requestedId, showDetail]);
   const query = (params.get("historySearch") ?? "").slice(0, 200);
   const groupId = params.get("historyGroup") ?? "";
   const dateFrom = params.get("historyFrom") ?? "";
@@ -70,6 +88,8 @@ export function CourseSessionHistory({ courseId }: { courseId: string }) {
         if (value) next.set(key, value);
         else next.delete(key);
         next.delete("historyPage");
+        next.delete("historySession");
+        next.delete("historyList");
         return next;
       },
       { replace: true }
@@ -78,6 +98,8 @@ export function CourseSessionHistory({ courseId }: { courseId: string }) {
   function changePage(value: number) {
     setParams((current) => {
       const next = new URLSearchParams(current);
+      next.delete("historySession");
+      next.delete("historyList");
       if (value > 1) next.set("historyPage", String(value));
       else next.delete("historyPage");
       return next;
@@ -88,6 +110,8 @@ export function CourseSessionHistory({ courseId }: { courseId: string }) {
       (current) => {
         const next = new URLSearchParams(current);
         FILTER_KEYS.forEach((key) => next.delete(key));
+        next.delete("historySession");
+        next.delete("historyList");
         return next;
       },
       { replace: true }
@@ -119,28 +143,43 @@ export function CourseSessionHistory({ courseId }: { courseId: string }) {
     setParams
   ]);
 
+  const selected =
+    history?.items.find((item) => item.id === requestedId) ??
+    (!requestedId ? history?.items[0] : undefined);
+  function choose(id: string) {
+    pendingFocus.current = true;
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (id) {
+        next.set("historySession", id);
+        next.delete("historyList");
+      } else {
+        next.set("historyList", "1");
+        if (selected) next.set("historySession", selected.id);
+      }
+      return next;
+    });
+  }
   return (
-    <section className="session-history" aria-labelledby="session-history-title">
-      <div className="section-heading session-history__heading">
-        <div>
-          <h2 id="session-history-title">История занятий</h2>
-          {showFilters && (
-            <p className="muted">Найдите занятие по лекции, учебной группе или дате завершения.</p>
-          )}
-        </div>
-      </div>
-      {showFilters && (
-        <div className="session-history-filters" role="search" aria-label="Поиск в истории занятий">
-          <div className="field session-history-filters__search">
-            <span>Поиск</span>
+    <section
+      className={`session-history session-history--workspace${showDetail && selected ? " has-selection" : ""}`}
+      aria-labelledby="session-history-title"
+    >
+      <h2 id="session-history-title" className="sr-only">
+        История занятий
+      </h2>
+      <aside className="session-history__master" aria-label="Завершённые занятия">
+        {showFilters && (
+          <div
+            className="session-history-filters"
+            role="search"
+            aria-label="Поиск в истории занятий"
+          >
             <SearchField
               value={query}
               onChange={(value) => changeFilter("historySearch", value.slice(0, 200))}
               placeholder="Название лекции или группа"
             />
-          </div>
-          <label className="field">
-            <span>Учебная группа</span>
             <Select
               value={groupId || "all"}
               onValueChange={(value) => changeFilter("historyGroup", value === "all" ? "" : value)}
@@ -160,122 +199,163 @@ export function CourseSessionHistory({ courseId }: { courseId: string }) {
                 ))}
               </SelectContent>
             </Select>
-          </label>
-          <label className="field">
-            <span>Дата завершения с</span>
-            <Input
-              type="date"
-              aria-label="Дата завершения с"
-              value={dateFrom}
-              max={dateTo || "9999-12-31"}
-              aria-invalid={Boolean(dateError)}
-              aria-describedby={dateError ? "history-date-error" : undefined}
-              onChange={(event) => changeFilter("historyFrom", event.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span>Дата завершения по</span>
-            <Input
-              type="date"
-              aria-label="Дата завершения по"
-              value={dateTo}
-              min={dateFrom || "0001-01-01"}
-              max="9999-12-30"
-              aria-invalid={Boolean(dateError)}
-              aria-describedby={dateError ? "history-date-error" : undefined}
-              onChange={(event) => changeFilter("historyTo", event.target.value)}
-            />
-          </label>
+            <Popover open={periodOpen} onOpenChange={setPeriodOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" aria-label="Период в истории занятий">
+                  <CalendarDays size={18} aria-hidden="true" />
+                  {dateFrom || dateTo ? "Выбран период" : "Все даты"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="history-period" align="start">
+                <h3>Период завершения</h3>
+                <label className="field">
+                  <span>С</span>
+                  <Input
+                    type="date"
+                    aria-label="Дата завершения с"
+                    value={dateFrom}
+                    max={dateTo || "9999-12-31"}
+                    aria-invalid={Boolean(dateError)}
+                    onChange={(event) => changeFilter("historyFrom", event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>По включительно</span>
+                  <Input
+                    type="date"
+                    aria-label="Дата завершения по"
+                    value={dateTo}
+                    min={dateFrom || undefined}
+                    max="9999-12-31"
+                    aria-invalid={Boolean(dateError)}
+                    onChange={(event) => changeFilter("historyTo", event.target.value)}
+                  />
+                </label>
+                {dateError && (
+                  <p className="form-error" role="alert">
+                    {dateError}
+                  </p>
+                )}
+                <Button variant="outline" onClick={() => setPeriodOpen(false)}>
+                  Готово
+                </Button>
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
+        <div className="session-history-results-heading">
+          <p className="muted" role="status">
+            {dateError
+              ? "Исправьте период для поиска."
+              : busy
+                ? "Поиск занятий…"
+                : historyQuery.isError
+                  ? "История недоступна"
+                  : `${history?.total ?? 0} ${pluralizeRu(history?.total ?? 0, "занятие", "занятия", "занятий")}`}
+          </p>
+          {hasFilters && (
+            <Button variant="ghost" onClick={clearFilters}>
+              Сбросить фильтры
+            </Button>
+          )}
         </div>
-      )}
-      {dateError && (
-        <p id="history-date-error" className="form-error" role="alert">
-          {dateError}
-        </p>
-      )}
-      <div className="session-history-results-heading">
-        <p className="muted" role="status">
-          {dateError
-            ? "Исправьте период для поиска."
-            : busy
-              ? "Поиск занятий…"
-              : historyQuery.isError
-                ? "История недоступна"
-                : `Найдено занятий: ${history?.total ?? 0}`}
-        </p>
-        {hasFilters && (
-          <Button variant="ghost" onClick={clearFilters}>
-            Сбросить фильтры
+        {dateError && !periodOpen && (
+          <p className="form-error" role="alert">
+            {dateError}
+          </p>
+        )}
+        <div className="session-history-results" aria-busy={busy}>
+          {historyQuery.isError && !dateError && !typing && (
+            <div className="analytics-load-error" role="alert">
+              <p>Не удалось загрузить историю занятий.</p>
+              <Button variant="outline" onClick={() => void historyQuery.refetch()}>
+                Повторить
+              </Button>
+            </div>
+          )}
+          {ready && history && history.items.length === 0 && (
+            <div className="session-history-empty">
+              <BarChart3 size={24} aria-hidden="true" />
+              <div>
+                <strong>
+                  {hasFilters ? "Занятия не найдены" : "Завершённых занятий пока нет"}
+                </strong>
+                <p className="muted">
+                  {hasFilters
+                    ? "Измените запрос, группу или период."
+                    : "После занятия здесь появятся сигналы и результаты проверок."}
+                </p>
+              </div>
+            </div>
+          )}
+          {history && history.items.length > 0 && (
+            <>
+              <ul className="session-history__list">
+                {history.items.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      className="session-history__item"
+                      aria-current={selected?.id === item.id ? "true" : undefined}
+                      disabled={!ready}
+                      onClick={() => choose(item.id)}
+                    >
+                      <span className="session-history__item-title">
+                        <strong>{item.lectureTitle}</strong>
+                        <span className="muted">
+                          {formatSessionDuration(
+                            (Date.parse(item.endedAt) - Date.parse(item.startedAt)) / 1000
+                          )}
+                        </span>
+                      </span>
+                      <span className="session-history__item-meta">
+                        {new Date(item.startedAt).toLocaleString("ru-RU", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit"
+                        })}
+                        {item.groups.length > 0 && (
+                          <>
+                            <span aria-hidden="true"> · </span>
+                            <SessionGroups groups={item.groups} compact />
+                          </>
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <PaginationBar
+                page={page}
+                pageCount={pageCount}
+                pageSize={PAGE_SIZE}
+                total={history.total}
+                onPageChange={changePage}
+              />
+            </>
+          )}
+        </div>
+      </aside>
+      <div className="session-history__detail">
+        {requestedId && (
+          <Button
+            variant="ghost"
+            className="session-history__mobile-back"
+            onClick={() => choose("")}
+          >
+            <ArrowLeft size={18} aria-hidden="true" />К списку занятий
           </Button>
         )}
-      </div>
-      <div className="session-history-results" aria-busy={busy}>
-        {historyQuery.isError && !dateError && !typing && (
-          <div className="analytics-load-error" role="alert">
-            Не удалось загрузить историю занятий.
-            <Button variant="outline" onClick={() => void historyQuery.refetch()}>
-              Повторить
-            </Button>
-          </div>
-        )}
-        {ready && history && history.items.length === 0 && (
-          <div className="session-history-empty">
-            <BarChart3 size={24} aria-hidden="true" />
-            <div>
-              <strong>{hasFilters ? "Занятия не найдены" : "Завершённых занятий пока нет"}</strong>
-              <p className="muted">
-                {hasFilters
-                  ? "Измените запрос, группу или период."
-                  : "После занятия здесь появятся сигналы и результаты проверок."}
-              </p>
-            </div>
-          </div>
-        )}
-        {ready && history && history.items.length > 0 && (
-          <>
-            <ul className="session-history-list">
-              {history.items.map((session) => (
-                <li key={session.id} className="session-history-row">
-                  <div className="session-history-row__copy">
-                    <h3>{session.lectureTitle}</h3>
-                    <SessionGroups groups={session.groups} compact />
-                    <span className="session-history-row__time">
-                      <CalendarClock size={15} aria-hidden="true" />
-                      {formatDateTime(session.endedAt ?? session.startedAt)}
-                    </span>
-                  </div>
-                  <span className="badge badge--muted">
-                    {session.status === "ARCHIVED" ? "В архиве" : "Завершена"}
-                  </span>
-                  <LinkButton
-                    variant="outline"
-                    to={`/courses/${courseId}/sessions/${session.id}/summary`}
-                  >
-                    Открыть итог
-                  </LinkButton>
-                </li>
-              ))}
-            </ul>
-            <PaginationBar
-              page={page}
-              pageCount={pageCount}
-              pageSize={PAGE_SIZE}
-              total={history.total}
-              onPageChange={changePage}
-            />
-          </>
+        {ready && selected ? (
+          <CourseSessionPreview key={selected.id} courseId={courseId} sessionId={selected.id} />
+        ) : (
+          <p className="muted" role="status">
+            {busy ? "Поиск занятий…" : "Выберите занятие из списка, чтобы посмотреть итог."}
+          </p>
         )}
       </div>
     </section>
   );
-}
-
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
 }

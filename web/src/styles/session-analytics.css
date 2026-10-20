@@ -1,5 +1,8 @@
-.session-analytics {
+.session-analytics,
+.session-history-preview {
   --analytics-warning: #eab308;
+}
+.session-analytics {
   padding-bottom: 72px;
 }
 

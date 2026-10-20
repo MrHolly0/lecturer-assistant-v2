@@ -63,8 +63,9 @@ class StudentSessionController {
             @PathVariable UUID sessionId,
             @RequestParam(defaultValue = "OPEN") QuestionStatus status,
             @RequestParam(defaultValue = "50") int limit,
-            @RequestParam(defaultValue = "0") int offset) {
-        return studentSessions.questions(user, courseId, sessionId, status, limit, offset);
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "") String q) {
+        return studentSessions.questions(user, courseId, sessionId, status, limit, offset, q);
     }
 
     @PutMapping("/api/v1/courses/{courseId}/sessions/{sessionId}/questions/{questionId}")

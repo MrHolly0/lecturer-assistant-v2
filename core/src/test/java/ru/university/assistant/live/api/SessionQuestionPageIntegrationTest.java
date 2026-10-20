@@ -88,6 +88,35 @@ class SessionQuestionPageIntegrationTest extends LiveFlowTestBase {
         questionsPage(courseId, sessionInOtherCourse, lecturerToken, "OPEN", 50, 0, 404);
     }
 
+    @Test
+    void questionTextSearchRunsBeforePagingAndDoesNotSearchAnonymousAuthors() throws Exception {
+        String student = maxLogin(7233);
+        join(student, null);
+        UUID older = ask(student, "Match older", false);
+        UUID newer = ask(student, "Match newer", true);
+        ask(student, "Unrelated newest", false);
+        UUID literal = ask(student, "Literal 100%_done", false);
+        setCreatedAt(older, "2026-10-18T10:00:00Z");
+        setCreatedAt(newer, "2026-10-18T11:00:00Z");
+        String path = "/api/v1/courses/{course}/sessions/{session}/questions";
+        JsonNode page = json(get(path, courseId, sessionId).header("Authorization", "Bearer " + lecturerToken)
+                .param("q", " MATCH ").param("limit", "1").param("offset", "1"), 200);
+        assertEquals(2, page.get("total").asInt());
+        assertEquals(older.toString(), page.at("/items/0/id").asText());
+        assertCounts(page, 4, 0, 0);
+        JsonNode literalPage = json(get(path, courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken).param("q", "100%_"), 200);
+        assertEquals(1, literalPage.get("total").asInt());
+        assertEquals(literal.toString(), literalPage.at("/items/0/id").asText());
+        JsonNode byName = json(get(path, courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken).param("q", "Иван Петров"), 200);
+        assertEquals(0, byName.get("total").asInt());
+        json(get(path, courseId, sessionId).header("Authorization", "Bearer " + lecturerToken)
+                .param("q", "x".repeat(201)), 400);
+        json(get(path, courseId, sessionId).header("Authorization", "Bearer " + student)
+                .param("q", "x".repeat(201)), 403);
+    }
+
     private UUID ask(String student, String text, boolean anonymous) throws Exception {
         return UUID.fromString(json(post("/api/v1/student/sessions/{code}/questions", joinCode)
                         .header("Authorization", "Bearer " + student)

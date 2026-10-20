@@ -20,13 +20,16 @@ type SortMode = "name" | "errors" | "red";
 export function CourseLearningAnalytics({
   courseId,
   initialStudentId,
-  onStudentChange
+  onStudentChange,
+  mode
 }: {
   courseId: string;
+  mode?: "groups" | "students";
   initialStudentId: string;
   onStudentChange: (studentId: string) => void;
 }) {
-  const [view, setView] = useState<"groups" | "students">("groups");
+  const [internalView, setView] = useState<"groups" | "students">("groups");
+  const view = mode ?? internalView;
   const [groupId, setGroupId] = useState("all");
   const [studentId, setStudentId] = useState("");
   const studentDetailRef = useRef<HTMLDivElement>(null);
@@ -79,13 +82,21 @@ export function CourseLearningAnalytics({
   return (
     <section className="learning-analytics" aria-labelledby="learning-analytics-title">
       <div className="section-heading learning-analytics__heading">
-        <h2 id="learning-analytics-title">Учебная активность</h2>
-        <Tabs value={view} onValueChange={(value) => setView(value as typeof view)}>
-          <TabsList>
-            <TabsTrigger value="groups">Группы</TabsTrigger>
-            <TabsTrigger value="students">Студенты</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <h2 id="learning-analytics-title">
+          {mode === "groups"
+            ? "Группы курса"
+            : mode === "students"
+              ? "Студенты курса"
+              : "Учебная активность"}
+        </h2>
+        {!mode && (
+          <Tabs value={view} onValueChange={(value) => setView(value as typeof view)}>
+            <TabsList>
+              <TabsTrigger value="groups">Группы</TabsTrigger>
+              <TabsTrigger value="students">Студенты</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       <p className="muted preparation-analytics-note">

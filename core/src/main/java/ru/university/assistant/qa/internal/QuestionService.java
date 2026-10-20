@@ -53,7 +53,13 @@ class QuestionService implements QuestionApi {
     @Override
     @Transactional(readOnly = true)
     public QuestionPage list(UUID sessionId, QuestionStatus status, int limit, int offset) {
-        return repository.list(sessionId, status, limit, offset);
+        return list(sessionId, status, limit, offset, "");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public QuestionPage list(UUID sessionId, QuestionStatus status, int limit, int offset, String query) {
+        return repository.list(sessionId, status, limit, offset, query);
     }
 
     @Override

@@ -183,10 +183,15 @@ export async function getSessionQuestionsPage(
   sessionId: string,
   status: StudentQuestionStatus = "OPEN",
   limit = 50,
-  offset = 0
+  offset = 0,
+  query = "",
+  signal?: AbortSignal
 ): Promise<SessionQuestionPage> {
   const params = new URLSearchParams({ status, limit: String(limit), offset: String(offset) });
-  const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/questions?${params}`);
+  if (query.trim()) params.set("q", query.trim());
+  const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/questions?${params}`, {
+    signal
+  });
   return res.json() as Promise<SessionQuestionPage>;
 }
 

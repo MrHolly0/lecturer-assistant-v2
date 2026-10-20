@@ -11,6 +11,8 @@ public interface QuestionApi {
 
     QuestionPage list(UUID sessionId, QuestionStatus status, int limit, int offset);
 
+    QuestionPage list(UUID sessionId, QuestionStatus status, int limit, int offset, String query);
+
     List<QuestionAnswerAudience> answeredQuestions(UUID sessionId);
 
     java.util.Map<UUID, List<StudentQuestion>> personalQuestions(UUID sessionId, java.util.Set<UUID> personIds);

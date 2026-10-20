@@ -6740,6 +6740,8 @@ export interface operations {
   listSessionQuestions: {
     parameters: {
       query?: {
+        /** @description Case-insensitive literal search in question text before pagination; status counts remain session-wide. */
+        q?: string;
         status?: "OPEN" | "ANSWERED" | "DISMISSED";
         limit?: number;
         offset?: number;

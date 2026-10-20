@@ -59,25 +59,31 @@ class QuestionRepository {
                 .list();
     }
 
-    QuestionPage list(UUID sessionId, QuestionStatus status, int limit, int offset) {
+    QuestionPage list(UUID sessionId, QuestionStatus status, int limit, int offset, String query) {
         List<StudentQuestion> items = jdbc.sql(
                         """
                         select id, session_id, display_name, channel_type, text, status, created_at,
                                answer_text, answered_at, answer_visibility, anonymous
                         from qa.questions
                         where session_id = :sessionId and status = :status
+                          and position(lower(:query) in lower(text)) > 0
                         order by created_at desc, id desc
                         limit :limit offset :offset
                         """)
                 .param("sessionId", sessionId)
                 .param("status", status.name())
+                .param("query", query)
                 .param("limit", limit)
                 .param("offset", offset)
                 .query(this::mapQuestion)
                 .list();
-        long total = jdbc.sql("select count(*) from qa.questions where session_id = :sessionId and status = :status")
+        long total = jdbc.sql("""
+                        select count(*) from qa.questions where session_id = :sessionId and status = :status
+                          and position(lower(:query) in lower(text)) > 0
+                        """)
                 .param("sessionId", sessionId)
                 .param("status", status.name())
+                .param("query", query)
                 .query(Long.class)
                 .single();
         QuestionCounts counts = jdbc.sql("""
