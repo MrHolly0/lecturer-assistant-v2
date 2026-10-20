@@ -49,6 +49,7 @@ export function CourseStaffPicker({
     (member) =>
       member.status === "ACTIVE" &&
       member.role !== "STUDENT" &&
+      (!unitId || member.unitId === unitId) &&
       includesQuery(query, member.displayName, member.email)
   );
   const navigate = (id?: string) => {
