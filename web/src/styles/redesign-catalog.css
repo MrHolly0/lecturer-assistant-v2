@@ -503,40 +503,42 @@
   display: grid;
   grid-template-columns: 400px minmax(0, 1fr);
   gap: 32px;
+  align-items: start;
 }
 .group-manager__master {
   display: grid;
   gap: 16px;
 }
 .group-manager__list {
-  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 4px;
 }
 .group-row {
   display: block;
   position: relative;
-  border: 0;
-  border-bottom: 1px solid var(--border);
+  border: 1px solid transparent;
+  border-radius: 12px;
   min-height: 80px;
 }
 .group-row:first-child {
-  border-top: 0;
+  border-top-width: 1px;
 }
 .group-row--active {
   background: var(--selected);
   border: 1px solid color-mix(in srgb, var(--brand) 65%, var(--background));
   border-radius: 12px;
-  margin-top: 12px;
+  margin-top: 0;
 }
 .group-row__select {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 0;
+  padding: 16px 20px;
   min-height: 80px;
 }
 .group-row--active .group-row__select {
-  padding: 20px;
+  padding: 16px 20px;
 }
 .group-row__select > span {
   display: grid;
@@ -561,6 +563,16 @@
   gap: 24px;
   background: transparent;
   border-radius: 12px;
+}
+.group-composition__back {
+  justify-self: start;
+}
+.group-composition__placeholder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted-foreground);
+  padding: 24px;
 }
 .group-composition__heading {
   display: flex;

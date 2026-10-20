@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, MoreHorizontal, Plus, UserMinus } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { ArrowLeft, ChevronRight, MoreHorizontal, Plus, UserMinus, Users } from "lucide-react";
 import { toast } from "sonner";
 import type { components } from "../app/api/schema";
 import {
@@ -22,7 +23,6 @@ interface CourseGroupManagerProps {
   courseId: string;
   groups: StudyGroup[];
   courseMembers: CourseMember[];
-  preferredGroupId?: string;
   deleting: boolean;
   onDelete: (groupId: string) => void;
 }
@@ -31,15 +31,25 @@ export function CourseGroupManager({
   courseId,
   groups,
   courseMembers,
-  preferredGroupId,
   deleting,
   onDelete
 }: CourseGroupManagerProps) {
   const qc = useQueryClient();
-  const appliedPreferredGroupId = useRef<string>();
-  const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id ?? "");
+  const [params, setParams] = useSearchParams();
+  const selectedGroupId = params.get("group") ?? "";
+  const setSelectedGroupId = (id: string, replace = false) =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (id) next.set("group", id);
+        else next.delete("group");
+        return next;
+      },
+      { replace }
+    );
   const [personId, setPersonId] = useState("");
   const [query, setQuery] = useState("");
+  useEffect(() => setPersonId(""), [selectedGroupId, courseId]);
   const memberQueries = useQueries({
     queries: groups.map((group) => ({
       queryKey: ["courses", courseId, "groups", group.id, "members"],
@@ -56,21 +66,18 @@ export function CourseGroupManager({
   );
 
   useEffect(() => {
-    if (
-      preferredGroupId &&
-      appliedPreferredGroupId.current !== preferredGroupId &&
-      groups.some((group) => group.id === preferredGroupId)
-    ) {
-      appliedPreferredGroupId.current = preferredGroupId;
-      setSelectedGroupId(preferredGroupId);
-      setPersonId("");
-      return;
-    }
-    if (!groups.some((group) => group.id === selectedGroupId)) {
-      setSelectedGroupId(groups[0]?.id ?? "");
+    if (selectedGroupId && !groups.some((group) => group.id === selectedGroupId)) {
+      setParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          next.delete("group");
+          return next;
+        },
+        { replace: true }
+      );
       setPersonId("");
     }
-  }, [groups, preferredGroupId, selectedGroupId]);
+  }, [groups, selectedGroupId, setParams]);
 
   const refreshGroups = () => qc.invalidateQueries({ queryKey: ["courses", courseId, "groups"] });
   const assignMutation = useMutation({
@@ -137,6 +144,17 @@ export function CourseGroupManager({
 
       {selectedGroup && (
         <section className="group-composition" aria-labelledby="group-composition-title">
+          <Button
+            type="button"
+            variant="ghost"
+            className="group-composition__back"
+            onClick={() => {
+              setSelectedGroupId("");
+              setPersonId("");
+            }}
+          >
+            <ArrowLeft size={16} /> К учебным группам
+          </Button>
           <div className="group-composition__heading">
             <div>
               <h3 id="group-composition-title">{selectedGroup.name.split(" · ")[0]}</h3>
@@ -242,6 +260,12 @@ export function CourseGroupManager({
             ))}
           </ul>
         </section>
+      )}
+      {!selectedGroup && (
+        <div className="group-composition__placeholder">
+          <Users size={24} aria-hidden="true" />
+          <p>Выберите учебную группу, чтобы посмотреть состав.</p>
+        </div>
       )}
     </div>
   );

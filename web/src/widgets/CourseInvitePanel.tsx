@@ -14,12 +14,14 @@ type Invitation = components["schemas"]["Invitation"];
 
 export function CourseInvitePanel({
   courseId,
-  groups
+  groups,
+  staffOnly = false
 }: {
   courseId: string;
   groups: StudyGroup[];
+  staffOnly?: boolean;
 }) {
-  const [role, setRole] = useState<CourseRole>("STUDENT");
+  const [role, setRole] = useState<CourseRole>(staffOnly ? "LECTURER" : "STUDENT");
   const [groupId, setGroupId] = useState("none");
   const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
   const inviteMutation = useMutation({
@@ -61,7 +63,7 @@ export function CourseInvitePanel({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="STUDENT">Студент</SelectItem>
+            {!staffOnly && <SelectItem value="STUDENT">Студент</SelectItem>}
             <SelectItem value="ASSISTANT">Ассистент</SelectItem>
             <SelectItem value="LECTURER">Преподаватель</SelectItem>
           </SelectContent>

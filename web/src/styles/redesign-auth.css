@@ -285,3 +285,16 @@ html[data-max-mini-app="true"] .auth-layout .auth-shell {
     padding: 20px;
   }
 }
+
+.registration-name {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.registration-name legend {
+  margin-bottom: 12px;
+  font-weight: 600;
+}

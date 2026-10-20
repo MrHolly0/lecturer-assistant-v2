@@ -54,7 +54,6 @@ export function CoursePage({ courseId }: { courseId: string }) {
   const [groupName, setGroupName] = useState("");
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [participantDialogOpen, setParticipantDialogOpen] = useState(false);
-  const [preferredGroupId, setPreferredGroupId] = useState<string>();
   useEffect(() => {
     setParticipantDialogOpen(false);
     setGroupDialogOpen(false);
@@ -80,8 +79,13 @@ export function CoursePage({ courseId }: { courseId: string }) {
   const createGroupMut = useMutation({
     mutationFn: () => createStudyGroup(courseId, { name: groupName }),
     onSuccess: (created) => {
+      qc.setQueryData(["courses", courseId], (current: typeof course | undefined) =>
+        current && !current.groups.some((group) => group.id === created.id)
+          ? { ...current, groups: [...current.groups, created] }
+          : current
+      );
       void qc.invalidateQueries({ queryKey: ["courses", courseId] });
-      setPreferredGroupId(created.id);
+      setSearchParams({ view: "people", section: "groups", group: created.id });
       setGroupDialogOpen(false);
       setGroupName("");
       toast.success(`Группа «${created.name}» создана и выбрана.`);
@@ -153,9 +157,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
     );
 
   return (
-    <div
-      className={`page page--wide course-page${showPeople ? " course-page--people" : ""}${activeTab !== "members" ? " course-page--subsection" : ""}`}
-    >
+    <div className={`page page--wide course-page${showPeople ? " course-page--people" : ""}`}>
       <header className="page-header course-page-header">
         <div className="course-page-header__copy">
           <Link
@@ -177,7 +179,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
       </header>
 
       {activeTab !== "invite" && <CourseSectionNav courseId={courseId} canManage={canManage} />}
-      {activeTab === "members" && (
+      {activeTab !== "invite" && (
         <div
           className={
             showPeople
@@ -208,25 +210,27 @@ export function CoursePage({ courseId }: { courseId: string }) {
               : "Люди и доступ"
         }
       >
-        {activeTab === "members" && (
+        {activeTab !== "invite" && (
           <div className="section-heading course-settings__heading">
             <h2 id="course-settings-title">Люди и доступ</h2>
-            {canManage && !course.archived && (
+            {canManage && !course.archived && activeTab === "members" && (
               <Button variant="outline" onClick={() => setParticipantDialogOpen(true)}>
                 <UserRoundPlus aria-hidden="true" />
-                Добавить участника
+                Добавить ведущего
               </Button>
             )}
           </div>
         )}
-        {activeTab === "members" && (
+        {activeTab !== "invite" && (
           <Tabs
             className="course-settings__tabs"
             value={activeTab}
             onValueChange={(value) => setActiveTab(value as typeof activeTab)}
           >
             <TabsList>
-              <TabsTrigger value="members">Участники ({course.members.length})</TabsTrigger>
+              <TabsTrigger value="members">
+                Ведущие ({course.members.filter((member) => member.role !== "STUDENT").length})
+              </TabsTrigger>
               {canManage && (
                 <TabsTrigger value="groups">Учебные группы ({course.groups.length})</TabsTrigger>
               )}
@@ -236,53 +240,57 @@ export function CoursePage({ courseId }: { courseId: string }) {
 
         {activeTab === "members" && (
           <ul className="member-list">
-            {course.members.length === 0 && <li className="muted">Нет участников.</li>}
-            {course.members.map((m) => {
-              const isOwner = m.personId === course.ownerPersonId;
-              return (
-                <li key={m.personId} className="member-row">
-                  <div className="member-info">
-                    <span className="member-name">{m.displayName}</span>
-                    <span className="member-description">
-                      {ROLE_LABELS[m.role as CourseRole]}
-                      {isOwner ? " · владелец" : ""}
-                    </span>
-                  </div>
-                  {canManage && !isOwner ? (
-                    <div className="member-actions">
-                      {m.role === "STUDENT" && (
-                        <LinkButton
-                          variant="ghost"
-                          to={`/courses/${courseId}/analytics?student=${encodeURIComponent(m.personId)}`}
-                        >
-                          Аналитика
-                        </LinkButton>
-                      )}
-                      <CourseMemberActions
-                        displayName={m.displayName}
-                        role={m.role as CourseRole}
-                        disabled={
-                          changeRoleMut.isPending ||
-                          changeOwnerMut.isPending ||
-                          removeMemberMut.isPending
-                        }
-                        onRoleChange={(role) =>
-                          changeRoleMut.mutate({ personId: m.personId, role })
-                        }
-                        onChangeOwner={() => changeOwnerMut.mutate(m.personId)}
-                        onRemove={() => removeMemberMut.mutate(m.personId)}
-                      />
-                    </div>
-                  ) : (
-                    <div className="member-static-meta">
-                      <span className="badge member-role-badge">
-                        {isOwner ? "Владелец" : ROLE_LABELS[m.role as CourseRole]}
+            {course.members.filter((member) => member.role !== "STUDENT").length === 0 && (
+              <li className="muted">Ведущие пока не добавлены.</li>
+            )}
+            {course.members
+              .filter((member) => member.role !== "STUDENT")
+              .map((m) => {
+                const isOwner = m.personId === course.ownerPersonId;
+                return (
+                  <li key={m.personId} className="member-row">
+                    <div className="member-info">
+                      <span className="member-name">{m.displayName}</span>
+                      <span className="member-description">
+                        {ROLE_LABELS[m.role as CourseRole]}
+                        {isOwner ? " · владелец" : ""}
                       </span>
                     </div>
-                  )}
-                </li>
-              );
-            })}
+                    {canManage && !isOwner ? (
+                      <div className="member-actions">
+                        {m.role === "STUDENT" && (
+                          <LinkButton
+                            variant="ghost"
+                            to={`/courses/${courseId}/analytics?student=${encodeURIComponent(m.personId)}`}
+                          >
+                            Аналитика
+                          </LinkButton>
+                        )}
+                        <CourseMemberActions
+                          displayName={m.displayName}
+                          role={m.role as CourseRole}
+                          disabled={
+                            changeRoleMut.isPending ||
+                            changeOwnerMut.isPending ||
+                            removeMemberMut.isPending
+                          }
+                          onRoleChange={(role) =>
+                            changeRoleMut.mutate({ personId: m.personId, role })
+                          }
+                          onChangeOwner={() => changeOwnerMut.mutate(m.personId)}
+                          onRemove={() => removeMemberMut.mutate(m.personId)}
+                        />
+                      </div>
+                    ) : (
+                      <div className="member-static-meta">
+                        <span className="badge member-role-badge">
+                          {isOwner ? "Владелец" : ROLE_LABELS[m.role as CourseRole]}
+                        </span>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
           </ul>
         )}
 
@@ -342,7 +350,6 @@ export function CoursePage({ courseId }: { courseId: string }) {
               courseId={courseId}
               groups={course.groups}
               courseMembers={course.members}
-              preferredGroupId={preferredGroupId}
               deleting={deleteGroupMut.isPending}
               onDelete={(groupId) => deleteGroupMut.mutate(groupId)}
             />
@@ -361,6 +368,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
           key={courseId}
           courseId={courseId}
           groups={course.groups}
+          members={course.members}
           open={participantDialogOpen}
           onOpenChange={setParticipantDialogOpen}
           onAdded={(member: CourseMember) => {

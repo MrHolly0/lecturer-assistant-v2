@@ -5,6 +5,8 @@ import { useAuth } from "../app/AuthContext";
 import { Button } from "../shared/ui/button";
 import { AuthPageFrame } from "./AuthPageFrame";
 import { AuthPasswordField } from "./AuthPasswordField";
+import { PersonNameFields } from "./PersonNameFields";
+import { formatPersonName } from "../shared/lib/personName";
 
 interface MaxCredentialsScreenProps {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -26,7 +28,7 @@ export function MaxCredentialsScreen({
 }: MaxCredentialsScreenProps) {
   const { chooseMaxTeacher } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [name, setName] = useState("");
+  const [name, setName] = useState({ familyName: "", givenName: "", middleName: "" });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [invitationCode, setInvitationCode] = useState("");
@@ -37,10 +39,18 @@ export function MaxCredentialsScreen({
     event.preventDefault();
     if (pending) return;
     setError(null);
+    const displayName = formatPersonName(name);
+    if (
+      mode === "register" &&
+      (!name.familyName.trim() || !name.givenName.trim() || displayName.length > 200)
+    ) {
+      setError("Укажите фамилию и имя. ФИО должно содержать не больше 200 символов.");
+      return;
+    }
     setPending(true);
     try {
       if (mode === "login") await onLogin(email.trim(), password);
-      else await onRegister(name.trim(), email.trim(), password, invitationCode.trim());
+      else await onRegister(displayName, email.trim(), password, invitationCode.trim());
     } catch (cause) {
       setError(credentialsErrorMessage(cause, mode));
     } finally {
@@ -85,17 +95,7 @@ export function MaxCredentialsScreen({
                   required
                 />
               </label>
-              <label className="field">
-                <span>Имя</span>
-                <input
-                  name="displayName"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  autoComplete="name"
-                  minLength={2}
-                  required
-                />
-              </label>
+              <PersonNameFields value={name} onChange={setName} disabled={pending} />
             </>
           )}
           <label className="field">

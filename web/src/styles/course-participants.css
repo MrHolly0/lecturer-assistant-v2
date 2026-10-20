@@ -27,7 +27,7 @@
 
 .course-participant-dialog__tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   width: 100%;
   height: auto;
   background: transparent;
@@ -273,4 +273,61 @@
   .course-participant-dialog__body {
     overflow: visible;
   }
+}
+
+.course-staff-picker {
+  display: grid;
+  gap: 12px;
+}
+.course-staff-picker__location {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.course-staff-picker__list {
+  display: grid;
+  gap: 4px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.course-staff-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  min-height: 64px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--foreground);
+}
+.course-staff-picker__row:hover:not(:disabled) {
+  background: var(--surface);
+}
+.course-staff-picker__row[aria-pressed="true"] {
+  border-color: var(--brand);
+  background: var(--selected);
+}
+.course-staff-picker__row:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.course-staff-picker__row > svg {
+  flex: none;
+}
+.course-staff-picker__row > span {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.course-staff-picker__row small {
+  color: var(--muted-foreground);
 }

@@ -9,18 +9,21 @@ import { landingPath } from "../app/routes";
 import { Button } from "../shared/ui/button";
 import { AuthPageFrame } from "../widgets/AuthPageFrame";
 import { AuthPasswordField } from "../widgets/AuthPasswordField";
+import { PersonNameFields } from "../widgets/PersonNameFields";
+import { formatPersonName } from "../shared/lib/personName";
 
 export function RegisterPage({ code: initialCode }: { code: string }) {
   const { setUser } = useAuth();
   const navigate = useNavigate();
   const [code, setCode] = useState(initialCode);
-  const [displayName, setDisplayName] = useState("");
+  const [name, setName] = useState({ familyName: "", givenName: "", middleName: "" });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const displayName = formatPersonName(name);
 
   const mutation = useMutation({
-    mutationFn: () => registerByInvitation(displayName, email, password, code),
+    mutationFn: () => registerByInvitation(displayName, email.trim(), password, code.trim()),
     onSuccess: (data) => {
       setUser(data.user);
       navigate(landingPath(data.user.role), { replace: true });
@@ -37,6 +40,14 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
   function submit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    if (!name.familyName.trim() || !name.givenName.trim()) {
+      setError("Укажите фамилию и имя.");
+      return;
+    }
+    if (displayName.length > 200) {
+      setError("ФИО должно содержать не больше 200 символов.");
+      return;
+    }
     mutation.mutate();
   }
 
@@ -60,17 +71,7 @@ export function RegisterPage({ code: initialCode }: { code: string }) {
               placeholder="XXXX-XXXX"
             />
           </label>
-          <label className="field">
-            <span>Имя</span>
-            <input
-              name="displayName"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              required
-              minLength={2}
-              autoComplete="name"
-            />
-          </label>
+          <PersonNameFields value={name} onChange={setName} disabled={mutation.isPending} />
           <label className="field">
             <span>Email</span>
             <input
