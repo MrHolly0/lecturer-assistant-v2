@@ -205,7 +205,7 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
 
   if (!session) {
     return (
-      <div className="presenter-shell presenter-live-error">
+      <div className="presenter-shell presenter-live-error action-message">
         <p>{live.syncError ? "Не удалось обновить занятие." : "Подключаемся к занятию…"}</p>
         {live.syncError && (
           <Button type="button" onClick={live.refresh}>

@@ -303,7 +303,7 @@ export function TeacherRemotePage({
       </div>
       <section className="teacher-remote-stage" aria-label={`Слайд ${currentSlideIdx}`}>
         {deckQuery.isError ? (
-          <div className="teacher-remote-stage__empty">
+          <div className="teacher-remote-stage__empty action-message">
             <span>Не удалось загрузить слайд.</span>
             <Button type="button" variant="outline" onClick={() => void deckQuery.refetch()}>
               Повторить

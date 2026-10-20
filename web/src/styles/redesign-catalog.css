@@ -119,6 +119,15 @@
   margin: 16px 0 24px;
   overflow-wrap: anywhere;
 }
+.catalog-context__archive {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+.catalog-context__archive > p {
+  margin: 0;
+}
 .course-quick-start {
   display: grid;
   gap: 0;

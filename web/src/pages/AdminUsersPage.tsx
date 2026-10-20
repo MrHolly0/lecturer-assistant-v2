@@ -226,7 +226,7 @@ export function AdminUsersPage() {
             Загрузка учётных записей…
           </p>
         ) : isError ? (
-          <div className="org-state" role="alert">
+          <div className="org-state action-message" role="alert">
             <p>Не удалось загрузить учётные записи. Проверьте соединение и повторите запрос.</p>
             <Button variant="outline" onClick={() => void refetch()}>
               Повторить

@@ -1764,7 +1764,7 @@
     overflow: auto;
   }
 }
-.session-join-shell {
+.session-join-shell:not(.session-join-shell--center) {
   gap: 0;
 }
 .session-join-back {

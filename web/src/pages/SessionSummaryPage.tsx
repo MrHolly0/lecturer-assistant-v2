@@ -32,7 +32,7 @@ export function SessionSummaryPage({
     return (
       <>
         <AppHeader />
-        <div className="page preparation-page" role="alert">
+        <div className="page preparation-page action-message" role="alert">
           <p className="form-error">Не удалось открыть итог лекции.</p>
           <Button
             variant="outline"

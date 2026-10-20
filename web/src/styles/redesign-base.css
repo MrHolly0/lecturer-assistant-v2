@@ -114,6 +114,16 @@ h3 {
   font-weight: 600;
   letter-spacing: -0.25px;
 }
+/* Keep explanatory text and its action apart even when paragraph margins are reset. */
+.action-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+.action-message > p {
+  margin: 0;
+}
 .ui-button {
   font-size: 16px;
   border-radius: 8px;

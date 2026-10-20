@@ -115,7 +115,7 @@ export function MaxLinkPage() {
         </p>
       )}
       {status.isError && (
-        <div className="max-link-load-error" role="alert">
+        <div className="max-link-load-error action-message" role="alert">
           <p>Не удалось проверить подключение MAX.</p>
           <Button type="button" variant="outline" onClick={() => void status.refetch()}>
             Повторить

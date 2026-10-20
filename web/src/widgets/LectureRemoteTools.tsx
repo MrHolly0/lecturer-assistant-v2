@@ -131,7 +131,7 @@ export function LectureRemoteTools({
         <TabsContent value="students" forceMount hidden={section !== "students"}>
           {participants.isLoading && <p role="status">Загружаем участников…</p>}
           {participants.isError && (
-            <div role="alert">
+            <div className="action-message" role="alert">
               <p>Не удалось обновить участников.</p>
               <Button variant="outline" onClick={() => void participants.refetch()}>
                 Повторить
@@ -154,7 +154,7 @@ export function LectureRemoteTools({
           </p>
           {deck.isLoading && <p role="status">Загружаем заметки…</p>}
           {deck.isError && (
-            <div role="alert">
+            <div className="action-message" role="alert">
               <p>Не удалось загрузить заметки.</p>
               <Button variant="outline" onClick={() => void deck.refetch()}>
                 Повторить

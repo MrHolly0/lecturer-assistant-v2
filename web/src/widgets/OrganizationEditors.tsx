@@ -406,7 +406,7 @@ export function OrganizationUnitMoveDialog({
         </p>
       )}
       {reviewError && (
-        <div className="org-state org-state--inline" role="alert">
+        <div className="org-state org-state--inline action-message" role="alert">
           <p>Не удалось проверить изменение прав руководителей.</p>
           <Button variant="outline" onClick={() => void managerReview.refetch()}>
             Попробовать снова
