@@ -6,6 +6,7 @@ import {
   ArrowRightLeft,
   ChevronRight,
   MoreHorizontal,
+  ListChecks,
   Pencil,
   Plus,
   Search,
@@ -606,14 +607,19 @@ export function OrganizationPage() {
 
         {allDirectory && administrator && (
           <div className="org-selection-tools">
-            <Button variant="ghost" onClick={() => togglePageSelection(!allPageSelected)}>
+            <Button
+              variant="outline"
+              disabled={pagePeople.length === 0}
+              onClick={() => togglePageSelection(!allPageSelected)}
+            >
+              <ListChecks size={16} aria-hidden="true" />
               {allPageSelected
                 ? "Снять выбор со страницы"
-                : `Выбрать страницу: ${pagePeople.length}`}
+                : `Выбрать всех на странице (${pagePeople.length})`}
             </Button>
             {filteredPeople.length > pagePeople.length && (
               <Button
-                variant="ghost"
+                variant="outline"
                 onClick={() =>
                   setSelectedPeople(
                     filteredPeople.slice(0, MAX_BULK_MOVE_MEMBERS).map((person) => person.id)
@@ -636,9 +642,7 @@ export function OrganizationPage() {
 
         {allDirectory && administrator && selectedPeople.length > 0 && (
           <div className="org-bulk-bar" aria-live="polite">
-            <strong>
-              Выбрано: {selectedPeople.length} из {MAX_BULK_MOVE_MEMBERS}
-            </strong>
+            <strong>Выбрано сотрудников: {selectedPeople.length}</strong>
             <Button onClick={() => setMovingPeople(selectedMembers)}>
               <ArrowRightLeft size={16} aria-hidden="true" />
               Переместить

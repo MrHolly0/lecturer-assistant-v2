@@ -98,8 +98,8 @@
 }
 .organization-page .org-selection-tools .ui-button {
   font-size: 14px;
-  padding-inline: 0;
-  color: var(--muted-foreground);
+  padding-inline: 16px;
+  color: var(--foreground);
 }
 .organization-page .org-bulk-bar {
   top: calc(var(--header-height) + 8px);
