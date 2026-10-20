@@ -1,19 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { MonitorUp, SlidersHorizontal, Square } from "lucide-react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { MonitorUp, Presentation, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
-import { useMutation, useQuery } from "@tanstack/react-query";
 import type { LiveSession } from "../app/api/live-api";
-import {
-  nativeBridge,
-  nativeCommand,
-  nativeCapture,
-  workspaceShare,
-  stopWorkspaceProjection
-} from "../app/projection/nativeWorkspace";
-import { syncProjectionAppearance } from "../app/projection/projectionAppearance";
+import { screenShare } from "../app/sharing/screenShare";
 import { useMaxBridge } from "../app/max/context";
 import { getMaxWebApp } from "../app/max/bridge";
 import { openLectureRemoteWindow } from "../app/projection/lectureRemoteWindow";
+import { closePublicProjection } from "../app/projection/browserProjection";
 import { Button } from "../shared/ui/button";
 import {
   Dialog,
@@ -24,8 +17,6 @@ import {
   DialogTitle
 } from "../shared/ui/dialog";
 import { FloatingLectureRemote } from "./FloatingLectureRemote";
-import { getProjectionSettings, sendProjectionCommand } from "../app/api/projection-api";
-import { preferredNativeProjectionDevice } from "../app/projection/nativeProjectionPreference";
 
 export function ScreenShareControls({
   courseId,
@@ -33,9 +24,7 @@ export function ScreenShareControls({
   disabled,
   onPause,
   onResume,
-  onSessionChange,
-  onProjectorSetup,
-  nativeWorkspace = false
+  onSessionChange
 }: {
   courseId: string;
   session: LiveSession;
@@ -43,350 +32,147 @@ export function ScreenShareControls({
   onPause: () => void;
   onResume: () => void;
   onSessionChange?: (session: LiveSession) => void;
-  onProjectorSetup?: () => void;
-  nativeWorkspace?: boolean;
 }) {
-  const controller = workspaceShare();
-  const scope = { courseId, sessionId: session.id, joinCode: session.joinCode };
-  useLayoutEffect(() => {
-    if (controller === nativeCapture) {
-      nativeCapture.registerScope({ courseId, sessionId: session.id, joinCode: session.joinCode });
-    }
-  }, [controller, courseId, session.id, session.joinCode]);
-  const share = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-  const previewFrame =
-    "previewFrame" in share && typeof share.previewFrame === "string"
-      ? share.previewFrame
-      : undefined;
-  const nativeSourceKind = "sourceKind" in share ? share.sourceKind : undefined;
-  const nativeCaptureMode = "captureMode" in share ? share.captureMode : undefined;
-  const nativeErrorCode = "errorCode" in share ? share.errorCode : undefined;
-  const displayPermissionDenied = "permissionDenied" in share && share.permissionDenied === true;
-  const hasPreview = Boolean(share.stream || previewFrame);
-  const nativeCapabilities = nativeBridge();
-  const systemWindowPickerAvailable =
-    nativeCapabilities?.platform === "MACOS" &&
-    nativeCapabilities.captureModes?.window === true &&
-    nativeCapabilities.captureModes.application === true;
-  const manualWindowAvailable =
-    nativeCapabilities?.platform === "MACOS" &&
-    nativeCapabilities.nativeCapture &&
-    nativeCapabilities.captureModes?.manualWindow === true;
-  const manualWindowFallbackAvailable =
-    manualWindowAvailable &&
-    ((share.phase === "choosing" && nativeCaptureMode !== "manual-window") ||
-      share.phase === "error");
-  const manualWindowError = share.phase === "error" && nativeCaptureMode === "manual-window";
-  const systemPickerTimedOut = nativeErrorCode === "CAPTURE_SYSTEM_PICKER_TIMED_OUT";
-  const { isMax, theme } = useMaxBridge();
-  const helpers = useQuery({
-    queryKey: ["projection-settings"],
-    queryFn: getProjectionSettings,
-    enabled: !nativeWorkspace,
-    refetchInterval: 3000,
-    retry: false
-  });
-  const helpersUnknown = !nativeWorkspace && !helpers.data;
-  const helperStateTitle = helpersUnknown
-    ? helpers.isError
-      ? "Не удалось проверить помощник. Повторите проверку подключения."
-      : "Проверяем подключение помощника…"
-    : undefined;
-  const nativeDevices =
-    !nativeWorkspace && helpers.data?.agentAllowed
-      ? helpers.data.devices.filter(
-          (device) =>
-            device.connected &&
-            !device.revoked &&
-            device.version
-              .split(".")
-              .map(Number)
-              .some((part, index) => (index === 0 ? part > 0 : index === 1 && part >= 2)) &&
-            device.activeSessionId === session.id &&
-            (device.status === "SHOWING" || device.status === "PAUSED")
-        ) ?? []
-      : [];
-  const preferredDevice = preferredNativeProjectionDevice(courseId, session.id);
-  const nativeDevice =
-    nativeDevices.find((device) => device.id === preferredDevice) ??
-    (nativeDevices.length === 1 ? nativeDevices[0] : undefined);
-  const focusNative = useMutation({
-    mutationFn: async () => {
-      await syncProjectionAppearance(nativeDevice!.id, theme, { force: true });
-      return sendProjectionCommand(courseId, session.id, {
-        deviceId: nativeDevice!.id,
-        requestId: crypto.randomUUID(),
-        type: "FOCUS_PRIVATE_REMOTE",
-        displayConfirmed: false
-      });
-    },
-    onError: () =>
-      toast.error(
-        "Не удалось открыть пульт компонента. Проверьте его подключение в настройке проектора."
-      )
-  });
-  const nativeDeviceId = nativeDevice?.id;
-  useEffect(() => {
-    if (nativeDeviceId) void syncProjectionAppearance(nativeDeviceId, theme).catch(() => undefined);
-  }, [nativeDeviceId, theme, helpers.dataUpdatedAt]);
-  const [pult, setPult] = useState(nativeWorkspace);
+  const share = useSyncExternalStore(screenShare.subscribe, screenShare.getSnapshot);
+  const { isMax } = useMaxBridge();
   const [confirmed, setConfirmed] = useState(false);
   const [preview, setPreview] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [remoteWindow, setRemoteWindow] = useState<Window | null>(nativeWorkspace ? window : null);
-  const [remoteError, setRemoteError] = useState<string | null>(null);
+  const [remoteWindow, setRemoteWindow] = useState<Window | null>(null);
   const mounted = useRef(true);
   const video = useRef<HTMLVideoElement>(null);
   const ours = share.scope?.sessionId === session.id;
-  const capturesScreen = share.surface === "monitor" || share.surface === "unknown";
+  const sharing = ours && share.phase === "publishing";
+  const previewSource = ours
+    ? share.pendingSource ?? (share.phase === "preview" ? share : null)
+    : null;
+  const previewStream = previewSource?.stream;
+  const hasPreview = Boolean(previewStream);
+  const capturesScreen =
+    previewSource?.surface === "monitor" || previewSource?.surface === "unknown";
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
-  const openRemote = () => {
-    if (helpersUnknown) return;
-    if (nativeDevice) {
-      focusNative.mutate();
-      return;
-    }
-    if (nativeDevices.length > 1) {
-      onProjectorSetup?.();
-      toast.info("Выберите компьютер, на котором нужно открыть пульт.");
-      return;
-    }
-    const opening = openLectureRemoteWindow({ windowKey: session.id });
-    setRemoteError(null);
-    void opening
-      .then((target) => {
-        if (mounted.current) {
-          setRemoteWindow(target);
-          setPult(true);
-        } else target.close();
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : "Не удалось вынести пульт.";
-        setRemoteError(message);
-        toast.error(message);
-      });
-  };
-  const handoffToNativeRemote = () => {
-    if (nativeWorkspace || nativeDevices.length === 0) return false;
-    void controller.stop();
-    setPreview(false);
-    setConfirmed(false);
-    openRemote();
-    if (nativeDevice) toast.info("Выберите источник в отдельном пульте.");
-    return true;
-  };
   useEffect(() => {
-    if (ours) controller.setPaused(session.status === "PAUSED");
-  }, [session.status, ours, controller]);
+    if (ours) screenShare.setPaused(session.status === "PAUSED");
+    if (session.status === "ENDED" || session.status === "ARCHIVED") {
+      if (ours) void screenShare.stop();
+      closePublicProjection(session.joinCode);
+      setRemoteWindow(null);
+    }
+  }, [session.status, session.joinCode, ours]);
   useEffect(() => {
-    if (!preview || !share.stream || !video.current) return;
+    if (!preview || !previewStream || !video.current) return;
     const element = video.current;
-    element.srcObject = share.stream;
+    element.srcObject = previewStream;
     void element.play().catch(() => undefined);
     return () => {
       element.srcObject = null;
     };
-  }, [preview, share.stream]);
-  useEffect(() => {
-    if (share.phase === "publishing" && ours) setPreview(false);
-  }, [share.phase, ours]);
-  useEffect(() => {
-    if (
-      controller === nativeCapture &&
-      (share.phase === "choosing" || share.phase === "preview" || share.phase === "error")
-    ) {
-      setPreview(true);
-    }
-  }, [controller, share.phase]);
-  const choose = (mode: "window" | "display" | "manual-window" = "window") => {
-    if (helpersUnknown || handoffToNativeRemote()) return;
-    setConfirmed(false);
-    if (isMax && !nativeBridge()?.nativeCapture) {
-      const path = `/settings/projector?${new URLSearchParams({ courseId, sessionId: session.id, joinCode: session.joinCode })}`;
-      const url = `${window.location.origin}${window.location.pathname}#${path}`;
-      getMaxWebApp()?.openLink?.(url);
-      return;
-    }
-    if (ours && share.phase === "publishing") void controller.stop();
-    setPreview(true);
-    if (nativeBridge()?.nativeCapture) void nativeCapture.choose(scope, mode);
-    else void controller.choose(scope);
-  };
-  const cancelSourceChoice = () => {
-    setConfirmed(false);
-    setPreview(false);
-    void controller.stop();
+  }, [preview, previewStream]);
+
+  const openRemote = () => {
+    void openLectureRemoteWindow({ windowKey: session.id })
+      .then((target) => {
+        if (mounted.current) setRemoteWindow(target);
+        else target.close();
+      })
+      .catch((error) =>
+        toast.error(error instanceof Error ? error.message : "Не удалось открыть пульт.")
+      );
   };
   const prepare = () => {
-    if (helpersUnknown || handoffToNativeRemote()) return;
     if (isMax) {
-      choose();
+      const url =
+        window.location.origin +
+        window.location.pathname +
+        "#/courses/" +
+        encodeURIComponent(courseId) +
+        "/sessions/" +
+        encodeURIComponent(session.id) +
+        "/presenter";
+      try {
+        const bridge = getMaxWebApp();
+        if (!bridge?.openLink) throw new Error();
+        bridge.openLink(url);
+      } catch {
+        toast.error("Не удалось открыть браузер. Откройте занятие в браузере компьютера.");
+      }
       return;
     }
     setConfirmed(false);
     setPreview(true);
+  };
+  const choose = () => {
+    setConfirmed(false);
+    void screenShare.choose({ courseId, sessionId: session.id, joinCode: session.joinCode });
   };
   return (
     <>
-      {!nativeWorkspace && (
-        <Button
-          variant="outline"
-          disabled={
-            !(ours && share.phase === "publishing") &&
-            (helpersUnknown ||
-              disabled ||
-              session.status !== "LIVE" ||
-              share.phase === "choosing" ||
-              (share.phase === "publishing" && !ours))
-          }
-          title={helperStateTitle}
-          aria-busy={helpersUnknown && helpers.isFetching}
-          onClick={
-            ours && share.phase === "publishing"
-              ? () => {
-                  void stopWorkspaceProjection(session.joinCode).then(() => {
-                    setPult(false);
-                    setRemoteWindow(null);
-                  });
-                }
-              : prepare
-          }
-        >
-          {ours && share.phase === "publishing" ? (
-            <Square size={16} aria-hidden="true" />
-          ) : (
-            <MonitorUp size={18} aria-hidden="true" />
-          )}
-          {ours && share.phase === "publishing" ? "Остановить показ" : "Демонстрация"}
-        </Button>
-      )}
-      {!nativeWorkspace && (
-        <Button
-          variant="outline"
-          disabled={helpersUnknown}
-          title={helperStateTitle}
-          aria-busy={helpersUnknown && helpers.isFetching}
-          onClick={openRemote}
-        >
-          <SlidersHorizontal size={18} aria-hidden="true" />
-          Пульт
-        </Button>
-      )}
-      {!nativeWorkspace && helpersUnknown && helpers.isError && (
-        <span className="screen-share-remote-error" role="alert">
-          Не удалось проверить подключение помощника.{" "}
-          <Button variant="link" onClick={() => void helpers.refetch()}>
-            Повторить проверку
-          </Button>
-        </span>
-      )}
-      {remoteError && (
-        <span className="screen-share-remote-error" role="alert">
-          {remoteError}
-        </span>
-      )}
+      <Button
+        variant="outline"
+        disabled={
+          !sharing &&
+          (disabled ||
+            session.status !== "LIVE" ||
+            share.phase === "choosing" ||
+            (share.phase === "publishing" && !ours))
+        }
+        onClick={sharing ? () => void screenShare.stop() : prepare}
+      >
+        {sharing ? <Presentation size={18} /> : <MonitorUp size={18} />}
+        {sharing ? "Вернуться к презентации" : "Демонстрация"}
+      </Button>
+      <Button variant="outline" onClick={openRemote}>
+        <SlidersHorizontal size={18} />
+        Пульт
+      </Button>
       <Dialog
         open={preview}
         onOpenChange={(open) => {
           if (publishing) return;
           setPreview(open);
-          if (!open && share.phase !== "publishing") void controller.stop();
+          if (!open && ours) {
+            if (sharing) screenShare.cancelSelection();
+            else void screenShare.stop();
+          }
         }}
       >
         <DialogContent className="screen-share-preview">
           <DialogHeader>
             <DialogTitle>
-              {share.phase === "preview" ? "Проверьте исходящий кадр" : "Что показать аудитории?"}
+              {hasPreview ? "Проверьте исходящий кадр" : "Что показать аудитории?"}
             </DialogTitle>
             <DialogDescription>
-              {systemWindowPickerAvailable
-                ? "Выберите отдельное окно с учебным материалом. Окно «Проектор» получает показ автоматически."
-                : "Можно показать весь экран, окно приложения или вкладку. Сначала проверьте, что увидит аудитория. Выбирайте приложение с учебным материалом. Окно «Проектор» получает демонстрацию, его не нужно выбирать источником."}
+              Выберите экран, окно приложения или вкладку с учебным материалом. Окно «Проектор»
+              получает демонстрацию, его не нужно выбирать источником.
             </DialogDescription>
           </DialogHeader>
-          {previewFrame ? (
-            <img src={previewFrame} alt="Предпросмотр демонстрации" />
-          ) : share.stream ? (
+          {hasPreview ? (
             <video ref={video} muted autoPlay playsInline aria-label="Предпросмотр демонстрации" />
           ) : (
             <div className="screen-share-preview-empty" role="status">
-              {share.phase === "choosing"
-                ? nativeBridge()?.nativeCapture
-                  ? "permissionPending" in share && share.permissionPending
-                    ? nativeCaptureMode === "manual-window"
-                      ? "Подтвердите запрос macOS на доступ к записи экрана. Аудитории будет передано выбранное окно…"
-                      : nativeCaptureMode === "display"
-                        ? "Подтвердите запрос macOS на запись всего экрана…"
-                        : "Подтвердите системный запрос на выбор источника…"
-                    : nativeCaptureMode === "manual-window"
-                      ? "Выберите окно в списке помощника…"
-                      : systemWindowPickerAvailable
-                        ? "Выберите окно или приложение в системном меню…"
-                        : "Выберите источник в системном меню…"
-                  : "Выберите источник в системном окне браузера…"
-                : share.error ||
-                  "Выберите приложение с учебным материалом. Оно останется на вашем рабочем экране."}
+              {ours && share.choosing
+                ? "Выберите источник в системном окне браузера…"
+                : "Выберите приложение с учебным материалом. Оно останется на вашем рабочем экране."}
             </div>
           )}
-          {share.sourceName && share.phase === "preview" && (
-            <p className="screen-share-source-name" role="status">
-              Источник: {share.sourceName}
+          {sharing && (
+            <p role="status">
+              Аудитория продолжает видеть текущий источник до подтверждения замены.
             </p>
           )}
-          {nativeSourceKind === "application" && share.phase === "preview" && (
-            <p className="screen-share-capture-note" role="note">
-              Будут видны окна выбранного приложения. Чтобы показать одну вкладку, выберите её
-              отдельное окно.
-            </p>
+          {hasPreview && (
+            <p className="screen-share-source-name">Источник: {previewSource?.sourceName}</p>
           )}
-          {share.error && <p role="alert">{share.error}</p>}
-          {manualWindowFallbackAvailable && (
-            <details
-              className="screen-share-manual-window-fallback"
-              open={manualWindowError || (share.phase === "error" && systemPickerTimedOut)}
-            >
-              <summary>
-                {manualWindowError
-                  ? "Повторить ручной выбор окна?"
-                  : "Не появилось системное меню?"}
-              </summary>
-              {manualWindowError ? (
-                <p>
-                  Для ручного выбора нужен доступ macOS к записи экрана. Если доступа нет, разрешите
-                  его для помощника в системных настройках и повторите выбор. После выбора
-                  передаётся только указанное окно.
-                </p>
-              ) : (
-                <p>
-                  Для ручного выбора macOS нужен доступ к записи экрана. Если его ещё нет, macOS
-                  запросит его после нажатия этой кнопки. После выбора передаётся только указанное
-                  окно.
-                </p>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                disabled={publishing || disabled}
-                onClick={() => choose("manual-window")}
-              >
-                {manualWindowError ? "Повторить ручной выбор" : "Выбрать окно вручную"}
-              </Button>
-            </details>
-          )}
+          {ours && share.error && <p role="alert">{share.error}</p>}
           {hasPreview && capturesScreen && (
             <p className="screen-share-capture-note" role="note">
-              {nativeBridge()?.nativeCapture
-                ? share.surface === "monitor"
-                  ? "Выбран весь экран. Компонент исключает свой пульт, но другие окна будут видны аудитории. Сверните личные окна и проверьте кадр."
-                  : "Браузер не указал тип источника. Другие окна могут быть видны аудитории. Проверьте кадр."
-                : share.surface === "monitor"
-                  ? "Выбран весь экран. Пульт и другие окна этого экрана будут видны. Для приватного управления установите компонент в настройке проектора или выберите отдельное окно приложения."
-                  : "Браузер не указал тип источника. Пульт и другие окна могут быть видны аудитории. Для приватного управления установите компонент в настройке проектора или выберите отдельное окно приложения."}
+              При показе всего экрана пульт и другие окна этого экрана будут видны аудитории. Чтобы
+              оставить управление приватным, выберите отдельное окно приложения.
             </p>
           )}
           <label className="screen-share-confirm">
@@ -397,13 +183,9 @@ export function ScreenShareControls({
               disabled={!hasPreview || publishing}
             />
             <span>
-              {capturesScreen && share.surface === "monitor"
-                ? "Понимаю, что видны все окна выбранного экрана"
-                : share.surface === "unknown"
-                  ? "Понимаю, что кадр может содержать другие окна"
-                  : nativeSourceKind === "application"
-                    ? "Понимаю, что видны окна всего выбранного приложения"
-                    : "В кадре только материал для аудитории"}
+              {capturesScreen
+                ? "Понимаю, что кадр может содержать другие окна"
+                : "В кадре только материал для аудитории"}
             </span>
           </label>
           <p className="screen-share-network-note">
@@ -413,89 +195,53 @@ export function ScreenShareControls({
           <DialogFooter>
             <Button
               variant="outline"
-              disabled={publishing || share.phase === "choosing" || helpersUnknown}
-              title={helperStateTitle}
-              onClick={() => choose("window")}
+              disabled={publishing || share.choosing || (!ours && share.phase === "publishing")}
+              onClick={choose}
             >
-              {systemPickerTimedOut
-                ? "Повторить системный выбор"
-                : hasPreview
-                  ? "Другой источник"
-                  : nativeBridge()?.nativeCapture && systemWindowPickerAvailable
-                    ? "Выбрать окно или приложение"
-                    : "Выбрать окно или экран"}
+              {hasPreview ? "Другой источник" : "Выбрать окно или экран"}
             </Button>
-            {nativeBridge()?.nativeCapture &&
-              nativeBridge()?.captureModes?.protectedDisplay === true &&
-              !displayPermissionDenied && (
-                <Button
-                  variant="outline"
-                  disabled={publishing || share.phase === "choosing" || helpersUnknown}
-                  title={helperStateTitle}
-                  onClick={() => choose("display")}
-                >
-                  Выбрать весь экран
-                </Button>
-              )}
-            {nativeCapabilities?.nativeCapture &&
-              (share.phase === "choosing" || share.phase === "error") && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={publishing}
-                  onClick={cancelSourceChoice}
-                >
-                  Отменить
-                </Button>
-              )}
             <Button
               disabled={
                 !confirmed ||
                 !hasPreview ||
-                share.phase !== "preview" ||
+                (!share.pendingSource && share.phase !== "preview") ||
                 disabled ||
-                publishing ||
-                helpersUnknown
+                session.status !== "LIVE" ||
+                publishing
               }
               onClick={async () => {
-                if (helpersUnknown || handoffToNativeRemote()) return;
-                // Reserve the separate window before publishing consumes the click activation.
-                if (!nativeWorkspace) openRemote();
                 setPublishing(true);
                 try {
-                  await controller.publish();
-                  if (controller.getSnapshot().phase === "publishing") {
+                  await screenShare.publish();
+                  if (
+                    screenShare.getSnapshot().phase === "publishing" &&
+                    !screenShare.getSnapshot().pendingSource
+                  )
                     setPreview(false);
-                  }
                 } finally {
                   setPublishing(false);
                 }
               }}
             >
-              {publishing ? "Подключаем…" : "Показывать аудитории"}
+              {publishing ? "Подключаем…" : sharing ? "Заменить источник" : "Показывать аудитории"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {pult && (
+      {remoteWindow && (
         <FloatingLectureRemote
           courseId={courseId}
           session={session}
           disabled={disabled}
           onPause={onPause}
           onResume={onResume}
-          onChooseSource={prepare}
+          onChooseSource={() => {
+            window.focus();
+            prepare();
+          }}
           onSessionChange={onSessionChange}
           initialWindow={remoteWindow}
-          onClose={() => {
-            if (nativeWorkspace) {
-              void controller.stop();
-              nativeCommand("close");
-              return;
-            }
-            setPult(false);
-            setRemoteWindow(null);
-          }}
+          onClose={() => setRemoteWindow(null)}
         />
       )}
     </>

@@ -83,8 +83,9 @@ export function LectureList({
     [activeLectures, archivedLectures, query, tab]
   );
   const paged = usePagedList(visibleLectures, 20);
-  const showTabs = true;
-  const showSearch = true;
+  const showTabs = archivedLectures.length > 0;
+  const showSearch =
+    (tab === "archive" ? archivedLectures : activeLectures).length > 1 || Boolean(query);
 
   useEffect(() => {
     if (archivedLectures.length === 0 && tab === "archive") setTab("active");
@@ -97,13 +98,34 @@ export function LectureList({
           <h2 id="lecture-hub-title">Лекции</h2>
           <p className="muted">Лекции используют выбранную версию презентации.</p>
         </div>
-        {canManage && decks.length > 0 && (
+        {canManage && decks.length > 0 && activeLectures.length > 0 && (
           <Button type="button" variant="outline" onClick={() => setShowCreate(true)}>
             <Plus size={16} aria-hidden="true" />
             Новая лекция
           </Button>
         )}
       </div>
+      {(showTabs || showSearch) && (
+        <div className="list-toolbar lecture-hub__toolbar">
+          {showSearch && (
+            <SearchField value={query} onChange={setQuery} placeholder="Найти лекцию" />
+          )}
+          {showTabs && (
+            <Tabs
+              value={tab}
+              onValueChange={(value) => {
+                setTab(value as LectureTab);
+                setQuery("");
+              }}
+            >
+              <TabsList>
+                <TabsTrigger value="active">Готовые ({activeLectures.length})</TabsTrigger>
+                <TabsTrigger value="archive">Архив ({archivedLectures.length})</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+        </div>
+      )}
       {tab === "active" && activeLectures.length === 0 ? (
         <div className="lecture-empty-state">
           <Presentation size={28} aria-hidden="true" />
@@ -111,16 +133,20 @@ export function LectureList({
             <strong>
               {!canManage
                 ? "Лекций пока нет"
-                : decks.length === 0
-                  ? "Сначала добавьте презентацию"
-                  : "Соберите первую лекцию"}
+                : archivedLectures.length > 0
+                  ? "Нет готовых лекций"
+                  : decks.length === 0
+                    ? "Сначала добавьте презентацию"
+                    : "Соберите первую лекцию"}
             </strong>
             <p className="muted">
               {!canManage
                 ? "Преподаватель ещё не подготовил лекции для этого курса."
-                : decks.length === 0
-                  ? "После загрузки презентации здесь появится быстрый запуск занятия."
-                  : "Название и презентация уже могут стать готовой лекцией."}
+                : archivedLectures.length > 0
+                  ? "Восстановите лекцию из архива или подготовьте новую."
+                  : decks.length === 0
+                    ? "После загрузки презентации здесь появится быстрый запуск занятия."
+                    : "Название и презентация уже могут стать готовой лекцией."}
             </p>
           </div>
           {canManage &&
@@ -136,21 +162,6 @@ export function LectureList({
         </div>
       ) : (
         <>
-          {(showTabs || showSearch) && (
-            <div className="list-toolbar lecture-hub__toolbar">
-              {showSearch && (
-                <SearchField value={query} onChange={setQuery} placeholder="Найти лекцию" />
-              )}
-              {showTabs && (
-                <Tabs value={tab} onValueChange={(value) => setTab(value as LectureTab)}>
-                  <TabsList>
-                    <TabsTrigger value="active">Готовые ({activeLectures.length})</TabsTrigger>
-                    <TabsTrigger value="archive">Архив ({archivedLectures.length})</TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              )}
-            </div>
-          )}
           <LectureRows
             lectures={paged.pageItems}
             empty={tab === "archive" ? "В архиве лекций нет." : "По запросу лекций нет."}

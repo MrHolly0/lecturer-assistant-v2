@@ -2,7 +2,6 @@ import { expireStoredAuth, getStoredAuth } from "../auth";
 import { invalidatePendingAuthRefresh } from "./refresh";
 import { refreshAuthSession } from "./refresh";
 import { apiErrorFromResponse, ApiError } from "./errors";
-import { helperContext } from "../projection/helperContext";
 
 export { ApiError } from "./errors";
 
@@ -14,17 +13,6 @@ export interface ApiRequestInit extends RequestInit {
 let lastForbiddenRefreshAt = 0;
 
 export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise<Response> {
-  const control = helperContext();
-  if (control) {
-    const headers = new Headers(init.headers);
-    headers.delete("Authorization");
-    headers.set("X-Lecture-Control-Token", control.controlToken);
-    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-    headers.set("Accept", "application/json");
-    const response = await fetch(`/api/v1${path}`, { ...init, credentials: "omit", headers });
-    await assertSuccessful(response);
-    return response;
-  }
   const { skipAuthorization = false, skipAuthRefresh = false, ...requestInit } = init;
   const accessToken = skipAuthorization ? null : getStoredAuth()?.accessToken ?? null;
   let responseToken = accessToken;

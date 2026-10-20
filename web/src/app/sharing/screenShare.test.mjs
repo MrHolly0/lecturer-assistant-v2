@@ -153,6 +153,26 @@ test("window and monitor capture stay local until the teacher explicitly publish
   await f.controller.stop();
   assert.equal(monitor.track.stopped, true);
 });
+test("returning to the presentation releases capture and restores the public slide route", async (t) => {
+  const stream = media();
+  const f = await fixture(t, async () => stream);
+  await f.controller.choose(scope);
+  await f.controller.publish();
+  const channel = f.channels.at(-1);
+  await f.controller.stop();
+  assert.equal(stream.track.stopped, true);
+  assert.equal(channel.closed, true);
+  assert.deepEqual(channel.messages.at(-1), { type: "stop" });
+  assert.deepEqual(f.requests.filter((item) => item[0] === "bind").at(-1), [
+    "bind",
+    "ABC123",
+    null
+  ]);
+  assert.equal(f.controller.getSnapshot().phase, "idle");
+  assert.equal(f.controller.getSnapshot().localChannelId, null);
+  assert.equal(f.requests.filter((item) => item[0] === "stop").length, 1);
+});
+
 test("a late browser permission response cannot resurrect capture after stop", async (t) => {
   const permission = deferred(),
     f = await fixture(t, () => permission.promise);
@@ -199,4 +219,68 @@ test("lease expiry immediately stops all tracks and a new physical test rebinds 
   assert.equal(stream.track.stopped, true);
   assert.equal(f.controller.getSnapshot().phase, "error");
   assert.equal(f.controller.getSnapshot().stream, null);
+});
+
+test("cancelling replacement permission or preview keeps the existing broadcast live", async (t) => {
+  const original = media(),
+    next = media("monitor");
+  const f = await fixture(t, async () => original);
+  await f.controller.choose(scope);
+  await f.controller.publish();
+  f.api.capture = async () => {
+    throw new DOMException("Cancelled", "NotAllowedError");
+  };
+  await f.controller.choose(scope);
+  assert.equal(f.controller.getSnapshot().phase, "publishing");
+  assert.equal(f.controller.getSnapshot().stream, original);
+  assert.equal(original.track.stopped, false);
+  f.api.capture = async () => next;
+  await f.controller.choose(scope);
+  assert.equal(f.controller.getSnapshot().pendingSource.stream, next);
+  assert.equal(f.controller.getSnapshot().stream, original);
+  f.controller.cancelSelection();
+  assert.equal(next.track.stopped, true);
+  assert.equal(original.track.stopped, false);
+  assert.equal(f.requests.filter((x) => x[0] === "stop").length, 0);
+});
+
+test("replacement begins only after confirmation and old server publication stops", async (t) => {
+  const original = media(),
+    next = media("monitor");
+  const f = await fixture(t, async () => original);
+  await f.controller.choose(scope);
+  await f.controller.publish();
+  f.api.capture = async () => next;
+  await f.controller.choose(scope);
+  assert.equal(original.track.stopped, false);
+  const stopped = deferred();
+  f.api.stop = () => stopped.promise;
+  const publish = f.controller.publish();
+  assert.equal(original.track.stopped, true);
+  assert.equal(next.track.stopped, false);
+  assert.equal(f.requests.filter((x) => x[0] === "start").length, 1);
+  stopped.resolve();
+  await publish;
+  assert.equal(f.controller.getSnapshot().phase, "publishing");
+  assert.equal(f.controller.getSnapshot().stream, next);
+  assert.equal(f.requests.filter((x) => x[0] === "start").length, 2);
+  next.track.dispatchEvent(new Event("ended"));
+  assert.equal(f.controller.getSnapshot().phase, "idle");
+});
+
+test("closing replacement chooser discards a late permission result without stopping broadcast", async (t) => {
+  const original = media(),
+    next = media();
+  const f = await fixture(t, async () => original);
+  await f.controller.choose(scope);
+  await f.controller.publish();
+  const permission = deferred();
+  f.api.capture = () => permission.promise;
+  const choosing = f.controller.choose(scope);
+  f.controller.cancelSelection();
+  permission.resolve(next);
+  await choosing;
+  assert.equal(next.track.stopped, true);
+  assert.equal(original.track.stopped, false);
+  assert.equal(f.controller.getSnapshot().phase, "publishing");
 });

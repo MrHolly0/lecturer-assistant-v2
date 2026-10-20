@@ -91,7 +91,8 @@ async function fixture({
   const {
     browserProjection: controller,
     openProjectionWindow,
-    bindPublicProjection
+    bindPublicProjection,
+    closePublicProjection
   } = await import(
     `data:text/javascript;base64,${Buffer.from(moduleSource).toString("base64")}#${crypto.randomUUID()}`
   );
@@ -125,6 +126,8 @@ async function fixture({
   };
   return {
     controller,
+    host,
+    closePublicProjection,
     openProjectionWindow,
     bindPublicProjection,
     opened,
@@ -140,6 +143,32 @@ async function fixture({
     restore
   };
 }
+
+test("returning to slides and leaving the controller keep the projector open until lecture end", async () => {
+  const t = await fixture({ api: false });
+  try {
+    t.openProjectionWindow("ABC123", crypto.randomUUID());
+    t.bindPublicProjection("ABC123", null);
+    assert.equal(t.popup.closed, false);
+    assert.equal(new URL(t.popup.location.href).hash, "#/projection/ABC123");
+    t.host.dispatchEvent(new Event("pagehide"));
+    assert.equal(t.popup.closed, false, "closing the controlling page must not close the public window");
+    t.closePublicProjection("OTHER1");
+    assert.equal(t.popup.closed, false, "ending another lecture must not close this one");
+    t.closePublicProjection("ABC123");
+    assert.equal(t.popup.closed, true);
+  } finally { t.restore(); }
+});
+
+test("lecture end never closes a projector window that navigated to another site", async () => {
+  const t = await fixture();
+  try {
+    t.openProjectionWindow("ABC123");
+    t.popup.location.href = "https://another.example/";
+    t.closePublicProjection("ABC123");
+    assert.equal(t.popup.closed, false);
+  } finally { t.restore(); }
+});
 
 test("manual public opening works without monitor APIs and carries only public routing data", async () => {
   const t = await fixture({ api: false });

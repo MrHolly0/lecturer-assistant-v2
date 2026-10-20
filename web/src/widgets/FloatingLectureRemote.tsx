@@ -8,8 +8,9 @@ import {
   X,
   Pause,
   Play,
+  Presentation,
+  MonitorUp,
   Square,
-  ExternalLink,
   LockKeyhole,
   Globe2
 } from "lucide-react";
@@ -24,13 +25,8 @@ import { endLiveSession, type LiveSession } from "../app/api/live-api";
 import { userErrorMessage } from "../app/api/errors";
 import { BrandMark } from "../shared/brand/BrandMark";
 import { Button } from "../shared/ui/button";
-import {
-  nativeBridge,
-  nativeCommand,
-  workspaceShare,
-  stopWorkspaceProjection
-} from "../app/projection/nativeWorkspace";
-import { openProjectionWindow } from "../app/projection/browserProjection";
+import { screenShare } from "../app/sharing/screenShare";
+import { closePublicProjection } from "../app/projection/browserProjection";
 import { formatSessionTime, useSessionTimers } from "../app/live/useSessionTimers";
 import { LectureRemoteTools, type LectureRemoteSection } from "./LectureRemoteTools";
 import { ConfirmActionButton } from "./ConfirmActionButton";
@@ -78,7 +74,7 @@ export function FloatingLectureRemote({
   );
   const [publishing, setPublishing] = useState(false);
   const [section, setSection] = useState<LectureRemoteSection>("questions");
-  const controller = workspaceShare();
+  const controller = screenShare;
   const share = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const sharing = share.scope?.sessionId === session.id && share.phase === "publishing";
   const { elapsed } = useSessionTimers(session);
@@ -165,6 +161,7 @@ export function FloatingLectureRemote({
     mutationFn: () => endLiveSession(courseId, session.id),
     onSuccess: (ended) => {
       void controller.stop();
+      closePublicProjection(session.joinCode);
       onSessionChange?.(ended);
       void client.invalidateQueries({ queryKey: ["active-session"] });
       onClose();
@@ -180,7 +177,7 @@ export function FloatingLectureRemote({
     return () => {
       // StrictMode immediately sets up again; only a real unmount closes the OS window.
       queueMicrotask(() => {
-        if (lifecycle.generation === generation && !nativeBridge()) externalRef.current?.close();
+        if (lifecycle.generation === generation) externalRef.current?.close();
       });
     };
   }, []);
@@ -218,15 +215,6 @@ export function FloatingLectureRemote({
       aria-label="Приватный пульт занятия"
     >
       <header className="floating-remote-header">
-        {nativeBridge() && (
-          <button
-            className="floating-remote-drag"
-            aria-label="Переместить пульт"
-            onPointerDown={() => nativeCommand("drag")}
-          >
-            ⠿
-          </button>
-        )}
         <BrandMark className="brand-mark" />
         {!collapsed && <strong className="floating-remote-title">Пульт</strong>}
         {collapsed && (
@@ -267,38 +255,10 @@ export function FloatingLectureRemote({
               {session.status === "PAUSED" ? "Пауза" : sharing ? "Демонстрация" : "Слайды"} ·{" "}
               {formatSessionTime(elapsed)}
             </span>
-            <Button
-              variant="link"
-              onClick={() => {
-                if (nativeBridge()) {
-                  nativeCommand("focusProjection");
-                  return;
-                }
-                if (
-                  !openProjectionWindow(
-                    session.joinCode,
-                    sharing ? share.localChannelId ?? undefined : undefined
-                  )
-                ) {
-                  toast.error("Разрешите открытие окна проектора в браузере.");
-                }
-              }}
-            >
-              Что видит аудитория <ExternalLink size={14} />
-            </Button>
           </div>
           {sharing && (
             <div className="floating-remote-source">
               <span>{share.sourceName}</span>
-              <Button
-                variant="link"
-                onClick={() => {
-                  window.focus();
-                  onChooseSource?.();
-                }}
-              >
-                Сменить источник
-              </Button>
             </div>
           )}
           <div className="floating-remote-signals" aria-label="Понимание">
@@ -490,38 +450,42 @@ export function FloatingLectureRemote({
         <div className="floating-remote-actions">
           <Button
             variant="outline"
+            disabled={disabled || session.status !== "LIVE" || !onChooseSource}
+            onClick={() => {
+              window.focus();
+              onChooseSource?.();
+            }}
+          >
+            <MonitorUp size={18} />
+            {sharing ? "Сменить источник" : "Демонстрация"}
+          </Button>
+          <Button variant="outline" disabled={!sharing} onClick={() => void controller.stop()}>
+            <Presentation size={18} />
+            Вернуться к презентации
+          </Button>
+        </div>
+        <div className="floating-remote-actions">
+          <Button
+            variant="outline"
             disabled={disabled}
             onClick={session.status === "PAUSED" ? onResume : onPause}
           >
-            {session.status === "PAUSED" ? <Play size={18} /> : <Pause size={18} />}{" "}
+            {session.status === "PAUSED" ? <Play size={18} /> : <Pause size={18} />}
             {session.status === "PAUSED" ? "Продолжить" : "Пауза"}
           </Button>
-          <Button
+          <ConfirmActionButton
+            container={external.document.body}
+            title="Завершить занятие?"
+            description="Показ у студентов и на проекторе закончится. Итоги занятия сохранятся."
+            confirmLabel="Завершить"
             variant="outline"
-            className={sharing ? "floating-remote-stop" : undefined}
-            disabled={!sharing && disabled}
-            onClick={() =>
-              sharing
-                ? void stopWorkspaceProjection(session.joinCode).then(onClose)
-                : onChooseSource?.()
-            }
+            disabled={disabled || finish.isPending}
+            onConfirm={() => finish.mutate()}
           >
             <Square size={18} />
-            {sharing ? "Остановить показ" : "Демонстрация"}
-          </Button>
+            Завершить занятие
+          </ConfirmActionButton>
         </div>
-        <ConfirmActionButton
-          container={external.document.body}
-          className="floating-remote-finish"
-          title="Завершить занятие?"
-          description="Показ у студентов и на проекторе закончится. Итоги занятия сохранятся."
-          confirmLabel="Завершить"
-          variant="ghost"
-          disabled={disabled || finish.isPending}
-          onConfirm={() => finish.mutate()}
-        >
-          Завершить занятие
-        </ConfirmActionButton>
       </footer>
     </aside>
   );

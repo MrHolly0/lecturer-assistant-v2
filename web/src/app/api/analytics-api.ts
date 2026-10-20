@@ -15,12 +15,34 @@ export async function listStudentAnalytics(
   courseId: string,
   groupId: string | null,
   limit: number,
-  offset: number
+  offset: number,
+  signal?: AbortSignal
 ): Promise<StudentAnalyticsPage> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (groupId) params.set("groupId", groupId);
-  const res = await apiFetch(`/courses/${courseId}/analytics/students?${params}`);
+  const res = await apiFetch(`/courses/${courseId}/analytics/students?${params}`, { signal });
   return res.json() as Promise<StudentAnalyticsPage>;
+}
+
+/** Load the complete group before filtering, sorting and paginating the visible list. */
+export async function listAllStudentAnalytics(
+  courseId: string,
+  groupId: string | null,
+  signal?: AbortSignal
+): Promise<StudentLearningAnalytics[]> {
+  const students = new Map<string, StudentLearningAnalytics>();
+  let offset = 0;
+  let total = 1;
+  while (offset < total) {
+    const page = await listStudentAnalytics(courseId, groupId, 100, offset, signal);
+    total = page.total;
+    for (const student of page.items) students.set(student.personId, student);
+    offset += page.items.length;
+    if (offset >= page.total) return [...students.values()];
+    if (page.items.length === 0)
+      throw new Error("Не удалось загрузить полный список студентов. Повторите загрузку.");
+  }
+  return [...students.values()];
 }
 
 export async function getStudentAnalytics(

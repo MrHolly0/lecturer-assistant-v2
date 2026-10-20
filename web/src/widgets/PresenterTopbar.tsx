@@ -1,4 +1,14 @@
-import { ChevronDown, Monitor, Pause, PenLine, Play, QrCode, Square, Wrench } from "lucide-react";
+import {
+  ChevronDown,
+  CircleHelp,
+  Monitor,
+  Pause,
+  PenLine,
+  Play,
+  QrCode,
+  Square,
+  Wrench
+} from "lucide-react";
 import {
   setLiveProjectionCode,
   type LiveConnectionState,
@@ -34,6 +44,8 @@ import { Button } from "../shared/ui/button";
 import { SessionGroups } from "./SessionGroups";
 import { ScreenShareControls } from "./ScreenShareControls";
 import { ProjectorSetup } from "./ProjectorSetup";
+import { openProjectionWindow } from "../app/projection/browserProjection";
+import { screenShare } from "../app/sharing/screenShare";
 
 interface PresenterTopbarProps {
   courseId: string;
@@ -88,6 +100,22 @@ export function PresenterTopbar({
   const sessionActive = session.status === "LIVE" || session.status === "PAUSED";
   const showJoinCode = session.showJoinCode;
   const joinUrl = buildMaxJoinUrl(session.joinCode);
+  const openProjection = () => {
+    if (maxEnvironment.isMax && getMaxWebApp()?.openLink) {
+      try {
+        getMaxWebApp()?.openLink?.(
+          `${window.location.origin}${window.location.pathname}#/projection/${encodeURIComponent(session.joinCode)}`
+        );
+      } catch {
+        toast.error("MAX не открыл внешний браузер. Попробуйте ещё раз.");
+      }
+      return;
+    }
+    const share = screenShare.getSnapshot();
+    const channel = share.scope?.sessionId === session.id ? share.localChannelId : null;
+    if (!openProjectionWindow(session.joinCode, channel ?? undefined))
+      toast.error("Браузер заблокировал окно проектора. Разрешите всплывающие окна для сайта.");
+  };
   const openProjectionSetup = () => {
     const path = `/settings/projector?${new URLSearchParams({ joinCode: session.joinCode, courseId, sessionId: session.id })}`;
     const url = `${window.location.origin}${window.location.pathname}#${path}`;
@@ -189,9 +217,13 @@ export function PresenterTopbar({
               <QrCode size={16} />
               Код: {session.joinCode}
             </Button>
-            <Button variant="outline" type="button" onClick={openProjectionSetup}>
+            <Button variant="outline" type="button" onClick={openProjection}>
               <Monitor size={16} />
               Проектор
+            </Button>
+            <Button variant="outline" type="button" onClick={openProjectionSetup}>
+              <CircleHelp size={16} />
+              Настройка показа
             </Button>
 
             <DropdownMenu>
@@ -241,7 +273,6 @@ export function PresenterTopbar({
               onPause={onPause}
               onResume={onResume}
               onSessionChange={onSessionChange}
-              onProjectorSetup={openProjectionSetup}
             />
             {session.status === "PAUSED" ? (
               <Button
@@ -291,11 +322,7 @@ export function PresenterTopbar({
         )}
       </div>
       {projectorOpen && (
-        <ProjectorSetup
-          presentation="dialog"
-          lesson={{ courseId, sessionId: session.id, joinCode: session.joinCode }}
-          onClose={closeProjectionSetup}
-        />
+        <ProjectorSetup joinCode={session.joinCode} onClose={closeProjectionSetup} />
       )}
       <Dialog open={connectionOpen} onOpenChange={setConnectionOpen}>
         <DialogContent className="presenter-connection-dialog">

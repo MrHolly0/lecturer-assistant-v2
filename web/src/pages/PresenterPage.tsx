@@ -23,6 +23,8 @@ import { PresenterTopbar } from "../widgets/PresenterTopbar";
 import { Button } from "../shared/ui/button";
 import { useSessionTimers } from "../app/live/useSessionTimers";
 import { useLiveSession } from "../app/live/useLiveSession";
+import { closePublicProjection } from "../app/projection/browserProjection";
+import { screenShare } from "../app/sharing/screenShare";
 
 export function PresenterPage(props: { courseId: string; sessionId: string }) {
   return (
@@ -58,6 +60,11 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
 
   const live = useLiveSession(courseId, sessionId);
   const session = live.session;
+  useEffect(() => {
+    if (!session || !["ENDED", "ARCHIVED"].includes(session.status)) return;
+    closePublicProjection(session.joinCode);
+    if (screenShare.getSnapshot().scope?.sessionId === session.id) void screenShare.stop();
+  }, [session]);
   const paused = session?.status === "PAUSED";
   const commandsBlocked = live.connection !== "connected" || live.syncing || live.syncError;
   const { elapsed, slideElapsed } = useSessionTimers(session);

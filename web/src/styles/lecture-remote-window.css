@@ -27,7 +27,9 @@ html[data-lecture-remote="true"] .floating-remote-document {
   touch-action: none;
 }
 .floating-remote-actions > .ui-button {
-  white-space: nowrap;
+  white-space: normal;
+  min-height: 40px;
+  height: auto;
 }
 .floating-remote-actions > .floating-remote-stop {
   color: var(--destructive);

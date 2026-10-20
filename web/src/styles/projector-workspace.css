@@ -393,10 +393,6 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.floating-remote-finish {
-  width: 100%;
-  margin-top: 4px;
-}
 .screen-share-remote-error {
   max-width: 320px;
   color: var(--destructive);
@@ -411,11 +407,6 @@
   justify-content: space-between;
   gap: 8px;
   font-size: 13px;
-}
-.floating-remote-context > .ui-button {
-  font-size: 12px;
-  padding: 0;
-  min-height: 44px;
 }
 .floating-remote-signals {
   display: grid;
@@ -636,7 +627,7 @@
 }
 @media (min-width: 1180px) {
   .presenter-shell .presenter-actions {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 8px;
   }
   .presenter-shell .presenter-actions .ui-button {

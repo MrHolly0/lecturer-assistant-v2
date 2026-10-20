@@ -437,6 +437,10 @@
   min-width: 0;
   flex: 1;
 }
+.course-live-card--empty > .course-live-card__action {
+  flex-shrink: 0;
+  margin-inline-start: auto;
+}
 .course-live-card__copy h2 {
   font-size: 24px;
   line-height: 1.35;
@@ -783,6 +787,10 @@
   .course-live-card {
     flex-direction: column;
     align-items: stretch;
+  }
+  .course-live-card--empty > .course-live-card__action {
+    margin-inline-start: 0;
+    width: 100%;
   }
   .course-live-card__actions {
     display: grid;

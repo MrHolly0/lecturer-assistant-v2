@@ -67,18 +67,6 @@ export function fitLectureRemoteWindow(target: Window, panel: HTMLElement, force
     );
   }, 0);
   const height = Math.min(maxHeight, Math.max(60, Math.ceil(naturalHeight)));
-  if (target.lectureProjectorNative) {
-    if (force || previous?.width !== width || previous.height !== height)
-      target.lectureProjectorNative.postMessage({
-        type: "LECTURE_REMOTE",
-        action: "resize",
-        width,
-        height,
-        collapsed
-      });
-    lastSizes.set(target, { width, height, collapsed, measuredWidth: target.innerWidth });
-    return;
-  }
   if (!force && previous?.width === width && previous.height === height) {
     previous.measuredWidth = target.innerWidth;
     return;
@@ -126,7 +114,6 @@ export function observeLectureRemoteWindowSize(target: Window, panel: HTMLElemen
 
 /** Call directly from a click, before awaiting requests or mounting the panel. */
 export function openLectureRemoteWindow(options: LectureRemoteWindowOptions = {}): Promise<Window> {
-  if (window.lectureProjectorNative) return Promise.resolve(window);
   const key = options.windowKey ?? "default";
   const collapsed = options.collapsed ?? lectureRemoteCollapsed(key);
   rememberLectureRemoteCollapsed(key, collapsed);

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   getCourseGroupAnalytics,
   getStudentAnalytics,
-  listStudentAnalytics,
+  listAllStudentAnalytics,
   type LearningMetrics,
   type StudentLearningAnalytics
 } from "../app/api/analytics-api";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
-import { includesQuery } from "../shared/lib/usePagedList";
+import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import { PaginationBar, SearchField } from "./ListControls";
 import { LearningMetricsView } from "./LearningMetricsView";
 import { Button } from "../shared/ui/button";
@@ -28,7 +28,6 @@ export function CourseLearningAnalytics({
 }) {
   const [view, setView] = useState<"groups" | "students">("groups");
   const [groupId, setGroupId] = useState("all");
-  const [page, setPage] = useState(1);
   const [studentId, setStudentId] = useState("");
   const studentDetailRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
@@ -39,16 +38,10 @@ export function CourseLearningAnalytics({
     queryFn: () => getCourseGroupAnalytics(courseId)
   });
   const studentsQuery = useQuery({
-    queryKey: ["analytics", courseId, "students", groupId, page],
-    queryFn: () =>
-      listStudentAnalytics(
-        courseId,
-        groupId === "all" ? null : groupId,
-        PAGE_SIZE,
-        (page - 1) * PAGE_SIZE
-      ),
-    enabled: view === "students",
-    placeholderData: keepPreviousData
+    queryKey: ["analytics", courseId, "students", groupId, "all"],
+    queryFn: ({ signal }) =>
+      listAllStudentAnalytics(courseId, groupId === "all" ? null : groupId, signal),
+    enabled: view === "students"
   });
   const detailQuery = useQuery({
     queryKey: ["analytics", courseId, "students", studentId],
@@ -56,19 +49,20 @@ export function CourseLearningAnalytics({
     enabled: Boolean(studentId)
   });
   const groups = groupsQuery.data?.groups ?? [];
-  const pageCount = Math.max(1, Math.ceil((studentsQuery.data?.total ?? 0) / PAGE_SIZE));
   const students = useMemo(
     () =>
-      sortStudents(studentsQuery.data?.items ?? [], sort).filter((student) =>
+      sortStudents(studentsQuery.data ?? [], sort).filter((student) =>
         includesQuery(query, student.displayName, ...student.groups.map((group) => group.name))
       ),
-    [sort, studentsQuery.data?.items, query]
+    [sort, studentsQuery.data, query]
   );
+  const paged = usePagedList(students, PAGE_SIZE);
+  const { setPage } = paged;
 
   useEffect(() => {
     setPage(1);
     setStudentId("");
-  }, [groupId]);
+  }, [groupId, query, sort, setPage]);
 
   useEffect(() => {
     if (studentId && window.matchMedia("(max-width: 760px)").matches) {
@@ -156,11 +150,7 @@ export function CourseLearningAnalytics({
       {view === "students" && (
         <div className="student-analytics">
           <div className="student-analytics__master">
-            <SearchField
-              value={query}
-              onChange={setQuery}
-              placeholder={pageCount > 1 ? "Имя или группа на странице" : "Имя или группа"}
-            />
+            <SearchField value={query} onChange={setQuery} placeholder="Имя или группа" />
             <div className="student-analytics__toolbar">
               <Select value={groupId} onValueChange={setGroupId}>
                 <SelectTrigger aria-label="Фильтр по группе">
@@ -181,8 +171,8 @@ export function CourseLearningAnalytics({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="name">По имени</SelectItem>
-                  <SelectItem value="errors">Больше ошибок на странице</SelectItem>
-                  <SelectItem value="red">Больше непонимания на странице</SelectItem>
+                  <SelectItem value="errors">Больше ошибок</SelectItem>
+                  <SelectItem value="red">Больше непонимания</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -199,11 +189,20 @@ export function CourseLearningAnalytics({
                 </Button>
               </div>
             )}
-            {studentsQuery.data?.items.length === 0 && !studentsQuery.isError && (
-              <p className="analytics-empty">В выбранной группе студентов нет.</p>
+            {studentsQuery.data && students.length === 0 && !studentsQuery.isError && (
+              <div className="analytics-empty">
+                <p>
+                  {query ? "Студенты по запросу не найдены." : "В выбранной группе студентов нет."}
+                </p>
+                {query && (
+                  <Button variant="ghost" onClick={() => setQuery("")}>
+                    Сбросить поиск
+                  </Button>
+                )}
+              </div>
             )}
             <ul className="student-analytics__list">
-              {students.map((student) => (
+              {paged.pageItems.map((student) => (
                 <li key={student.personId}>
                   <button
                     type="button"
@@ -221,15 +220,7 @@ export function CourseLearningAnalytics({
                 </li>
               ))}
             </ul>
-            {studentsQuery.data && (
-              <PaginationBar
-                page={page}
-                pageCount={pageCount}
-                pageSize={PAGE_SIZE}
-                total={studentsQuery.data.total}
-                onPageChange={setPage}
-              />
-            )}
+            {studentsQuery.data && <PaginationBar {...paged} onPageChange={paged.setPage} />}
           </div>
           {studentId ? (
             <div ref={studentDetailRef} className="student-analytics__detail">

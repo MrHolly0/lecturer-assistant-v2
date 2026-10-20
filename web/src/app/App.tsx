@@ -46,8 +46,6 @@ import { RoleHomeRoute } from "../widgets/RoleHomeRoute";
 import { AuthPageFrame } from "../widgets/AuthPageFrame";
 import { ProjectionLifecycle } from "./sharing/ProjectionLifecycle";
 import { ProjectorSetupPage } from "../pages/ProjectorSetupPage";
-import { HelperRemotePage } from "../pages/HelperRemotePage";
-import { nativeBridge } from "./projection/nativeWorkspace";
 import { ProjectionSetupGate } from "./projection/ProjectionSetupGate";
 
 const maxRootPaths = new Set(["/", "/home", "/student/join", "/courses", "/login", "/register"]);
@@ -463,8 +461,6 @@ const router = createHashRouter([
 
 export function App() {
   const { theme } = useMaxBridge();
-  if (nativeBridge() && window.location.hash.startsWith("#/helper/remote"))
-    return <HelperRemotePage />;
 
   return (
     <AuthProvider>

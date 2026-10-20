@@ -62,6 +62,7 @@ export function CourseSessionHistory({ courseId }: { courseId: string }) {
   const busy = typing || historyQuery.isFetching;
   const ready = !dateError && !typing && !historyQuery.isPlaceholderData && !historyQuery.isError;
   const hasFilters = Boolean(query || groupId || dateFrom || dateTo);
+  const showFilters = hasFilters || Boolean(history?.total) || page > 1;
   function changeFilter(key: string, value: string) {
     setParams(
       (current) => {
@@ -123,66 +124,70 @@ export function CourseSessionHistory({ courseId }: { courseId: string }) {
       <div className="section-heading session-history__heading">
         <div>
           <h2 id="session-history-title">История занятий</h2>
-          <p className="muted">Найдите занятие по лекции, учебной группе или дате завершения.</p>
+          {showFilters && (
+            <p className="muted">Найдите занятие по лекции, учебной группе или дате завершения.</p>
+          )}
         </div>
       </div>
-      <div className="session-history-filters" role="search" aria-label="Поиск в истории занятий">
-        <div className="field session-history-filters__search">
-          <span>Поиск</span>
-          <SearchField
-            value={query}
-            onChange={(value) => changeFilter("historySearch", value.slice(0, 200))}
-            placeholder="Название лекции или группа"
-          />
+      {showFilters && (
+        <div className="session-history-filters" role="search" aria-label="Поиск в истории занятий">
+          <div className="field session-history-filters__search">
+            <span>Поиск</span>
+            <SearchField
+              value={query}
+              onChange={(value) => changeFilter("historySearch", value.slice(0, 200))}
+              placeholder="Название лекции или группа"
+            />
+          </div>
+          <label className="field">
+            <span>Учебная группа</span>
+            <Select
+              value={groupId || "all"}
+              onValueChange={(value) => changeFilter("historyGroup", value === "all" ? "" : value)}
+            >
+              <SelectTrigger aria-label="Группа в истории занятий">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все группы</SelectItem>
+                {groupId && !groups.some((group) => group.id === groupId) && (
+                  <SelectItem value={groupId}>Группа из ссылки</SelectItem>
+                )}
+                {groups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="field">
+            <span>Дата завершения с</span>
+            <Input
+              type="date"
+              aria-label="Дата завершения с"
+              value={dateFrom}
+              max={dateTo || "9999-12-31"}
+              aria-invalid={Boolean(dateError)}
+              aria-describedby={dateError ? "history-date-error" : undefined}
+              onChange={(event) => changeFilter("historyFrom", event.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Дата завершения по</span>
+            <Input
+              type="date"
+              aria-label="Дата завершения по"
+              value={dateTo}
+              min={dateFrom || "0001-01-01"}
+              max="9999-12-30"
+              aria-invalid={Boolean(dateError)}
+              aria-describedby={dateError ? "history-date-error" : undefined}
+              onChange={(event) => changeFilter("historyTo", event.target.value)}
+            />
+          </label>
         </div>
-        <label className="field">
-          <span>Учебная группа</span>
-          <Select
-            value={groupId || "all"}
-            onValueChange={(value) => changeFilter("historyGroup", value === "all" ? "" : value)}
-          >
-            <SelectTrigger aria-label="Группа в истории занятий">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все группы</SelectItem>
-              {groupId && !groups.some((group) => group.id === groupId) && (
-                <SelectItem value={groupId}>Группа из ссылки</SelectItem>
-              )}
-              {groups.map((group) => (
-                <SelectItem key={group.id} value={group.id}>
-                  {group.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-        <label className="field">
-          <span>Дата завершения с</span>
-          <Input
-            type="date"
-            aria-label="Дата завершения с"
-            value={dateFrom}
-            max={dateTo || "9999-12-31"}
-            aria-invalid={Boolean(dateError)}
-            aria-describedby={dateError ? "history-date-error" : undefined}
-            onChange={(event) => changeFilter("historyFrom", event.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>Дата завершения по</span>
-          <Input
-            type="date"
-            aria-label="Дата завершения по"
-            value={dateTo}
-            min={dateFrom || "0001-01-01"}
-            max="9999-12-30"
-            aria-invalid={Boolean(dateError)}
-            aria-describedby={dateError ? "history-date-error" : undefined}
-            onChange={(event) => changeFilter("historyTo", event.target.value)}
-          />
-        </label>
-      </div>
+      )}
       {dateError && (
         <p id="history-date-error" className="form-error" role="alert">
           {dateError}

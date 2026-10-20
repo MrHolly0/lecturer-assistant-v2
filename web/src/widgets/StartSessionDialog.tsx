@@ -10,6 +10,7 @@ import { startLiveSession, type StartSessionRequest } from "../app/api/live-api"
 import { useMaxBridge } from "../app/max/context";
 import { isMobileMax, teacherRemotePath } from "../app/max/navigation";
 import { Button } from "../shared/ui/button";
+import { resolveSessionGroups } from "../shared/lib/sessionGroups";
 import { Checkbox } from "../shared/ui/checkbox";
 import {
   Dialog,
@@ -88,7 +89,8 @@ export function StartSessionDialog({
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось запустить занятие."))
   });
   const cleanGroupName = groupName.trim().replace(/\s+/g, " ");
-  const selectedCount = groupIds.length + newGroupNames.length;
+  const selectedGroups = resolveSessionGroups(groupIds, newGroupNames, groupName, groups);
+  const selectedCount = selectedGroups.length;
   const canSubmit =
     Boolean(lecture) && !courseQuery.isLoading && !courseQuery.isError && selectedCount > 0;
 
@@ -107,10 +109,7 @@ export function StartSessionDialog({
 
   const submit = () => {
     startMutation.mutate({
-      groups: [
-        ...groupIds.map((selectedGroupId) => ({ groupId: selectedGroupId })),
-        ...newGroupNames.map((selectedGroupName) => ({ groupName: selectedGroupName }))
-      ]
+      groups: selectedGroups
     });
   };
 
@@ -215,10 +214,13 @@ export function StartSessionDialog({
                     disabled={!cleanGroupName}
                     onClick={addGroupName}
                   >
-                    <Plus size={16} aria-hidden="true" /> Добавить
+                    <Plus size={16} aria-hidden="true" /> Добавить ещё
                   </Button>
                 </div>
-                <p className="muted">Новые группы будут созданы вместе с занятием.</p>
+                <p className="muted">
+                  Введённая группа будет учтена при продолжении. «Добавить ещё» позволяет указать
+                  несколько групп.
+                </p>
               </TabsContent>
             </Tabs>
           )}
@@ -233,6 +235,7 @@ export function StartSessionDialog({
           )}
           <div className="start-session-selection" aria-live="polite">
             <strong>Выбрано: {selectedCount}</strong>
+            {cleanGroupName && <p className="muted">При продолжении: {cleanGroupName}</p>}
             <div className="start-session-selection__items">
               {groups
                 .filter((group) => groupIds.includes(group.id))

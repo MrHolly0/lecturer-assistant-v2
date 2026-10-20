@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Archive, ChevronDown, History, RotateCcw, Trash2, ExternalLink, Info } from "lucide-react";
 import type { SlideDeck } from "../app/api/content-api";
 import { pluralizeRu } from "../shared/lib/plural";
@@ -36,6 +36,9 @@ export function DeckListPanel(props: DeckListPanelProps) {
   const [query, setQuery] = useState("");
   const activeGroups = useMemo(() => groupActiveDecks(decks), [decks]);
   const archivedDecks = useMemo(() => decks.filter((deck) => deck.archived), [decks]);
+  useEffect(() => {
+    if (!archivedDecks.length) setTab("active");
+  }, [archivedDecks.length]);
   const visibleGroups = useMemo(
     () =>
       activeGroups.filter((group) =>
@@ -54,21 +57,31 @@ export function DeckListPanel(props: DeckListPanelProps) {
 
   return (
     <section className="material-section" aria-label="Список презентаций">
-      <div className="list-toolbar deck-list-toolbar">
-        <SearchField value={query} onChange={setQuery} placeholder="Найти презентацию" />
-        <Tabs value={tab} onValueChange={(value) => setTab(value as DeckTab)}>
-          <TabsList>
-            <TabsTrigger value="active">Доступные ({activeGroups.length})</TabsTrigger>
-            <TabsTrigger value="archive">Архив ({archivedDecks.length})</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
+      {(decks.length > 1 || query || archivedDecks.length > 0) && (
+        <div className="list-toolbar deck-list-toolbar">
+          {(decks.length > 1 || query) && (
+            <SearchField value={query} onChange={setQuery} placeholder="Найти презентацию" />
+          )}
+          {archivedDecks.length > 0 && (
+            <Tabs value={tab} onValueChange={(value) => setTab(value as DeckTab)}>
+              <TabsList>
+                <TabsTrigger value="active">Доступные ({activeGroups.length})</TabsTrigger>
+                <TabsTrigger value="archive">Архив ({archivedDecks.length})</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+        </div>
+      )}
 
       {tab === "active" ? (
         <div className="deck-list">
           {visibleGroups.length === 0 && (
             <p className="muted">
-              {query ? "По запросу презентаций нет." : "Загрузите первую презентацию курса."}
+              {query
+                ? "По запросу презентаций нет."
+                : archivedDecks.length > 0
+                  ? "Все презентации в архиве. Откройте архив, чтобы восстановить нужную."
+                  : "Загрузите первую презентацию курса."}
             </p>
           )}
           {activePaged.pageItems.map((group) => (

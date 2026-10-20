@@ -18,6 +18,7 @@ import { gatheredDescription, localShareChannel } from "./rtc";
 import { ShareVideoPublisher } from "./videoPublisher";
 
 type Scope = { courseId: string; sessionId: string; joinCode: string };
+type ShareSource = { stream: MediaStream; sourceName: string; surface: CaptureSurface };
 export type ShareSnapshot = {
   phase: "idle" | "choosing" | "preview" | "publishing" | "error";
   stream: MediaStream | null;
@@ -28,6 +29,8 @@ export type ShareSnapshot = {
   viewers: number;
   scope: Scope | null;
   localChannelId: string | null;
+  choosing: boolean;
+  pendingSource: ShareSource | null;
 };
 class ScreenShare {
   private state: ShareSnapshot = {
@@ -39,7 +42,9 @@ class ScreenShare {
     paused: false,
     viewers: 0,
     scope: null,
-    localChannelId: null
+    localChannelId: null,
+    choosing: false,
+    pendingSource: null
   };
   private listeners = new Set<() => void>();
   private peers = new Map<string, RTCPeerConnection>();
@@ -49,6 +54,7 @@ class ScreenShare {
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private share: ShareStatus | null = null;
   private generation = 0;
+  private selectionGeneration = 0;
   private publishGeneration: number | null = null;
   private detachProjectionListener: (() => boolean) | null = null;
   private frameVideo: HTMLVideoElement | null = null;
@@ -67,15 +73,23 @@ class ScreenShare {
     this.listeners.forEach((listener) => listener());
   }
   async choose(scope: Scope) {
-    if (this.state.phase === "publishing" || this.state.phase === "choosing") return;
-    void this.stop();
-    const generation = ++this.generation;
-    this.update({ phase: "choosing", scope, error: null });
+    if (this.state.choosing || this.publishGeneration !== null) return;
+    const replacing = this.state.phase === "publishing";
+    if (replacing && this.state.scope?.sessionId !== scope.sessionId) return;
+    if (replacing) this.cancelSelection();
+    else void this.stop();
+    const generation = this.generation;
+    const selection = ++this.selectionGeneration;
+    this.update({
+      ...(replacing ? {} : { phase: "choosing" as const, scope }),
+      choosing: true,
+      error: null
+    });
     try {
       if (!navigator.mediaDevices?.getDisplayMedia)
         throw new Error("Откройте сайт в настольном браузере с поддержкой демонстрации экрана.");
       const stream = await navigator.mediaDevices.getDisplayMedia(captureOptions);
-      if (generation !== this.generation) {
+      if (generation !== this.generation || selection !== this.selectionGeneration) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
@@ -88,14 +102,16 @@ class ScreenShare {
       track.addEventListener(
         "ended",
         () => {
-          if (generation === this.generation) void this.stop();
+          if (this.state.pendingSource?.stream === stream) this.cancelSelection();
+          else if (this.state.stream === stream) void this.stop();
         },
         { once: true }
       );
       track.addEventListener(
         "mute",
         () => {
-          if (generation === this.generation)
+          if (this.state.pendingSource?.stream === stream) this.cancelSelection();
+          else if (this.state.stream === stream)
             void this.fail("Источник демонстрации недоступен. Выберите окно снова.");
         },
         { once: true }
@@ -108,27 +124,43 @@ class ScreenShare {
         browser: "Вкладка преподавателя",
         unknown: "Демонстрация преподавателя"
       };
-      this.update({
-        phase: "preview",
-        stream,
-        surface,
-        sourceName: names[surface]
-      });
+      const source = { stream, surface, sourceName: names[surface] };
+      this.update(replacing ? { pendingSource: source } : { phase: "preview", ...source });
     } catch (error) {
-      if (generation !== this.generation) return;
+      if (generation !== this.generation || selection !== this.selectionGeneration) return;
       this.update({
-        phase: "error",
-        stream: null,
+        ...(replacing ? {} : { phase: "error" as const, stream: null }),
         error:
           error instanceof DOMException && error.name === "NotAllowedError"
-            ? "Доступ к демонстрации не получен. Вы можете выбрать источник снова."
+            ? replacing
+              ? null
+              : "Выбор отменён. Вы можете выбрать источник снова."
             : error instanceof Error
               ? error.message
               : "Не удалось начать захват."
       });
+    } finally {
+      if (selection === this.selectionGeneration) this.update({ choosing: false });
     }
   }
-  async publish() {
+  cancelSelection() {
+    ++this.selectionGeneration;
+    this.state.pendingSource?.stream.getTracks().forEach((track) => track.stop());
+    this.update({ pendingSource: null, choosing: false, error: null });
+  }
+  async publish(): Promise<void> {
+    const candidate = this.state.pendingSource;
+    if (candidate && this.state.phase === "publishing" && this.state.scope) {
+      const scope = this.state.scope;
+      // Keep the old source live throughout selection and preview. Switch only on confirmation.
+      this.update({ pendingSource: null });
+      const stopping = this.stop();
+      const generation = this.generation;
+      this.update({ phase: "preview", scope, ...candidate });
+      await stopping;
+      if (generation !== this.generation || this.state.stream !== candidate.stream) return;
+      return this.publish();
+    }
     const { stream, scope } = this.state;
     if (
       this.state.phase !== "preview" ||
@@ -401,6 +433,7 @@ class ScreenShare {
     const scope = this.state.scope,
       share = this.share;
     ++this.generation;
+    this.cancelSelection();
     this.publishGeneration = null;
     this.stopVideo();
     this.detachProjectionListener?.();
@@ -438,7 +471,9 @@ class ScreenShare {
       viewers: 0,
       paused: false,
       scope: null,
-      localChannelId: null
+      localChannelId: null,
+      choosing: false,
+      pendingSource: null
     });
     if (scope && share) {
       try {
