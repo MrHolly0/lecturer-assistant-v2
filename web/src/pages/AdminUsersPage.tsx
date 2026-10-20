@@ -1,16 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Plus } from "lucide-react";
+import { Copy, Folder, List, Plus } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import type { components } from "../app/api/schema";
 import {
   createAdminInvitation,
   getUserPage,
+  getAccountGroups,
+  listUsers,
   updateUserRole,
   updateUserStatus
 } from "../app/api/admin-api";
 import { useAuth } from "../app/AuthContext";
 import { announceDirectoryChange, useDirectorySync } from "../app/directorySync";
+import { AccountFolderBrowser } from "../widgets/AccountFolderBrowser";
+import { buildAccountFolders } from "../shared/lib/accountFolders";
 import { PaginationBar, SearchField } from "../widgets/ListControls";
 import { Button, LinkButton } from "../shared/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
@@ -57,6 +62,20 @@ const statusLabels: Record<UserStatus, string> = {
 
 export function AdminUsersPage() {
   const qc = useQueryClient();
+  const [params, setParams] = useSearchParams();
+  const folderView = params.get("view") === "folders";
+  const folderId = params.get("folder") ?? "";
+  function navigateView(folders: boolean, id = "") {
+    setParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (folders) next.set("view", "folders");
+      else next.delete("view");
+      if (folders && id) next.set("folder", id);
+      else next.delete("folder");
+      return next;
+    });
+    setPage(1);
+  }
   const { user } = useAuth();
   useDirectorySync();
   const [inviteRole, setInviteRole] = useState<AdminInviteRole>("LECTURER");
@@ -83,10 +102,10 @@ export function AdminUsersPage() {
 
   const {
     data: userPage,
-    isLoading,
-    isError,
+    isLoading: pageLoading,
+    isError: pageError,
     isPlaceholderData,
-    refetch
+    refetch: refetchPage
   } = useQuery({
     queryKey: ["admin", "users", "page", search, statusFilter, roleFilter, page],
     queryFn: () =>
@@ -97,13 +116,61 @@ export function AdminUsersPage() {
         limit: pageSize,
         offset: (page - 1) * pageSize
       }),
+    enabled: !folderView,
     placeholderData: keepPreviousData
   });
-  const total = userPage?.total ?? 0;
+  const directory = useQuery({
+    queryKey: ["admin", "users", "directory"],
+    queryFn: async () => {
+      const [users, groups] = await Promise.all([listUsers(), getAccountGroups()]);
+      return { users, groups };
+    },
+    enabled: folderView,
+    staleTime: 60_000
+  });
+  const folders = useMemo(
+    () => buildAccountFolders(directory.data?.users ?? [], directory.data?.groups ?? []),
+    [directory.data]
+  );
+  const selectedFolder = folders.find((folder) => folder.id === folderId);
+  const filteredUsers = useMemo(
+    () =>
+      (directory.data?.users ?? [])
+        .filter(
+          (person) =>
+            (statusFilter === "ALL" || person.status === statusFilter) &&
+            (roleFilter === "ALL" || person.role === roleFilter) &&
+            `${person.displayName} ${person.email}`
+              .toLocaleLowerCase()
+              .includes(search.toLocaleLowerCase())
+        )
+        .sort(
+          (a, b) => a.displayName.localeCompare(b.displayName, "ru") || a.id.localeCompare(b.id)
+        ),
+    [directory.data, statusFilter, roleFilter, search]
+  );
+  const visibleIds = new Set(filteredUsers.map((person) => person.id));
+  const folderUsers = selectedFolder
+    ? filteredUsers.filter((person) => selectedFolder.allPersonIds.has(person.id))
+    : filteredUsers;
+  const total = folderView ? folderUsers.length : userPage?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const isLoading = folderView ? directory.isLoading : pageLoading;
+  const isError = folderView ? directory.isError : pageError;
+  const updating = !folderView && isPlaceholderData;
+  const showUsers = !folderView || Boolean(selectedFolder);
+  const displayedUsers = folderView
+    ? folderUsers.slice(
+        (Math.min(page, pageCount) - 1) * pageSize,
+        Math.min(page, pageCount) * pageSize
+      )
+    : userPage?.items ?? [];
   useEffect(() => {
-    if (userPage && !isPlaceholderData && page > pageCount) setPage(pageCount);
-  }, [isPlaceholderData, page, pageCount, userPage]);
+    if (!isLoading && !updating && page > pageCount) setPage(pageCount);
+  }, [isLoading, updating, page, pageCount]);
+  useEffect(() => {
+    setPage(1);
+  }, [folderId, folderView]);
 
   const inviteMut = useMutation({
     mutationFn: () => createAdminInvitation({ role: inviteRole, ttlHours: 168 }),
@@ -172,12 +239,20 @@ export function AdminUsersPage() {
       </div>
 
       <section className="section">
+        <div className="admin-users-view" role="group" aria-label="Вид учётных записей">
+          <Button variant="ghost" aria-pressed={!folderView} onClick={() => navigateView(false)}>
+            <List size={18} aria-hidden="true" />
+            Список
+          </Button>
+          <Button variant="ghost" aria-pressed={folderView} onClick={() => navigateView(true)}>
+            <Folder size={18} aria-hidden="true" />
+            Папки
+          </Button>
+        </div>
         <div className="section-heading admin-users-result-count">
           <h2 className="sr-only">Пользователи</h2>
           <span className="muted" role="status" aria-live="polite">
-            {isPlaceholderData || query.trim() !== search
-              ? "Обновляем список…"
-              : `${total} найдено`}
+            {updating || query.trim() !== search ? "Обновляем список…" : `${total} найдено`}
           </span>
         </div>
         <div className="admin-users-filters">
@@ -228,21 +303,36 @@ export function AdminUsersPage() {
         ) : isError ? (
           <div className="org-state action-message" role="alert">
             <p>Не удалось загрузить учётные записи. Проверьте соединение и повторите запрос.</p>
-            <Button variant="outline" onClick={() => void refetch()}>
+            <Button
+              variant="outline"
+              onClick={() => void (folderView ? directory.refetch() : refetchPage())}
+            >
               Повторить
             </Button>
           </div>
         ) : (
-          <UsersTable
-            users={userPage?.items ?? []}
-            currentUserId={user?.id}
-            rolePending={roleMut.isPending || isPlaceholderData}
-            statusPending={statusMut.isPending || isPlaceholderData}
-            onRole={(person, role) => setRoleChange({ person, role })}
-            onStatus={(person, status) => setStatusChange({ person, status })}
-          />
+          <>
+            {folderView && (
+              <AccountFolderBrowser
+                folders={folders}
+                selectedId={folderId}
+                visibleIds={visibleIds}
+                onNavigate={(id) => navigateView(true, id)}
+              />
+            )}
+            {showUsers && (
+              <UsersTable
+                users={displayedUsers}
+                currentUserId={user?.id}
+                rolePending={roleMut.isPending || updating}
+                statusPending={statusMut.isPending || updating}
+                onRole={(person, role) => setRoleChange({ person, role })}
+                onStatus={(person, status) => setStatusChange({ person, status })}
+              />
+            )}
+          </>
         )}
-        {!isLoading && !isError && (
+        {!isLoading && !isError && showUsers && (
           <PaginationBar
             page={Math.min(page, pageCount)}
             pageCount={pageCount}

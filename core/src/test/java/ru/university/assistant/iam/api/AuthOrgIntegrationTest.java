@@ -96,6 +96,8 @@ class AuthOrgIntegrationTest {
                             org.study_groups,
                             org.course_members,
                             org.courses,
+                            org.staff_memberships,
+                            org.units,
                             iam.persons
                         restart identity cascade
                         """)
@@ -624,6 +626,8 @@ class AuthOrgIntegrationTest {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/admin/users/page").header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/admin/account-groups").header("Authorization", bearer(lecturerToken)))
+                .andExpect(status().isForbidden());
 
         mockMvc.perform(post("/api/v1/admin/invitations")
                         .header("Authorization", bearer(lecturerToken))
@@ -704,6 +708,72 @@ class AuthOrgIntegrationTest {
                         .header("Authorization", bearer(adminToken))
                         .param("offset", "1000001"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void accountFoldersUseCurrentMembershipsAndDistinguishGroupsAcrossCourses() throws Exception {
+        String admin = bootstrapAdmin();
+        UUID owner = UUID.fromString(json(get("/api/v1/auth/me")
+                .header("Authorization", bearer(admin)), 200).get("id").asText());
+        UUID staff = UUID.randomUUID();
+        UUID student = UUID.randomUUID();
+        UUID stale = UUID.randomUUID();
+        UUID guest = UUID.randomUUID();
+        insertUser(staff, "Teacher", "teacher@example.test", "ASSISTANT", "DISABLED", 4);
+        insertUser(student, "Student", "student@example.test", "STUDENT", "ACTIVE", 3);
+        insertUser(stale, "Former student", "former@example.test", "LECTURER", "ACTIVE", 2);
+        insertUser(guest, "Guest", "guest@example.test", "STUDENT", "EPHEMERAL", 1);
+        UUID faculty = UUID.randomUUID();
+        UUID department = UUID.randomUUID();
+        jdbc.sql("insert into org.units(id, name, kind) values (:id, 'Faculty', 'FACULTY')")
+                .param("id", faculty).update();
+        jdbc.sql("""
+                        insert into org.units(id, parent_id, name, kind, icon)
+                        values (:id, :parent, 'Department', 'DEPARTMENT', 'SCHOOL')
+                        """)
+                .param("id", department).param("parent", faculty).update();
+        jdbc.sql("insert into org.staff_memberships(person_id, unit_id, unit_role) values (:p, :u, 'MEMBER')")
+                .param("p", staff).param("u", department).update();
+        for (String title : new String[]{"Course A", "Course B"}) {
+            UUID course = UUID.randomUUID();
+            UUID group = UUID.randomUUID();
+            jdbc.sql("insert into org.courses(id, owner_person_id, title) values (:id, :owner, :title)")
+                    .param("id", course).param("owner", owner).param("title", title).update();
+            jdbc.sql("insert into org.study_groups(id, course_id, name) values (:id, :c, 'Same group name')")
+                    .param("id", group).param("c", course).update();
+            for (UUID person : new UUID[]{student, stale, guest}) {
+                jdbc.sql("insert into org.course_members(course_id, person_id, role) values (:c, :p, 'STUDENT')")
+                        .param("c", course).param("p", person).update();
+                jdbc.sql("insert into org.group_members(group_id, person_id) values (:g, :p)")
+                        .param("g", group).param("p", person).update();
+            }
+        }
+        JsonNode groups = json(get("/api/v1/admin/account-groups")
+                .header("Authorization", bearer(admin)), 200);
+        assertEquals(4, groups.size());
+        java.util.Set<String> courses = new java.util.HashSet<>();
+        for (JsonNode group : groups) {
+            String id = group.get("id").asText();
+            if (id.equals("unit:" + department)) {
+                assertEquals("unit:" + faculty, group.get("parentId").asText());
+                assertEquals("SCHOOL", group.get("icon").asText());
+                assertEquals(staff.toString(), group.get("personIds").get(0).asText());
+            } else if (id.startsWith("group:")) {
+                courses.add(group.get("description").asText());
+                assertEquals("students", group.get("parentId").asText());
+                assertEquals(1, group.get("personIds").size());
+                assertEquals(student.toString(), group.get("personIds").get(0).asText());
+            }
+        }
+        assertEquals(java.util.Set.of("Course A", "Course B"), courses);
+        // A group row left after removing course membership must not keep the person grouped.
+        jdbc.sql("delete from org.course_members where person_id = :p").param("p", student).update();
+        JsonNode refreshed = json(get("/api/v1/admin/account-groups")
+                .header("Authorization", bearer(admin)), 200);
+        for (JsonNode group : refreshed) {
+            if (group.get("id").asText().startsWith("group:")) assertTrue(group.get("personIds").isEmpty());
+        }
+        mockMvc.perform(get("/api/v1/admin/account-groups")).andExpect(status().isUnauthorized());
     }
 
     private void insertUser(UUID id, String name, String email, String role, String status, int secondsAgo) {

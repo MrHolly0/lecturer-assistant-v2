@@ -516,6 +516,22 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/UserProfile"
+  /admin/account-groups:
+    get:
+      operationId: listAccountGroups
+      summary: List staff folders and course study groups for the administrator account directory.
+      tags: [admin]
+      responses:
+        "200":
+          description: Existing organizational and study-group memberships. Administrator only.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AccountGroup"
+        "403":
+          description: Administrator role required.
   /admin/users/page:
     get:
       operationId: pageUsers
@@ -4665,6 +4681,25 @@ components:
         status:
           type: string
           enum: [ACTIVE, DISABLED, EPHEMERAL]
+    AccountGroup:
+      type: object
+      required: [id, parentId, name, description, icon, personIds]
+      properties:
+        id:
+          type: string
+        parentId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        icon:
+          type: string
+        personIds:
+          type: array
+          items:
+            type: string
+            format: uuid
     UserPage:
       type: object
       required: [items, total, limit, offset]

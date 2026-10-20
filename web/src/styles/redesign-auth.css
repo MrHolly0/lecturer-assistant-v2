@@ -294,7 +294,3 @@ html[data-max-mini-app="true"] .auth-layout .auth-shell {
   padding: 0;
   border: 0;
 }
-.registration-name legend {
-  margin-bottom: 12px;
-  font-weight: 600;
-}

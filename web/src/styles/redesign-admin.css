@@ -993,3 +993,92 @@
     justify-items: start;
   }
 }
+
+.admin-users-view {
+  display: flex;
+  width: fit-content;
+  gap: 0;
+  margin-bottom: 24px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+.admin-users-view > [aria-pressed="true"] {
+  background: var(--selected);
+  color: var(--foreground);
+}
+.account-folders__path,
+.account-folders__path > span {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.account-folders__path {
+  margin-block: 8px 16px;
+}
+.account-folders__path .ui-button {
+  white-space: normal;
+  height: auto;
+  min-height: 44px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.account-folders__path [aria-current="page"] {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.account-folders__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.account-folder {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+}
+.account-folder:hover {
+  background: var(--surface);
+}
+.account-folder:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.account-folder > svg {
+  flex: none;
+}
+.account-folder__copy {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.account-folder__copy strong {
+  font-size: 16px;
+  font-weight: 600;
+}
+.account-folder__copy .muted {
+  font-size: 14px;
+}
+.account-folders__title {
+  display: grid;
+  gap: 6px;
+  margin: 24px 0 12px;
+  font-size: 22px;
+  overflow-wrap: anywhere;
+}
+.account-folders__title .muted {
+  font-size: 14px;
+  font-weight: 400;
+}

@@ -10,8 +10,7 @@ export function PersonNameFields({
   disabled: boolean;
 }) {
   return (
-    <fieldset className="registration-name" disabled={disabled}>
-      <legend>ФИО</legend>
+    <fieldset className="registration-name" disabled={disabled} aria-label="Имя сотрудника">
       <label className="field">
         <span>Фамилия</span>
         <input

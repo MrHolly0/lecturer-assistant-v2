@@ -979,3 +979,37 @@
     grid-row: 5;
   }
 }
+
+/* Keep selection and focus inside the study-group list. */
+.group-manager__list {
+  padding: 4px;
+  overflow: visible;
+}
+.group-manager__list > .group-row {
+  margin: 0;
+  border: 1px solid transparent;
+}
+.group-manager__list > .group-row--active {
+  border-color: color-mix(in srgb, var(--brand) 65%, var(--background));
+}
+.course-settings .member-row > .member-actions,
+.course-settings .member-row > .member-static-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 12px;
+  width: 200px;
+  flex: none;
+}
+.course-settings .member-row > .member-actions > .member-actions {
+  display: contents;
+}
+.course-settings .member-row .member-role-badge {
+  justify-self: start;
+}
+@media (max-width: 700px) {
+  .course-settings .member-row > .member-actions,
+  .course-settings .member-row > .member-static-meta {
+    width: 100%;
+  }
+}

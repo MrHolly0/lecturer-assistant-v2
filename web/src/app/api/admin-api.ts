@@ -26,6 +26,11 @@ export async function getUserPage(options: {
   return response.json() as Promise<UserPage>;
 }
 
+export async function getAccountGroups(): Promise<components["schemas"]["AccountGroup"][]> {
+  const res = await apiFetch("/admin/account-groups");
+  return res.json() as Promise<components["schemas"]["AccountGroup"][]>;
+}
+
 export async function listUsers(): Promise<UserProfile[]> {
   const res = await apiFetch("/admin/users");
   return res.json() as Promise<UserProfile[]>;

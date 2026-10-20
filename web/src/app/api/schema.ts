@@ -297,6 +297,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/account-groups": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List staff folders and course study groups for the administrator account directory. */
+    get: operations["listAccountGroups"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/users/page": {
     parameters: {
       query?: never;
@@ -3077,6 +3094,14 @@ export interface components {
       /** @enum {string} */
       status: "ACTIVE" | "DISABLED" | "EPHEMERAL";
     };
+    AccountGroup: {
+      id: string;
+      parentId: string;
+      name: string;
+      description: string;
+      icon: string;
+      personIds: string[];
+    };
     UserPage: {
       items: components["schemas"]["UserProfile"][];
       /** Format: int64 */
@@ -4652,6 +4677,33 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["UserProfile"][];
         };
+      };
+    };
+  };
+  listAccountGroups: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Existing organizational and study-group memberships. Administrator only. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AccountGroup"][];
+        };
+      };
+      /** @description Administrator role required. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
