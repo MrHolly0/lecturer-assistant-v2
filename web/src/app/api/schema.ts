@@ -1693,7 +1693,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** Set the teacher's correct option for an open poll without revealing it to students. */
+    /**
+     * Set the correct option for an open quick poll created during the lesson.
+     * @description Questions started from the bank retain their answer snapshot and reject changes. The answer remains hidden from students until the poll is closed.
+     */
     put: operations["setPollCorrectOption"];
     post?: never;
     delete?: never;
@@ -7467,7 +7470,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Poll already closed. */
+      /** @description Poll already closed, or the request changes a bank question's fixed answer. */
       409: {
         headers: {
           [name: string]: unknown;
@@ -7516,7 +7519,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Poll already closed. */
+      /** @description Poll already closed, or its answer was fixed when started from the bank. */
       409: {
         headers: {
           [name: string]: unknown;

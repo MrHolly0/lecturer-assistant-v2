@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.sql.Timestamp;
@@ -154,6 +156,63 @@ class LectureSummaryIntegrationTest extends LiveFlowTestBase {
                 .content("{\"questionId\":\"" + questionId + "\"}"), 422);
 
         assertEquals(0L, count("interaction.quick_polls"));
+    }
+
+    @Test
+    void bankAnswerSnapshotRejectsChangesAndSurvivesBankEditingAndArchiving() throws Exception {
+        UUID questionId = createQuestion("Исходный вопрос", "TRUE_FALSE",
+                "[{\"text\":\"A\",\"correct\":false},{\"text\":\"B\",\"correct\":true}]");
+        JsonNode started = json(post("/api/v1/courses/{c}/sessions/{s}/polls/from-bank", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"questionId\":\"" + questionId + "\"}"), 201);
+        UUID pollId = UUID.fromString(started.at("/poll/id").asText());
+        for (String answer : List.of("0", "null", "1")) {
+            json(put("/api/v1/courses/{c}/sessions/{s}/polls/{p}/correct-option", courseId, sessionId, pollId)
+                    .header("Authorization", "Bearer " + lecturerToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"correctOptionIdx\":" + answer + "}"), 409);
+        }
+        json(post("/api/v1/courses/{c}/sessions/{s}/polls/{p}/close", courseId, sessionId, pollId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"correctOptionIdx\":0}"), 409);
+        assertFalse(eventExists("interaction.poll_closed"));
+        JsonNode openStudent = json(get("/api/v1/student/sessions/{code}", joinCode), 200);
+        assertTrue(openStudent.at("/activePoll/correctOptionIdx").isNull());
+        json(put("/api/v1/courses/{c}/questions/{q}", courseId, questionId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"text\":\"Изменённый вопрос\",\"questionType\":\"TRUE_FALSE\","
+                        + "\"options\":[{\"text\":\"A\",\"correct\":true},{\"text\":\"B\",\"correct\":false}]}"), 200);
+        json(delete("/api/v1/courses/{c}/questions/{q}", courseId, questionId)
+                .header("Authorization", "Bearer " + lecturerToken), 204);
+        JsonNode active = json(get("/api/v1/courses/{c}/sessions/{s}/polls/active", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        assertEquals("OPEN", active.at("/poll/status").asText());
+        assertEquals("Исходный вопрос", active.at("/poll/questionText").asText());
+        assertEquals(1, active.at("/poll/correctOptionIdx").asInt());
+        JsonNode closed = json(post("/api/v1/courses/{c}/sessions/{s}/polls/{p}/close", courseId, sessionId, pollId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        assertEquals(1, closed.at("/poll/correctOptionIdx").asInt());
+        JsonNode closedStudent = json(get("/api/v1/student/sessions/{code}", joinCode), 200);
+        assertEquals(1, closedStudent.at("/activePoll/correctOptionIdx").asInt());
+    }
+
+    @Test
+    void bankPollAcceptsMatchingAnswerOnCloseForExistingClients() throws Exception {
+        UUID questionId = createQuestion("Вопрос из банка", "CHOICE",
+                "[{\"text\":\"A\",\"correct\":false},{\"text\":\"B\",\"correct\":true}]");
+        JsonNode started = json(post("/api/v1/courses/{c}/sessions/{s}/polls/from-bank", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"questionId\":\"" + questionId + "\"}"), 201);
+        JsonNode closed = json(post("/api/v1/courses/{c}/sessions/{s}/polls/{p}/close",
+                        courseId, sessionId, started.at("/poll/id").asText())
+                .header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"correctOptionIdx\":1}"), 200);
+        assertEquals(1, closed.at("/poll/correctOptionIdx").asInt());
     }
 
     private UUID createQuestion(String text, String type, String options) throws Exception {

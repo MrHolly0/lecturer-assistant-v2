@@ -101,6 +101,9 @@ public class PollService implements QuickPollApi {
         if (poll.questionType() == QuestionType.SHORT_ANSWER) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Text answers are not automatically graded");
         }
+        if (poll.sourceQuestionId() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The bank question's answer is fixed for this poll");
+        }
         if (correctOptionIdx != null && (correctOptionIdx < 0 || correctOptionIdx >= poll.options().size())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid correct option index");
         }
@@ -135,6 +138,10 @@ public class PollService implements QuickPollApi {
         Integer requestedCorrect = request.correctOptionIdx();
         if (poll.questionType() == QuestionType.SHORT_ANSWER && requestedCorrect != null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Text answers are not automatically graded");
+        }
+        if (poll.sourceQuestionId() != null && requestedCorrect != null
+                && !requestedCorrect.equals(poll.correctOptionIdx())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The bank question's answer is fixed for this poll");
         }
         if (requestedCorrect != null && (requestedCorrect < 0 || requestedCorrect >= poll.options().size())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid correct option index");

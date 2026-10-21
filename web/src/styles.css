@@ -3650,7 +3650,7 @@ html[data-max-mini-app="true"] .student-session-shell {
 .poll-result-option {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   gap: 8px;
   padding: 12px 0;
   border-bottom: 1px solid var(--border);
@@ -3661,17 +3661,20 @@ html[data-max-mini-app="true"] .student-session-shell {
   border-bottom: 0;
 }
 
-.poll-result-option__correct {
+.poll-result-option__marker {
   display: grid;
   place-items: center;
   width: 44px;
   height: 44px;
-  margin-top: -12px;
+  margin: 0;
   padding: 0;
   background: transparent;
   border: 0;
   border-radius: 6px;
   color: var(--muted-foreground);
+}
+
+.poll-result-option__correct {
   cursor: pointer;
 }
 
@@ -3679,7 +3682,7 @@ html[data-max-mini-app="true"] .student-session-shell {
   background: var(--muted);
 }
 
-.poll-result-option__correct[aria-pressed="true"] {
+.poll-result-option.is-correct .poll-result-option__marker {
   color: var(--chart-2);
 }
 

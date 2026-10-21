@@ -2374,11 +2374,12 @@ paths:
         "404":
           description: Poll not found, or it does not belong to this session.
         "409":
-          description: Poll already closed.
+          description: Poll already closed, or the request changes a bank question's fixed answer.
   /courses/{courseId}/sessions/{sessionId}/polls/{pollId}/correct-option:
     put:
       operationId: setPollCorrectOption
-      summary: Set the teacher's correct option for an open poll without revealing it to students.
+      summary: Set the correct option for an open quick poll created during the lesson.
+      description: Questions started from the bank retain their answer snapshot and reject changes. The answer remains hidden from students until the poll is closed.
       tags: [interaction]
       parameters:
         - $ref: "#/components/parameters/CourseId"
@@ -2402,7 +2403,7 @@ paths:
         "404":
           description: Poll not found, or it does not belong to this session.
         "409":
-          description: Poll already closed.
+          description: Poll already closed, or its answer was fixed when started from the bank.
   /student/sessions/{joinCode}/polls/{pollId}/respond:
     post:
       operationId: respondToPoll

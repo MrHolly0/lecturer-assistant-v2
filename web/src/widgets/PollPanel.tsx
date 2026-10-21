@@ -160,6 +160,7 @@ export function PollPanel({
 
   if (activePoll) {
     const freeText = activePoll.poll.questionType === "SHORT_ANSWER";
+    const fixedAnswer = Boolean(activePoll.poll.sourceQuestionId);
     const total = activePoll.totalResponses;
     const selectedCorrect = activePoll.poll.correctOptionIdx;
     const isClosed = activePoll.poll.status === "CLOSED";
@@ -211,25 +212,39 @@ export function PollPanel({
                 const isCorrect = selectedCorrect === idx;
                 return (
                   <div key={idx} className={`poll-result-option${isCorrect ? " is-correct" : ""}`}>
-                    <button
-                      type="button"
-                      className="poll-result-option__correct"
-                      aria-label={
-                        isCorrect
-                          ? `Снять отметку правильного ответа с варианта ${idx + 1}`
-                          : `Отметить вариант ${idx + 1} правильным`
-                      }
-                      aria-pressed={isCorrect}
-                      disabled={commandsBlocked || isClosed || correctMut.isPending}
-                      onClick={() =>
-                        correctMut.mutate({
-                          pollId: activePoll.poll.id,
-                          correctOptionIdx: isCorrect ? null : idx
-                        })
-                      }
-                    >
-                      {isCorrect ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                    </button>
+                    {fixedAnswer || isClosed ? (
+                      <span
+                        className="poll-result-option__marker"
+                        role="img"
+                        aria-label={isCorrect ? "Правильный ответ" : "Неправильный ответ"}
+                      >
+                        {isCorrect ? (
+                          <CheckCircle2 size={18} aria-hidden="true" />
+                        ) : (
+                          <Circle size={18} aria-hidden="true" />
+                        )}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="poll-result-option__marker poll-result-option__correct"
+                        aria-label={
+                          isCorrect
+                            ? `Снять отметку правильного ответа с варианта ${idx + 1}`
+                            : `Отметить вариант ${idx + 1} правильным`
+                        }
+                        aria-pressed={isCorrect}
+                        disabled={commandsBlocked || isClosed || correctMut.isPending}
+                        onClick={() =>
+                          correctMut.mutate({
+                            pollId: activePoll.poll.id,
+                            correctOptionIdx: isCorrect ? null : idx
+                          })
+                        }
+                      >
+                        {isCorrect ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                      </button>
+                    )}
                     <div className="poll-result-option__body">
                       <div className="poll-result-option__heading">
                         <PollOptionText text={opt} className="poll-result-option__label" />
@@ -261,9 +276,11 @@ export function PollPanel({
               <p className="poll-correct-hint">
                 {freeText
                   ? "Ответы видны только преподавателю, без автоматической оценки."
-                  : selectedCorrect === null || selectedCorrect === undefined
-                    ? "Выберите правильный вариант перед закрытием."
-                    : "Выбранный правильный ответ станет виден студентам после закрытия."}
+                  : fixedAnswer
+                    ? "Ответ зафиксирован при запуске из банка. Студенты увидят его после закрытия."
+                    : selectedCorrect === null || selectedCorrect === undefined
+                      ? "Выберите правильный вариант перед закрытием."
+                      : "Выбранный правильный ответ станет виден студентам после закрытия."}
               </p>
               <Button
                 type="button"
@@ -277,7 +294,7 @@ export function PollPanel({
                   if (!commandsBlocked && (freeText || selectedCorrect != null)) {
                     closeMut.mutate({
                       pollId: activePoll.poll.id,
-                      correctOptionIdx: freeText ? null : selectedCorrect!
+                      correctOptionIdx: freeText || fixedAnswer ? null : selectedCorrect!
                     });
                   }
                 }}
