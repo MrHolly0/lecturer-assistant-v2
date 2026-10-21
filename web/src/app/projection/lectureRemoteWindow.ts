@@ -202,7 +202,28 @@ export function prepareLectureRemoteWindow(target: Window): () => void {
   base.href = window.location.href;
   doc.head.prepend(base);
   for (const source of document.querySelectorAll('link[rel="stylesheet"], style')) {
-    const copy = source.cloneNode(true) as HTMLElement;
+    let copy: HTMLElement;
+    if (source.tagName === "LINK") {
+      const link = source as HTMLLinkElement;
+      let css: string | null = null;
+      try {
+        if (link.sheet) css = Array.from(link.sheet.cssRules, (rule) => rule.cssText).join("\n");
+      } catch {
+        // Cross-origin stylesheets do not expose their rules; keep a link for those.
+      }
+      if (css !== null) {
+        // Apply already-loaded application styles synchronously in the new window.
+        const style = doc.createElement("style");
+        style.textContent = css;
+        style.media = link.media;
+        copy = style;
+      } else {
+        copy = doc.createElement("link");
+        for (const attribute of source.attributes)
+          copy.setAttribute(attribute.name, attribute.value);
+        copy.setAttribute("href", link.href);
+      }
+    } else copy = source.cloneNode(true) as HTMLElement;
     copy.dataset.remoteStyle = "true";
     doc.head.append(copy);
   }

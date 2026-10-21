@@ -221,7 +221,8 @@
     flex-basis: 100%;
   }
 }
-.question-picker.preparation-dialog[data-slot="dialog-content"] {
+/* The live picker owns its shell; course authoring dialog defaults must not reset its insets. */
+.question-picker[role="dialog"][data-slot="dialog-content"] {
   width: 1080px;
   max-width: calc(100vw - 32px);
   max-height: calc(100dvh - 32px);
@@ -487,7 +488,7 @@
     grid-row: auto;
     justify-content: flex-end;
   }
-  .question-picker.preparation-dialog[data-slot="dialog-content"] {
+  .question-picker[role="dialog"][data-slot="dialog-content"] {
     max-width: calc(100vw - 16px);
     max-height: calc(100dvh - 16px);
   }
@@ -612,5 +613,14 @@
   }
   .lecture-multiselect__list {
     max-height: 180px;
+  }
+}
+
+@media (max-height: 450px) {
+  .question-picker [data-slot="dialog-footer"] > .ui-button {
+    width: auto;
+    min-width: 0;
+    flex: 1;
+    white-space: normal;
   }
 }

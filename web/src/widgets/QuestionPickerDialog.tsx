@@ -98,7 +98,7 @@ export function QuestionPickerDialog({
     >
       <DialogContent
         container={container}
-        className="question-picker preparation-dialog"
+        className="question-picker"
         onEscapeKeyDown={(e) => {
           if (pending) e.preventDefault();
         }}
