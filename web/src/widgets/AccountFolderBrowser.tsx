@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { accountFolderPath, type AccountFolder } from "../shared/lib/accountFolders";
 import { Button } from "../shared/ui/button";
 import { OrganizationUnitIcon } from "./OrganizationUnitIcon";
@@ -20,16 +20,6 @@ export function AccountFolderBrowser({
   return (
     <div className="account-folders">
       <nav className="account-folders__path" aria-label="Папки учётных записей">
-        {selected && (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="На уровень выше"
-            onClick={() => onNavigate(selected.parentId)}
-          >
-            <ArrowLeft size={18} />
-          </Button>
-        )}
         <Button
           variant="ghost"
           onClick={() => onNavigate("")}
