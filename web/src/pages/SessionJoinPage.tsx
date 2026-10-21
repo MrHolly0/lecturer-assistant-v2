@@ -51,7 +51,7 @@ function SessionJoinWorkspace({ courseId, sessionId }: SessionJoinPageProps) {
     queryFn: () => getCourse(courseId)
   });
   const session = live.session;
-  const commandsBlocked = live.connection !== "connected" || live.syncing || live.syncError;
+  const commandsBlocked = live.commandsBlocked;
   const code = session?.joinCode ?? "";
   const maxUrl = useMemo(() => buildMaxJoinUrl(code), [code]);
   const presenterPath = isMobileMax(maxEnvironment)

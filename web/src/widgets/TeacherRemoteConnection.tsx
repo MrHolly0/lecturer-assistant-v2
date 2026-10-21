@@ -15,14 +15,15 @@ export function TeacherRemoteConnection({
   syncError: boolean;
   onRetry: () => void;
 }) {
-  const Icon = state === "connected" ? Wifi : state === "offline" ? CloudOff : LoaderCircle;
+  const current = state === "connected" || state === "polling";
+  const Icon = current ? Wifi : state === "offline" ? CloudOff : LoaderCircle;
   const label = syncError
     ? "Состояние не сверено"
     : syncing
       ? state === "connected"
         ? "Связь есть, сверяем состояние"
         : "Сверяем состояние"
-      : state === "connected"
+      : current
         ? "Данные обновлены"
         : state === "offline"
           ? "Нет сети"
@@ -42,13 +43,13 @@ export function TeacherRemoteConnection({
         {!syncing && syncedAt
           ? ` · ${syncedAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
           : ""}
-        {(syncError || state !== "connected") && (
+        {(syncError || !current) && (
           <small>
             Показано последнее подтверждённое состояние. Управление станет доступно после сверки.
           </small>
         )}
       </span>
-      {(syncError || state !== "connected") && (
+      {(syncError || !current) && (
         <Button variant="outline" type="button" onClick={onRetry}>
           Повторить
         </Button>

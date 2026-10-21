@@ -25,6 +25,7 @@ interface PollComposerProps {
   courseId: string;
   sessionId: string;
   pending: boolean;
+  blocked?: boolean;
   error?: string;
   container?: HTMLElement;
   onCancel: () => void;
@@ -35,6 +36,7 @@ export function PollComposer({
   courseId,
   sessionId,
   pending,
+  blocked = false,
   error,
   container,
   onCancel,
@@ -47,10 +49,12 @@ export function PollComposer({
   const questionId = `${formId}-question`;
   const session = useQuery({
     queryKey: ["live", courseId, sessionId],
+    meta: { connectionSync: true },
     queryFn: () => getLiveSession(courseId, sessionId)
   });
   const canStart =
     !pending &&
+    !blocked &&
     question.trim().length > 0 &&
     options.length >= 2 &&
     options.every((option) => option.trim().length > 0);
@@ -64,7 +68,11 @@ export function PollComposer({
         contextError={session.isError ? "Не удалось определить текущую лекцию." : undefined}
         onRetryContext={() => void session.refetch()}
         pending={pending}
-        error={error}
+        blocked={blocked}
+        error={
+          error ??
+          (blocked ? "Нет связи с занятием. Черновик сохранён, ждём восстановления." : undefined)
+        }
         container={container}
         onClose={onCancel}
         extraAction={
@@ -174,6 +182,11 @@ export function PollComposer({
           {error && (
             <p className="form-error" role="alert">
               {error}
+            </p>
+          )}
+          {blocked && !error && (
+            <p className="muted" role="status">
+              Нет связи с занятием. Черновик сохранён, ждём восстановления.
             </p>
           )}
         </form>

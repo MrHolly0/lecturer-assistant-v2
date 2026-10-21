@@ -58,6 +58,7 @@ interface PresenterTopbarProps {
   syncedAt: Date | null;
   syncing: boolean;
   syncError: boolean;
+  commandsBlocked: boolean;
   onRefresh: () => void;
   onDrawingChange: (active: boolean) => void;
   onSessionChange: (session: LiveSession) => void;
@@ -77,6 +78,7 @@ export function PresenterTopbar({
   syncedAt,
   syncing,
   syncError,
+  commandsBlocked,
   onRefresh,
   onDrawingChange,
   onSessionChange,
@@ -96,7 +98,7 @@ export function PresenterTopbar({
       setQuery(next, { replace: true });
     }
   };
-  const commandsBlocked = connection !== "connected" || syncing || syncError;
+  const connectionCurrent = connection === "connected" || connection === "polling";
   const sessionActive = session.status === "LIVE" || session.status === "PAUSED";
   const showJoinCode = session.showJoinCode;
   const joinUrl = buildMaxJoinUrl(session.joinCode);
@@ -140,7 +142,7 @@ export function PresenterTopbar({
       ? connection === "connected"
         ? "Связь есть, сверяем занятие"
         : "Сверяем занятие"
-      : connection === "connected"
+      : connectionCurrent
         ? "Данные обновлены"
         : "Нет связи с сервером";
 
@@ -297,7 +299,7 @@ export function PresenterTopbar({
               </Button>
             )}
             <div
-              className={`presenter-finish-actions${syncError || connection !== "connected" ? " presenter-finish-actions--retry" : ""}`}
+              className={`presenter-finish-actions${commandsBlocked ? " presenter-finish-actions--retry" : ""}`}
             >
               <ConfirmActionButton
                 title="Завершить лекцию?"
@@ -312,7 +314,7 @@ export function PresenterTopbar({
                 <Square size={16} />
                 Завершить
               </ConfirmActionButton>
-              {(syncError || connection !== "connected") && (
+              {commandsBlocked && (
                 <Button type="button" variant="outline" disabled={syncing} onClick={onRefresh}>
                   Повторить сверку
                 </Button>

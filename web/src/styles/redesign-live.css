@@ -709,7 +709,8 @@
   font-size: 13px;
   margin-top: 8px;
 }
-.teacher-remote-connection--connected:not(.teacher-remote-connection--unverified) {
+.teacher-remote-connection--connected:not(.teacher-remote-connection--unverified),
+.teacher-remote-connection--polling:not(.teacher-remote-connection--unverified) {
   color: var(--success, #00875f);
   background: color-mix(in srgb, #15996c 10%, var(--background));
 }
@@ -2167,7 +2168,9 @@
 }
 .dark
   .teacher-remote-shell
-  .teacher-remote-connection--connected:not(.teacher-remote-connection--unverified) {
+  :is(.teacher-remote-connection--connected, .teacher-remote-connection--polling):not(
+    .teacher-remote-connection--unverified
+  ) {
   background: var(--surface);
   color: var(--muted-foreground);
 }

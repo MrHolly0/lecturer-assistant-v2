@@ -51,6 +51,7 @@ export function PollPanel({
 
   const activeQuery = useQuery({
     queryKey: ["poll", courseId, sessionId, "active"],
+    meta: { connectionSync: true },
     queryFn: () => getActivePoll(courseId, sessionId),
     refetchIntervalInBackground: background,
     refetchInterval: (query) => (query.state.data?.poll.status === "OPEN" ? 1500 : 3000)
@@ -111,8 +112,8 @@ export function PollPanel({
   }, [activePoll?.poll.id, activePoll?.poll.status]);
 
   useEffect(() => {
-    if (disabled || commandsBlocked) setView("idle");
-  }, [disabled, commandsBlocked]);
+    if (disabled) setView("idle");
+  }, [disabled]);
 
   if (activeQuery.isLoading)
     return (
@@ -121,7 +122,7 @@ export function PollPanel({
       </div>
     );
 
-  if (activeQuery.isError) {
+  if (activeQuery.isError && view !== "create") {
     return (
       <>
         <div className="poll-panel poll-panel-error" role="alert">
@@ -145,9 +146,12 @@ export function PollPanel({
           error={
             startMut.isError
               ? userErrorMessage(startMut.error, "Не удалось запустить вопрос.")
-              : undefined
+              : activeQuery.isError
+                ? "Не удалось проверить активный опрос. Черновик сохранён, ждём восстановления связи."
+                : undefined
           }
           pending={startMut.isPending}
+          blocked={commandsBlocked || activeQuery.isError}
           onCancel={() => setView("idle")}
           onStart={(draft) => {
             if (!disabled && !commandsBlocked) startMut.mutate(draft);

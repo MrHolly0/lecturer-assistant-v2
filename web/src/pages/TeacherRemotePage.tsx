@@ -98,7 +98,7 @@ export function TeacherRemotePage({
   const deck = deckQuery.data;
   const slide = deck?.slides.find((item) => item.idx === session?.currentSlideIdx);
   const paused = session?.status === "PAUSED";
-  const commandsBlocked = live.connection !== "connected" || live.syncing || live.syncError;
+  const commandsBlocked = live.commandsBlocked;
   const { elapsed, slideElapsed } = useSessionTimers(session);
 
   useEffect(() => {

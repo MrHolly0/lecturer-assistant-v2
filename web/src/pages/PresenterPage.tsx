@@ -66,7 +66,7 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
     if (screenShare.getSnapshot().scope?.sessionId === session.id) void screenShare.stop();
   }, [session]);
   const paused = session?.status === "PAUSED";
-  const commandsBlocked = live.connection !== "connected" || live.syncing || live.syncError;
+  const commandsBlocked = live.commandsBlocked;
   const { elapsed, slideElapsed } = useSessionTimers(session);
   const deckQuery = useQuery({
     queryKey: ["content", courseId, "decks", session?.deckId],
@@ -245,6 +245,7 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
         syncedAt={live.syncedAt}
         syncing={live.syncing}
         syncError={live.syncError}
+        commandsBlocked={commandsBlocked}
         onRefresh={() => void live.refresh()}
         drawing={drawing}
         pausePending={pauseMut.isPending}

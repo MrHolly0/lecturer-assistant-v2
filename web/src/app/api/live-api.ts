@@ -10,7 +10,12 @@ export type LectureSummary = components["schemas"]["LectureSummary"];
 export type SessionHistoryItem = components["schemas"]["SessionHistoryItem"];
 export type SessionHistoryPage = components["schemas"]["SessionHistoryPage"];
 export type LiveSessionMessage = { type: string; session: LiveSession };
-export type LiveConnectionState = "connecting" | "connected" | "reconnecting" | "offline";
+export type LiveConnectionState =
+  | "connecting"
+  | "connected"
+  | "polling"
+  | "reconnecting"
+  | "offline";
 export type StartSessionRequest = components["schemas"]["StartSessionRequest"];
 export type ActiveSession = components["schemas"]["ActiveSessionSummary"];
 
@@ -182,6 +187,15 @@ export function connectLiveSession(
   let reconnectImmediately = false;
   let rejectedToken: string | null = null;
   let refreshAttemptedSinceConnected = false;
+  let lastReceivedAt = 0;
+  let receiveTimeout = 0;
+  let heartbeatTimer: number | undefined;
+
+  function clearHeartbeat() {
+    if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+    heartbeatTimer = undefined;
+    receiveTimeout = 0;
+  }
 
   function connect() {
     if (stopped) return;
@@ -194,21 +208,28 @@ export function connectLiveSession(
     let buffer = "";
     let connectionToken = "";
     let connectedTimer: number | undefined;
+    let stableTimer: number | undefined;
     const currentSocket = new WebSocket(url);
     socket = currentSocket;
 
     currentSocket.addEventListener("open", () => {
+      if (stopped || socket !== currentSocket) return currentSocket.close();
       connectionToken = getStoredAuth()?.accessToken ?? "";
       currentSocket.send(
-        `CONNECT\naccept-version:1.2\nAuthorization:Bearer ${connectionToken}\n\n\u0000`
+        `CONNECT\naccept-version:1.2\nhost:${window.location.host}\nheart-beat:10000,10000\nAuthorization:Bearer ${connectionToken}\n\n\u0000`
       );
       connectedTimer = window.setTimeout(() => {
-        void recoverAuthentication(connectionToken, currentSocket);
-      }, 4000);
+        // A slow handshake is a transport failure, not evidence of expired credentials.
+        currentSocket.close();
+      }, 10000);
     });
 
     currentSocket.addEventListener("message", (event) => {
-      buffer += String(event.data);
+      if (socket !== currentSocket || stopped) return;
+      lastReceivedAt = Date.now();
+      const data = String(event.data);
+      if (!buffer && !data.trim()) return;
+      buffer += data;
       const frames = buffer.split("\u0000");
       buffer = frames.pop() ?? "";
       for (const frame of frames) {
@@ -217,9 +238,29 @@ export function connectLiveSession(
         if (command === "CONNECTED") {
           if (connectedTimer) window.clearTimeout(connectedTimer);
           connectedTimer = undefined;
-          attempt = 0;
-          rejectedToken = null;
-          refreshAttemptedSinceConnected = false;
+          stableTimer = window.setTimeout(() => {
+            if (stopped || socket !== currentSocket || currentSocket.readyState !== WebSocket.OPEN)
+              return;
+            attempt = 0;
+            rejectedToken = null;
+            refreshAttemptedSinceConnected = false;
+          }, 10000);
+          const heartbeat = stompFrame.match(/^heart-beat:(\d+),(\d+)\r?$/m);
+          const serverSend = Number(heartbeat?.[1] ?? 0);
+          const serverReceive = Number(heartbeat?.[2] ?? 0);
+          clearHeartbeat();
+          receiveTimeout = serverSend > 0 ? Math.max(45000, serverSend * 3) : 0;
+          if (serverSend > 0 || serverReceive > 0) {
+            heartbeatTimer = window.setInterval(
+              () => {
+                if (socket !== currentSocket || currentSocket.readyState !== WebSocket.OPEN) return;
+                if (receiveTimeout && Date.now() - lastReceivedAt > receiveTimeout) {
+                  currentSocket.close();
+                } else if (serverReceive > 0) currentSocket.send("\n");
+              },
+              Math.max(10000, serverReceive)
+            );
+          }
           onStateChange?.("connected");
           currentSocket.send(
             `SUBSCRIBE\nid:session\ndestination:/topic/session/${sessionId}\n\n\u0000`
@@ -242,12 +283,17 @@ export function connectLiveSession(
       }
     });
 
-    currentSocket.addEventListener("close", () => {
+    currentSocket.addEventListener("close", (event) => {
       if (connectedTimer) window.clearTimeout(connectedTimer);
+      if (stableTimer) window.clearTimeout(stableTimer);
       connectedTimer = undefined;
-      if (socket === currentSocket) socket = null;
+      if (socket !== currentSocket) return;
+      socket = null;
+      clearHeartbeat();
       if (!stopped) onStateChange?.(navigator.onLine ? "reconnecting" : "offline");
-      scheduleReconnect();
+      if (event.code === 1008 && !stopped)
+        void recoverAuthentication(connectionToken, currentSocket);
+      else scheduleReconnect();
     });
     currentSocket.addEventListener("error", () => currentSocket.close());
   }
@@ -262,9 +308,10 @@ export function connectLiveSession(
   }
 
   async function recoverAuthentication(token: string, currentSocket: WebSocket) {
-    if (stopped || currentSocket.readyState >= WebSocket.CLOSING) return;
+    if (stopped) return;
     if (refreshAttemptedSinceConnected || rejectedToken === token) {
       currentSocket.close();
+      if (socket === null) scheduleReconnect();
       return;
     }
 
@@ -282,6 +329,7 @@ export function connectLiveSession(
       refreshAttemptedSinceConnected = false;
       rejectedToken = null;
       currentSocket.close();
+      if (socket === null) scheduleReconnect();
     }
   }
 
@@ -289,8 +337,6 @@ export function connectLiveSession(
     if (stopped) return;
     reconnectImmediately = true;
     attempt = 0;
-    refreshAttemptedSinceConnected = false;
-    rejectedToken = null;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
     else scheduleReconnect();
   };
@@ -304,14 +350,20 @@ export function connectLiveSession(
   };
 
   const handleOffline = () => onStateChange?.("offline");
-  let resumeTimer: ReturnType<typeof setTimeout> | undefined;
+  let resumeTimer: number | undefined;
   const handleResume = () => {
     if (stopped || document.visibilityState !== "visible" || resumeTimer) return;
-    // MAX may suspend an apparently open socket. A fresh connection also fetches
-    // committed state; group the foreground events emitted by the same resume.
-    resumeTimer = setTimeout(() => {
+    // Preserve healthy connections on ordinary focus changes. A suspended window
+    // reconnects only when its transport or negotiated heartbeat is stale.
+    resumeTimer = window.setTimeout(() => {
       resumeTimer = undefined;
-      if (!stopped && document.visibilityState === "visible") handleOnline();
+      if (stopped || document.visibilityState !== "visible") return;
+      if (
+        !socket ||
+        socket.readyState >= WebSocket.CLOSING ||
+        (receiveTimeout > 0 && Date.now() - lastReceivedAt > receiveTimeout)
+      )
+        handleOnline();
     }, 0);
   };
 
@@ -327,7 +379,8 @@ export function connectLiveSession(
   return () => {
     stopped = true;
     if (reconnectTimer) window.clearTimeout(reconnectTimer);
-    if (resumeTimer) clearTimeout(resumeTimer);
+    if (resumeTimer) window.clearTimeout(resumeTimer);
+    clearHeartbeat();
     window.removeEventListener("auth:refreshed", handleAuthRefreshed);
     window.removeEventListener("online", handleOnline);
     window.removeEventListener("offline", handleOffline);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "../api/errors";
 import {
   connectLiveSession,
   getLiveSession,
@@ -14,7 +15,10 @@ export function useLiveSession(courseId: string, sessionId: string) {
   const scope = `${courseId}/${sessionId}`;
   const scopeRef = useRef(scope);
   const generationRef = useRef(0);
-  const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const refreshRef = useRef<(blocking?: boolean) => Promise<void>>(() => Promise.resolve());
+  const transportRef = useRef<LiveConnectionState>("connecting");
+  const httpConfirmedAt = useRef(0);
+  const [, tickFreshness] = useState(0);
   const [snapshot, setSnapshot] = useState<LiveSession | null>(null);
   const [connection, setConnection] = useState<LiveConnectionState>("connecting");
   const [syncedAt, setSyncedAt] = useState<Date | null>(null);
@@ -23,17 +27,20 @@ export function useLiveSession(courseId: string, sessionId: string) {
   if (scopeRef.current !== scope) {
     scopeRef.current = scope;
     snapshotRef.current = null;
+    httpConfirmedAt.current = 0;
     generationRef.current += 1;
   }
   const versionOf = (value: LiveSession | null) => value?.version;
 
   const sessionQuery = useQuery({
     queryKey: ["live", courseId, sessionId],
+    meta: { connectionSync: true },
     queryFn: async () => {
       const generation = generationRef.current;
       const requestScope = scopeRef.current;
       const fresh = await getLiveSession(courseId, sessionId);
       if (scopeRef.current !== requestScope) return fresh;
+      httpConfirmedAt.current = Date.now();
       const current = snapshotRef.current;
       if (
         (generation !== generationRef.current && current) ||
@@ -42,6 +49,8 @@ export function useLiveSession(courseId: string, sessionId: string) {
           versionOf(fresh) !== undefined &&
           versionOf(fresh)! < versionOf(current)!)
       ) {
+        setSyncing(false);
+        setSyncError(false);
         return snapshotRef.current;
       }
       snapshotRef.current = fresh;
@@ -82,17 +91,27 @@ export function useLiveSession(courseId: string, sessionId: string) {
     [courseId, queryClient, sessionId]
   );
 
-  const refreshAuthoritative = useCallback(async () => {
-    setSyncing(true);
-    setSyncError(false);
-    try {
-      const result = await refetch();
-      if (result.error) throw result.error;
-    } catch {
-      setSyncError(true);
-      setSyncing(false);
-    }
-  }, [refetch]);
+  const refreshAuthoritative = useCallback(
+    async (blocking = true) => {
+      if (blocking) {
+        setSyncing(true);
+        setSyncError(false);
+      }
+      try {
+        const result = await refetch({ cancelRefetch: false });
+        if (result.error) throw result.error;
+      } catch (error) {
+        if (
+          blocking ||
+          transportRef.current !== "connected" ||
+          (error instanceof ApiError && [401, 403, 404].includes(error.status))
+        )
+          setSyncError(true);
+        setSyncing(false);
+      }
+    },
+    [refetch]
+  );
   refreshRef.current = refreshAuthoritative;
 
   useEffect(() => {
@@ -124,9 +143,15 @@ export function useLiveSession(courseId: string, sessionId: string) {
         }
       },
       (state) => {
+        const previous = transportRef.current;
+        transportRef.current = state;
         setConnection(state);
+        if (state === "offline" || (previous === "connected" && state === "reconnecting")) {
+          setSyncing(true);
+          if (state !== "offline") void refreshRef.current(false);
+        }
         if (state === "connected") {
-          void refreshRef.current();
+          void refreshRef.current(false);
           void queryClient.invalidateQueries({ queryKey: ["poll", courseId, sessionId] });
           void queryClient.invalidateQueries({
             queryKey: ["live", courseId, sessionId, "participants"]
@@ -146,8 +171,12 @@ export function useLiveSession(courseId: string, sessionId: string) {
   }, [acceptSnapshot, courseId, queryClient, sessionId, snapshot?.id]);
 
   useEffect(() => {
+    let lastResume = 0;
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void refreshRef.current();
+      const now = Date.now();
+      if (document.visibilityState !== "visible" || now - lastResume < 1000) return;
+      lastResume = now;
+      void refreshRef.current(false);
     };
     window.addEventListener("focus", refreshWhenVisible);
     window.addEventListener("pageshow", refreshWhenVisible);
@@ -161,19 +190,46 @@ export function useLiveSession(courseId: string, sessionId: string) {
 
   useEffect(() => {
     if (sessionQuery.isError) {
-      setSyncError(true);
+      const error = sessionQuery.error;
+      if (
+        transportRef.current !== "connected" ||
+        (error instanceof ApiError && [401, 403, 404].includes(error.status))
+      )
+        setSyncError(true);
       setSyncing(false);
     }
-  }, [sessionQuery.isError]);
+  }, [sessionQuery.isError, sessionQuery.error]);
+
+  useEffect(() => {
+    if (connection === "connected") return;
+    const timer = window.setInterval(() => tickFreshness((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [connection]);
+
+  const effectiveConnection: LiveConnectionState =
+    connection !== "connected" &&
+    connection !== "offline" &&
+    httpConfirmedAt.current > 0 &&
+    Date.now() - httpConfirmedAt.current <= 15000 &&
+    !syncing &&
+    !syncError
+      ? "polling"
+      : connection;
+  const commandsBlocked =
+    snapshot?.id !== sessionId ||
+    syncing ||
+    syncError ||
+    !["connected", "polling"].includes(effectiveConnection);
 
   return {
     session: (snapshot?.id === sessionId ? snapshot : null) ?? sessionQuery.data ?? null,
     setSession: acceptSnapshot,
-    connection,
+    connection: effectiveConnection,
+    commandsBlocked,
     syncedAt,
     syncError,
     syncing,
-    refresh: refreshAuthoritative,
+    refresh: () => refreshAuthoritative(),
     isLoading: sessionQuery.isLoading
   };
 }

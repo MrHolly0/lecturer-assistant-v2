@@ -26,6 +26,7 @@ export function QuestionPickerDialog({
   currentLectureTitle,
   linkToLectureId,
   pending,
+  blocked = false,
   error,
   contextLoading = false,
   contextError,
@@ -40,6 +41,7 @@ export function QuestionPickerDialog({
   currentLectureTitle?: string;
   linkToLectureId?: string;
   pending: boolean;
+  blocked?: boolean;
   error?: string;
   contextLoading?: boolean;
   contextError?: string;
@@ -309,9 +311,9 @@ export function QuestionPickerDialog({
             Отмена
           </Button>
           <Button
-            disabled={!selected || linked || pending || loading || Boolean(loadError)}
+            disabled={!selected || linked || pending || blocked || loading || Boolean(loadError)}
             onClick={() => {
-              if (selected && !pending && !linked) onConfirm(selected);
+              if (selected && !pending && !blocked && !linked) onConfirm(selected);
             }}
           >
             {linking ? <Link2 size={18} /> : <Play size={18} />}

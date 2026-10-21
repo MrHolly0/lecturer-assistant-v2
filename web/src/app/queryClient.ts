@@ -16,7 +16,10 @@ export const queryClient = new QueryClient({
     }
   }),
   queryCache: new QueryCache({
-    onError: reportError
+    onError: (error, query) => {
+      // Live synchronization owns an inline connection status and retry action.
+      if (!query.meta?.connectionSync) reportError(error);
+    }
   }),
   defaultOptions: {
     queries: {
