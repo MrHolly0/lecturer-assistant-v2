@@ -1880,37 +1880,6 @@
   font-size: 12px;
   color: var(--muted-foreground);
 }
-.presenter-shell .poll-bars,
-.teacher-remote-shell .poll-bars {
-  display: grid;
-  gap: 12px;
-}
-.presenter-shell .poll-bar-row,
-.teacher-remote-shell .poll-bar-row {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 40px;
-  align-items: center;
-  gap: 8px;
-}
-.presenter-shell .poll-bar-correct-toggle,
-.teacher-remote-shell .poll-bar-correct-toggle {
-  min-width: 44px;
-  min-height: 44px;
-  display: grid;
-  place-items: center;
-}
-.presenter-shell .poll-bar-track,
-.teacher-remote-shell .poll-bar-track {
-  grid-column: 2 / -1;
-  height: 6px;
-  background: var(--surface);
-  border-radius: 4px;
-}
-.presenter-shell .poll-bar-pct,
-.teacher-remote-shell .poll-bar-pct {
-  grid-column: 3;
-  grid-row: auto;
-}
 .presenter-shell .poll-panel > .ui-button,
 .teacher-remote-shell .poll-panel > .ui-button,
 .presenter-shell .poll-launch-btn,

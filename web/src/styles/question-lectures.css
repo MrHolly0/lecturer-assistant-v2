@@ -109,7 +109,7 @@
 }
 .question-lecture-usage {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
 }
 .question-lecture-usage svg {
@@ -222,11 +222,19 @@
   }
 }
 /* The live picker owns its shell; course authoring dialog defaults must not reset its insets. */
+.question-picker[role="dialog"][data-slot="dialog-content"],
+.quick-question-dialog[role="dialog"][data-slot="dialog-content"] {
+  inset: 16px;
+  margin: auto;
+  height: fit-content;
+  translate: none;
+  transform: none;
+  animation: none;
+}
 .question-picker[role="dialog"][data-slot="dialog-content"] {
   width: 1080px;
   max-width: calc(100vw - 32px);
   max-height: calc(100dvh - 32px);
-  left: 50vw;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -427,9 +435,81 @@
 .question-picker__folders svg {
   flex-shrink: 0;
 }
-.quick-question-dialog[data-slot="dialog-content"] {
+.quick-question-dialog[role="dialog"][data-slot="dialog-content"] {
+  width: 640px;
+  max-width: calc(100vw - 32px);
   max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+.quick-question-dialog [data-slot="dialog-header"] {
+  padding: 28px 52px 20px 28px;
+  text-align: left;
+  flex-shrink: 0;
+}
+.quick-question-dialog .poll-composer {
+  display: grid;
+  gap: 12px;
+  padding: 0 28px 24px;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.quick-question-dialog .poll-composer > .ui-button {
+  justify-self: start;
+}
+.quick-question-dialog .poll-composer > label,
+.quick-question-dialog legend {
+  font-size: 14px;
+  font-weight: 600;
+}
+.quick-question-dialog .poll-question-input {
+  min-height: 104px;
+  font-size: 16px;
+  padding: 12px 14px;
+}
+.quick-question-dialog .poll-options-list {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  margin: 8px 0 0;
+  border: 0;
+  min-width: 0;
+}
+.quick-question-dialog legend {
+  padding: 0;
+  margin-bottom: 12px;
+}
+.quick-question-dialog .poll-option-row {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.quick-question-dialog .poll-option-number {
+  width: 24px;
+  flex-shrink: 0;
+  font-size: 14px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.quick-question-dialog .poll-option-input {
+  height: 48px;
+  min-width: 0;
+  font-size: 16px;
+  padding: 10px 14px;
+}
+.quick-question-dialog [data-slot="dialog-footer"] {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 20px 28px;
 }
 @media (max-width: 1200px) {
   .lecture-question-workspace {
@@ -488,12 +568,29 @@
     grid-row: auto;
     justify-content: flex-end;
   }
-  .question-picker[role="dialog"][data-slot="dialog-content"] {
+  .question-picker[role="dialog"][data-slot="dialog-content"],
+  .quick-question-dialog[role="dialog"][data-slot="dialog-content"] {
+    inset: 8px;
     max-width: calc(100vw - 16px);
     max-height: calc(100dvh - 16px);
   }
   .question-picker [data-slot="dialog-header"] {
     padding: 18px 46px 16px 16px;
+  }
+  .quick-question-dialog [data-slot="dialog-header"] {
+    padding: 18px 46px 16px 16px;
+  }
+  .quick-question-dialog .poll-composer {
+    padding: 0 16px 16px;
+  }
+  .quick-question-dialog [data-slot="dialog-footer"] {
+    padding: 12px 16px;
+  }
+  .quick-question-dialog [data-slot="dialog-footer"] > .ui-button {
+    width: auto;
+    min-width: 0;
+    flex: 1;
+    white-space: normal;
   }
   .question-picker [data-slot="dialog-title"] {
     font-size: 23px;
@@ -532,18 +629,24 @@
   }
 }
 @media (max-height: 450px) {
-  .question-picker [data-slot="dialog-header"] {
+  .question-picker [data-slot="dialog-header"],
+  .quick-question-dialog [data-slot="dialog-header"] {
     padding-top: 12px;
     padding-bottom: 10px;
   }
-  .question-picker [data-slot="dialog-title"] {
+  .question-picker [data-slot="dialog-title"],
+  .quick-question-dialog [data-slot="dialog-title"] {
     font-size: 19px;
   }
-  .question-picker [data-slot="dialog-footer"] {
+  .question-picker [data-slot="dialog-footer"],
+  .quick-question-dialog [data-slot="dialog-footer"] {
     padding-top: 8px;
     padding-bottom: 8px;
   }
   .question-picker__note {
+    display: none;
+  }
+  .quick-question-dialog [data-slot="dialog-description"] {
     display: none;
   }
 }

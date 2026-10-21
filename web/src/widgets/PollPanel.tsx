@@ -204,21 +204,21 @@ export function PollPanel({
             />
           )}
           {showResults && !freeText && (
-            <div className="poll-bars">
+            <div className="poll-result-options">
               {activePoll.poll.options.map((opt, idx) => {
                 const count = activePoll.votes[idx] ?? 0;
                 const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-                const isClosed = activePoll.poll.status === "CLOSED";
                 const isCorrect = selectedCorrect === idx;
                 return (
-                  <div
-                    key={idx}
-                    className={`poll-bar-row${isCorrect ? " poll-bar-row--correct" : ""}`}
-                  >
+                  <div key={idx} className={`poll-result-option${isCorrect ? " is-correct" : ""}`}>
                     <button
                       type="button"
-                      className="poll-bar-correct-toggle"
-                      aria-label={`Отметить вариант ${idx + 1} правильным`}
+                      className="poll-result-option__correct"
+                      aria-label={
+                        isCorrect
+                          ? `Снять отметку правильного ответа с варианта ${idx + 1}`
+                          : `Отметить вариант ${idx + 1} правильным`
+                      }
                       aria-pressed={isCorrect}
                       disabled={commandsBlocked || isClosed || correctMut.isPending}
                       onClick={() =>
@@ -230,11 +230,27 @@ export function PollPanel({
                     >
                       {isCorrect ? <CheckCircle2 size={18} /> : <Circle size={18} />}
                     </button>
-                    <PollOptionText text={opt} className="poll-bar-label" />
-                    <div className="poll-bar-track">
-                      <div className="poll-bar-fill" style={{ width: `${pct}%` }} />
+                    <div className="poll-result-option__body">
+                      <div className="poll-result-option__heading">
+                        <PollOptionText text={opt} className="poll-result-option__label" />
+                        <span className="poll-result-option__stats">
+                          <strong>
+                            {count}
+                            <span className="sr-only">
+                              {" "}
+                              {pluralizeRu(count, "ответ", "ответа", "ответов")},
+                            </span>
+                          </strong>
+                          <span>{pct}%</span>
+                        </span>
+                      </div>
+                      <div className="poll-result-option__track" aria-hidden="true">
+                        <div
+                          className="poll-result-option__fill"
+                          style={{ transform: `scaleX(${pct / 100})` }}
+                        />
+                      </div>
                     </div>
-                    <span className="poll-bar-pct">{pct}%</span>
                   </div>
                 );
               })}

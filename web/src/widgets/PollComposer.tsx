@@ -1,15 +1,18 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Plus, X } from "lucide-react";
+import { ArrowLeft, Play, Plus, X } from "lucide-react";
 import { getLiveSession } from "../app/api/live-api";
 import { Button, IconButton } from "../shared/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle
 } from "../shared/ui/dialog";
+import { Input } from "../shared/ui/input";
+import { Textarea } from "../shared/ui/textarea";
 import { QuestionPickerDialog } from "./QuestionPickerDialog";
 
 export interface PollDraft {
@@ -40,6 +43,8 @@ export function PollComposer({
   const [quick, setQuick] = useState(false);
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState(["", ""]);
+  const formId = useId();
+  const questionId = `${formId}-question`;
   const session = useQuery({
     queryKey: ["live", courseId, sessionId],
     queryFn: () => getLiveSession(courseId, sessionId)
@@ -89,24 +94,44 @@ export function PollComposer({
           <DialogTitle>Быстрый вопрос</DialogTitle>
           <DialogDescription>Создайте проверку для текущего занятия.</DialogDescription>
         </DialogHeader>
-        <Button variant="outline" disabled={pending} onClick={() => setQuick(false)}>
-          Выбрать из банка
-        </Button>
-        <div className="poll-composer" aria-busy={pending}>
-          <textarea
+        <form
+          id={formId}
+          className="poll-composer"
+          aria-busy={pending}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (canStart)
+              onStart({
+                questionText: question.trim(),
+                options: options.map((option) => option.trim())
+              });
+          }}
+        >
+          <Button type="button" variant="ghost" disabled={pending} onClick={() => setQuick(false)}>
+            <ArrowLeft size={16} aria-hidden="true" />
+            Выбрать из банка
+          </Button>
+          <label htmlFor={questionId}>Текст вопроса</label>
+          <Textarea
+            id={questionId}
             className="poll-question-input"
-            aria-label="Текст вопроса"
             disabled={pending}
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Текст вопроса"
-            rows={2}
+            placeholder="Что хотите спросить у студентов?"
+            rows={3}
             maxLength={500}
           />
-          <div className="poll-options-list">
+          <fieldset className="poll-options-list" disabled={pending}>
+            <legend>Варианты ответа</legend>
             {options.map((option, index) => (
               <div key={index} className="poll-option-row">
-                <input
+                <label className="poll-option-number" htmlFor={`${formId}-option-${index}`}>
+                  <span className="sr-only">Вариант </span>
+                  {index + 1}
+                </label>
+                <Input
+                  id={`${formId}-option-${index}`}
                   className="poll-option-input"
                   aria-label={`Вариант ${index + 1}`}
                   disabled={pending}
@@ -121,7 +146,9 @@ export function PollComposer({
                 />
                 {options.length > 2 && (
                   <IconButton
+                    type="button"
                     className="poll-icon-button"
+                    disabled={pending}
                     onClick={() =>
                       setOptions(options.filter((_, itemIndex) => itemIndex !== index))
                     }
@@ -132,33 +159,33 @@ export function PollComposer({
                 )}
               </div>
             ))}
-          </div>
+          </fieldset>
           {options.length < 6 && (
-            <Button type="button" variant="ghost" onClick={() => setOptions([...options, ""])}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={() => setOptions([...options, ""])}
+            >
               <Plus size={14} />
               Добавить вариант
             </Button>
           )}
-          <Button
-            type="button"
-            disabled={!canStart}
-            onClick={() =>
-              onStart({
-                questionText: question.trim(),
-                options: options.map((option) => option.trim())
-              })
-            }
-          >
-            <Check size={16} />
-            Запустить
-          </Button>
-
           {error && (
             <p className="form-error" role="alert">
               {error}
             </p>
           )}
-        </div>
+        </form>
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={pending} onClick={onCancel}>
+            Отмена
+          </Button>
+          <Button type="submit" form={formId} disabled={!canStart}>
+            <Play size={16} aria-hidden="true" />
+            {pending ? "Запускаем…" : "Запустить вопрос"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

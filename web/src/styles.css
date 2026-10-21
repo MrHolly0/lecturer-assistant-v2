@@ -1835,13 +1835,7 @@ textarea {
   min-height: 44px;
 }
 
-.live-poll-panel .poll-bar-row {
-  color: var(--foreground);
-  min-height: 40px;
-}
-
-.live-poll-panel .poll-response-count,
-.live-poll-panel .poll-bar-pct {
+.live-poll-panel .poll-response-count {
   color: var(--muted-foreground);
 }
 
@@ -3648,90 +3642,108 @@ html[data-max-mini-app="true"] .student-session-shell {
   font-size: 0.85rem;
 }
 
-.poll-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.poll-bar-row {
-  align-items: start;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: calc(var(--radius) - 2px);
+.poll-result-options {
   display: grid;
-  gap: 6px;
-  grid-template-columns: 44px minmax(0, 1fr) 34px;
-  padding: 6px;
-  width: 100%;
-  transition: background 150ms ease-out;
+  gap: 0;
 }
 
-.poll-bar-row:hover {
+.poll-result-option {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+
+.poll-result-option:last-child {
+  border-bottom: 0;
+}
+
+.poll-result-option__correct {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-top: -12px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.poll-result-option__correct:hover:not(:disabled) {
   background: var(--muted);
 }
 
-.poll-bar-row--correct {
-  border-color: var(--chart-2, #22c55e);
-  background: color-mix(in srgb, var(--chart-2, #22c55e) 10%, transparent);
-}
-
-.poll-bar-label {
-  font-size: 0.82rem;
-  grid-column: 2 / -1;
-}
-
-.poll-bar-correct-toggle {
-  align-items: center;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) - 2px);
-  color: var(--muted-foreground);
-  cursor: pointer;
-  display: inline-flex;
-  grid-row: 1 / span 2;
-  height: 44px;
-  justify-content: center;
-  width: 44px;
-}
-
-.poll-bar-correct-toggle[aria-pressed="true"] {
-  border-color: var(--chart-2);
+.poll-result-option__correct[aria-pressed="true"] {
   color: var(--chart-2);
 }
 
-.poll-bar-correct-toggle:disabled {
+.poll-result-option__correct:disabled {
   cursor: default;
-  opacity: 1;
 }
 
-.poll-bar-track {
-  background: var(--muted);
-  border-radius: 3px;
-  grid-column: 2;
-  height: 7px;
-  margin-top: 5px;
+.poll-result-option__body,
+.poll-result-option__label {
+  min-width: 0;
+}
+
+.poll-result-option__heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.poll-result-option__stats {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.poll-result-option__stats strong {
+  font-weight: 600;
+}
+
+.poll-result-option__stats > span {
+  width: 4ch;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  text-align: right;
+}
+
+.poll-result-option__track {
+  height: 6px;
+  margin-top: 10px;
   overflow: hidden;
-  width: 100%;
-}
-
-.poll-bar-fill {
-  height: 100%;
-  background: var(--muted-foreground);
   border-radius: 3px;
-  transition: width 0.4s ease;
+  background: var(--muted);
 }
 
-.poll-bar-row--correct .poll-bar-fill {
+.poll-result-option__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--muted-foreground);
+  transform-origin: left;
+  transition: transform 180ms ease-out;
+}
+
+.poll-result-option.is-correct .poll-result-option__fill {
   background: var(--chart-2);
 }
 
-.poll-bar-pct {
-  font-size: 0.75rem;
-  color: var(--muted-foreground);
-  grid-column: 3;
-  width: 34px;
-  text-align: right;
+@media (prefers-reduced-motion: reduce) {
+  .poll-result-option__fill {
+    transition: none;
+  }
 }
 
 .poll-correct-hint {
@@ -3782,7 +3794,7 @@ html[data-max-mini-app="true"] .student-session-shell {
 }
 
 .poll-option-text__toggle:focus-visible,
-.poll-bar-correct-toggle:focus-visible {
+.poll-result-option__correct:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
