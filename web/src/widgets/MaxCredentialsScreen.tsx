@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { ApiError } from "../app/api/http";
 import { ArrowLeft } from "lucide-react";
 import { useAuth } from "../app/AuthContext";
+import { Checkbox } from "../shared/ui/checkbox";
 import { Button } from "../shared/ui/button";
 import { AuthPageFrame } from "./AuthPageFrame";
 import { AuthPasswordField } from "./AuthPasswordField";
@@ -9,7 +10,7 @@ import { PersonNameFields } from "./PersonNameFields";
 import { formatPersonName } from "../shared/lib/personName";
 
 interface MaxCredentialsScreenProps {
-  onLogin: (email: string, password: string) => Promise<void>;
+  onLogin: (email: string, password: string, connectMax?: boolean) => Promise<void>;
   onRegister: (
     name: string,
     email: string,
@@ -34,6 +35,7 @@ export function MaxCredentialsScreen({
   const [invitationCode, setInvitationCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [connectMax, setConnectMax] = useState(true);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -49,7 +51,7 @@ export function MaxCredentialsScreen({
     }
     setPending(true);
     try {
-      if (mode === "login") await onLogin(email.trim(), password);
+      if (mode === "login") await onLogin(email.trim(), password, connectMax);
       else await onRegister(displayName, email.trim(), password, invitationCode.trim());
     } catch (cause) {
       setError(credentialsErrorMessage(cause, mode));
@@ -119,6 +121,22 @@ export function MaxCredentialsScreen({
             minLength={mode === "register" ? 8 : undefined}
             required
           />
+          {mode === "login" && (
+            <label className="max-credentials__connect">
+              <Checkbox
+                checked={connectMax}
+                onCheckedChange={(checked) => setConnectMax(checked === true)}
+                disabled={pending}
+              />
+              <span>
+                <strong>Подключить этот MAX к аккаунту</strong>
+                <small className="muted">
+                  Покажем аккаунты для подтверждения. После подключения можно входить через MAX без
+                  пароля.
+                </small>
+              </span>
+            </label>
+          )}
           {(error ?? externalError) && (
             <p className="form-error" role="alert">
               {error ?? externalError}
@@ -130,7 +148,13 @@ export function MaxCredentialsScreen({
             </p>
           )}
           <Button type="submit" disabled={pending}>
-            {pending ? "Входим…" : mode === "login" ? "Войти" : "Создать аккаунт и проверить"}
+            {pending
+              ? "Проверяем…"
+              : mode === "login"
+                ? connectMax
+                  ? "Продолжить и подключить MAX"
+                  : "Войти без подключения MAX"
+                : "Создать аккаунт и проверить"}
           </Button>
         </form>
         <div className="max-credentials__other">

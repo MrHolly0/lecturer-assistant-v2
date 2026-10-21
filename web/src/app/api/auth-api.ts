@@ -78,7 +78,9 @@ export async function confirmMaxLink(
   confirmationToken: string
 ): Promise<MaxLoginResult> {
   invalidatePendingAuthRefresh();
+  const ensureCurrent = captureAuthTransition();
   clearStoredAuth();
+  let issuedAccessToken: string | null = null;
   try {
     const response = await apiFetch("/auth/max/link-confirm", {
       method: "POST",
@@ -87,11 +89,14 @@ export async function confirmMaxLink(
       skipAuthRefresh: true
     });
     const auth = (await response.json()) as MaxAuthResponse;
+    ensureCurrent();
+    issuedAccessToken = auth.accessToken;
     setStoredAuth({ accessToken: auth.accessToken });
     const user = await getCurrentUser({ skipAuthRefresh: true });
+    ensureCurrent();
     return { auth, user };
   } catch (error) {
-    clearStoredAuth();
+    if (issuedAccessToken && getStoredAuth()?.accessToken === issuedAccessToken) clearStoredAuth();
     throw error;
   }
 }

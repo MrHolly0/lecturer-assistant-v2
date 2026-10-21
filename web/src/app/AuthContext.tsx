@@ -50,7 +50,7 @@ interface AuthContextValue {
   maxLinkPreviewPending: boolean;
   maxLinkCodeInput: string;
   maxLinkRegistrationPending: boolean;
-  loginWithPassword: (email: string, password: string) => Promise<void>;
+  loginWithPassword: (email: string, password: string, connectMax?: boolean) => Promise<void>;
   registerAndLinkMax: (
     name: string,
     email: string,
@@ -702,6 +702,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function confirmPendingMaxLink() {
     if (!initData || !maxLinkPreview) return;
     advanceAuthRevision();
+    const revision = authRevisionRef.current;
     setMaxLinkPreviewPending(true);
     setMaxAuthError(null);
     try {
@@ -709,8 +710,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         initData,
         maxLinkPreview.confirmationToken
       );
+      if (revision !== authRevisionRef.current) return;
       rememberMaxPasswordSession(false);
       queryClient.clear();
+      setMaxAuthChoice("session");
+      setRequestedMaxLinkCode(null);
+      setAllowMaxAuthWithoutCode(false);
       setUserState(linkedUser);
       writeMaxResume(initData, String(linkedUser.id), "max");
       setMaxLinkPreview(null);
@@ -722,6 +727,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMaxSignedOutState(false);
       setMaxAuthError(null);
     } catch (error) {
+      if (revision !== authRevisionRef.current) return;
       clearStoredAuth();
       setMaxLinkPreview(null);
       setMaxAuthError(maxLinkConfirmErrorMessage(error));
@@ -733,7 +739,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setMaxLinkRequired(false);
       }
     } finally {
-      setMaxLinkPreviewPending(false);
+      if (revision === authRevisionRef.current) setMaxLinkPreviewPending(false);
     }
   }
 
@@ -774,9 +780,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMaxAuthAttempt((attempt) => attempt + 1);
   }
 
-  async function loginWithPassword(email: string, password: string) {
+  async function loginWithPassword(email: string, password: string, connectMax = false) {
     advanceAuthRevision();
+    const revision = authRevisionRef.current;
     setMaxAuthError(null);
+    if (connectMax) {
+      if (!isMax || !initData)
+        throw new Error(
+          "MAX не передал данные для подключения. Откройте мини-приложение снова или снимите отметку подключения и войдите по почте."
+        );
+      const preview = await previewMaxLink({ initData, email, password });
+      if (revision !== authRevisionRef.current) return;
+      if (preview.targetAccount.role === "STUDENT")
+        throw new Error("Это аккаунт студента. Для участия в лекции введите код занятия.");
+      clearStoredAuth();
+      queryClient.clear();
+      setUserState(null);
+      setPendingRegistration(false);
+      setMaxLinkPreview(preview);
+      setMaxLinkRequired(false);
+      setMaxCredentialsRequired(false);
+      return;
+    }
     const result = await loginWithCredentials(email, password);
     if (result.user.role === "STUDENT") {
       await logout();

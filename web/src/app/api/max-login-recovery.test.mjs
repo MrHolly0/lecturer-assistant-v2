@@ -53,3 +53,30 @@ test("a rejected MAX identity cannot fall back to a different browser refresh co
   assert.equal(calls.some((url) => url.endsWith("/auth/refresh")), false);
   assert.equal(getStoredAuth(), null);
 });
+
+test("a late MAX link confirmation cannot restore auth after exit", async () => {
+  const { confirmMaxLink } = await import("./auth-api.ts");
+  let complete;
+  globalThis.fetch = () => new Promise(resolve => { complete = resolve; });
+  const pending = confirmMaxLink("fixture-launch", "fixture-review");
+  invalidatePendingAuthRefresh();
+  clearStoredAuth();
+  complete(response(200, { accessToken: "late-link-access" }));
+  await assert.rejects(pending, RefreshSupersededError);
+  assert.equal(getStoredAuth(), null);
+});
+
+test("an outdated confirmation cannot clear a newly selected account", async () => {
+  const { confirmMaxLink } = await import("./auth-api.ts");
+  let complete;
+  globalThis.fetch = async url => String(url).endsWith("/link-confirm")
+    ? response(200, { accessToken: "linked-access" })
+    : new Promise(resolve => { complete = resolve; });
+  const pending = confirmMaxLink("fixture-launch", "fixture-review");
+  while (!complete) await new Promise(resolve => setTimeout(resolve, 0));
+  invalidatePendingAuthRefresh();
+  setStoredAuth({ accessToken: "new-account-access" });
+  complete(response(200, { id: "old-linked-account", role: "LECTURER" }));
+  await assert.rejects(pending, RefreshSupersededError);
+  assert.deepEqual(getStoredAuth(), { accessToken: "new-account-access" });
+});

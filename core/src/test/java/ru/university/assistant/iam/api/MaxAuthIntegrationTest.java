@@ -421,6 +421,14 @@ class MaxAuthIntegrationTest {
         assertEquals(formerId, login(signed(801, Instant.now()), 200).get("personId").asText());
         JsonNode confirmed = confirm(signed(801, Instant.now()), review.get("confirmationToken").asText(), 200);
         assertEquals(review.get("targetAccount").get("id").asText(), confirmed.get("personId").asText());
+        mockMvc.perform(get("/api/v1/identity/max")
+                        .header("Authorization", "Bearer " + confirmed.get("accessToken").asText()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.connected").value(true));
+        JsonNode nextLogin = json(post("/api/v1/auth/max").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                        "initData", signed(801, Instant.now()), "existingOnly", true))), 200);
+        assertEquals(confirmed.get("personId"), nextLogin.get("personId"));
+        assertEquals("LECTURER", nextLogin.get("role").asText());
         confirm(signed(801, Instant.now()), review.get("confirmationToken").asText(), 409);
     }
 

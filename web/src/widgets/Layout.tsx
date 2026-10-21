@@ -1,3 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
+import { getOrganization } from "../app/api/organization-api";
+import { canAccessStaffDirectory } from "../shared/lib/organizationAccess";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {
@@ -72,7 +75,20 @@ export function AppHeader({
   const mobileCourseHeader =
     !publicHeader && /^\/courses\/[^/]+$/.test(location.pathname) && !location.search;
   const [menuOpen, setMenuOpen] = useState(false);
-  const items = navItems.filter((item) => !publicHeader && user && item.roles.includes(user.role));
+  const organization = useQuery({
+    queryKey: ["organization", "tree"],
+    queryFn: getOrganization,
+    enabled: !publicHeader && (user?.role === "LECTURER" || user?.role === "ASSISTANT"),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: "always"
+  });
+  const items = navItems.filter(
+    (item) =>
+      !publicHeader &&
+      user &&
+      item.roles.includes(user.role) &&
+      (item.path !== "/organization" || canAccessStaffDirectory(user.role, organization.data))
+  );
   const moreItems = items.filter((item) => item.more);
   useEffect(() => {
     setMenuOpen(false);

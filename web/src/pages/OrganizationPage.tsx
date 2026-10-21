@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { canAccessStaffDirectory, firstAccessibleUnit } from "../shared/lib/organizationAccess";
+import { Navigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRightLeft,
@@ -137,9 +138,7 @@ export function OrganizationPage() {
 
   useEffect(() => {
     if (organization.data && !administrator && allDirectory) {
-      const firstManageableRoot = units.find(
-        (unit) => unit.canViewMembers && !units.some((parent) => parent.id === unit.parentId)
-      );
+      const firstManageableRoot = firstAccessibleUnit(units);
       if (firstManageableRoot)
         setParams({ view: "groups", unit: firstManageableRoot.id }, { replace: true });
     }
@@ -314,6 +313,8 @@ export function OrganizationPage() {
       </div>
     );
   }
+  if (!canAccessStaffDirectory(user?.role, organization.data))
+    return <Navigate to="/courses" replace />;
   if (invalidUnit) {
     return (
       <div className="page organization-page">
