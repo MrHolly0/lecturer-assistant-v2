@@ -12,6 +12,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import ru.university.assistant.interaction.api.PollStatus;
 import ru.university.assistant.interaction.api.QuickPoll;
+import ru.university.assistant.interaction.api.QuestionType;
+import ru.university.assistant.interaction.api.TextPollResponse;
 
 @Repository
 class PollRepository {
@@ -32,15 +34,16 @@ class PollRepository {
             UUID sourceQuestionId,
             String questionText,
             List<String> options,
-            Integer correctOptionIdx) {
+            Integer correctOptionIdx, QuestionType questionType) {
         String optionsJson = toJson(options);
         return jdbc.sql("""
                         insert into interaction.quick_polls
-                            (id, session_id, source_question_id, question_text, options, status,
+                            (id, session_id, source_question_id, question_text, options, status, question_type,
                              correct_option_idx, created_by)
-                        values (:id, :sessionId, :sourceQuestionId, :questionText, :options::jsonb, 'OPEN',
+                        values (:id, :sessionId, :sourceQuestionId, :questionText,
+                                :options::jsonb, 'OPEN', :questionType,
                                 :correctOptionIdx, :createdBy)
-                        returning id, session_id, source_question_id, question_text, options, status,
+                        returning id, session_id, source_question_id, question_text, options, status, question_type,
                                   correct_option_idx, created_at, closed_at
                         """)
                 .param("id", id)
@@ -49,6 +52,7 @@ class PollRepository {
                 .param("questionText", questionText)
                 .param("options", optionsJson)
                 .param("correctOptionIdx", correctOptionIdx)
+                .param("questionType", questionType.name())
                 .param("createdBy", createdBy)
                 .query(this::map)
                 .single();
@@ -56,7 +60,7 @@ class PollRepository {
 
     Optional<QuickPoll> findOpenForSession(UUID sessionId) {
         return jdbc.sql("""
-                        select id, session_id, source_question_id, question_text, options, status,
+                        select id, session_id, source_question_id, question_text, options, status, question_type,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
                         where session_id = :sessionId and status = 'OPEN'
@@ -70,7 +74,7 @@ class PollRepository {
 
     List<QuickPoll> findAllOpenForSession(UUID sessionId) {
         return jdbc.sql("""
-                        select id, session_id, source_question_id, question_text, options, status,
+                        select id, session_id, source_question_id, question_text, options, status, question_type,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
                         where session_id = :sessionId and status = 'OPEN'
@@ -84,7 +88,7 @@ class PollRepository {
     /** Открытый опрос важнее закрытого; если открытого нет, берётся последний закрытый. */
     Optional<QuickPoll> findLatestForSession(UUID sessionId) {
         return jdbc.sql("""
-                        select id, session_id, source_question_id, question_text, options, status,
+                        select id, session_id, source_question_id, question_text, options, status, question_type,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
                         where session_id = :sessionId
@@ -98,7 +102,7 @@ class PollRepository {
 
     List<QuickPoll> findClosedForSession(UUID sessionId, int limit, int offset) {
         return jdbc.sql("""
-                        select id, session_id, source_question_id, question_text, options, status,
+                        select id, session_id, source_question_id, question_text, options, status, question_type,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
                         where session_id = :sessionId and status = 'CLOSED'
@@ -125,7 +129,7 @@ class PollRepository {
 
     Optional<Integer> findVote(UUID pollId, UUID personId) {
         return jdbc.sql("select option_idx from interaction.poll_responses "
-                        + "where poll_id = :pollId and person_id = :personId")
+                        + "where poll_id = :pollId and person_id = :personId and option_idx is not null")
                 .param("pollId", pollId)
                 .param("personId", personId)
                 .query(Integer.class)
@@ -141,7 +145,7 @@ class PollRepository {
 
     Optional<QuickPoll> findById(UUID pollId) {
         return jdbc.sql("""
-                        select id, session_id, source_question_id, question_text, options, status,
+                        select id, session_id, source_question_id, question_text, options, status, question_type,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
                         where id = :id
@@ -158,7 +162,7 @@ class PollRepository {
                             correct_option_idx = coalesce(:correct, correct_option_idx),
                             closed_at = now()
                         where id = :id
-                        returning id, session_id, source_question_id, question_text, options, status,
+                        returning id, session_id, source_question_id, question_text, options, status, question_type,
                                   correct_option_idx, created_at, closed_at
                         """)
                 .param("id", pollId)
@@ -172,7 +176,7 @@ class PollRepository {
                         update interaction.quick_polls
                         set correct_option_idx = :correctOptionIdx
                         where id = :id and status = 'OPEN'
-                        returning id, session_id, source_question_id, question_text, options, status,
+                        returning id, session_id, source_question_id, question_text, options, status, question_type,
                                   correct_option_idx, created_at, closed_at
                         """)
                 .param("id", pollId)
@@ -193,6 +197,38 @@ class PollRepository {
                 .param("optionIdx", optionIdx)
                 .update();
         return rows > 0;
+    }
+
+    Optional<String> findTextAnswer(UUID pollId, UUID personId) {
+        return jdbc.sql("select text_answer from interaction.poll_responses "
+                        + "where poll_id = :pollId and person_id = :personId and text_answer is not null")
+                .param("pollId", pollId).param("personId", personId).query(String.class).optional();
+    }
+
+    boolean respondText(UUID id, UUID pollId, UUID personId, String text) {
+        return jdbc.sql("""
+                        insert into interaction.poll_responses (id, poll_id, person_id, text_answer)
+                        values (:id, :pollId, :personId, :text)
+                        on conflict (poll_id, person_id) do nothing
+                        """)
+                .param("id", id).param("pollId", pollId).param("personId", personId)
+                .param("text", text).update() > 0;
+    }
+
+    long countResponses(UUID pollId) {
+        return jdbc.sql("select count(*) from interaction.poll_responses where poll_id = :pollId")
+                .param("pollId", pollId).query(Long.class).single();
+    }
+
+    List<TextPollResponse> textResponses(UUID pollId, int limit, int offset) {
+        return jdbc.sql("""
+                        select id, text_answer, answered_at from interaction.poll_responses
+                        where poll_id = :pollId and text_answer is not null
+                        order by answered_at, id limit :limit offset :offset
+                        """)
+                .param("pollId", pollId).param("limit", limit).param("offset", offset)
+                .query((rs, row) -> new TextPollResponse(rs.getObject("id", UUID.class),
+                        rs.getString("text_answer"), rs.getTimestamp("answered_at").toInstant())).list();
     }
 
     List<Integer> voteCounts(UUID pollId, int optionCount) {
@@ -230,7 +266,8 @@ class PollRepository {
                 PollStatus.valueOf(rs.getString("status")),
                 (Integer) rs.getObject("correct_option_idx"),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("closed_at") != null ? rs.getTimestamp("closed_at").toInstant() : null);
+                rs.getTimestamp("closed_at") != null ? rs.getTimestamp("closed_at").toInstant() : null,
+                QuestionType.valueOf(rs.getString("question_type")));
     }
 
     private String toJson(Object value) {

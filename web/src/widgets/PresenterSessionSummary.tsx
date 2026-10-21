@@ -1,3 +1,4 @@
+import { TextPollResponses } from "./TextPollResponses";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -192,7 +193,7 @@ export function PresenterSessionSummary({
               <ProblemSlides summary={summary} courseId={courseId} deckId={session.deckId} />
             </TabsContent>
             <TabsContent value="checks" className="report-panel">
-              <PollResults summary={summary} />
+              <PollResults summary={summary} courseId={courseId} />
             </TabsContent>
             <TabsContent value="questions" className="report-panel">
               <QuestionHistory
@@ -643,7 +644,7 @@ function SignalCount({
   );
 }
 
-function PollResults({ summary }: { summary: LectureSummary }) {
+function PollResults({ summary, courseId }: { summary: LectureSummary; courseId: string }) {
   const [id, select, explicit] = useReportSelection(
     "summaryPoll",
     summary.pollResults[0]?.pollId ?? ""
@@ -679,9 +680,11 @@ function PollResults({ summary }: { summary: LectureSummary }) {
                   <strong>Проверка {index + 1}</strong>
                   <span>{poll.questionText}</span>
                   <small>
-                    {result.gradedAnswers
-                      ? `${result.correctAnswers} из ${result.gradedAnswers} верно`
-                      : "Нет оценённых ответов"}
+                    {poll.questionType === "SHORT_ANSWER"
+                      ? `${poll.totalResponses} текстовых ответов`
+                      : result.gradedAnswers
+                        ? `${result.correctAnswers} из ${result.gradedAnswers} верно`
+                        : "Нет оценённых ответов"}
                   </small>
                 </button>
               </li>
@@ -697,9 +700,22 @@ function PollResults({ summary }: { summary: LectureSummary }) {
           <h2>Проверка {summary.pollResults.indexOf(active) + 1}</h2>
           <span className="badge">{active.status === "CLOSED" ? "Закрыта" : "Не закрыта"}</span>
         </div>
-        <PollResult poll={active} />
+        {active.questionType === "SHORT_ANSWER" ? (
+          <>
+            <h3>{active.questionText}</h3>
+            <TextPollResponses
+              courseId={courseId}
+              sessionId={summary.sessionId}
+              pollId={active.pollId}
+            />
+          </>
+        ) : (
+          <PollResult poll={active} />
+        )}
         <p className="muted report-method-note">
-          Правильность учитывается для закрытых проверок с отмеченным правильным вариантом.
+          {active.questionType === "SHORT_ANSWER"
+            ? "Текстовые ответы не оцениваются автоматически."
+            : "Правильность учитывается для закрытых проверок с отмеченным правильным вариантом."}
         </p>
       </div>
     </section>

@@ -28,7 +28,36 @@ public record StudentSessionSnapshot(
         boolean nameRequested,
         long version,
         boolean showJoinCode,
-        List<ru.university.assistant.qa.api.StudentQuestion> myQuestions) {
+        List<ru.university.assistant.qa.api.StudentQuestion> myQuestions,
+        String myTextAnswer) {
+    public StudentSessionSnapshot(
+            UUID sessionId,
+            UUID courseId,
+            String courseTitle,
+            String lectureTitle,
+            List<SessionGroup> groups,
+            SessionStatus status,
+            String joinCode,
+            int currentSlideIdx,
+            int slideCount,
+            StudentSlide currentSlide,
+            Map<String, Object> annotations,
+            SignalAggregate signalAggregate,
+            ActivePollView activePoll,
+            /** Выбор текущего студента в опросе; заполняется только в GET-снапшоте с идентификацией, в SSE — null. */
+            Integer myVote,
+            List<StudentQuestionAnswer> questionAnswers,
+            boolean kicked,
+            boolean nameRequested,
+            long version,
+            boolean showJoinCode,
+            List<ru.university.assistant.qa.api.StudentQuestion> myQuestions) {
+        this(sessionId,
+                courseId, courseTitle, lectureTitle, groups, status, joinCode, currentSlideIdx, slideCount,
+                currentSlide, annotations, signalAggregate, activePoll, myVote, questionAnswers, kicked,
+                nameRequested, version, showJoinCode, myQuestions, null);
+    }
+
     public StudentSessionSnapshot(UUID sessionId,
             UUID courseId,
             String courseTitle,

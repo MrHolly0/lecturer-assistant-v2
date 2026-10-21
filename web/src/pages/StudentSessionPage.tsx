@@ -237,13 +237,16 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить вопрос."))
   });
   const pollMut = useMutation({
-    mutationFn: ({ pollId, optionIdx }: { pollId: string; optionIdx: number }) =>
+    mutationFn: ({ pollId, optionIdx }: { pollId: string; optionIdx: number | string }) =>
       respondToPoll(normalizedCode, pollId, participantToken, optionIdx),
     onSuccess: (result, variables) => {
       const acceptedVote = result.myVote ?? null;
       const latest = gateRef.current.gate.current;
       if (latest?.activePoll?.pollId === variables.pollId) {
-        commitSnapshot({ ...latest, myVote: acceptedVote }, scope);
+        commitSnapshot(
+          { ...latest, myVote: acceptedVote, myTextAnswer: result.myTextAnswer ?? null },
+          scope
+        );
       }
       toast.success(result.accepted ? "Ответ принят." : "Ваш первый ответ уже сохранён.");
     },
@@ -595,6 +598,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             <StudentPollCard
               poll={current.activePoll}
               myVote={myVote}
+              myTextAnswer={current.myTextAnswer ?? null}
               isLive={false}
               isPending={false}
               onAnswer={() => undefined}
@@ -664,6 +668,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             <StudentPollCard
               poll={current.activePoll}
               myVote={myVote}
+              myTextAnswer={current.myTextAnswer ?? null}
               isLive={commandsReady}
               isPending={pollMut.isPending}
               onAnswer={(optionIdx) =>
@@ -729,6 +734,7 @@ function mergeStudentSnapshot(
   return {
     ...next,
     myVote: next.myVote ?? (samePoll ? previous?.myVote ?? null : null),
+    myTextAnswer: next.myTextAnswer ?? (samePoll ? previous?.myTextAnswer ?? null : null),
     myQuestions: mergeStudentQuestions(
       next.myQuestions ?? [],
       sameSession ? previous?.myQuestions ?? [] : []

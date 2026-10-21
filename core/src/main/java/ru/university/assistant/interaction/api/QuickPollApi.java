@@ -11,5 +11,9 @@ public interface QuickPollApi {
     /** Ответ студента. Опрос обязан принадлежать сессии; первый ответ фиксируется, повторный не засчитывается. */
     PollVote respond(UUID sessionId, UUID pollId, UUID personId, int optionIdx);
 
+    PollVote respondText(UUID sessionId, UUID pollId, UUID personId, String text);
+
+    String myTextAnswer(UUID pollId, UUID personId);
+
     Integer myVote(UUID pollId, UUID personId);
 }

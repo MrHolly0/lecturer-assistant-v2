@@ -259,6 +259,7 @@
 }
 .question-authoring.preparation-dialog[data-slot="dialog-content"] {
   width: 1080px;
+  left: 50vw;
   padding: 0;
   gap: 0;
   max-height: calc(100dvh - 48px);
@@ -587,5 +588,264 @@
   }
   .question-authoring.preparation-dialog [data-slot="dialog-footer"] {
     display: flex;
+  }
+}
+
+/* The library uses one compact row per presentation, with all versions together. */
+.presentation-toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  min-width: 0;
+}
+.presentation-toolbar > .list-search {
+  flex: 1 1 240px;
+  min-width: 0;
+  width: auto;
+}
+.presentation-toolbar > [data-slot="tabs"] {
+  flex: 0 0 auto;
+}
+.presentation-group {
+  border-top: 1px solid var(--border);
+}
+.presentation-group:last-child {
+  border-bottom: 1px solid var(--border);
+}
+.presentation-group__heading {
+  display: grid;
+  grid-template-columns: 36px 80px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+.presentation-group__heading > .ui-button {
+  width: 36px;
+}
+.presentation-group__heading svg:not(.is-open) {
+  transition: transform 0.15s;
+}
+.presentation-group__heading > .ui-button svg:not(.is-open) {
+  transform: rotate(-90deg);
+}
+.presentation-group__actions .is-open {
+  transform: rotate(180deg);
+}
+.presentation-thumbnail {
+  display: flex;
+  width: 80px;
+  height: 52px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--muted);
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+}
+.presentation-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.presentation-group__title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  text-align: left;
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+}
+.presentation-group__title small {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+.presentation-group__actions,
+.presentation-version__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.presentation-versions {
+  margin: 0 0 12px 48px;
+  border-left: 1px solid var(--border);
+  padding-left: 24px;
+}
+.presentation-version {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.65fr) minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 6px;
+  position: relative;
+}
+.presentation-version::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 12px;
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 0 0 6px;
+  left: -25px;
+  top: 8px;
+}
+.presentation-version.is-selected {
+  border-color: var(--primary);
+}
+.presentation-version__description {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.presentation-version__description > span {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.presentation-usage {
+  font-size: 13px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.presentation-usage summary {
+  cursor: pointer;
+  background: var(--muted);
+  padding: 6px 10px;
+  border-radius: 20px;
+  width: fit-content;
+  max-width: 100%;
+}
+.presentation-usage ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.presentation-version.is-archived {
+  grid-template-columns: 80px minmax(150px, 1fr) minmax(0, 0.7fr) auto;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  padding: 14px 0;
+}
+.presentation-version.is-archived::before {
+  display: none;
+}
+.question-authoring__add-option {
+  justify-self: start;
+}
+.question-authoring__form .qbank-option-edit-row {
+  grid-template-columns: 32px minmax(0, 1fr) 36px;
+  gap: 8px;
+  align-items: center;
+}
+.question-authoring__form .qbank-option-edit-row .ui-button {
+  width: 36px;
+}
+.student-text-poll {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.student-text-poll textarea {
+  width: 100%;
+  min-height: 100px;
+  resize: vertical;
+  padding: 12px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--foreground);
+}
+.student-text-poll > .ui-button {
+  justify-self: start;
+}
+.text-poll-responses {
+  min-width: 0;
+  margin-block: 16px;
+}
+.text-poll-responses > ol {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+  max-height: 420px;
+  overflow: auto;
+}
+.text-poll-answer {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+@media (max-width: 1000px) {
+  .presentation-version {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .presentation-version .presentation-usage {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .presentation-version__actions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+  .presentation-version.is-archived {
+    grid-template-columns: 80px minmax(0, 1fr);
+  }
+  .presentation-version.is-archived .presentation-usage {
+    grid-column: 2;
+  }
+  .presentation-version.is-archived .presentation-version__actions {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-content: flex-end;
+  }
+}
+@media (max-width: 767px) {
+  .presentation-toolbar {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .presentation-toolbar > .list-search {
+    flex-basis: 100%;
+  }
+  .presentation-group__heading {
+    grid-template-columns: 28px 64px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .presentation-thumbnail {
+    width: 64px;
+    height: 44px;
+  }
+  .presentation-group__actions {
+    grid-column: 2 / -1;
+    flex-wrap: wrap;
+  }
+  .presentation-versions {
+    margin-left: 14px;
+    padding-left: 16px;
+  }
+  .presentation-version {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+  .presentation-version::before {
+    left: -17px;
+    width: 12px;
+  }
+  .presentation-version__actions {
+    grid-column: 1;
+    grid-row: auto;
+    flex-wrap: wrap;
+  }
+  .presentation-version.is-archived {
+    grid-template-columns: 64px minmax(0, 1fr);
   }
 }

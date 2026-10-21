@@ -94,15 +94,16 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
                   >
                     <span>{item.text}</span>
                     <small>
-                      {item.options.length}{" "}
-                      {pluralizeRu(item.options.length, "вариант", "варианта", "вариантов")}
+                      {item.questionType === "SHORT_ANSWER"
+                        ? "Свободный текст"
+                        : `${item.options.length} ${pluralizeRu(item.options.length, "вариант", "варианта", "вариантов")}`}
                     </small>
                   </button>
                 );
               })}
               {eligibleQuestions.length === 0 && !search && (
                 <div className="poll-message poll-bank-empty">
-                  <p className="muted">В банке нет вопросов с одним правильным ответом.</p>
+                  <p className="muted">В банке нет вопросов, доступных для запуска в занятии.</p>
                   <LinkButton
                     variant="outline"
                     to={`/courses/${courseId}/questions`}

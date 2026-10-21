@@ -2322,6 +2322,33 @@ paths:
                 $ref: "#/components/schemas/PollResult"
         "404":
           description: Poll not found, or it does not belong to this session.
+  /courses/{courseId}/sessions/{sessionId}/polls/{pollId}/answers:
+    get:
+      operationId: listTextPollResponses
+      summary: Read free-text responses. Requires course management access.
+      tags: [interaction]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/PollId"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Responses in submission order, without participant identities.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TextPollResponsePage" }
+        "400":
+          description: Not a text poll, or invalid pagination.
+        "403":
+          description: Course management access required.
+        "404":
+          description: Poll not found within this course and session.
   /courses/{courseId}/sessions/{sessionId}/polls/{pollId}/close:
     post:
       operationId: closePoll
@@ -5165,6 +5192,10 @@ components:
       type: object
       required: [id, courseId, title, version, slideCount, archived, createdAt]
       properties:
+        thumbnailUrl:
+          type: string
+          nullable: true
+          description: Signed first-slide image URL, if the deck contains slides.
         id:
           type: string
           format: uuid
@@ -5566,6 +5597,8 @@ components:
       type: object
       required: [id, sessionId, questionText, options, status, createdAt]
       properties:
+        questionType:
+          $ref: "#/components/schemas/QuestionType"
         id:
           type: string
           format: uuid
@@ -5627,6 +5660,8 @@ components:
       type: object
       required: [pollId, questionText, options, status]
       properties:
+        questionType:
+          $ref: "#/components/schemas/QuestionType"
         pollId:
           type: string
           format: uuid
@@ -5648,10 +5683,31 @@ components:
           description: Distribution by option; null until the poll is closed.
           items:
             type: integer
+    TextPollResponse:
+      type: object
+      required: [id, text, answeredAt]
+      properties:
+        id: { type: string, format: uuid }
+        text: { type: string }
+        answeredAt: { type: string, format: date-time }
+    TextPollResponsePage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TextPollResponse" }
+        total: { type: integer, format: int64, minimum: 0 }
+        limit: { type: integer, minimum: 1, maximum: 100 }
+        offset: { type: integer, minimum: 0 }
     PollVote:
       type: object
       required: [accepted]
       properties:
+        myTextAnswer:
+          type: string
+          nullable: true
+          description: Own saved free-text answer; omitted for public snapshots and SSE.
         accepted:
           type: boolean
         myVote:
@@ -5692,8 +5748,12 @@ components:
           nullable: true
     PollResponseRequest:
       type: object
-      required: [optionIdx]
+      description: Provide exactly one of optionIdx or textAnswer, matching the poll type.
       properties:
+        textAnswer:
+          type: string
+          minLength: 1
+          maxLength: 2000
         participantToken:
           type: string
           minLength: 1
@@ -5749,7 +5809,7 @@ components:
           $ref: "#/components/schemas/QuestionType"
         options:
           type: array
-          minItems: 1
+          description: Empty for SHORT_ANSWER. Non-empty for option-based questions.
           items:
             $ref: "#/components/schemas/QuestionOption"
         tags:
@@ -5909,6 +5969,10 @@ components:
         - showJoinCode
         - myQuestions
       properties:
+        myTextAnswer:
+          type: string
+          nullable: true
+          description: Own saved free-text answer; omitted for public snapshots and SSE.
         sessionId:
           type: string
           format: uuid
@@ -6342,6 +6406,8 @@ components:
         - totalResponses
         - startedAt
       properties:
+        questionType:
+          $ref: "#/components/schemas/QuestionType"
         pollId:
           type: string
           format: uuid

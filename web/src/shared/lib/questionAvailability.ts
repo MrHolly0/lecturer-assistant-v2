@@ -4,6 +4,7 @@ export function questionAvailability(question: {
   questionType: QuestionType;
   options: QuestionOption[];
 }): string | null {
+  if (question.questionType === "SHORT_ANSWER") return null;
   if (question.questionType !== "CHOICE" && question.questionType !== "TRUE_FALSE") {
     return "Этот тип можно сохранить в банке. Запуск в занятии пока недоступен.";
   }

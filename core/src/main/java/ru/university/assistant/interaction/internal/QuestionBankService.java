@@ -8,6 +8,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.interaction.api.CreateQuestionRequest;
 import ru.university.assistant.interaction.api.QuestionBankEntry;
+import ru.university.assistant.interaction.api.QuestionOption;
+import ru.university.assistant.interaction.api.QuestionType;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
@@ -22,7 +24,7 @@ public class QuestionBankService {
     public QuestionBankEntry create(UUID courseId, UUID createdBy, CreateQuestionRequest request) {
         List<String> tags = request.tags() == null ? List.of() : request.tags();
         return questions.create(UuidV7.generate(), courseId, createdBy,
-                request.text(), request.questionType(), request.options(), tags);
+                request.text(), request.questionType(), options(request.questionType(), request.options()), tags);
     }
 
     // D-10: вопрос обязан принадлежать курсу из пути, иначе чужой преподаватель мог прочитать
@@ -40,8 +42,20 @@ public class QuestionBankService {
     @Transactional
     public QuestionBankEntry update(UUID courseId, UUID id, CreateQuestionRequest request) {
         List<String> tags = request.tags() == null ? List.of() : request.tags();
-        return questions.update(id, courseId, request.text(), request.options(), tags)
+        QuestionBankEntry saved = get(courseId, id);
+        if (saved.questionType() != request.questionType()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Question type cannot be changed");
+        }
+        return questions.update(id, courseId, request.text(), options(saved.questionType(), request.options()), tags)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found"));
+    }
+
+    private List<QuestionOption> options(QuestionType type, List<QuestionOption> options) {
+        if (type == QuestionType.SHORT_ANSWER) return List.of();
+        if (options == null || options.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Answer options are required");
+        }
+        return options;
     }
 
     @Transactional

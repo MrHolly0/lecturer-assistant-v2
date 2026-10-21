@@ -90,7 +90,7 @@ class LectureSummaryRepository {
 
     List<SummaryPollResult> pollResults(UUID sessionId, UUID groupId) {
         return jdbc.sql("""
-                        select id, source_question_id, question_text, options, status,
+                        select id, source_question_id, question_text, options, status, question_type,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
                         where session_id = :sessionId
@@ -176,10 +176,17 @@ class LectureSummaryRepository {
                 options,
                 PollStatus.valueOf(rs.getString("status")),
                 votes,
-                votes.stream().mapToInt(Integer::intValue).sum(),
+                responseCount(pollId, sessionId, groupId),
                 (Integer) rs.getObject("correct_option_idx"),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("closed_at") == null ? null : rs.getTimestamp("closed_at").toInstant());
+                rs.getTimestamp("closed_at") == null ? null : rs.getTimestamp("closed_at").toInstant(),
+                ru.university.assistant.interaction.api.QuestionType.valueOf(rs.getString("question_type")));
+    }
+
+    private int responseCount(UUID pollId, UUID sessionId, UUID groupId) {
+        JdbcClient.StatementSpec query = jdbc.sql("select count(*)::int from interaction.poll_responses poll_responses "
+                        + "where poll_id = :pollId" + groupFilter("poll_responses", groupId)).param("pollId", pollId);
+        return bindGroup(query, sessionId, groupId).query(Integer.class).single();
     }
 
     private List<Integer> voteCounts(UUID pollId, UUID sessionId, UUID groupId, int optionCount) {

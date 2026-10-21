@@ -152,7 +152,8 @@ class StudentSessionController {
             @PathVariable String joinCode,
             @PathVariable UUID pollId,
             @Valid @RequestBody PollResponseRequest request) {
-        return studentSessions.pollRespond(joinCode, pollId, request.participantToken(), request.optionIdx(), user);
+        return studentSessions.pollRespond(joinCode, pollId, request.participantToken(),
+                request.optionIdx(), request.textAnswer(), user);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/activity-runs/{runId}/respond")

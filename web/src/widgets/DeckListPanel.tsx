@@ -1,12 +1,36 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Archive, ChevronDown, History, RotateCcw, Trash2, ExternalLink, Info } from "lucide-react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import {
+  Archive,
+  ChevronDown,
+  RotateCcw,
+  Trash2,
+  ExternalLink,
+  Info,
+  Presentation,
+  MoreHorizontal
+} from "lucide-react";
 import type { Lecture, SlideDeck } from "../app/api/content-api";
 import { pluralizeRu } from "../shared/lib/plural";
 import { includesQuery, usePagedList } from "../shared/lib/usePagedList";
 import { Button } from "../shared/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../shared/ui/collapsible";
 import { Tabs, TabsList, TabsTrigger } from "../shared/ui/tabs";
-import { ConfirmActionButton } from "./ConfirmActionButton";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem
+} from "../shared/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction
+} from "../shared/ui/alert-dialog";
 import { PaginationBar, SearchField } from "./ListControls";
 
 type DeckTab = "active" | "archive";
@@ -57,9 +81,9 @@ export function DeckListPanel(props: DeckListPanelProps) {
   const archivePaged = usePagedList(visibleArchived, 20);
 
   return (
-    <section className="material-section" aria-label="Список презентаций">
+    <section className="material-section presentation-library" aria-label="Список презентаций">
       {(decks.length > 1 || query || archivedDecks.length > 0) && (
-        <div className="list-toolbar deck-list-toolbar">
+        <div className="presentation-toolbar">
           {(decks.length > 1 || query) && (
             <SearchField value={query} onChange={setQuery} placeholder="Найти презентацию" />
           )}
@@ -75,7 +99,7 @@ export function DeckListPanel(props: DeckListPanelProps) {
       )}
 
       {tab === "active" ? (
-        <div className="deck-list">
+        <div className="presentation-list">
           {visibleGroups.length === 0 && (
             <p className="muted">
               {query
@@ -90,7 +114,7 @@ export function DeckListPanel(props: DeckListPanelProps) {
           ))}
         </div>
       ) : (
-        <div className="deck-list">
+        <div className="presentation-list">
           {visibleArchived.length === 0 && <p className="muted">В архиве презентаций нет.</p>}
           {archivePaged.pageItems.map((deck) => (
             <DeckRow key={deck.id} deck={deck} context="archive" {...props} />
@@ -114,32 +138,82 @@ export function DeckListPanel(props: DeckListPanelProps) {
 }
 
 function DeckVersionSection({ group, ...props }: DeckListPanelProps & { group: DeckVersionGroup }) {
-  const selectedInHistory = group.history.some((deck) => deck.id === props.selectedDeckId);
+  const [open, setOpen] = useState(group.history.some((deck) => deck.id === props.selectedDeckId));
+  const versions = [group.current, ...group.history];
   return (
-    <article className="deck-version-group">
-      <Collapsible defaultOpen={selectedInHistory}>
-        <DeckRow
-          deck={group.current}
-          context="current"
-          {...props}
-          historyAction={
-            group.history.length > 0 ? (
-              <CollapsibleTrigger asChild>
-                <Button type="button" variant="outline" className="deck-history__trigger">
-                  <History size={16} aria-hidden="true" /> Версии ({group.history.length + 1})
-                  <ChevronDown className="deck-history__chevron" size={16} aria-hidden="true" />
-                </Button>
-              </CollapsibleTrigger>
-            ) : undefined
-          }
-        />
-        <CollapsibleContent className="deck-history__content">
-          {group.history.map((deck) => (
-            <DeckRow key={deck.id} deck={deck} context="history" {...props} />
+    <article className="presentation-group">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <div className="presentation-group__heading">
+          <CollapsibleTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`${open ? "Свернуть" : "Показать"} версии: ${group.title}`}
+            >
+              <ChevronDown size={18} className={open ? "is-open" : ""} />
+            </Button>
+          </CollapsibleTrigger>
+          <DeckThumbnail deck={group.current} />
+          <button
+            type="button"
+            className="presentation-group__title"
+            onClick={() => props.onSelect(group.current.id)}
+          >
+            <strong>{group.title}</strong>
+            <small>
+              {!open && (
+                <>
+                  v{group.current.version} · {slideCount(group.current)} ·{" "}
+                </>
+              )}
+              {versions.length} {pluralizeRu(versions.length, "версия", "версии", "версий")}
+            </small>
+          </button>
+          <div className="presentation-group__actions">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => props.onSelect(group.current.id)}
+            >
+              <ExternalLink size={17} /> Открыть слайды
+            </Button>
+            <CollapsibleTrigger asChild>
+              <Button type="button" variant="outline">
+                <ChevronDown size={17} className={open ? "is-open" : ""} /> Версии
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+        </div>
+        <CollapsibleContent className="presentation-versions">
+          {versions.map((deck, index) => (
+            <DeckRow
+              key={deck.id}
+              deck={deck}
+              context={index === 0 ? "current" : "history"}
+              {...props}
+            />
           ))}
         </CollapsibleContent>
       </Collapsible>
     </article>
+  );
+}
+
+function slideCount(deck: SlideDeck) {
+  return `${deck.slideCount} ${pluralizeRu(deck.slideCount, "слайд", "слайда", "слайдов")}`;
+}
+
+function DeckThumbnail({ deck }: { deck: SlideDeck }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="presentation-thumbnail">
+      {deck.thumbnailUrl && !failed ? (
+        <img src={deck.thumbnailUrl} alt="" loading="lazy" onError={() => setFailed(true)} />
+      ) : (
+        <Presentation size={24} aria-hidden="true" />
+      )}
+    </span>
   );
 }
 
@@ -148,92 +222,130 @@ function DeckRow({
   context,
   lectures,
   selectedDeckId,
-  canManage,
-  archivePending,
-  restorePending,
-  hardDeletePending,
   onSelect,
-  onArchive,
-  onRestore,
-  onHardDelete,
-  historyAction
+  ...props
 }: DeckListPanelProps & {
   deck: SlideDeck;
   context: "current" | "history" | "archive";
-  historyAction?: ReactNode;
 }) {
-  const status =
-    context === "current"
-      ? "Последняя доступная версия"
-      : context === "history"
-        ? "Предыдущая версия"
-        : "В архиве";
+  const archived = context === "archive";
   return (
-    <div className={`deck-pill${deck.id === selectedDeckId ? " deck-pill--active" : ""}`}>
-      <button className="deck-pill__open" type="button" onClick={() => onSelect(deck.id)}>
-        <span>{deck.title}</span>
-        <small>
-          {status} · v{deck.version} · {deck.slideCount}{" "}
-          {pluralizeRu(deck.slideCount, "слайд", "слайда", "слайдов")}
-        </small>
-      </button>
+    <div
+      className={`presentation-version${deck.id === selectedDeckId ? " is-selected" : ""}${archived ? " is-archived" : ""}`}
+    >
+      {archived && <DeckThumbnail deck={deck} />}
+      <div className="presentation-version__description">
+        {archived && <strong>{deck.title}</strong>}
+        <span>
+          <b>v{deck.version}</b>{" "}
+          <span className="muted">
+            {context === "current" ? "Последняя доступная · " : ""}
+            {slideCount(deck)}
+          </span>
+        </span>
+      </div>
       <DeckUsage lectures={lectures} deckId={deck.id} />
-      <div className="deck-pill__actions">
+      <div className="presentation-version__actions">
         <Button type="button" variant="outline" onClick={() => onSelect(deck.id)}>
-          <ExternalLink size={17} aria-hidden="true" /> Открыть
+          <ExternalLink size={16} /> Открыть
         </Button>
-        {historyAction}
-        {canManage && (
-          <>
-            {!deck.archived ? (
-              <ConfirmActionButton
-                title="Архивировать презентацию?"
-                description="Презентация исчезнет из активного списка, но её можно восстановить."
-                confirmLabel="Архивировать"
-                variant="ghost"
-                size="icon"
-                label={`Архивировать презентацию ${deck.title}, версия ${deck.version}`}
-                disabled={archivePending}
-                onConfirm={() => onArchive(deck.id)}
-              >
-                <Archive size={18} aria-hidden="true" />
-              </ConfirmActionButton>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={restorePending}
-                  onClick={() => onRestore(deck.id)}
-                >
-                  <RotateCcw size={16} aria-hidden="true" /> Восстановить
-                </Button>
-                <ConfirmActionButton
-                  title="Удалить презентацию навсегда?"
-                  description="Удаление возможно только если дек не привязан к лекциям."
-                  confirmLabel="Удалить навсегда"
-                  variant="destructive"
-                  disabled={hardDeletePending}
-                  onConfirm={() => onHardDelete(deck.id)}
-                >
-                  <Trash2 size={16} aria-hidden="true" /> Удалить навсегда
-                </ConfirmActionButton>
-              </>
-            )}
-          </>
+        {archived && props.canManage && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={props.restorePending}
+            onClick={() => props.onRestore(deck.id)}
+          >
+            <RotateCcw size={16} /> Восстановить
+          </Button>
         )}
+        {props.canManage && <DeckActions deck={deck} {...props} />}
       </div>
     </div>
   );
 }
 
-function DeckUsage({ lectures, deckId }: { lectures?: Lecture[]; deckId: string }) {
-  if (!lectures) return <span className="deck-usage muted">Привязки лекций не загружены</span>;
-  const bound = lectures.filter((lecture) => lecture.deckId === deckId);
-  if (!bound.length) return <span className="deck-usage muted">Не используется в лекциях</span>;
+function DeckActions({
+  deck,
+  archivePending,
+  hardDeletePending,
+  onArchive,
+  onHardDelete
+}: {
+  deck: SlideDeck;
+} & Pick<
+  DeckListPanelProps,
+  "archivePending" | "hardDeletePending" | "onArchive" | "onHardDelete"
+>) {
+  const [confirm, setConfirm] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
   return (
-    <details className="deck-usage">
-      <summary>В лекциях: {bound.length}</summary>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            ref={trigger}
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Действия с презентацией ${deck.title}, версия ${deck.version}`}
+          >
+            <MoreHorizontal size={19} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            disabled={deck.archived ? hardDeletePending : archivePending}
+            onSelect={() => setConfirm(true)}
+          >
+            {deck.archived ? <Trash2 size={16} /> : <Archive size={16} />}
+            {deck.archived ? "Удалить навсегда" : "В архив"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AlertDialog open={confirm} onOpenChange={setConfirm}>
+        <AlertDialogContent
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            trigger.current?.focus();
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deck.archived ? "Удалить презентацию навсегда?" : "Архивировать презентацию?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deck.archived
+                ? "Удаление возможно только если презентация не привязана к лекциям."
+                : "Эта версия исчезнет из доступных. Её можно восстановить из архива. Уже созданные лекции сохранят свою версию."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => (deck.archived ? onHardDelete(deck.id) : onArchive(deck.id))}
+            >
+              {deck.archived ? "Удалить навсегда" : "Архивировать"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+function DeckUsage({ lectures, deckId }: { lectures?: Lecture[]; deckId: string }) {
+  if (!lectures) return <span className="presentation-usage muted">Привязки не загружены</span>;
+  const bound = lectures.filter((lecture) => lecture.deckId === deckId);
+  if (!bound.length)
+    return <span className="presentation-usage muted">Не используется в лекциях</span>;
+  return (
+    <details className="presentation-usage">
+      <summary>
+        {bound.length === 1
+          ? `В лекции: ${bound[0].title}${bound[0].archived ? " (в архиве)" : ""}`
+          : `В лекциях: ${bound.length}`}
+      </summary>
       <ul>
         {bound.map((lecture) => (
           <li key={lecture.id}>
@@ -250,9 +362,7 @@ function groupActiveDecks(decks: SlideDeck[]): DeckVersionGroup[] {
   const byTitle = new Map<string, SlideDeck[]>();
   decks
     .filter((deck) => !deck.archived)
-    .forEach((deck) => {
-      byTitle.set(deck.title, [...(byTitle.get(deck.title) ?? []), deck]);
-    });
+    .forEach((deck) => byTitle.set(deck.title, [...(byTitle.get(deck.title) ?? []), deck]));
   return Array.from(byTitle.entries())
     .map(([title, versions]) => {
       const sorted = [...versions].sort((a, b) => b.version - a.version);

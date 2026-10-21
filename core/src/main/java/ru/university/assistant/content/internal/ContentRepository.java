@@ -251,6 +251,20 @@ class ContentRepository {
                 .list();
     }
 
+    java.util.Map<UUID, DeckThumbnail> deckThumbnails(UUID courseId) {
+        return jdbc.sql("""
+                        select distinct on (s.deck_id) s.deck_id, s.id, s.idx
+                        from content.slides s join content.slide_decks d on d.id = s.deck_id
+                        where d.course_id = :courseId order by s.deck_id, s.idx
+                        """)
+                .param("courseId", courseId)
+                .query((rs, row) -> new DeckThumbnail(rs.getObject("deck_id", UUID.class),
+                        rs.getObject("id", UUID.class), rs.getInt("idx"))).list().stream()
+                .collect(java.util.stream.Collectors.toMap(DeckThumbnail::deckId, item -> item));
+    }
+
+    record DeckThumbnail(UUID deckId, UUID slideId, int idx) {}
+
     Optional<SlideDeckDetails> findDeck(UUID courseId, UUID deckId) {
         Optional<SlideDeck> deck = jdbc.sql(
                         """

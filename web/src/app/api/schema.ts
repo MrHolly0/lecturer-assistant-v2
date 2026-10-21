@@ -1651,6 +1651,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/sessions/{sessionId}/polls/{pollId}/answers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read free-text responses. Requires course management access. */
+    get: operations["listTextPollResponses"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/sessions/{sessionId}/polls/{pollId}/close": {
     parameters: {
       query?: never;
@@ -3343,6 +3360,8 @@ export interface components {
       updatedAt: string;
     };
     SlideDeck: {
+      /** @description Signed first-slide image URL, if the deck contains slides. */
+      thumbnailUrl?: string | null;
       /** Format: uuid */
       id: string;
       /** Format: uuid */
@@ -3550,6 +3569,7 @@ export interface components {
     /** @enum {string} */
     PollStatus: "OPEN" | "CLOSED";
     QuickPoll: {
+      questionType?: components["schemas"]["QuestionType"];
       /** Format: uuid */
       id: string;
       /** Format: uuid */
@@ -3578,6 +3598,7 @@ export interface components {
       total: number;
     };
     ActivePollView: {
+      questionType?: components["schemas"]["QuestionType"];
       /** Format: uuid */
       pollId: string;
       questionText: string;
@@ -3588,7 +3609,23 @@ export interface components {
       /** @description Distribution by option; null until the poll is closed. */
       votes?: number[] | null;
     };
+    TextPollResponse: {
+      /** Format: uuid */
+      id: string;
+      text: string;
+      /** Format: date-time */
+      answeredAt: string;
+    };
+    TextPollResponsePage: {
+      items: components["schemas"]["TextPollResponse"][];
+      /** Format: int64 */
+      total: number;
+      limit: number;
+      offset: number;
+    };
     PollVote: {
+      /** @description Own saved free-text answer; omitted for public snapshots and SSE. */
+      myTextAnswer?: string | null;
       accepted: boolean;
       myVote?: number | null;
     };
@@ -3606,9 +3643,11 @@ export interface components {
     SetPollCorrectOptionRequest: {
       correctOptionIdx: number | null;
     };
+    /** @description Provide exactly one of optionIdx or textAnswer, matching the poll type. */
     PollResponseRequest: {
+      textAnswer?: string;
       participantToken?: string;
-      optionIdx: number;
+      optionIdx?: number;
     };
     /** @enum {string} */
     QuestionType: "CHOICE" | "MULTIPLE_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER";
@@ -3632,6 +3671,7 @@ export interface components {
     CreateQuestionRequest: {
       text: string;
       questionType: components["schemas"]["QuestionType"];
+      /** @description Empty for SHORT_ANSWER. Non-empty for option-based questions. */
       options: components["schemas"]["QuestionOption"][];
       tags?: string[];
     };
@@ -3703,6 +3743,8 @@ export interface components {
       textExtract?: string;
     };
     StudentSessionSnapshot: {
+      /** @description Own saved free-text answer; omitted for public snapshots and SSE. */
+      myTextAnswer?: string | null;
       /** Format: uuid */
       sessionId: string;
       /** Format: uuid */
@@ -3899,6 +3941,7 @@ export interface components {
       total: number;
     };
     SummaryPollResult: {
+      questionType?: components["schemas"]["QuestionType"];
       /** Format: uuid */
       pollId: string;
       /** Format: uuid */
@@ -7309,6 +7352,54 @@ export interface operations {
         };
       };
       /** @description Poll not found, or it does not belong to this session. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  listTextPollResponses: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        pollId: components["parameters"]["PollId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Responses in submission order, without participant identities. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TextPollResponsePage"];
+        };
+      };
+      /** @description Not a text poll, or invalid pagination. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course management access required. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Poll not found within this course and session. */
       404: {
         headers: {
           [name: string]: unknown;

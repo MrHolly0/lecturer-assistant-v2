@@ -123,7 +123,9 @@ class StudentSessionSnapshotService {
                 kicked ? List.of() : visibleAnswers(data.answers(), viewerPersonId),
                 kicked,
                 state != null && state.active() && state.nameRequested(),
-                shared.version(), shared.showJoinCode(), kicked ? List.of() : personalQuestions);
+                shared.version(), shared.showJoinCode(), kicked ? List.of() : personalQuestions,
+                !kicked && includeMyVote && viewerPersonId != null && shared.activePoll() != null
+                        ? quickPolls.myTextAnswer(shared.activePoll().pollId(), viewerPersonId) : null);
     }
 
     private List<StudentQuestionAnswer> visibleAnswers(

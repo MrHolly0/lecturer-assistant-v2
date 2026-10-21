@@ -187,7 +187,7 @@ export function QuestionBankPage({ courseId }: { courseId: string }) {
                             <strong>{question.text}</strong>
                             <small>
                               {question.questionType === "SHORT_ANSWER"
-                                ? `Допустимых ответов: ${question.options.filter((option) => option.correct).length}`
+                                ? "Свободный текст"
                                 : `Вариантов: ${question.options.length} · правильных: ${question.options.filter((option) => option.correct).length}`}
                             </small>
                           </span>
@@ -232,31 +232,24 @@ export function QuestionBankPage({ courseId }: { courseId: string }) {
                           className="question-catalog__answers"
                           aria-label="Ответы"
                         >
-                          <h3>
-                            {question.questionType === "SHORT_ANSWER"
-                              ? "Допустимые ответы"
-                              : "Ответы"}
-                          </h3>
-                          {question.options
-                            .filter(
-                              (option) => question.questionType !== "SHORT_ANSWER" || option.correct
-                            )
-                            .map((option, index) => (
+                          <h3>Ответы</h3>
+                          {question.questionType === "SHORT_ANSWER" ? (
+                            <p className="muted">
+                              Студент отвечает текстом. Ответы доступны преподавателю в занятии и
+                              его итогах, без автоматической оценки.
+                            </p>
+                          ) : (
+                            question.options.map((option, index) => (
                               <div
                                 key={index}
                                 className={`question-catalog__answer${option.correct ? " is-correct" : ""}`}
                               >
                                 {option.correct && <Check size={18} aria-hidden="true" />}
                                 <span>{option.text}</span>
-                                {option.correct && (
-                                  <small>
-                                    {question.questionType === "SHORT_ANSWER"
-                                      ? "Допустимый ответ"
-                                      : "Правильный ответ"}
-                                  </small>
-                                )}
+                                {option.correct && <small>Правильный ответ</small>}
                               </div>
-                            ))}
+                            ))
+                          )}
                           {availability && <p className="muted">{availability}</p>}
                         </section>
                       )}
@@ -283,7 +276,8 @@ export function QuestionBankPage({ courseId }: { courseId: string }) {
               <PaginationBar {...paged} onPageChange={paged.setPage} />
               <p className="question-catalog__rule muted">
                 Для запуска в занятии: «Один правильный» или «Верно / Неверно», от 2 до 6 вариантов
-                и ровно один правильный ответ.
+                и ровно один правильный ответ. «Краткий ответ» — свободный текст без автоматической
+                оценки.
               </p>
             </>
           )}

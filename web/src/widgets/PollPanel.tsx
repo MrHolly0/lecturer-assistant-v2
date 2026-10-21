@@ -23,6 +23,7 @@ import { userErrorMessage } from "../app/api/errors";
 import { pluralizeRu } from "../shared/lib/plural";
 import { PollComposer, type PollDraft } from "./PollComposer";
 import { Button } from "../shared/ui/button";
+import { TextPollResponses } from "./TextPollResponses";
 import { PollOptionText } from "./PollOptionText";
 
 interface Props {
@@ -71,8 +72,13 @@ export function PollPanel({
   });
 
   const closeMut = useMutation({
-    mutationFn: ({ pollId, correctOptionIdx }: { pollId: string; correctOptionIdx: number }) =>
-      closePoll(courseId, sessionId, pollId, correctOptionIdx),
+    mutationFn: ({
+      pollId,
+      correctOptionIdx
+    }: {
+      pollId: string;
+      correctOptionIdx: number | null;
+    }) => closePoll(courseId, sessionId, pollId, correctOptionIdx),
     onSuccess: (result) => {
       qc.setQueryData(["poll", courseId, sessionId, "active"], result);
       void qc.invalidateQueries({ queryKey: ["poll", courseId, sessionId, "closed"] });
@@ -144,6 +150,7 @@ export function PollPanel({
   }
 
   if (activePoll) {
+    const freeText = activePoll.poll.questionType === "SHORT_ANSWER";
     const total = activePoll.totalResponses;
     const selectedCorrect = activePoll.poll.correctOptionIdx;
     const isClosed = activePoll.poll.status === "CLOSED";
@@ -178,7 +185,16 @@ export function PollPanel({
               )}
             </div>
           </div>
-          {showResults && (
+          {showResults && freeText && (
+            <TextPollResponses
+              courseId={courseId}
+              sessionId={sessionId}
+              pollId={activePoll.poll.id}
+              live={!isClosed}
+              background={background}
+            />
+          )}
+          {showResults && !freeText && (
             <div className="poll-bars">
               {activePoll.poll.options.map((opt, idx) => {
                 const count = activePoll.votes[idx] ?? 0;
@@ -218,9 +234,11 @@ export function PollPanel({
           {!isClosed && (
             <>
               <p className="poll-correct-hint">
-                {selectedCorrect === null || selectedCorrect === undefined
-                  ? "Выберите правильный вариант перед закрытием."
-                  : "Выбранный правильный ответ станет виден студентам после закрытия."}
+                {freeText
+                  ? "Ответы видны только преподавателю, без автоматической оценки."
+                  : selectedCorrect === null || selectedCorrect === undefined
+                    ? "Выберите правильный вариант перед закрытием."
+                    : "Выбранный правильный ответ станет виден студентам после закрытия."}
               </p>
               <Button
                 type="button"
@@ -228,18 +246,18 @@ export function PollPanel({
                   commandsBlocked ||
                   closeMut.isPending ||
                   correctMut.isPending ||
-                  selectedCorrect == null
+                  (!freeText && selectedCorrect == null)
                 }
                 onClick={() => {
-                  if (!commandsBlocked && selectedCorrect != null) {
+                  if (!commandsBlocked && (freeText || selectedCorrect != null)) {
                     closeMut.mutate({
                       pollId: activePoll.poll.id,
-                      correctOptionIdx: selectedCorrect
+                      correctOptionIdx: freeText ? null : selectedCorrect!
                     });
                   }
                 }}
               >
-                Закрыть и показать результат
+                {freeText ? "Завершить приём ответов" : "Закрыть и показать результат"}
               </Button>
             </>
           )}
@@ -340,6 +358,8 @@ function ClosedPollHistory({
           {items.map((result) => (
             <ClosedPollResult
               key={result.poll.id}
+              courseId={courseId}
+              sessionId={sessionId}
               result={result}
               expanded={expandedId === result.poll.id}
               onToggle={() =>
@@ -365,10 +385,14 @@ function ClosedPollHistory({
 }
 
 function ClosedPollResult({
+  courseId,
+  sessionId,
   result,
   expanded,
   onToggle
 }: {
+  courseId: string;
+  sessionId: string;
   result: PollResult;
   expanded: boolean;
   onToggle: () => void;
@@ -388,6 +412,9 @@ function ClosedPollResult({
       </button>
       {expanded && (
         <div className="poll-history__result">
+          {result.poll.questionType === "SHORT_ANSWER" && (
+            <TextPollResponses courseId={courseId} sessionId={sessionId} pollId={result.poll.id} />
+          )}
           {result.poll.options.map((option, index) => {
             const count = result.votes[index] ?? 0;
             const percent =

@@ -13,4 +13,20 @@ public record QuickPoll(
         PollStatus status,
         Integer correctOptionIdx,
         Instant createdAt,
-        Instant closedAt) {}
+        Instant closedAt,
+        QuestionType questionType) {
+    public QuickPoll(
+            UUID id,
+            UUID sessionId,
+            UUID sourceQuestionId,
+            String questionText,
+            List<String> options,
+            PollStatus status,
+            Integer correctOptionIdx,
+            Instant createdAt,
+            Instant closedAt) {
+        this(id,
+                sessionId, sourceQuestionId, questionText, options, status, correctOptionIdx, createdAt,
+                closedAt, QuestionType.CHOICE);
+    }
+}

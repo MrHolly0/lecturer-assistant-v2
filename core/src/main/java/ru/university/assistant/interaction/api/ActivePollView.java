@@ -5,7 +5,8 @@ import java.util.UUID;
 
 /**
  * Что студент видит в снапшоте. До закрытия опроса нет ни правильного ответа, ни распределения
- * (correctOptionIdx и votes равны null), после закрытия опрос остаётся в снапшоте с обоими.
+ * (correctOptionIdx и votes равны null), после закрытия опрос остаётся в снапшоте.
+ * У SHORT_ANSWER нет вариантов и оценки.
  */
 public record ActivePollView(
         UUID pollId,
@@ -13,4 +14,15 @@ public record ActivePollView(
         List<String> options,
         PollStatus status,
         Integer correctOptionIdx,  // null пока OPEN
-        List<Integer> votes) {}  // null пока OPEN
+        List<Integer> votes,
+        QuestionType questionType) {
+    public ActivePollView(
+            UUID pollId,
+            String questionText,
+            List<String> options,
+            PollStatus status,
+            Integer correctOptionIdx,  // null пока OPEN
+            List<Integer> votes) {
+        this(pollId, questionText, options, status, correctOptionIdx, votes, QuestionType.CHOICE);
+    }
+}

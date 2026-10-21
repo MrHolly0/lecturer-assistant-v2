@@ -16,7 +16,11 @@ test('live checks accept exactly one correct answer within the server option bou
   }
 });
 test('bank-only types stay unavailable even when their options resemble a supported poll', () => {
-  for (const type of ['MULTIPLE_CHOICE', 'SHORT_ANSWER']) {
+  for (const type of ['MULTIPLE_CHOICE']) {
     assert.ok(questionAvailability(question(type, 2)));
   }
+});
+
+test("free text can launch without predefined answers", () => {
+  assert.equal(questionAvailability({ questionType: "SHORT_ANSWER", options: [] }), null);
 });

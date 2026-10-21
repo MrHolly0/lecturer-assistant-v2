@@ -467,9 +467,21 @@ public class StudentWebSessionService {
     @Transactional
     public PollVote pollRespond(
             String joinCode, UUID pollId, String participantToken, int optionIdx, AuthenticatedUser user) {
+        return pollRespond(joinCode, pollId, participantToken, optionIdx, null, user);
+    }
+
+    @Transactional
+    public PollVote pollRespond(
+            String joinCode, UUID pollId, String participantToken, Integer optionIdx,
+            String textAnswer, AuthenticatedUser user) {
         ParticipantSession current = participantSession(joinCode, participantToken, user);
         ensureInteractive(current.session());
-        PollVote vote = quickPolls.respond(current.session().id(), pollId, current.participant().personId(), optionIdx);
+        if ((optionIdx == null) == (textAnswer == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provide exactly one answer");
+        }
+        PollVote vote = textAnswer != null
+                ? quickPolls.respondText(current.session().id(), pollId, current.participant().personId(), textAnswer)
+                : quickPolls.respond(current.session().id(), pollId, current.participant().personId(), optionIdx);
         touch(current.participant());
         if (vote.accepted()) {
             publisher.publish("interaction.poll_answered", current.session());

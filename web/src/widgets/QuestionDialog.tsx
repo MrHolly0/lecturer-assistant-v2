@@ -50,12 +50,10 @@ function optionDrafts(initial?: QuestionBankEntry): Record<QuestionType, Questio
       { text: "Верно", correct: true },
       { text: "Неверно", correct: false }
     ],
-    SHORT_ANSWER: [{ text: "", correct: true }]
+    SHORT_ANSWER: []
   };
-  if (initial) {
-    const savedOptions = initial.options
-      .filter((option) => initial.questionType !== "SHORT_ANSWER" || option.correct)
-      .map((option) => ({ ...option }));
+  if (initial && initial.questionType !== "SHORT_ANSWER") {
+    const savedOptions = initial.options.map((option) => ({ ...option }));
     if (savedOptions.length > 0) drafts[initial.questionType] = savedOptions;
   }
   return drafts;
@@ -89,10 +87,12 @@ export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: Qu
       const request: CreateQuestionRequest = {
         text: text.trim(),
         questionType: type,
-        options: options.map((option) => ({
-          text: option.text.trim(),
-          correct: shortAnswer || option.correct
-        })),
+        options: shortAnswer
+          ? []
+          : options.map((option) => ({
+              text: option.text.trim(),
+              correct: option.correct
+            })),
         tags: [
           ...new Set(
             tagsText
@@ -121,12 +121,12 @@ export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: Qu
   }, [open, initial, courseId, reset]);
   const correctCount = options.filter((option) => option.correct).length;
   const validAnswers = shortAnswer
-    ? options.length >= 1
+    ? true
     : options.length >= 2 && (type === "MULTIPLE_CHOICE" ? correctCount >= 1 : correctCount === 1);
   const canSave =
     text.trim().length > 0 &&
     validAnswers &&
-    options.every((option) => option.text.trim().length > 0) &&
+    (shortAnswer || options.every((option) => option.text.trim().length > 0)) &&
     !saveMut.isPending;
   const availability = questionAvailability({ questionType: type, options });
   function submit() {
@@ -207,115 +207,101 @@ export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: Qu
                 maxLength={2000}
               />
             </div>
-            <div className="qbank-field">
-              <Label>{shortAnswer ? "Допустимые ответы" : "Варианты ответа"}</Label>
+            {shortAnswer ? (
               <p className="muted qbank-hint">
-                {type === "MULTIPLE_CHOICE"
-                  ? "Отметьте все правильные варианты."
-                  : shortAnswer
-                    ? "Запишите один или несколько допустимых ответов. Все строки считаются правильными."
-                    : "Отметьте один правильный вариант."}
+                Студент напишет ответ текстом. Ответы видит преподаватель, автоматической оценки
+                нет.
               </p>
-              {shortAnswer && initial?.options.some((option) => !option.correct) && (
-                <p className="form-warning qbank-hint">
-                  Из прежней формы перенесены только ответы, отмеченные правильными. Проверьте
-                  список перед сохранением.
+            ) : (
+              <div className="qbank-field">
+                <Label>Варианты ответа</Label>
+                <p className="muted qbank-hint">
+                  {type === "MULTIPLE_CHOICE"
+                    ? "Отметьте все правильные варианты."
+                    : "Отметьте один правильный вариант."}
                 </p>
-              )}
-              <div className="qbank-options-editor">
-                {options.map((option, index) => (
-                  <div
-                    key={`${type}-${index}`}
-                    className={`qbank-option-edit-row${shortAnswer ? " qbank-option-edit-row--short-answer" : ""}`}
-                  >
-                    {!shortAnswer && (
-                      <label className="qbank-correct-target">
-                        {type === "MULTIPLE_CHOICE" ? (
-                          <Checkbox
-                            checked={option.correct}
-                            disabled={saveMut.isPending}
-                            aria-label={`Правильный вариант ${index + 1}`}
-                            onCheckedChange={(checked) =>
-                              setOptions((items) =>
-                                items.map((item, position) =>
-                                  position === index ? { ...item, correct: Boolean(checked) } : item
+                <div className="qbank-options-editor">
+                  {options.map((option, index) => (
+                    <div key={`${type}-${index}`} className="qbank-option-edit-row">
+                      {
+                        <label className="qbank-correct-target">
+                          {type === "MULTIPLE_CHOICE" ? (
+                            <Checkbox
+                              checked={option.correct}
+                              disabled={saveMut.isPending}
+                              aria-label={`Правильный вариант ${index + 1}`}
+                              onCheckedChange={(checked) =>
+                                setOptions((items) =>
+                                  items.map((item, position) =>
+                                    position === index
+                                      ? { ...item, correct: Boolean(checked) }
+                                      : item
+                                  )
                                 )
-                              )
-                            }
-                          />
-                        ) : (
-                          <input
-                            type="radio"
-                            name={`${id}-correct`}
-                            checked={option.correct}
-                            disabled={saveMut.isPending}
-                            aria-label={`Правильный вариант ${index + 1}`}
-                            onChange={() =>
-                              setOptions((items) =>
-                                items.map((item, position) => ({
-                                  ...item,
-                                  correct: position === index
-                                }))
-                              )
-                            }
-                          />
-                        )}
-                      </label>
-                    )}
-                    <Input
-                      value={option.text}
-                      disabled={saveMut.isPending}
-                      onChange={(event) =>
-                        setOptions((items) =>
-                          items.map((item, position) =>
-                            position === index ? { ...item, text: event.target.value } : item
-                          )
-                        )
+                              }
+                            />
+                          ) : (
+                            <input
+                              type="radio"
+                              name={`${id}-correct`}
+                              checked={option.correct}
+                              disabled={saveMut.isPending}
+                              aria-label={`Правильный вариант ${index + 1}`}
+                              onChange={() =>
+                                setOptions((items) =>
+                                  items.map((item, position) => ({
+                                    ...item,
+                                    correct: position === index
+                                  }))
+                                )
+                              }
+                            />
+                          )}
+                        </label>
                       }
-                      placeholder={
-                        shortAnswer ? `Допустимый ответ ${index + 1}` : `Вариант ${index + 1}`
-                      }
-                      aria-label={
-                        shortAnswer
-                          ? `Допустимый ответ ${index + 1}`
-                          : `Текст варианта ${index + 1}`
-                      }
-                      maxLength={500}
-                    />
-                    {options.length > (shortAnswer ? 1 : 2) && type !== "TRUE_FALSE" ? (
-                      <IconButton
-                        label={
-                          shortAnswer
-                            ? `Удалить ответ ${index + 1}`
-                            : `Удалить вариант ${index + 1}`
-                        }
+                      <Input
+                        value={option.text}
                         disabled={saveMut.isPending}
-                        onClick={() =>
-                          setOptions((items) => items.filter((_, position) => position !== index))
+                        onChange={(event) =>
+                          setOptions((items) =>
+                            items.map((item, position) =>
+                              position === index ? { ...item, text: event.target.value } : item
+                            )
+                          )
                         }
-                      >
-                        <X size={18} />
-                      </IconButton>
-                    ) : (
-                      <span />
-                    )}
-                  </div>
-                ))}
+                        placeholder={`Вариант ${index + 1}`}
+                        aria-label={`Текст варианта ${index + 1}`}
+                        maxLength={500}
+                      />
+                      {options.length > 2 && type !== "TRUE_FALSE" ? (
+                        <IconButton
+                          label={`Удалить вариант ${index + 1}`}
+                          disabled={saveMut.isPending}
+                          onClick={() =>
+                            setOptions((items) => items.filter((_, position) => position !== index))
+                          }
+                        >
+                          <X size={18} />
+                        </IconButton>
+                      ) : (
+                        <span />
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {options.length < 10 && type !== "TRUE_FALSE" && (
+                  <Button
+                    variant="outline"
+                    className="question-authoring__add-option"
+                    type="button"
+                    disabled={saveMut.isPending}
+                    onClick={() => setOptions((items) => [...items, { text: "", correct: false }])}
+                  >
+                    <Plus size={18} /> Добавить вариант
+                  </Button>
+                )}
               </div>
-              {options.length < 10 && type !== "TRUE_FALSE" && (
-                <Button
-                  variant="outline"
-                  type="button"
-                  disabled={saveMut.isPending}
-                  onClick={() =>
-                    setOptions((items) => [...items, { text: "", correct: shortAnswer }])
-                  }
-                >
-                  <Plus size={18} />{" "}
-                  {shortAnswer ? "Добавить допустимый ответ" : "Добавить вариант"}
-                </Button>
-              )}
-            </div>
+            )}
             <div className="qbank-field">
               <Label htmlFor={`${id}-tags`}>
                 Теги <span className="muted">через запятую</span>
@@ -357,7 +343,13 @@ export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: Qu
               <p className="muted">{QUESTION_TYPES.find((item) => item.value === type)?.label}</p>
               <h3>{text.trim() || "Текст вопроса появится здесь"}</h3>
               {shortAnswer ? (
-                <div className="question-authoring__sample-answer muted">Ответ студента</div>
+                <textarea
+                  className="qbank-textarea"
+                  aria-label="Пример текстового ответа"
+                  placeholder="Ответ студента"
+                  rows={3}
+                  readOnly
+                />
               ) : (
                 <ul>
                   {options.map((option, index) => (
@@ -372,7 +364,9 @@ export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: Qu
                 </ul>
               )}
               <small className="muted">
-                Без подсказки правильных ответов.
+                {shortAnswer
+                  ? "Свободный текст, без автоматической проверки."
+                  : "Без подсказки правильных ответов."}
                 {availability ? " Пример оформления, запуск этого вопроса пока недоступен." : ""}
               </small>
             </div>

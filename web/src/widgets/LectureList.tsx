@@ -109,7 +109,7 @@ export function LectureList({
         )}
       </div>
       {(showTabs || showSearch) && (
-        <div className="list-toolbar lecture-hub__toolbar">
+        <div className="presentation-toolbar">
           {showSearch && (
             <SearchField
               value={query}

@@ -11,4 +11,10 @@ public record SlideDeck(
         int slideCount,
         boolean archived,
         String sourceFilename,
-        Instant createdAt) {}
+        Instant createdAt,
+        String thumbnailUrl) {
+    public SlideDeck(UUID id, UUID courseId, String title, int version, int slideCount,
+            boolean archived, String sourceFilename, Instant createdAt) {
+        this(id, courseId, title, version, slideCount, archived, sourceFilename, createdAt, null);
+    }
+}

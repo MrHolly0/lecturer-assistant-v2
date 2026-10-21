@@ -23,6 +23,7 @@ import ru.university.assistant.interaction.api.QuestionType;
 import ru.university.assistant.interaction.api.QuickPoll;
 import ru.university.assistant.interaction.api.QuickPollApi;
 import ru.university.assistant.interaction.api.StartPollRequest;
+import ru.university.assistant.interaction.api.TextPollResponsePage;
 import ru.university.assistant.live.api.LiveSessionAccessApi;
 import ru.university.assistant.live.api.LiveSession;
 import ru.university.assistant.live.api.SessionStatus;
@@ -55,7 +56,8 @@ public class PollService implements QuickPollApi {
     public PollResult start(UUID courseId, UUID sessionId, UUID createdBy, StartPollRequest request) {
         LiveSession session = prepareStart(courseId, sessionId);
         QuickPoll poll = polls.create(
-                UuidV7.generate(), sessionId, createdBy, null, request.questionText(), request.options(), null);
+                UuidV7.generate(), sessionId, createdBy, null, request.questionText(), request.options(),
+                null, QuestionType.CHOICE);
         publishStarted(courseId, session, poll, createdBy);
         return result(poll);
     }
@@ -65,10 +67,12 @@ public class PollService implements QuickPollApi {
         LiveSession session = prepareStart(courseId, sessionId);
         QuestionBankEntry question = questionBank.get(courseId, questionId);
         validateBankQuestion(question);
-        List<String> options = question.options().stream().map(QuestionOption::text).toList();
-        int correctOptionIdx = correctOptionIdx(question.options());
+        boolean textAnswer = question.questionType() == QuestionType.SHORT_ANSWER;
+        List<String> options = textAnswer ? List.of() : question.options().stream().map(QuestionOption::text).toList();
+        Integer correctOptionIdx = textAnswer ? null : correctOptionIdx(question.options());
         QuickPoll poll = polls.create(
-                UuidV7.generate(), sessionId, createdBy, question.id(), question.text(), options, correctOptionIdx);
+                UuidV7.generate(), sessionId, createdBy, question.id(), question.text(), options,
+                correctOptionIdx, question.questionType());
         publishStarted(courseId, session, poll, createdBy);
         return result(poll);
     }
@@ -93,6 +97,9 @@ public class PollService implements QuickPollApi {
         QuickPoll poll = pollInSession(sessionId, pollId);
         if (poll.status() != PollStatus.OPEN) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Poll already closed");
+        }
+        if (poll.questionType() == QuestionType.SHORT_ANSWER) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Text answers are not automatically graded");
         }
         if (correctOptionIdx != null && (correctOptionIdx < 0 || correctOptionIdx >= poll.options().size())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid correct option index");
@@ -126,6 +133,9 @@ public class PollService implements QuickPollApi {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Poll already closed");
         }
         Integer requestedCorrect = request.correctOptionIdx();
+        if (poll.questionType() == QuestionType.SHORT_ANSWER && requestedCorrect != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Text answers are not automatically graded");
+        }
         if (requestedCorrect != null && (requestedCorrect < 0 || requestedCorrect >= poll.options().size())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid correct option index");
         }
@@ -163,6 +173,9 @@ public class PollService implements QuickPollApi {
         if (poll.status() == PollStatus.CLOSED) {
             return new PollVote(false, polls.findVote(pollId, personId).orElse(null));
         }
+        if (poll.questionType() == QuestionType.SHORT_ANSWER) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A text answer is required");
+        }
         if (optionIdx < 0 || optionIdx >= poll.options().size()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid option index");
         }
@@ -183,6 +196,48 @@ public class PollService implements QuickPollApi {
         return new PollVote(accepted, polls.findVote(pollId, personId).orElse(null));
     }
 
+    @Transactional
+    @Override
+    public PollVote respondText(UUID sessionId, UUID pollId, UUID personId, String text) {
+        requireLive(liveSessions.lockSession(sessionId));
+        polls.lock(pollId);
+        QuickPoll poll = pollInSession(sessionId, pollId);
+        if (poll.questionType() != QuestionType.SHORT_ANSWER) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An option answer is required");
+        }
+        if (text == null || text.isBlank() || text.length() > 2000) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Text answer must contain 1-2000 characters");
+        }
+        if (poll.status() == PollStatus.CLOSED) {
+            return new PollVote(false, null, myTextAnswer(pollId, personId));
+        }
+        boolean accepted = polls.respondText(UuidV7.generate(), pollId, personId, text.trim());
+        if (accepted) {
+            events.publish(new DomainEvent("interaction.poll", pollId, "interaction.poll_answered", personId,
+                    Map.of("sessionId", sessionId, "pollId", pollId), Map.of("answerType", "SHORT_ANSWER")));
+        }
+        return new PollVote(accepted, null, myTextAnswer(pollId, personId));
+    }
+
+    @Override
+    public String myTextAnswer(UUID pollId, UUID personId) {
+        return polls.findTextAnswer(pollId, personId).orElse(null);
+    }
+
+    @Transactional(readOnly = true)
+    public TextPollResponsePage textResponses(UUID courseId, UUID sessionId, UUID pollId, int limit, int offset) {
+        liveSessions.requireSessionInCourse(courseId, sessionId);
+        QuickPoll poll = pollInSession(sessionId, pollId);
+        if (poll.questionType() != QuestionType.SHORT_ANSWER) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This poll does not accept text answers");
+        }
+        if (limit < 1 || limit > 100 || offset < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid answer page");
+        }
+        return new TextPollResponsePage(polls.textResponses(pollId, limit, offset),
+                polls.countResponses(pollId), limit, offset);
+    }
+
     @Override
     public Integer myVote(UUID pollId, UUID personId) {
         return polls.findVote(pollId, personId).orElse(null);
@@ -195,7 +250,7 @@ public class PollService implements QuickPollApi {
 
     private PollResult result(QuickPoll poll) {
         List<Integer> votes = polls.voteCounts(poll.id(), poll.options().size());
-        int total = votes.stream().mapToInt(Integer::intValue).sum();
+        int total = Math.toIntExact(polls.countResponses(poll.id()));
         return new PollResult(poll, votes, total);
     }
 
@@ -204,7 +259,8 @@ public class PollService implements QuickPollApi {
         // До закрытия студент не видит ни правильного ответа, ни распределения (D-08).
         Integer correct = closed ? poll.correctOptionIdx() : null;
         List<Integer> votes = closed ? polls.voteCounts(poll.id(), poll.options().size()) : null;
-        return new ActivePollView(poll.id(), poll.questionText(), poll.options(), poll.status(), correct, votes);
+        return new ActivePollView(poll.id(), poll.questionText(), poll.options(), poll.status(), correct, votes,
+                poll.questionType());
     }
 
     private LiveSession prepareStart(UUID courseId, UUID sessionId) {
@@ -224,6 +280,7 @@ public class PollService implements QuickPollApi {
     }
 
     private void validateBankQuestion(QuestionBankEntry question) {
+        if (question.questionType() == QuestionType.SHORT_ANSWER) return;
         if (question.questionType() != QuestionType.CHOICE && question.questionType() != QuestionType.TRUE_FALSE) {
             throw new ResponseStatusException(
                     HttpStatus.UNPROCESSABLE_ENTITY, "Question type cannot be used as a poll");
@@ -252,6 +309,7 @@ public class PollService implements QuickPollApi {
                 createdBy,
                 Map.of("courseId", courseId, "sessionId", session.id(), "pollId", poll.id()),
                 payload(
+                        "questionType", poll.questionType().name(),
                         "slideIdx", session.currentSlideIdx(),
                         "optionCount", poll.options().size(),
                         "sourceQuestionId", poll.sourceQuestionId(),

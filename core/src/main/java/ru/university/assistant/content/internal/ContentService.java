@@ -107,7 +107,14 @@ public class ContentService implements StudentDeckApi {
 
     public List<SlideDeck> listDecks(AuthenticatedUser user, UUID courseId) {
         courseAccess.requireVisible(user, courseId);
-        return repository.listDecks(courseId);
+        var thumbnails = repository.deckThumbnails(courseId);
+        return repository.listDecks(courseId).stream().map(deck -> {
+            var thumbnail = thumbnails.get(deck.id());
+            String url = thumbnail == null ? null : signedUrls.slideImageUrl(courseId, deck.id(),
+                    thumbnail.slideId(), thumbnail.idx(), signedUrls.token(courseId, deck.id()));
+            return new SlideDeck(deck.id(), deck.courseId(), deck.title(), deck.version(), deck.slideCount(),
+                    deck.archived(), deck.sourceFilename(), deck.createdAt(), url);
+        }).toList();
     }
 
     public SlideDeckDetails getDeck(AuthenticatedUser user, UUID courseId, UUID deckId) {

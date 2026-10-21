@@ -73,7 +73,7 @@ export async function closePoll(
   courseId: string,
   sessionId: string,
   pollId: string,
-  correctOptionIdx?: number
+  correctOptionIdx?: number | null
 ): Promise<PollResult> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/polls/${pollId}/close`, {
     method: "POST",
@@ -135,15 +135,30 @@ export async function respondToPoll(
   joinCode: string,
   pollId: string,
   participantToken: string,
-  optionIdx: number
+  answer: number | string
 ): Promise<PollVote> {
   const authenticated = Boolean(getStoredAuth());
   const res = await studentFetch(
     `/student/sessions/${encodeURIComponent(joinCode)}/polls/${pollId}/respond`,
     {
       method: "POST",
-      body: JSON.stringify(authenticated ? { optionIdx } : { participantToken, optionIdx })
+      body: JSON.stringify({
+        ...(authenticated ? {} : { participantToken }),
+        ...(typeof answer === "string" ? { textAnswer: answer } : { optionIdx: answer })
+      })
     }
   );
   return res.json() as Promise<PollVote>;
+}
+
+export async function listTextPollResponses(
+  courseId: string,
+  sessionId: string,
+  pollId: string,
+  offset = 0
+) {
+  const response = await apiFetch(
+    `/courses/${courseId}/sessions/${sessionId}/polls/${pollId}/answers?limit=50&offset=${offset}`
+  );
+  return response.json() as Promise<components["schemas"]["TextPollResponsePage"]>;
 }

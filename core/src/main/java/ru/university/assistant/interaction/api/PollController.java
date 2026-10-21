@@ -87,6 +87,18 @@ class PollController {
         return pollService.getResult(courseId, sessionId, pollId);
     }
 
+    @GetMapping("/polls/{pollId}/answers")
+    public TextPollResponsePage textAnswers(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID sessionId,
+            @PathVariable UUID pollId,
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(defaultValue = "0") int offset) {
+        courseAccess.requireManage(user, courseId);
+        return pollService.textResponses(courseId, sessionId, pollId, limit, offset);
+    }
+
     @PutMapping("/polls/{pollId}/correct-option")
     public PollResult setCorrectOption(
             @AuthenticationPrincipal AuthenticatedUser user,

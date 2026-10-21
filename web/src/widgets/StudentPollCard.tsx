@@ -7,22 +7,30 @@ import { PollOptionText } from "./PollOptionText";
 interface StudentPollCardProps {
   poll: StudentActivePoll;
   myVote: number | null;
+  myTextAnswer?: string | null;
   isLive: boolean;
   isPending: boolean;
-  onAnswer: (optionIdx: number) => void;
+  onAnswer: (answer: number | string) => void;
 }
 
 export function StudentPollCard({
   poll,
   myVote,
+  myTextAnswer,
   isLive,
   isPending,
   onAnswer
 }: StudentPollCardProps) {
+  const [text, setText] = useState("");
+  const freeText = poll.questionType === "SHORT_ANSWER";
+  const answered = freeText ? myTextAnswer != null : myVote !== null;
   const [selectedOptionIdx, setSelectedOptionIdx] = useState<number | null>(null);
   const [collapsedPollId, setCollapsedPollId] = useState<string | null>(null);
   const collapsed = poll.status === "CLOSED" && collapsedPollId === poll.pollId;
-  useEffect(() => setSelectedOptionIdx(null), [poll.pollId]);
+  useEffect(() => {
+    setSelectedOptionIdx(null);
+    setText("");
+  }, [poll.pollId]);
   return (
     <div className="student-poll-card" data-poll-status={poll.status}>
       <div className="student-poll-heading">
@@ -43,7 +51,40 @@ export function StudentPollCard({
           {collapsed ? "Показать результат" : "Свернуть результат"}
         </Button>
       )}
-      {collapsed ? null : poll.status === "OPEN" && myVote === null ? (
+      {freeText ? (
+        collapsed ? null : (
+          <div className="student-text-poll">
+            {!answered && poll.status === "OPEN" ? (
+              <>
+                <label className="field">
+                  <span>Ваш ответ</span>
+                  <textarea
+                    value={text}
+                    maxLength={2000}
+                    rows={4}
+                    disabled={isPending || !isLive}
+                    onChange={(event) => setText(event.target.value)}
+                    placeholder="Напишите ответ текстом"
+                  />
+                </label>
+                <Button
+                  type="button"
+                  disabled={!text.trim() || isPending || !isLive}
+                  onClick={() => onAnswer(text.trim())}
+                >
+                  {isPending ? "Отправляем ответ…" : "Отправить ответ"}
+                </Button>
+              </>
+            ) : (
+              <div role="status">
+                <strong>{answered ? "Ваш ответ сохранён" : "Приём ответов завершён"}</strong>
+                {answered && <p className="text-poll-answer">{myTextAnswer}</p>}
+                <p className="muted">Ответ видит преподаватель. Автоматической оценки нет.</p>
+              </div>
+            )}
+          </div>
+        )
+      ) : collapsed ? null : poll.status === "OPEN" && myVote === null ? (
         <div className="student-poll-options" role="radiogroup" aria-label="Варианты ответа">
           {poll.options.map((option, idx) => (
             <label
@@ -81,7 +122,7 @@ export function StudentPollCard({
       ) : (
         <PollResult poll={poll} myVote={myVote} />
       )}
-      {!collapsed && poll.status === "CLOSED" && myVote === null && (
+      {!freeText && !collapsed && poll.status === "CLOSED" && myVote === null && (
         <p className="student-poll-closed muted">Вы не отвечали на этот вопрос.</p>
       )}
     </div>
