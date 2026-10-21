@@ -25,6 +25,7 @@ import { Input } from "../shared/ui/input";
 import { Label } from "../shared/ui/label";
 import { QUESTION_TYPES } from "../shared/lib/questionTypes";
 import { questionAvailability } from "../shared/lib/questionAvailability";
+import { LectureMultiSelect } from "./LectureMultiSelect";
 import { listLectures } from "../app/api/content-api";
 import { RadioGroup, RadioGroupItem } from "../shared/ui/radio-group";
 
@@ -84,7 +85,6 @@ export function QuestionDialog({
   const [lectureIds, setLectureIds] = useState<string[]>(
     initial?.lectureIds ?? (defaultLectureId ? [defaultLectureId] : [])
   );
-  const [lectureSearch, setLectureSearch] = useState("");
   const lecturesQuery = useQuery({
     queryKey: ["lectures", courseId],
     queryFn: () => listLectures(courseId),
@@ -99,7 +99,6 @@ export function QuestionDialog({
     setTagsText(initial?.tags.join(", ") ?? "");
     setPreviewOpen(false);
     setLectureIds(initial?.lectureIds ?? (defaultLectureId ? [defaultLectureId] : []));
-    setLectureSearch("");
   }, [open, initial, courseId, defaultLectureId]);
 
   const saveMut = useMutation({
@@ -329,52 +328,15 @@ export function QuestionDialog({
                 Вопрос можно использовать в нескольких лекциях. Без выбора он останется в разделе
                 «Без привязки».
               </p>
-              {lecturesQuery.isLoading && <p role="status">Загрузка лекций…</p>}
-              {lecturesQuery.isError && (
-                <div role="alert">
-                  <p>Не удалось загрузить лекции.</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void lecturesQuery.refetch()}
-                  >
-                    Повторить
-                  </Button>
-                </div>
-              )}
-              {(lecturesQuery.data?.length ?? 0) > 5 && (
-                <Input
-                  aria-label="Найти лекцию для привязки"
-                  value={lectureSearch}
-                  onChange={(e) => setLectureSearch(e.target.value)}
-                  placeholder="Найти лекцию"
-                />
-              )}
-              <div className="question-lecture-fields__list">
-                {(lecturesQuery.data ?? [])
-                  .filter((l) =>
-                    l.title.toLocaleLowerCase("ru").includes(lectureSearch.toLocaleLowerCase("ru"))
-                  )
-                  .map((l) => (
-                    <label key={l.id}>
-                      <Checkbox
-                        checked={lectureIds.includes(l.id)}
-                        onCheckedChange={(checked) =>
-                          setLectureIds((ids) =>
-                            checked ? [...ids, l.id] : ids.filter((id) => id !== l.id)
-                          )
-                        }
-                      />
-                      <span>
-                        {l.title}
-                        {l.archived ? " (в архиве)" : ""}
-                      </span>
-                    </label>
-                  ))}
-              </div>
-              {lecturesQuery.data?.length === 0 && (
-                <p className="muted">В курсе пока нет лекций. Вопрос можно привязать позже.</p>
-              )}
+              <LectureMultiSelect
+                lectures={lecturesQuery.data ?? []}
+                value={lectureIds}
+                onChange={setLectureIds}
+                disabled={saveMut.isPending}
+                loading={lecturesQuery.isLoading}
+                error={lecturesQuery.isError}
+                onRetry={() => void lecturesQuery.refetch()}
+              />
               {initial && lectureIds.length > 1 && (
                 <p className="muted qbank-hint">
                   Изменения текста и ответов будут видны во всех выбранных лекциях.
