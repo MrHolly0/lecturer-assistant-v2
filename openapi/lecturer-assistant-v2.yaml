@@ -2521,6 +2521,38 @@ paths:
           description: Archived.
         "404":
           description: Question not found, or it does not belong to this course.
+  /courses/{courseId}/questions/{questionId}/lectures/{lectureId}:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+      - $ref: "#/components/parameters/QuestionId"
+      - name: lectureId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: linkQuestionLecture
+      summary: Use an existing question in a lecture without copying it.
+      tags: [interaction]
+      responses:
+        "200":
+          description: Question with updated links.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionBankEntry"
+        "404":
+          description: Question or lecture not found in this course.
+    delete:
+      operationId: unlinkQuestionLecture
+      summary: Remove a lecture link while retaining the question and poll history.
+      tags: [interaction]
+      responses:
+        "204":
+          description: Link removed.
+        "404":
+          description: Question or lecture not found in this course.
   /courses/{courseId}/activities:
     post:
       operationId: createActivity
@@ -5773,7 +5805,7 @@ components:
           type: boolean
     QuestionBankEntry:
       type: object
-      required: [id, courseId, text, questionType, options, tags, archived, createdAt]
+      required: [id, courseId, text, questionType, options, tags, archived, createdAt, lectureIds]
       properties:
         id:
           type: string
@@ -5789,6 +5821,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/QuestionOption"
+        lectureIds:
+          type: array
+          description: Lectures in this course using the question. Omission on update preserves existing links.
+          maxItems: 200
+          items:
+            type: string
+            format: uuid
         tags:
           type: array
           items:
@@ -5812,6 +5851,13 @@ components:
           description: Empty for SHORT_ANSWER. Non-empty for option-based questions.
           items:
             $ref: "#/components/schemas/QuestionOption"
+        lectureIds:
+          type: array
+          description: Lectures in this course using the question. Omission on update preserves existing links.
+          maxItems: 200
+          items:
+            type: string
+            format: uuid
         tags:
           type: array
           items:

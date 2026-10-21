@@ -1756,6 +1756,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/questions/{questionId}/lectures/{lectureId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        questionId: components["parameters"]["QuestionId"];
+        lectureId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /** Use an existing question in a lecture without copying it. */
+    put: operations["linkQuestionLecture"];
+    post?: never;
+    /** Remove a lecture link while retaining the question and poll history. */
+    delete: operations["unlinkQuestionLecture"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/activities": {
     parameters: {
       query?: never;
@@ -3663,6 +3685,8 @@ export interface components {
       text: string;
       questionType: components["schemas"]["QuestionType"];
       options: components["schemas"]["QuestionOption"][];
+      /** @description Lectures in this course using the question. Omission on update preserves existing links. */
+      lectureIds: string[];
       tags: string[];
       archived: boolean;
       /** Format: date-time */
@@ -3673,6 +3697,8 @@ export interface components {
       questionType: components["schemas"]["QuestionType"];
       /** @description Empty for SHORT_ANSWER. Non-empty for option-based questions. */
       options: components["schemas"]["QuestionOption"][];
+      /** @description Lectures in this course using the question. Omission on update preserves existing links. */
+      lectureIds?: string[];
       tags?: string[];
     };
     /** @enum {string} */
@@ -7674,6 +7700,66 @@ export interface operations {
         content?: never;
       };
       /** @description Question not found, or it does not belong to this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  linkQuestionLecture: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        questionId: components["parameters"]["QuestionId"];
+        lectureId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Question with updated links. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QuestionBankEntry"];
+        };
+      };
+      /** @description Question or lecture not found in this course. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  unlinkQuestionLecture: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        questionId: components["parameters"]["QuestionId"];
+        lectureId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Link removed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Question or lecture not found in this course. */
       404: {
         headers: {
           [name: string]: unknown;

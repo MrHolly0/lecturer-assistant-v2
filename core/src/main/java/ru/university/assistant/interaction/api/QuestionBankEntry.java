@@ -12,4 +12,5 @@ public record QuestionBankEntry(
         List<QuestionOption> options,
         List<String> tags,
         boolean archived,
-        Instant createdAt) {}
+        Instant createdAt,
+        List<UUID> lectureIds) {}

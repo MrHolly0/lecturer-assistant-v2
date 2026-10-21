@@ -123,6 +123,7 @@ export function LectureRemoteTools({
           <PollPanel
             courseId={courseId}
             sessionId={session.id}
+            container={container}
             disabled={session.status === "PAUSED"}
             commandsBlocked={disabled}
             background

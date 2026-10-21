@@ -1,12 +1,16 @@
-import { questionAvailability } from "../shared/lib/questionAvailability";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Plus, Search, X } from "lucide-react";
-import { listQuestions } from "../app/api/interaction-api";
-import { userErrorMessage } from "../app/api/errors";
-import { pluralizeRu } from "../shared/lib/plural";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
-import { Button, IconButton, LinkButton } from "../shared/ui/button";
+import { Check, Plus, X } from "lucide-react";
+import { getLiveSession } from "../app/api/live-api";
+import { Button, IconButton } from "../shared/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from "../shared/ui/dialog";
+import { QuestionPickerDialog } from "./QuestionPickerDialog";
 
 export interface PollDraft {
   questionText: string;
@@ -16,113 +20,83 @@ export interface PollDraft {
 
 interface PollComposerProps {
   courseId: string;
+  sessionId: string;
   pending: boolean;
+  error?: string;
+  container?: HTMLElement;
   onCancel: () => void;
   onStart: (draft: PollDraft) => void;
 }
 
-export function PollComposer({ courseId, pending, onCancel, onStart }: PollComposerProps) {
+export function PollComposer({
+  courseId,
+  sessionId,
+  pending,
+  error,
+  container,
+  onCancel,
+  onStart
+}: PollComposerProps) {
+  const [quick, setQuick] = useState(false);
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState(["", ""]);
-  const [search, setSearch] = useState("");
-  const questionsQuery = useQuery({
-    queryKey: ["questions", courseId],
-    queryFn: () => listQuestions(courseId)
+  const session = useQuery({
+    queryKey: ["live", courseId, sessionId],
+    queryFn: () => getLiveSession(courseId, sessionId)
   });
-  const eligibleQuestions = useMemo(
-    () =>
-      (questionsQuery.data ?? []).filter((item) => {
-        const matchesSearch = item.text.toLocaleLowerCase("ru-RU").includes(search.toLowerCase());
-        return !item.archived && !questionAvailability(item) && matchesSearch;
-      }),
-    [questionsQuery.data, search]
-  );
   const canStart =
     !pending &&
     question.trim().length > 0 &&
     options.length >= 2 &&
     options.every((option) => option.trim().length > 0);
-
+  if (!quick)
+    return (
+      <QuestionPickerDialog
+        courseId={courseId}
+        currentLectureId={session.data?.lectureId}
+        currentLectureTitle={session.data?.lectureTitle}
+        contextLoading={session.isLoading}
+        contextError={session.isError ? "Не удалось определить текущую лекцию." : undefined}
+        onRetryContext={() => void session.refetch()}
+        pending={pending}
+        error={error}
+        container={container}
+        onClose={onCancel}
+        extraAction={
+          <Button variant="ghost" disabled={pending} onClick={() => setQuick(true)}>
+            <Plus size={16} />
+            Быстрый вопрос
+          </Button>
+        }
+        onConfirm={(item) =>
+          onStart({
+            questionId: item.id,
+            questionText: item.text,
+            options: item.options.map((option) => option.text)
+          })
+        }
+      />
+    );
   return (
-    <div className="poll-panel poll-composer">
-      <div className="poll-panel-header">
-        <span className="poll-panel-title">Запустить проверку</span>
-        <IconButton className="poll-icon-button" onClick={onCancel} label="Закрыть редактор опроса">
-          <X size={16} />
-        </IconButton>
-      </div>
-      <Tabs defaultValue="bank">
-        <TabsList className="poll-source-tabs h-auto min-h-[52px]">
-          <TabsTrigger value="bank">Из банка</TabsTrigger>
-          <TabsTrigger value="quick">Быстрый вопрос</TabsTrigger>
-        </TabsList>
-        <TabsContent value="bank" className="poll-source-content">
-          <label className="poll-search">
-            <Search size={15} aria-hidden="true" />
-            <span className="sr-only">Поиск по банку вопросов</span>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Найти вопрос"
-            />
-          </label>
-          {questionsQuery.isLoading && <p className="muted poll-message">Загрузка вопросов…</p>}
-          {questionsQuery.isError && (
-            <div className="poll-message form-error" role="alert">
-              <span>{userErrorMessage(questionsQuery.error, "Не удалось загрузить банк.")}</span>
-              <Button type="button" variant="outline" onClick={() => questionsQuery.refetch()}>
-                Повторить
-              </Button>
-            </div>
-          )}
-          {!questionsQuery.isLoading && !questionsQuery.isError && (
-            <div className="poll-bank-list">
-              {eligibleQuestions.map((item) => {
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="poll-bank-question"
-                    disabled={pending}
-                    onClick={() =>
-                      onStart({
-                        questionId: item.id,
-                        questionText: item.text,
-                        options: item.options.map((option) => option.text)
-                      })
-                    }
-                  >
-                    <span>{item.text}</span>
-                    <small>
-                      {item.questionType === "SHORT_ANSWER"
-                        ? "Свободный текст"
-                        : `${item.options.length} ${pluralizeRu(item.options.length, "вариант", "варианта", "вариантов")}`}
-                    </small>
-                  </button>
-                );
-              })}
-              {eligibleQuestions.length === 0 && !search && (
-                <div className="poll-message poll-bank-empty">
-                  <p className="muted">В банке нет вопросов, доступных для запуска в занятии.</p>
-                  <LinkButton
-                    variant="outline"
-                    to={`/courses/${courseId}/questions`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <Plus size={14} aria-hidden="true" /> Создать в банке
-                  </LinkButton>
-                </div>
-              )}
-              {eligibleQuestions.length === 0 && search && (
-                <p className="muted poll-message">По этому запросу вопросов нет.</p>
-              )}
-            </div>
-          )}
-        </TabsContent>
-        <TabsContent value="quick" className="poll-source-content">
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !pending) onCancel();
+      }}
+    >
+      <DialogContent container={container} className="quick-question-dialog">
+        <DialogHeader>
+          <DialogTitle>Быстрый вопрос</DialogTitle>
+          <DialogDescription>Создайте проверку для текущего занятия.</DialogDescription>
+        </DialogHeader>
+        <Button variant="outline" disabled={pending} onClick={() => setQuick(false)}>
+          Выбрать из банка
+        </Button>
+        <div className="poll-composer" aria-busy={pending}>
           <textarea
             className="poll-question-input"
+            aria-label="Текст вопроса"
+            disabled={pending}
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             placeholder="Текст вопроса"
@@ -134,6 +108,8 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
               <div key={index} className="poll-option-row">
                 <input
                   className="poll-option-input"
+                  aria-label={`Вариант ${index + 1}`}
+                  disabled={pending}
                   value={option}
                   onChange={(event) => {
                     const next = [...options];
@@ -176,8 +152,14 @@ export function PollComposer({ courseId, pending, onCancel, onStart }: PollCompo
             <Check size={16} />
             Запустить
           </Button>
-        </TabsContent>
-      </Tabs>
-    </div>
+
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

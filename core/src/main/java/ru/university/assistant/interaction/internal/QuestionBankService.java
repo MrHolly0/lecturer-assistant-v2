@@ -23,8 +23,10 @@ public class QuestionBankService {
     @Transactional
     public QuestionBankEntry create(UUID courseId, UUID createdBy, CreateQuestionRequest request) {
         List<String> tags = request.tags() == null ? List.of() : request.tags();
-        return questions.create(UuidV7.generate(), courseId, createdBy,
+        QuestionBankEntry created = questions.create(UuidV7.generate(), courseId, createdBy,
                 request.text(), request.questionType(), options(request.questionType(), request.options()), tags);
+        saveLinks(courseId, created.id(), request.lectureIds());
+        return get(courseId, created.id());
     }
 
     // D-10: вопрос обязан принадлежать курсу из пути, иначе чужой преподаватель мог прочитать
@@ -42,12 +44,49 @@ public class QuestionBankService {
     @Transactional
     public QuestionBankEntry update(UUID courseId, UUID id, CreateQuestionRequest request) {
         List<String> tags = request.tags() == null ? List.of() : request.tags();
+        lock(courseId, id);
         QuestionBankEntry saved = get(courseId, id);
         if (saved.questionType() != request.questionType()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Question type cannot be changed");
         }
-        return questions.update(id, courseId, request.text(), options(saved.questionType(), request.options()), tags)
+        questions.update(id, courseId, request.text(), options(saved.questionType(), request.options()), tags)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found"));
+        saveLinks(courseId, id, request.lectureIds());
+        return get(courseId, id);
+    }
+
+    @Transactional
+    public QuestionBankEntry link(UUID courseId, UUID id, UUID lectureId) {
+        lock(courseId, id);
+        requireLecture(courseId, lectureId);
+        questions.link(courseId, id, lectureId);
+        return get(courseId, id);
+    }
+
+    @Transactional
+    public void unlink(UUID courseId, UUID id, UUID lectureId) {
+        lock(courseId, id);
+        requireLecture(courseId, lectureId);
+        questions.unlink(courseId, id, lectureId);
+    }
+
+    private void lock(UUID courseId, UUID id) {
+        if (!questions.lock(courseId, id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found");
+        }
+    }
+
+    private void requireLecture(UUID courseId, UUID lectureId) {
+        if (!questions.lectureExists(courseId, lectureId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Lecture not found");
+        }
+    }
+
+    private void saveLinks(UUID courseId, UUID id, List<UUID> lectureIds) {
+        // Older clients omit this property; editing text must preserve existing links.
+        if (lectureIds == null) return;
+        lectureIds.forEach(lectureId -> requireLecture(courseId, lectureId));
+        questions.replaceLinks(courseId, id, lectureIds);
     }
 
     private List<QuestionOption> options(QuestionType type, List<QuestionOption> options) {

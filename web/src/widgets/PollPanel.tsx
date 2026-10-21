@@ -32,6 +32,7 @@ interface Props {
   disabled?: boolean;
   commandsBlocked?: boolean;
   background?: boolean;
+  container?: HTMLElement;
 }
 
 type View = "idle" | "create";
@@ -41,7 +42,8 @@ export function PollPanel({
   sessionId,
   disabled = false,
   commandsBlocked = false,
-  background = false
+  background = false,
+  container
 }: Props) {
   const qc = useQueryClient();
   const [view, setView] = useState<View>("idle");
@@ -138,6 +140,13 @@ export function PollPanel({
       <>
         <PollComposer
           courseId={courseId}
+          sessionId={sessionId}
+          container={container}
+          error={
+            startMut.isError
+              ? userErrorMessage(startMut.error, "Не удалось запустить вопрос.")
+              : undefined
+          }
           pending={startMut.isPending}
           onCancel={() => setView("idle")}
           onStart={(draft) => {

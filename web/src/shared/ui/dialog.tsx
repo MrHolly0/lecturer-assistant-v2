@@ -40,15 +40,18 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 function DialogContent({
   className,
+  container,
   children,
   onOpenAutoFocus,
   onCloseAutoFocus,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  container?: React.ComponentProps<typeof DialogPrimitive.Portal>["container"];
+}) {
   // Controlled dialogs may open without a Radix Trigger. Let Radix focus the first field.
   const returnFocus = React.useRef<HTMLElement | null>(null);
   return (
-    <DialogPortal data-slot="dialog-portal">
+    <DialogPortal data-slot="dialog-portal" container={container}>
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
@@ -57,8 +60,9 @@ function DialogContent({
           className
         )}
         onOpenAutoFocus={(event) => {
+          const owner = container?.ownerDocument ?? document;
           returnFocus.current =
-            document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            owner.activeElement?.nodeType === 1 ? (owner.activeElement as HTMLElement) : null;
           onOpenAutoFocus?.(event);
         }}
         onCloseAutoFocus={(event) => {

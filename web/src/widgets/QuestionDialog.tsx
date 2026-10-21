@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ChevronDown, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -25,11 +25,13 @@ import { Input } from "../shared/ui/input";
 import { Label } from "../shared/ui/label";
 import { QUESTION_TYPES } from "../shared/lib/questionTypes";
 import { questionAvailability } from "../shared/lib/questionAvailability";
+import { listLectures } from "../app/api/content-api";
 import { RadioGroup, RadioGroupItem } from "../shared/ui/radio-group";
 
 interface QuestionDialogProps {
   courseId: string;
   open: boolean;
+  defaultLectureId?: string;
   initial?: QuestionBankEntry;
   onClose: () => void;
   onSaved: () => void;
@@ -59,7 +61,14 @@ function optionDrafts(initial?: QuestionBankEntry): Record<QuestionType, Questio
   return drafts;
 }
 
-export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: QuestionDialogProps) {
+export function QuestionDialog({
+  courseId,
+  open,
+  initial,
+  defaultLectureId,
+  onClose,
+  onSaved
+}: QuestionDialogProps) {
   const id = useId();
   const submitting = useRef(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -72,6 +81,15 @@ export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: Qu
   function setOptions(update: (items: QuestionOption[]) => QuestionOption[]) {
     setDrafts((current) => ({ ...current, [type]: update(current[type]) }));
   }
+  const [lectureIds, setLectureIds] = useState<string[]>(
+    initial?.lectureIds ?? (defaultLectureId ? [defaultLectureId] : [])
+  );
+  const [lectureSearch, setLectureSearch] = useState("");
+  const lecturesQuery = useQuery({
+    queryKey: ["lectures", courseId],
+    queryFn: () => listLectures(courseId),
+    enabled: open
+  });
   const [tagsText, setTagsText] = useState(initial?.tags.join(", ") ?? "");
   useEffect(() => {
     if (!open) return;
@@ -80,7 +98,9 @@ export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: Qu
     setDrafts(optionDrafts(initial));
     setTagsText(initial?.tags.join(", ") ?? "");
     setPreviewOpen(false);
-  }, [open, initial, courseId]);
+    setLectureIds(initial?.lectureIds ?? (defaultLectureId ? [defaultLectureId] : []));
+    setLectureSearch("");
+  }, [open, initial, courseId, defaultLectureId]);
 
   const saveMut = useMutation({
     mutationFn: () => {
@@ -93,6 +113,7 @@ export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: Qu
               text: option.text.trim(),
               correct: option.correct
             })),
+        lectureIds,
         tags: [
           ...new Set(
             tagsText
@@ -302,6 +323,64 @@ export function QuestionDialog({ courseId, open, initial, onClose, onSaved }: Qu
                 )}
               </div>
             )}
+            <fieldset className="question-lecture-fields" disabled={saveMut.isPending}>
+              <legend>Лекции</legend>
+              <p className="muted qbank-hint">
+                Вопрос можно использовать в нескольких лекциях. Без выбора он останется в разделе
+                «Без привязки».
+              </p>
+              {lecturesQuery.isLoading && <p role="status">Загрузка лекций…</p>}
+              {lecturesQuery.isError && (
+                <div role="alert">
+                  <p>Не удалось загрузить лекции.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void lecturesQuery.refetch()}
+                  >
+                    Повторить
+                  </Button>
+                </div>
+              )}
+              {(lecturesQuery.data?.length ?? 0) > 5 && (
+                <Input
+                  aria-label="Найти лекцию для привязки"
+                  value={lectureSearch}
+                  onChange={(e) => setLectureSearch(e.target.value)}
+                  placeholder="Найти лекцию"
+                />
+              )}
+              <div className="question-lecture-fields__list">
+                {(lecturesQuery.data ?? [])
+                  .filter((l) =>
+                    l.title.toLocaleLowerCase("ru").includes(lectureSearch.toLocaleLowerCase("ru"))
+                  )
+                  .map((l) => (
+                    <label key={l.id}>
+                      <Checkbox
+                        checked={lectureIds.includes(l.id)}
+                        onCheckedChange={(checked) =>
+                          setLectureIds((ids) =>
+                            checked ? [...ids, l.id] : ids.filter((id) => id !== l.id)
+                          )
+                        }
+                      />
+                      <span>
+                        {l.title}
+                        {l.archived ? " (в архиве)" : ""}
+                      </span>
+                    </label>
+                  ))}
+              </div>
+              {lecturesQuery.data?.length === 0 && (
+                <p className="muted">В курсе пока нет лекций. Вопрос можно привязать позже.</p>
+              )}
+              {initial && lectureIds.length > 1 && (
+                <p className="muted qbank-hint">
+                  Изменения текста и ответов будут видны во всех выбранных лекциях.
+                </p>
+              )}
+            </fieldset>
             <div className="qbank-field">
               <Label htmlFor={`${id}-tags`}>
                 Теги <span className="muted">через запятую</span>

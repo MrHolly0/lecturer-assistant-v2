@@ -68,6 +68,27 @@ class QuestionBankController {
         return service.update(courseId, questionId, request);
     }
 
+    @PutMapping("/{questionId}/lectures/{lectureId}")
+    public QuestionBankEntry link(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID questionId,
+            @PathVariable UUID lectureId) {
+        courseAccess.requireManage(user, courseId);
+        return service.link(courseId, questionId, lectureId);
+    }
+
+    @DeleteMapping("/{questionId}/lectures/{lectureId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unlink(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID questionId,
+            @PathVariable UUID lectureId) {
+        courseAccess.requireManage(user, courseId);
+        service.unlink(courseId, questionId, lectureId);
+    }
+
     @DeleteMapping("/{questionId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void archive(

@@ -127,6 +127,27 @@ export async function updateQuestion(
   return res.json() as Promise<QuestionBankEntry>;
 }
 
+export async function linkQuestionLecture(
+  courseId: string,
+  questionId: string,
+  lectureId: string
+): Promise<QuestionBankEntry> {
+  const res = await apiFetch(`/courses/${courseId}/questions/${questionId}/lectures/${lectureId}`, {
+    method: "PUT"
+  });
+  return res.json() as Promise<QuestionBankEntry>;
+}
+
+export async function unlinkQuestionLecture(
+  courseId: string,
+  questionId: string,
+  lectureId: string
+): Promise<void> {
+  await apiFetch(`/courses/${courseId}/questions/${questionId}/lectures/${lectureId}`, {
+    method: "DELETE"
+  });
+}
+
 export async function archiveQuestion(courseId: string, questionId: string): Promise<void> {
   await apiFetch(`/courses/${courseId}/questions/${questionId}`, { method: "DELETE" });
 }

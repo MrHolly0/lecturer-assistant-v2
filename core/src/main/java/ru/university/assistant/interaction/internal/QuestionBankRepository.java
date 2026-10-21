@@ -36,7 +36,7 @@ class QuestionBankRepository {
                             (id, course_id, text, question_type, options, tags, created_by)
                         values (:id, :courseId, :text, :type, :options::jsonb, :tags, :createdBy)
                         returning id, course_id, text, question_type, options, tags,
-                                  archived, created_at
+                                  archived, created_at, ARRAY[]::uuid[] as lecture_ids
                         """)
                 .param("id", id)
                 .param("courseId", courseId)
@@ -53,8 +53,10 @@ class QuestionBankRepository {
     // с правильным ответом, зная только его id.
     Optional<QuestionBankEntry> findByIdAndCourse(UUID id, UUID courseId) {
         return jdbc.sql("""
-                        select id, course_id, text, question_type, options, tags, archived, created_at
-                        from interaction.question_bank
+                        select id, course_id, text, question_type, options, tags, archived, created_at,
+                            array(select lecture_id from interaction.question_lectures ql
+                                where ql.question_id = qb.id order by lecture_id) as lecture_ids
+                        from interaction.question_bank qb
                         where id = :id and course_id = :courseId and not archived
                         """)
                 .param("id", id)
@@ -66,14 +68,18 @@ class QuestionBankRepository {
     List<QuestionBankEntry> findByCourse(UUID courseId, String tag) {
         String sql = tag == null
                 ? """
-                select id, course_id, text, question_type, options, tags, archived, created_at
-                from interaction.question_bank
+                select id, course_id, text, question_type, options, tags, archived, created_at,
+                            array(select lecture_id from interaction.question_lectures ql
+                                where ql.question_id = qb.id order by lecture_id) as lecture_ids
+                from interaction.question_bank qb
                 where course_id = :courseId and not archived
                 order by created_at desc
                 """
                 : """
-                select id, course_id, text, question_type, options, tags, archived, created_at
-                from interaction.question_bank
+                select id, course_id, text, question_type, options, tags, archived, created_at,
+                            array(select lecture_id from interaction.question_lectures ql
+                                where ql.question_id = qb.id order by lecture_id) as lecture_ids
+                from interaction.question_bank qb
                 where course_id = :courseId and not archived and :tag = any(tags)
                 order by created_at desc
                 """;
@@ -93,7 +99,7 @@ class QuestionBankRepository {
                         set text = :text, options = :options::jsonb, tags = :tags
                         where id = :id and course_id = :courseId and not archived
                         returning id, course_id, text, question_type, options, tags,
-                                  archived, created_at
+                                  archived, created_at, ARRAY[]::uuid[] as lecture_ids
                         """)
                 .param("id", id)
                 .param("courseId", courseId)
@@ -115,6 +121,38 @@ class QuestionBankRepository {
                 .update() > 0;
     }
 
+    boolean lock(UUID courseId, UUID id) {
+        return jdbc.sql("""
+                select id from interaction.question_bank
+                where course_id = :course and id = :id and not archived for update
+                """).param("course", courseId).param("id", id).query(UUID.class).optional().isPresent();
+    }
+
+    boolean lectureExists(UUID courseId, UUID lectureId) {
+        return jdbc.sql("select exists(select 1 from live.lectures where id = :id and course_id = :course)")
+                .param("id", lectureId).param("course", courseId).query(Boolean.class).single();
+    }
+
+    void link(UUID courseId, UUID questionId, UUID lectureId) {
+        jdbc.sql("""
+                insert into interaction.question_lectures (course_id, question_id, lecture_id)
+                values (:course, :question, :lecture) on conflict do nothing
+                """).param("course", courseId).param("question", questionId).param("lecture", lectureId).update();
+    }
+
+    void unlink(UUID courseId, UUID questionId, UUID lectureId) {
+        jdbc.sql("""
+                delete from interaction.question_lectures
+                where course_id = :course and question_id = :question and lecture_id = :lecture
+                """).param("course", courseId).param("question", questionId).param("lecture", lectureId).update();
+    }
+
+    void replaceLinks(UUID courseId, UUID questionId, List<UUID> lectureIds) {
+        jdbc.sql("delete from interaction.question_lectures where course_id = :course and question_id = :question")
+                .param("course", courseId).param("question", questionId).update();
+        lectureIds.stream().distinct().forEach(id -> link(courseId, questionId, id));
+    }
+
     private QuestionBankEntry map(ResultSet rs, int row) throws SQLException {
         List<QuestionOption> options = fromJson(rs.getString("options"));
         Array tagsArray = rs.getArray("tags");
@@ -129,7 +167,8 @@ class QuestionBankRepository {
                 options,
                 tags,
                 rs.getBoolean("archived"),
-                rs.getTimestamp("created_at").toInstant());
+                rs.getTimestamp("created_at").toInstant(),
+                Arrays.asList((UUID[]) rs.getArray("lecture_ids").getArray()));
     }
 
     private String toJson(Object value) {

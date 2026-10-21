@@ -1,3 +1,5 @@
+import "../styles/question-lectures.css";
+import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Archive, Plus, Presentation, Play, RotateCcw, Trash2 } from "lucide-react";
@@ -345,6 +347,14 @@ function LectureRows({
           <li key={lecture.id} className="lecture-row">
             <div className="lecture-row__copy">
               <strong>{lecture.title}</strong>
+              {canManage && (
+                <Link
+                  className="lecture-question-link"
+                  to={`/courses/${lecture.courseId}/questions?lecture=${lecture.id}`}
+                >
+                  Вопросы к лекции
+                </Link>
+              )}
             </div>
             <div className="lecture-row__deck">
               <button
