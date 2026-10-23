@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, beforeEach, test } from "node:test";
 import { clearStoredAuth, getStoredAuth, setStoredAuth } from "../auth.ts";
-import { loginWithMax } from "./auth-api.ts";
+import { loginWithMax, previewMaxLink } from "./auth-api.ts";
 import { invalidatePendingAuthRefresh, RefreshSupersededError } from "./refresh.ts";
 
 const originalFetch = globalThis.fetch;
@@ -79,4 +79,30 @@ test("an outdated confirmation cannot clear a newly selected account", async () 
   complete(response(200, { id: "old-linked-account", role: "LECTURER" }));
   await assert.rejects(pending, RefreshSupersededError);
   assert.deepEqual(getStoredAuth(), { accessToken: "new-account-access" });
+});
+
+test("MAX preview preserves the rejected launch reason without expiring an existing session", async () => {
+  setStoredAuth({ accessToken: "warm-access" });
+  const calls = [];
+  globalThis.fetch = async url => {
+    calls.push(String(url));
+    return response(401, { message: "Invalid MAX initData" });
+  };
+  await assert.rejects(previewMaxLink({ initData: "old-launch", email: "fixture@example.test", password: "fixture-secret" }), error => {
+    assert.equal(error.status, 401);
+    assert.equal(error.details.message, "Invalid MAX initData");
+    assert.match(error.message, /Данные входа MAX/);
+    return true;
+  });
+  assert.deepEqual(getStoredAuth(), { accessToken: "warm-access" });
+  assert.deepEqual(calls, ["/api/v1/auth/max/link-preview"]);
+});
+
+test("MAX preview preserves a credential rejection separately from launch validation", async () => {
+  globalThis.fetch = async () => response(401, { message: "Invalid credentials" });
+  await assert.rejects(previewMaxLink({ initData: "fresh-launch", email: "fixture@example.test", password: "incorrect" }), error => {
+    assert.equal(error.status, 401);
+    assert.equal(error.details.message, "Invalid credentials");
+    return true;
+  });
 });

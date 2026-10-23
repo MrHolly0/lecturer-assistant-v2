@@ -35,10 +35,15 @@ export function MaxCredentialsScreen({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  async function submit(event: FormEvent) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
     setError(null);
+    // Password managers can fill the native fields without a React change event.
+    const form = new FormData(event.currentTarget);
+    const submittedEmail = String(form.get("email") ?? "").trim();
+    const submittedPassword = String(form.get("password") ?? "");
+    const submittedInvitationCode = String(form.get("invitationCode") ?? "").trim();
     const displayName = formatPersonName(name);
     if (
       mode === "register" &&
@@ -47,10 +52,13 @@ export function MaxCredentialsScreen({
       setError("Укажите фамилию и имя. ФИО должно содержать не больше 200 символов.");
       return;
     }
+    setEmail(submittedEmail);
+    setPassword(submittedPassword);
     setPending(true);
     try {
-      if (mode === "login") await onLogin(email.trim(), password);
-      else await onRegister(displayName, email.trim(), password, invitationCode.trim());
+      if (mode === "login") await onLogin(submittedEmail, submittedPassword);
+      else
+        await onRegister(displayName, submittedEmail, submittedPassword, submittedInvitationCode);
     } catch (cause) {
       setError(credentialsErrorMessage(cause, mode));
     } finally {
@@ -106,7 +114,7 @@ export function MaxCredentialsScreen({
               spellCheck={false}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
+              autoComplete={mode === "login" ? "username" : "email"}
               required
             />
           </label>
@@ -160,7 +168,12 @@ export function MaxCredentialsScreen({
 
 function credentialsErrorMessage(error: unknown, mode: "login" | "register") {
   if (error instanceof ApiError) {
-    if (mode === "login" && error.status === 401) return "Неверный email или пароль.";
+    if (mode === "login" && error.status === 401) {
+      const reason = error.details?.message ?? error.details?.detail;
+      if (reason === "Invalid MAX initData") return error.message;
+      if (reason === "Invalid credentials") return "Неверный email или пароль.";
+      return "Не удалось подтвердить вход. Закройте мини-приложение MAX и откройте его заново.";
+    }
     if (mode === "register" && error.status === 400) {
       return "Приглашение недействительно или истекло. Попросите администратора создать новое.";
     }

@@ -13,6 +13,10 @@ export class ApiError extends Error {
 
 const KNOWN_MESSAGES: Array<[RegExp, string]> = [
   [
+    /^invalid max initdata$/i,
+    "Данные входа MAX устарели или не прошли проверку. Закройте мини-приложение и откройте его заново."
+  ],
+  [
     /session changed in another window/i,
     "Занятие изменилось в другом окне. Обновите данные перед повтором действия."
   ],

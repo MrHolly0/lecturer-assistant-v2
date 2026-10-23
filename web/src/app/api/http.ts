@@ -1,7 +1,7 @@
 import { expireStoredAuth, getStoredAuth } from "../auth";
 import { invalidatePendingAuthRefresh } from "./refresh";
 import { refreshAuthSession } from "./refresh";
-import { apiErrorFromResponse, ApiError } from "./errors";
+import { apiErrorFromResponse } from "./errors";
 
 export { ApiError } from "./errors";
 
@@ -57,7 +57,7 @@ export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise
       invalidatePendingAuthRefresh();
       expireStoredAuth();
     }
-    throw new ApiError(401, "Сессия истекла");
+    throw await apiErrorFromResponse(response);
   }
   await assertSuccessful(response);
   return response;
