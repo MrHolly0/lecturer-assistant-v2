@@ -48,7 +48,7 @@ test("popup opening happens in the initiating call and a closed lifecycle can op
     const opening = api.openLectureRemoteWindow({ windowKey: "session" });
     assert.equal(calls.length, 1, "window.open must precede any async continuation");
     assert.equal(await opening, target);
-    assert.match(calls[0][2], /popup=yes,resizable=yes/);
+    assert.match(calls[0][2], /popup=yes,resizable=no/);
     assert.equal(target.document.title, "Lecturer Assistant · Пульт");
     assert.equal(api.lectureRemoteWindowMode(target), "popup");
     assert.equal(await api.openLectureRemoteWindow({ windowKey: "session" }), target);

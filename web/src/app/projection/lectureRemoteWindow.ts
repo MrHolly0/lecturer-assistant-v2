@@ -131,7 +131,9 @@ export function openLectureRemoteWindow(options: LectureRemoteWindowOptions = {}
     const child = window.open(
       "about:blank",
       `lecturer-private-remote-${crypto.randomUUID()}`,
-      `popup=yes,resizable=yes,scrollbars=yes,width=${size.width},height=${size.height}`
+      // WebKit honors this utility-window hint, including its system zoom button.
+      // Explicit collapse/expand can still resize it through resizeTo.
+      `popup=yes,resizable=no,scrollbars=yes,width=${size.width},height=${size.height}`
     );
     if (!child) return Promise.reject(new Error(popupFailure));
     return Promise.resolve(register(child, "popup"));
