@@ -25,6 +25,7 @@ import { useSessionTimers } from "../app/live/useSessionTimers";
 import { useLiveSession } from "../app/live/useLiveSession";
 import { closePublicProjection } from "../app/projection/browserProjection";
 import { screenShare } from "../app/sharing/screenShare";
+import { ApiError, userErrorMessage } from "../app/api/errors";
 
 export function PresenterPage(props: { courseId: string; sessionId: string }) {
   return (
@@ -43,6 +44,10 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
   const goRef = useRef<(idx: number) => void>(() => undefined);
   const [optimisticAnnotations, setOptimisticAnnotations] = useState<LiveAnnotations | null>(null);
   const [annotationSaveError, setAnnotationSaveError] = useState(false);
+  const [annotationConflict, setAnnotationConflict] = useState(false);
+  const annotationFailure = useRef<"conflict" | "network" | null>(null);
+  const annotationBaseVersion = useRef<number | undefined>(undefined);
+  const changedAnnotationSlides = useRef(new Set<string>());
   const annotationQueue = useRef<LiveAnnotations | null>(null);
   const savingAnnotations = useRef(false);
   const mounted = useRef(true);
@@ -107,11 +112,13 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
   }, [session?.status]);
 
   const slideMut = useMutation({
-    mutationFn: (idx: number) => changeLiveSessionSlide(courseId, sessionId, idx)
+    mutationFn: (idx: number) => changeLiveSessionSlide(courseId, sessionId, idx, session?.version),
+    onError: () => undefined
   });
   const annotationMut = useMutation({
-    mutationFn: (annotations: LiveAnnotations) =>
-      saveLiveSessionAnnotations(courseId, sessionId, annotations)
+    mutationFn: (request: { annotations: LiveAnnotations; expectedVersion?: number }) =>
+      saveLiveSessionAnnotations(courseId, sessionId, request.annotations, request.expectedVersion),
+    onError: () => undefined
   });
   const pauseMut = useMutation({ mutationFn: () => pauseLiveSession(courseId, sessionId) });
   const resumeMut = useMutation({ mutationFn: () => resumeLiveSession(courseId, sessionId) });
@@ -122,7 +129,12 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
   function persistAnnotations(annotations: LiveAnnotations) {
     if (paused || commandsBlocked) return;
     setOptimisticAnnotations(annotations);
+    if (session) changedAnnotationSlides.current.add(String(session.currentSlideIdx));
+    // Keep editing a failed local draft without automatically overwriting another
+    // window or retrying a failed save on every new pen stroke.
+    if (annotationFailure.current) return;
     setAnnotationSaveError(false);
+    annotationBaseVersion.current ??= session?.version;
     annotationQueue.current = annotations;
     if (savingAnnotations.current) return;
     savingAnnotations.current = true;
@@ -133,22 +145,60 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
           const next = annotationQueue.current;
           annotationQueue.current = null;
           try {
-            const saved = await annotationMut.mutateAsync(next);
+            const saved = await annotationMut.mutateAsync({
+              annotations: next,
+              expectedVersion: annotationBaseVersion.current
+            });
+            annotationBaseVersion.current = saved.version;
             if (mounted.current) setSession(saved);
             failed = false;
-          } catch {
+          } catch (error) {
             failed = true;
+            const conflict = error instanceof ApiError && error.status === 409;
+            annotationFailure.current = conflict ? "conflict" : "network";
+            annotationQueue.current = null;
+            if (mounted.current) setAnnotationConflict(conflict);
+            break;
           }
         }
       } finally {
         savingAnnotations.current = false;
         if (mounted.current) {
           setAnnotationSaveError(failed);
-          if (failed) toast.error("Рисунок не сохранён. Повторите сохранение в панели рисования.");
-          else setOptimisticAnnotations(null);
+          if (failed)
+            toast.error(
+              annotationFailure.current === "conflict"
+                ? "Рисунок изменён в другом окне. Ваш вариант остался в этом окне."
+                : "Рисунок не сохранён. Повторите сохранение в панели рисования."
+            );
+          else {
+            setOptimisticAnnotations(null);
+            annotationBaseVersion.current = undefined;
+            changedAnnotationSlides.current.clear();
+          }
         }
       }
     })();
+  }
+
+  async function retryAnnotations() {
+    if (!optimisticAnnotations || savingAnnotations.current) return;
+    let draft = optimisticAnnotations;
+    if (annotationFailure.current === "conflict") {
+      // This is an explicit choice to save this window's changed slides. Preserve
+      // all other slides from the refreshed authoritative document.
+      if (!(await live.refresh())) return;
+      const latest = live.getSnapshot();
+      if (!latest) return;
+      draft = { ...(latest.annotations as LiveAnnotations) };
+      for (const slideKey of changedAnnotationSlides.current) {
+        draft[slideKey] = optimisticAnnotations[slideKey] ?? [];
+      }
+      annotationBaseVersion.current = latest.version;
+    }
+    annotationFailure.current = null;
+    setAnnotationConflict(false);
+    persistAnnotations(draft);
   }
 
   function go(idx: number) {
@@ -169,9 +219,10 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
         setSlideErrorTarget(null);
         setSession(saved);
       },
-      onError: () => {
+      onError: (error) => {
         setSlideErrorTarget(idx);
-        toast.error("Не удалось переключить слайд.");
+        if (error instanceof ApiError && error.status === 409) void live.refresh();
+        toast.error(userErrorMessage(error, "Не удалось переключить слайд."));
       },
       onSettled: () => {
         slideInFlightRef.current = false;
@@ -286,8 +337,14 @@ function PresenterWorkspace({ courseId, sessionId }: { courseId: string; session
               annotations={optimisticAnnotations ?? (session.annotations as LiveAnnotations)}
               onChange={persistAnnotations}
               saveError={annotationSaveError}
+              saveErrorMessage={
+                annotationConflict
+                  ? "Рисунок изменён в другом окне. Ваш вариант остался здесь."
+                  : undefined
+              }
+              retryLabel={annotationConflict ? "Сохранить мой вариант" : undefined}
               saving={annotationMut.isPending}
-              onRetry={() => optimisticAnnotations && persistAnnotations(optimisticAnnotations)}
+              onRetry={() => void retryAnnotations()}
             />
             {!drawing && (
               <div className="presenter-stage-navigation" aria-label="Переключение слайдов">

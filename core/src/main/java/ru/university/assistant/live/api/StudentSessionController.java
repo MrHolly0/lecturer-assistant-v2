@@ -142,8 +142,9 @@ class StudentSessionController {
     public StudentQuestion ask(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
-            @Valid @RequestBody StudentQuestionRequest request) {
-        return studentSessions.ask(joinCode, request, user);
+            @Valid @RequestBody StudentQuestionRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+        return studentSessions.ask(joinCode, request, user, key);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/polls/{pollId}/respond")

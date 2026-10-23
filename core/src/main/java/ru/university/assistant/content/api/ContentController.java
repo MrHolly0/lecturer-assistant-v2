@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import ru.university.assistant.shared.api.CommandIdempotency;
+import ru.university.assistant.org.api.CourseAccessApi;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -32,10 +35,15 @@ import ru.university.assistant.iam.api.AuthenticatedUser;
 public class ContentController {
     private final ContentService contentService;
     private final DeckEditingService deckEditingService;
+    private final CommandIdempotency commands;
+    private final CourseAccessApi access;
 
-    ContentController(ContentService contentService, DeckEditingService deckEditingService) {
+    ContentController(ContentService contentService, DeckEditingService deckEditingService,
+            CommandIdempotency commands, CourseAccessApi access) {
         this.contentService = contentService;
         this.deckEditingService = deckEditingService;
+        this.commands = commands;
+        this.access = access;
     }
 
     @GetMapping("/decks")
@@ -49,8 +57,20 @@ public class ContentController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
             @RequestPart(value = "title", required = false) String title,
-            @RequestPart("file") MultipartFile file) {
-        return contentService.startDeckImport(user, courseId, title, file);
+            @RequestPart("file") MultipartFile file,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+        access.requireManage(user, courseId);
+        String fileHash;
+        try {
+            fileHash = key == null ? "" : commands.hashStream(file.getInputStream());
+        } catch (java.io.IOException exception) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Cannot read uploaded file", exception);
+        }
+        String hash = commands.hash(java.util.Arrays.asList(title, file.getOriginalFilename(),
+                file.getContentType(), file.getSize(), fileHash));
+        return commands.execute(user.id(), "POST /courses/" + courseId + "/decks", key, hash,
+                ImportJob.class, () -> contentService.startDeckImport(user, courseId, title, file));
     }
 
     @GetMapping("/import-jobs/{jobId}")
@@ -66,8 +86,12 @@ public class ContentController {
     public ImportJob retryImportJob(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
-            @PathVariable UUID jobId) {
-        return contentService.retryDeckImport(user, courseId, jobId);
+            @PathVariable UUID jobId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+        access.requireManage(user, courseId);
+        return commands.execute(user.id(), "POST /courses/" + courseId + "/import-jobs/" + jobId + "/retry",
+                key, commands.hash(jobId), ImportJob.class,
+                () -> contentService.retryDeckImport(user, courseId, jobId));
     }
 
     @GetMapping("/decks/{deckId}")
@@ -167,8 +191,11 @@ public class ContentController {
     public Lecture createLecture(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
-            @Valid @RequestBody CreateLectureRequest request) {
-        return contentService.createLecture(user, courseId, request);
+            @Valid @RequestBody CreateLectureRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+        access.requireManage(user, courseId);
+        return commands.execute(user.id(), "POST /courses/" + courseId + "/lectures", key,
+                commands.hash(request), Lecture.class, () -> contentService.createLecture(user, courseId, request));
     }
 
     @GetMapping("/lectures/{lectureId}")

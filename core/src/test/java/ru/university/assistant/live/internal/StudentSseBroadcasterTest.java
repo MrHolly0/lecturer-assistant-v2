@@ -1,8 +1,14 @@
 package ru.university.assistant.live.internal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
@@ -23,6 +29,21 @@ import ru.university.assistant.qa.api.QuestionAnswerVisibility;
 import ru.university.assistant.qa.api.StudentQuestionAnswer;
 
 class StudentSseBroadcasterTest {
+    @Test
+    void oneViewerCannotConsumeUnboundedStreams() {
+        StudentSseBroadcaster broadcaster = new StudentSseBroadcaster(mock(StudentWebSessionService.class), 1);
+        UUID viewer = UUID.randomUUID();
+        try {
+            broadcaster.register("ABC234", viewer, new CountingEmitter());
+            broadcaster.register("ABC234", viewer, new CountingEmitter());
+            broadcaster.register("ABC234", viewer, new CountingEmitter());
+            var rejected = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> broadcaster.register("ABC234", viewer, new CountingEmitter()));
+            assertEquals(429, rejected.getStatusCode().value());
+            broadcaster.register("ABC234", UUID.randomUUID(), new CountingEmitter());
+        } finally { broadcaster.stop(); }
+    }
+
     @Test
     void slowLectureDoesNotHoldUpAnotherLecture() throws Exception {
         StudentWebSessionService sessions = mock(StudentWebSessionService.class);
@@ -173,7 +194,7 @@ class StudentSseBroadcasterTest {
         CountDownLatch releaseWrite = new CountDownLatch(1);
         CountDownLatch closed = new CountDownLatch(1);
         when(sessions.snapshotsForViewers("SLOW03", Set.of(viewer))).thenReturn(Map.of(viewer, snapshot(1)));
-        when(sessions.canReceive("SLOW03", viewer)).thenReturn(true);
+        when(sessions.answerRecipients("SLOW03", Set.of(viewer))).thenReturn(Set.of(viewer));
         CountingEmitter emitter = new CountingEmitter() {
             @Override
             public synchronized void send(SseEventBuilder builder) throws IOException {
@@ -237,7 +258,7 @@ class StudentSseBroadcasterTest {
             assertTrue(lockedEmitter.closeEntered.await(2, TimeUnit.SECONDS));
             revocation.get(1, TimeUnit.SECONDS);
 
-            when(sessions.canReceive("FAST04", activePerson)).thenReturn(true);
+            when(sessions.answerRecipients("FAST04", Set.of(activePerson))).thenReturn(Set.of(activePerson));
             StudentQuestionAnswer answer = new StudentQuestionAnswer(
                     UUID.randomUUID(), "Question", "Answer", QuestionAnswerVisibility.SESSION, Instant.now());
             broadcaster.publishAnswer(new StudentQuestionAnswerPublished("FAST04", UUID.randomUUID(), answer));
@@ -246,6 +267,74 @@ class StudentSseBroadcasterTest {
             lockedEmitter.releaseWriteLock.countDown();
             broadcaster.stop();
         }
+    }
+
+    @Test
+    void publicAnswerUsesOneBatchAudienceCheckAndDoesNotReachInactiveViewers() throws Exception {
+        StudentWebSessionService sessions = mock(StudentWebSessionService.class);
+        StudentSseBroadcaster broadcaster = new StudentSseBroadcaster(sessions, 2);
+        UUID active = UUID.randomUUID();
+        UUID kicked = UUID.randomUUID();
+        UUID left = UUID.randomUUID();
+        CountingEmitter activeEmitter = new CountingEmitter();
+        CountingEmitter kickedEmitter = new CountingEmitter();
+        CountingEmitter leftEmitter = new CountingEmitter();
+        when(sessions.answerRecipients("BATCH1", Set.of(active, kicked, left))).thenReturn(Set.of(active));
+        broadcaster.register("BATCH1", active, activeEmitter);
+        broadcaster.register("BATCH1", kicked, kickedEmitter);
+        broadcaster.register("BATCH1", left, leftEmitter);
+        try {
+            broadcaster.publishAnswer(new StudentQuestionAnswerPublished("BATCH1", active,
+                    new StudentQuestionAnswer(UUID.randomUUID(), "Question", "Answer",
+                            QuestionAnswerVisibility.SESSION, Instant.now())));
+            assertTrue(activeEmitter.awaitEvents(1, 2, TimeUnit.SECONDS));
+            assertEquals(0, kickedEmitter.events);
+            assertEquals(0, leftEmitter.events);
+            verify(sessions, times(1)).answerRecipients("BATCH1", Set.of(active, kicked, left));
+            verify(sessions, never()).canReceive(anyString(), any());
+        } finally { broadcaster.stop(); }
+    }
+
+    @Test
+    void privateAnswerRechecksPermissionAtSendTimeAndFailsClosedAfterQueuedRevocation() throws Exception {
+        StudentWebSessionService sessions = mock(StudentWebSessionService.class);
+        StudentSseBroadcaster broadcaster = new StudentSseBroadcaster(sessions, 1);
+        UUID viewer = UUID.randomUUID();
+        when(sessions.answerRecipients("PRIV01", Set.of(viewer))).thenReturn(Set.of(viewer));
+        when(sessions.canReceive("PRIV01", viewer)).thenReturn(false);
+        CountDownLatch closed = new CountDownLatch(1);
+        CountingEmitter checked = new CountingEmitter() {
+            @Override public void completeWithError(Throwable error) { closed.countDown(); }
+        };
+        broadcaster.register("PRIV01", viewer, checked);
+        try {
+            broadcaster.publishAnswer(new StudentQuestionAnswerPublished("PRIV01", viewer,
+                    new StudentQuestionAnswer(UUID.randomUUID(), "Question", "Private answer",
+                            QuestionAnswerVisibility.AUTHOR, Instant.now())));
+            assertTrue(closed.await(2, TimeUnit.SECONDS));
+            assertEquals(0, checked.events);
+        } finally { broadcaster.stop(); }
+    }
+
+    @Test
+    void participationRevocationClearsQueuedAnswersWithoutTakingEmitterWriteLock() throws Exception {
+        StudentWebSessionService sessions = mock(StudentWebSessionService.class);
+        StudentSseBroadcaster broadcaster = new StudentSseBroadcaster(sessions, 1);
+        UUID viewer = UUID.randomUUID();
+        LockedEmitter emitter = new LockedEmitter();
+        broadcaster.register("KICK01", viewer, emitter);
+        emitter.holdWriteLock();
+        try {
+            assertTrue(emitter.lockHeld.await(2, TimeUnit.SECONDS));
+            CompletableFuture<Void> revoke = CompletableFuture.runAsync(
+                    () -> broadcaster.closeRevokedParticipantStreams(new ParticipantAccessRevoked("KICK01", viewer)));
+            assertTrue(emitter.closeEntered.await(2, TimeUnit.SECONDS));
+            revoke.get(1, TimeUnit.SECONDS);
+            broadcaster.publishAnswer(new StudentQuestionAnswerPublished("KICK01", viewer,
+                    new StudentQuestionAnswer(UUID.randomUUID(), "Question", "Answer",
+                            QuestionAnswerVisibility.SESSION, Instant.now())));
+            verify(sessions, never()).answerRecipients(anyString(), org.mockito.ArgumentMatchers.anySet());
+        } finally { emitter.releaseWriteLock.countDown(); broadcaster.stop(); }
     }
 
     private StudentSessionSnapshot snapshot(int slideIdx) {

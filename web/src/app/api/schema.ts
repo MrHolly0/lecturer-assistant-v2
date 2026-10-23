@@ -3577,9 +3577,19 @@ export interface components {
       nameSubmittedAt?: string | null;
     };
     ChangeSlideRequest: {
+      /**
+       * Format: int64
+       * @description Optional observed session version. A conflicting change returns 409; an identical retry succeeds.
+       */
+      expectedVersion?: number;
       slideIdx: number;
     };
     SaveAnnotationsRequest: {
+      /**
+       * Format: int64
+       * @description Optional observed session version. A conflicting change returns 409; an identical retry succeeds.
+       */
+      expectedVersion?: number;
       annotations: {
         [key: string]: unknown;
       };
@@ -4057,6 +4067,8 @@ export interface components {
   };
   responses: never;
   parameters: {
+    /** @description One key per create intent. For 24 hours the authenticated actor (or resolved student participant), operation and key replay the original committed result without repeating writes or notifications. Reusing a key with different content returns 409. Current authorization is checked on every retry. Missing keys preserve compatibility and do not provide create deduplication. */
+    IdempotencyKey: string;
     CourseId: string;
     DeckId: string;
     GroupId: string;
@@ -5076,7 +5088,10 @@ export interface operations {
   createCourse: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description One key per create intent. For 24 hours the authenticated actor (or resolved student participant), operation and key replay the original committed result without repeating writes or notifications. Reusing a key with different content returns 409. Current authorization is checked on every retry. Missing keys preserve compatibility and do not provide create deduplication. */
+        "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+      };
       path?: never;
       cookie?: never;
     };
@@ -5094,6 +5109,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["Course"];
         };
+      };
+      /** @description Idempotency-Key was already used for a different request. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -5435,7 +5457,10 @@ export interface operations {
   createStudyGroup: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description One key per create intent. For 24 hours the authenticated actor (or resolved student participant), operation and key replay the original committed result without repeating writes or notifications. Reusing a key with different content returns 409. Current authorization is checked on every retry. Missing keys preserve compatibility and do not provide create deduplication. */
+        "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+      };
       path: {
         courseId: components["parameters"]["CourseId"];
       };
@@ -5455,6 +5480,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["StudyGroup"];
         };
+      };
+      /** @description Idempotency-Key was already used for a different request. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -5803,7 +5835,10 @@ export interface operations {
   importSlideDeck: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description One key per create intent. For 24 hours the authenticated actor (or resolved student participant), operation and key replay the original committed result without repeating writes or notifications. Reusing a key with different content returns 409. Current authorization is checked on every retry. Missing keys preserve compatibility and do not provide create deduplication. */
+        "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+      };
       path: {
         courseId: components["parameters"]["CourseId"];
       };
@@ -5827,6 +5862,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ImportJob"];
         };
+      };
+      /** @description Idempotency-Key was already used for a different request. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -5856,7 +5898,10 @@ export interface operations {
   retryImportJob: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description One key per create intent. For 24 hours the authenticated actor (or resolved student participant), operation and key replay the original committed result without repeating writes or notifications. Reusing a key with different content returns 409. Current authorization is checked on every retry. Missing keys preserve compatibility and do not provide create deduplication. */
+        "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+      };
       path: {
         courseId: components["parameters"]["CourseId"];
         jobId: components["parameters"]["JobId"];
@@ -5874,7 +5919,7 @@ export interface operations {
           "application/json": components["schemas"]["ImportJob"];
         };
       };
-      /** @description Job is not retryable or its source file is unavailable. */
+      /** @description Job is not retryable or its source file is unavailable. The key also conflicts if reused for a different request. */
       409: {
         headers: {
           [name: string]: unknown;
@@ -6166,7 +6211,10 @@ export interface operations {
   createLecture: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description One key per create intent. For 24 hours the authenticated actor (or resolved student participant), operation and key replay the original committed result without repeating writes or notifications. Reusing a key with different content returns 409. Current authorization is checked on every retry. Missing keys preserve compatibility and do not provide create deduplication. */
+        "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+      };
       path: {
         courseId: components["parameters"]["CourseId"];
       };
@@ -6186,6 +6234,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["Lecture"];
         };
+      };
+      /** @description Idempotency-Key was already used for a different request. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -6357,7 +6412,10 @@ export interface operations {
   startLiveSession: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description One key per create intent. For 24 hours the authenticated actor (or resolved student participant), operation and key replay the original committed result without repeating writes or notifications. Reusing a key with different content returns 409. Current authorization is checked on every retry. Missing keys preserve compatibility and do not provide create deduplication. */
+        "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+      };
       path: {
         courseId: components["parameters"]["CourseId"];
         lectureId: components["parameters"]["LectureId"];
@@ -6378,6 +6436,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["LiveSession"];
         };
+      };
+      /** @description Idempotency-Key was already used for a different request. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -7162,7 +7227,10 @@ export interface operations {
   askStudentQuestion: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description One key per create intent. For 24 hours the authenticated actor (or resolved student participant), operation and key replay the original committed result without repeating writes or notifications. Reusing a key with different content returns 409. Current authorization is checked on every retry. Missing keys preserve compatibility and do not provide create deduplication. */
+        "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+      };
       path: {
         joinCode: components["parameters"]["JoinCode"];
       };
@@ -7183,7 +7251,7 @@ export interface operations {
           "application/json": components["schemas"]["StudentQuestion"];
         };
       };
-      /** @description Session is paused or ended. */
+      /** @description Session is paused or ended. The key also conflicts if reused for a different request. */
       409: {
         headers: {
           [name: string]: unknown;
@@ -7242,7 +7310,10 @@ export interface operations {
   startPoll: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description One key per create intent. For 24 hours the authenticated actor (or resolved student participant), operation and key replay the original committed result without repeating writes or notifications. Reusing a key with different content returns 409. Current authorization is checked on every retry. Missing keys preserve compatibility and do not provide create deduplication. */
+        "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+      };
       path: {
         courseId: components["parameters"]["CourseId"];
         sessionId: components["parameters"]["SessionId"];
@@ -7271,7 +7342,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description A poll is already open, or the session is paused or ended. */
+      /** @description A poll is already open, or the session is paused or ended. The key also conflicts if reused for a different request. */
       409: {
         headers: {
           [name: string]: unknown;
@@ -7313,7 +7384,10 @@ export interface operations {
   startPollFromBank: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description One key per create intent. For 24 hours the authenticated actor (or resolved student participant), operation and key replay the original committed result without repeating writes or notifications. Reusing a key with different content returns 409. Current authorization is checked on every retry. Missing keys preserve compatibility and do not provide create deduplication. */
+        "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+      };
       path: {
         courseId: components["parameters"]["CourseId"];
         sessionId: components["parameters"]["SessionId"];
@@ -7342,7 +7416,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description A poll is already open, or the session is paused or ended. */
+      /** @description A poll is already open, or the session is paused or ended. The key also conflicts if reused for a different request. */
       409: {
         headers: {
           [name: string]: unknown;
@@ -7596,7 +7670,10 @@ export interface operations {
   createQuestion: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description One key per create intent. For 24 hours the authenticated actor (or resolved student participant), operation and key replay the original committed result without repeating writes or notifications. Reusing a key with different content returns 409. Current authorization is checked on every retry. Missing keys preserve compatibility and do not provide create deduplication. */
+        "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+      };
       path: {
         courseId: components["parameters"]["CourseId"];
       };
@@ -7616,6 +7693,13 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["QuestionBankEntry"];
         };
+      };
+      /** @description Idempotency-Key was already used for a different request. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

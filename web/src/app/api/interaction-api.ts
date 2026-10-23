@@ -1,8 +1,9 @@
 import type { components } from "./schema";
+import { newOperationKey } from "./operation-key";
 import { getStoredAuth } from "../auth";
 import { ApiError } from "./errors";
 import { apiFetch } from "./http";
-import { studentFetch } from "./student-api";
+import { studentFetch, studentParticipantHeaders } from "./student-api";
 
 export type PollStatus = components["schemas"]["PollStatus"];
 export type QuickPoll = components["schemas"]["QuickPoll"];
@@ -22,10 +23,12 @@ export type CreateQuestionRequest = components["schemas"]["CreateQuestionRequest
 export async function startPoll(
   courseId: string,
   sessionId: string,
-  request: StartPollRequest
+  request: StartPollRequest,
+  key = newOperationKey()
 ): Promise<PollResult> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/polls`, {
     method: "POST",
+    headers: { "Idempotency-Key": key },
     body: JSON.stringify(request)
   });
   return res.json() as Promise<PollResult>;
@@ -34,10 +37,12 @@ export async function startPoll(
 export async function startPollFromBank(
   courseId: string,
   sessionId: string,
-  request: StartBankPollRequest
+  request: StartBankPollRequest,
+  key = newOperationKey()
 ): Promise<PollResult> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/polls/from-bank`, {
     method: "POST",
+    headers: { "Idempotency-Key": key },
     body: JSON.stringify(request)
   });
   return res.json() as Promise<PollResult>;
@@ -106,10 +111,12 @@ export async function listQuestions(courseId: string, tag?: string): Promise<Que
 
 export async function createQuestion(
   courseId: string,
-  request: CreateQuestionRequest
+  request: CreateQuestionRequest,
+  operationKey = newOperationKey()
 ): Promise<QuestionBankEntry> {
   const res = await apiFetch(`/courses/${courseId}/questions`, {
     method: "POST",
+    headers: { "Idempotency-Key": operationKey },
     body: JSON.stringify(request)
   });
   return res.json() as Promise<QuestionBankEntry>;
@@ -163,6 +170,7 @@ export async function respondToPoll(
     `/student/sessions/${encodeURIComponent(joinCode)}/polls/${pollId}/respond`,
     {
       method: "POST",
+      headers: studentParticipantHeaders(participantToken),
       body: JSON.stringify({
         ...(authenticated ? {} : { participantToken }),
         ...(typeof answer === "string" ? { textAnswer: answer } : { optionIdx: answer })

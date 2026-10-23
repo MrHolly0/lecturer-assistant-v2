@@ -2,6 +2,7 @@ import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ApiError } from "./api/http";
 import { userErrorMessage } from "./api/errors";
+import { readRetryDelay, shouldRetryRead } from "./api/retry";
 
 function reportError(error: unknown): void {
   if (error instanceof ApiError && error.status === 401) return;
@@ -23,7 +24,8 @@ export const queryClient = new QueryClient({
   }),
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: shouldRetryRead,
+      retryDelay: readRetryDelay,
       refetchOnWindowFocus: false
     }
   }

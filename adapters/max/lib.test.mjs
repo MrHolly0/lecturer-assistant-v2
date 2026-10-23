@@ -8,6 +8,8 @@ import {
   extractUserId,
   openAppButton,
   parseStartCommand,
+  parseRetryAfter,
+  retryDelay,
   renderKeyboard,
   retry429,
   timingSafeEqualStrings,
@@ -118,7 +120,7 @@ test("createRateLimiter spaces slots at least 1000/rps ms apart", () => {
   assert.equal(reserveSlot(), 100); // а следующий — ровно через 100 мс от предыдущего
 });
 
-test("retry429 has a bounded attempt count and clamps Retry-After", async () => {
+test("long Retry-After returns to durable delivery without an early retry", async () => {
   let requests = 0;
   const delays = [];
   const response = await retry429(
@@ -130,9 +132,30 @@ test("retry429 has a bounded attempt count and clamps Retry-After", async () => 
     },
     async (delay) => delays.push(delay),
   );
-  assert.equal(response.status, 200);
-  assert.equal(requests, 3);
-  assert.deepEqual(delays, [1500, 1500]);
+  assert.equal(response.status, 429);
+  assert.equal(requests, 1);
+  assert.deepEqual(delays, []);
+});
+
+test("Retry-After accepts seconds and HTTP dates and rejects malformed values", () => {
+  const now = Date.parse("2026-10-23T12:00:00Z");
+  assert.equal(parseRetryAfter("60", now), 60_000);
+  assert.equal(parseRetryAfter("Fri, 23 Oct 2026 12:01:00 GMT", now), 60_000);
+  assert.equal(parseRetryAfter("", now), undefined);
+  assert.equal(parseRetryAfter("garbage", now), undefined);
+  assert.equal(parseRetryAfter("-5", now), undefined);
+});
+
+test("short Retry-After is a minimum and full jitter spreads retries within cap", async () => {
+  let requests = 0;
+  const delays = [];
+  const result = await retry429(async () => ++requests === 1
+    ? { status: 429, headers: { get: () => "1" } } : { status: 200 },
+    async (delay) => delays.push(delay), { random: () => 0.1 });
+  assert.equal(result.status, 200);
+  assert.deepEqual(delays, [1000]);
+  assert.equal(retryDelay(0, { random: () => 0.5 }), 250);
+  assert.equal(retryDelay(30, { random: () => 0.5 }), 15_000);
 });
 
 test("retry429 returns the final rate-limit response after its retry budget", async () => {

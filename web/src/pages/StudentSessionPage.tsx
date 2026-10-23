@@ -26,6 +26,7 @@ import {
 import { respondToPoll } from "../app/api/interaction-api";
 import { ApiError, userErrorMessage } from "../app/api/errors";
 import { mutationRetryDelay, shouldRetryMutation } from "../app/api/retry";
+import { PendingOperationKey } from "../app/api/operation-key";
 import { StudentSnapshotGate } from "../app/api/student-snapshot-gate";
 import { useAuth } from "../app/AuthContext";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
@@ -138,11 +139,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
 
   const sessionQuery = useQuery({
     queryKey: ["student-session", normalizedCode, user?.id ?? "guest", participantToken],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const requestScope = scope;
       const requestEntry = gateRef.current;
       const requestGeneration = requestEntry.gate.generation;
-      const fresh = await getStudentSession(normalizedCode, participantToken);
+      const fresh = await getStudentSession(normalizedCode, participantToken, signal);
       if (scopeRef.current !== requestScope || gateRef.current !== requestEntry) return fresh;
       commitSnapshot(fresh, requestScope, requestGeneration);
       return requestEntry.gate.current ?? fresh;
@@ -226,12 +227,26 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     retryDelay: mutationRetryDelay
   });
   const [questionAnonymous, setQuestionAnonymous] = useState(false);
+  const pendingQuestion = useRef(new PendingOperationKey());
   const questionMut = useMutation({
-    mutationFn: () =>
-      askStudentQuestion(normalizedCode, participantToken, question.trim(), questionAnonymous),
-    onSuccess: (created) => {
+    mutationFn: (request: {
+      text: string;
+      anonymous: boolean;
+      operationKey: string;
+      scope: string;
+    }) =>
+      askStudentQuestion(
+        normalizedCode,
+        participantToken,
+        request.text,
+        request.anonymous,
+        request.operationKey
+      ),
+    onSuccess: (created, request) => {
+      pendingQuestion.current.clear(request.operationKey);
+      if (scopeRef.current !== request.scope) return;
       setQuestions((items) => [created, ...items]);
-      setQuestion("");
+      setQuestion((draft) => (draft.trim() === request.text ? "" : draft));
       toast.success("Вопрос отправлен преподавателю.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить вопрос."))
@@ -385,13 +400,20 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       },
       (state) => {
         setConnectionState(state);
-        if (state === "POLLING") setSnapshotSyncing(true);
         if (state === "CONNECTED") {
           setSnapshotSyncing(true);
-          void refetch().finally(() => {
+          void refetch({ cancelRefetch: false }).finally(() => {
             if (scopeRef.current === scope) setSnapshotSyncing(false);
           });
         }
+      },
+      async () => {
+        // Initial reads, manual refreshes and fallback polling share React
+        // Query's one request. A reconnect must not create a parallel GET.
+        const result = await refetch({ cancelRefetch: false });
+        if (result.error) throw result.error;
+        if (!result.data) throw new ApiError(0, "Не удалось обновить занятие.");
+        return result.data;
       }
     );
     reconnectRef.current = connection.reconnect;
@@ -657,7 +679,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             onRetry={() => {
               setSnapshotSyncing(true);
               reconnectRef.current();
-              void refetch().finally(() => {
+              void refetch({ cancelRefetch: false }).finally(() => {
                 if (scopeRef.current === scope) setSnapshotSyncing(false);
               });
             }}
@@ -688,7 +710,14 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             answers={current.questionAnswers ?? []}
             onSignal={(value) => signalMut.mutate({ value, slideIdx: current.currentSlideIdx })}
             onQuestionChange={setQuestion}
-            onQuestionSubmit={() => questionMut.mutate()}
+            onQuestionSubmit={() => {
+              const request = { text: question.trim(), anonymous: questionAnonymous };
+              questionMut.mutate({
+                ...request,
+                scope,
+                operationKey: pendingQuestion.current.forPayload({ scope, request })
+              });
+            }}
             questionError={questionMut.isError}
             anonymous={questionAnonymous}
             onAnonymousChange={setQuestionAnonymous}

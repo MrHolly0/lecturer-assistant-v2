@@ -23,6 +23,8 @@ test("outbox frame is privately fetched, uploaded and delivered to its own MAX r
       }
       response.writeHead(200, { "content-type": "image/jpeg", "content-disposition":
         'attachment; filename="demonstration-20261019T150000Z.jpg"' }).end(jpeg);
+    } else if (request.url.endsWith("/rate-slot")) {
+      json(response, { delayMs: 0, reserved: true });
     } else if (request.url.includes("/outbox")) {
       json(response, { messages: queued ? [{ id: "frame-outbox-1", externalUserId: "777", attemptToken: "attempt-1",
         content: { type: "DOCUMENT", ref, caption: "Кадр демонстрации. Получен сервером 19.10.2026 15:00:00 UTC" },

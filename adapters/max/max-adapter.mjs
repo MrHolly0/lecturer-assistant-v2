@@ -16,6 +16,8 @@ import {
   extractUserId,
   openAppButton,
   parseStartCommand,
+  parseRetryAfter,
+  retryDelay,
   retry429,
   renderKeyboard,
   timingSafeEqualStrings,
@@ -29,6 +31,7 @@ const botToken = process.env.MAX_BOT_TOKEN;
 const webAppUrl = process.env.MAX_WEBAPP_URL;
 const webhookUrl = process.env.MAX_WEBHOOK_URL; // если задан — вебхук, иначе long polling
 const webhookSecret = process.env.MAX_WEBHOOK_SECRET;
+const registerWebhookOnStart = process.env.MAX_REGISTER_WEBHOOK_ON_START !== "false";
 const webhookPort = Number(process.env.MAX_WEBHOOK_PORT ?? 8090);
 // MAX_API_NOTES.md §1.3: «рекомендуемый путь — /webhook/<sha256(token)>, чтобы URL не угадывался».
 const webhookPath = process.env.MAX_WEBHOOK_PATH ?? (botToken ? webhookPathFor(botToken) : undefined);
@@ -92,6 +95,17 @@ async function registerCapabilities() {
 // (в отличие от Telegram) — отдельно его не вводим.
 const reserveSlot = createRateLimiter(rateLimitRps);
 
+function deferredError(message, retryAfterMs) {
+  return Object.assign(new Error(message), { retryAfterMs });
+}
+
+async function reserveProviderSlot() {
+  // All replicas use the same database budget. On core failure we fail closed.
+  const slot = await core(`/internal/v1/channels/${channelType}/rate-slot`, { method: "POST" });
+  if (slot.reserved !== true || slot.delayMs > 2000) throw deferredError("MAX provider cooldown", slot.delayMs);
+  await sleep(Math.max(reserveSlot(), slot.delayMs));
+}
+
 async function maxApi(path, { method = "GET", query, body } = {}) {
   const url = new URL(`${apiBase}${path}`);
   for (const [key, value] of Object.entries(query ?? {})) {
@@ -100,17 +114,26 @@ async function maxApi(path, { method = "GET", query, body } = {}) {
     }
   }
   const response = await retry429(async () => {
-    await sleep(reserveSlot());
-    return fetch(url, {
+    await reserveProviderSlot();
+    const result = await fetch(url, {
       method,
       headers: { Authorization: botToken, ...(body ? { "Content-Type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(path === "/updates" ? 35_000 : 12_000),
     });
+    if (result.status === 429) {
+      const delayMs = parseRetryAfter(result.headers.get("retry-after")) ?? 1000;
+      // Persist a provider-wide cooldown; an outbox retry must not send earlier.
+      await core(`/internal/v1/channels/${channelType}/cooldown`, {
+        method: "POST", body: JSON.stringify({ delayMs }),
+      });
+    }
+    return result;
   }, sleep);
   const text = await response.text();
   if (!response.ok) {
-    throw new Error("MAX API " + method + " " + path + " -> " + response.status + ": " + text);
+    throw deferredError("MAX API " + method + " " + path + " -> " + response.status + ": " + text,
+      response.status === 429 ? parseRetryAfter(response.headers.get("retry-after")) ?? 1000 : undefined);
   }
   return text ? JSON.parse(text) : undefined;
 }
@@ -223,6 +246,7 @@ async function registerWebhookSubscription() {
 
 async function runLongPolling() {
   let marker;
+  let failures = 0;
   for (;;) {
     try {
       const response = await maxApi("/updates", { query: { timeout: 25, limit: 100, marker } });
@@ -230,9 +254,10 @@ async function runLongPolling() {
         await handleUpdate(update);
       }
       marker = response.marker ?? marker;
+      failures = 0;
     } catch (error) {
       console.error("[max-adapter] long polling error:", error.message);
-      await sleep(1000);
+      await sleep(Math.max(error.retryAfterMs ?? 0, retryDelay(failures++)));
     }
   }
 }
@@ -268,6 +293,7 @@ async function pollCoreOutbox() {
         status: "FAILED",
         attemptToken: message.attemptToken,
         errorMessage: error.message,
+        ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
         latencyMs: Date.now() - started,
       };
     }
@@ -282,12 +308,14 @@ async function pollCoreOutbox() {
 // pollCoreOutbox), но обращение к самому core (outbox/delivery-reports) может кратко упасть
 // при рестарте контейнера core — без этой обвязки один такой сбой рушил бы весь процесс адаптера.
 async function runOutboxLoop() {
+  let failures = 0;
   for (;;) {
     try {
       await pollCoreOutbox();
+      failures = 0;
     } catch (error) {
       console.error("[max-adapter] outbox poll error:", error.message);
-      await sleep(1000);
+      await sleep(Math.max(error.retryAfterMs ?? 0, retryDelay(failures++)));
     }
   }
 }
@@ -301,7 +329,7 @@ function sleep(ms) {
 await registerCapabilities();
 
 if (webhookUrl) {
-  await registerWebhookSubscription();
+  if (registerWebhookOnStart) await registerWebhookSubscription();
   startWebhookServer();
 } else {
   runLongPolling();

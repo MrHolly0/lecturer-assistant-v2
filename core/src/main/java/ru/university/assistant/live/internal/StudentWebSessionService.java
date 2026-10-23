@@ -50,6 +50,7 @@ import ru.university.assistant.qa.api.QuestionStatus;
 import ru.university.assistant.qa.api.ResolvedQuestion;
 import ru.university.assistant.qa.api.StudentQuestion;
 import ru.university.assistant.shared.api.UuidV7;
+import ru.university.assistant.shared.api.CommandIdempotency;
 
 @Service
 public class StudentWebSessionService {
@@ -70,6 +71,7 @@ public class StudentWebSessionService {
     private final ApplicationEventPublisher applicationEvents;
     private final ChannelFanoutApi channelFanout;
     private final StudentDeckApi studentDecks;
+    private final CommandIdempotency commands;
 
     StudentWebSessionService(
             LiveSessionRepository sessions,
@@ -86,7 +88,7 @@ public class StudentWebSessionService {
             ActivityRespondApi activityRespond,
             ApplicationEventPublisher applicationEvents,
             ChannelFanoutApi channelFanout,
-            StudentDeckApi studentDecks) {
+            StudentDeckApi studentDecks, CommandIdempotency commands) {
         this.sessions = sessions;
         this.snapshots = snapshots;
         this.feedback = feedback;
@@ -102,6 +104,7 @@ public class StudentWebSessionService {
         this.applicationEvents = applicationEvents;
         this.channelFanout = channelFanout;
         this.studentDecks = studentDecks;
+        this.commands = commands;
     }
 
     public StudentSessionSnapshot snapshot(String joinCode) {
@@ -133,9 +136,18 @@ public class StudentWebSessionService {
     }
 
     public boolean canReceive(String joinCode, UUID personId) {
-        if (personId == null) return true;
+        return personId == null || answerRecipients(joinCode, Set.of(personId)).contains(personId);
+    }
+
+    /** Read the current course/account and participation boundary once for the entire answer fanout. */
+    Set<UUID> answerRecipients(String joinCode, Set<UUID> personIds) {
+        if (personIds.isEmpty()) return Set.of();
         LiveSession session = sessionByCode(joinCode);
-        return courseAccess.allowedParticipants(session.courseId(), Set.of(personId)).contains(personId);
+        Set<UUID> allowed = courseAccess.allowedParticipants(session.courseId(), personIds);
+        return sessions.participationStates(session.id(), allowed).values().stream()
+                .filter(LiveSessionRepository.ParticipationState::active)
+                .map(LiveSessionRepository.ParticipationState::personId)
+                .collect(java.util.stream.Collectors.toSet());
     }
 
     private UUID viewerId(LiveSession session, AuthenticatedUser user, String participantToken) {
@@ -280,28 +292,36 @@ public class StudentWebSessionService {
     public SignalAggregate signal(String joinCode, StudentSignalRequest request, AuthenticatedUser user) {
         ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
         ensureInteractive(current.session());
-        SignalAggregate aggregate = feedback.saveSignal(
+        FeedbackApi.SignalSubmission result = feedback.submitSignal(
                 current.session().id(), current.participant().personId(), "web",
                 current.session().currentSlideIdx(), request.value());
         touch(current.participant());
-        publisher.publish("feedback.signal_submitted", current.session());
-        return aggregate;
+        if (result.changed()) {
+            publisher.publish("feedback.signal_submitted", current.session());
+        }
+        return result.aggregate();
     }
 
     @Transactional
     public StudentQuestion ask(String joinCode, StudentQuestionRequest request, AuthenticatedUser user) {
+        return ask(joinCode, request, user, null);
+    }
+
+    @Transactional
+    public StudentQuestion ask(String joinCode, StudentQuestionRequest request, AuthenticatedUser user, String key) {
         ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
         ensureInteractive(current.session());
-        StudentQuestion question = questions.ask(
-                current.session().id(),
-                current.participant().personId(),
-                current.participant().displayName(),
-                "web",
-                request.text(),
-                request.anonymous());
-        touch(current.participant());
-        publisher.publish("qa.question_asked", current.session());
-        return question;
+        return commands.execute(current.participant().personId(),
+                "POST /student/sessions/" + current.session().id() + "/questions", key,
+                commands.hash(Map.of("text", request.text(), "anonymous", request.anonymous())),
+                StudentQuestion.class, () -> {
+                    StudentQuestion question = questions.ask(
+                            current.session().id(), current.participant().personId(),
+                            current.participant().displayName(), "web", request.text(), request.anonymous());
+                    touch(current.participant());
+                    publisher.publish("qa.question_asked", current.session());
+                    return question;
+                });
     }
 
     public StudentEngagement engagement(AuthenticatedUser user, UUID courseId, UUID sessionId) {

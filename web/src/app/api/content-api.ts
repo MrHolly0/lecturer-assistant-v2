@@ -2,6 +2,8 @@ import type { components } from "./schema";
 import { expireStoredAuth, getStoredAuth } from "../auth";
 import { apiFetch, ApiError } from "./http";
 import { invalidatePendingAuthRefresh, refreshAuthSession } from "./refresh";
+import { newOperationKey } from "./operation-key";
+import { parseRetryAfter } from "./errors";
 
 export type ImportJob = components["schemas"]["ImportJob"];
 export type SlideDeck = components["schemas"]["SlideDeck"];
@@ -94,10 +96,12 @@ export async function listLectures(courseId: string): Promise<Lecture[]> {
 export async function createLecture(
   courseId: string,
   title: string,
-  deckId: string
+  deckId: string,
+  operationKey = newOperationKey()
 ): Promise<Lecture> {
   const res = await apiFetch(`/courses/${courseId}/lectures`, {
     method: "POST",
+    headers: { "Idempotency-Key": operationKey },
     body: JSON.stringify({ title, deckId })
   });
   return res.json() as Promise<Lecture>;
@@ -138,7 +142,8 @@ export function uploadDeck(
   courseId: string,
   title: string,
   file: File,
-  onProgress: (progress: number) => void
+  onProgress: (progress: number) => void,
+  operationKey = newOperationKey()
 ): Promise<ImportJob> {
   const form = new FormData();
   form.append("title", title);
@@ -151,8 +156,10 @@ export function uploadDeck(
 
       xhr.open("POST", `/api/v1/courses/${courseId}/decks`);
       xhr.withCredentials = true;
+      xhr.timeout = 300000;
       xhr.responseType = "json";
       xhr.setRequestHeader("Accept", "application/json");
+      xhr.setRequestHeader("Idempotency-Key", operationKey);
       if (requestToken) xhr.setRequestHeader("Authorization", `Bearer ${requestToken}`);
 
       xhr.upload.onprogress = (event) => {
@@ -189,13 +196,22 @@ export function uploadDeck(
           return;
         }
         if (xhr.status < 200 || xhr.status >= 300) {
-          reject(new ApiError(xhr.status, `Загрузка завершилась с ошибкой ${xhr.status}`));
+          reject(
+            new ApiError(
+              xhr.status,
+              `Загрузка завершилась с ошибкой ${xhr.status}`,
+              undefined,
+              undefined,
+              parseRetryAfter(xhr.getResponseHeader("Retry-After"))
+            )
+          );
           return;
         }
         onProgress(75);
         resolve(xhr.response as ImportJob);
       };
       xhr.onerror = () => reject(new ApiError(0, "Не удалось загрузить файл"));
+      xhr.ontimeout = () => reject(new ApiError(408, "Загрузка не завершилась вовремя"));
       xhr.send(form);
     };
 

@@ -5,10 +5,11 @@ import { toast } from "sonner";
 import { getDeck } from "../app/api/content-api";
 import {
   changeLiveSessionSlide,
+  getLiveSession,
   listSessionParticipants,
   type LiveSession
 } from "../app/api/live-api";
-import { userErrorMessage } from "../app/api/errors";
+import { ApiError, userErrorMessage } from "../app/api/errors";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
 import { Button } from "../shared/ui/button";
 import { PollPanel } from "./PollPanel";
@@ -57,9 +58,15 @@ export function LectureRemoteTools({
   const slide = deck.data?.slides.find((item) => item.idx === session.currentSlideIdx);
   const slideCount = deck.data?.slides.length ?? 0;
   const changeSlide = useMutation({
-    mutationFn: (idx: number) => changeLiveSessionSlide(courseId, session.id, idx),
+    mutationFn: (idx: number) => changeLiveSessionSlide(courseId, session.id, idx, session.version),
     onSuccess: onSessionChange,
-    onError: (error) => toast.error(userErrorMessage(error, "Не удалось переключить слайд."))
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409)
+        void getLiveSession(courseId, session.id)
+          .then(onSessionChange)
+          .catch(() => undefined);
+      toast.error(userErrorMessage(error, "Не удалось переключить слайд."));
+    }
   });
   return (
     <>

@@ -1,8 +1,10 @@
 import type { components } from "./schema";
 import { getStoredAuth } from "../auth";
 import { apiErrorFromResponse } from "./errors";
-import { apiFetch } from "./http";
+import { apiFetch, withRequestDeadline } from "./http";
+import { isRetryableError, retryDelayMs } from "./retry";
 import { StudentSnapshotGate } from "./student-snapshot-gate";
+import { newOperationKey } from "./operation-key";
 
 type GeneratedStudentSessionSnapshot = components["schemas"]["StudentSessionSnapshot"];
 
@@ -48,6 +50,10 @@ export function studentFetch(path: string, init?: RequestInit): Promise<Response
   return getStoredAuth() ? apiFetch(path, init) : publicFetch(path, init);
 }
 
+export function studentParticipantHeaders(participantToken?: string): Record<string, string> {
+  return !getStoredAuth() && participantToken ? { "X-Participant-Token": participantToken } : {};
+}
+
 export async function getMyStudentActiveSession(): Promise<StudentActiveSessionSummary | null> {
   const response = await apiFetch("/me/student-active-session");
   if (response.status === 204) return null;
@@ -56,19 +62,32 @@ export async function getMyStudentActiveSession(): Promise<StudentActiveSessionS
 
 export async function getStudentSession(
   joinCode: string,
-  participantToken = ""
+  participantToken = "",
+  signal?: AbortSignal
 ): Promise<StudentSessionSnapshot> {
   const headers = new Headers();
   if (!getStoredAuth() && participantToken) {
     headers.set("X-Participant-Token", participantToken);
   }
-  const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}`, { headers });
-  return res.json() as Promise<StudentSessionSnapshot>;
+  return withRequestDeadline(async (requestSignal) => {
+    const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}`, {
+      headers,
+      signal: requestSignal
+    });
+    return res.json() as Promise<StudentSessionSnapshot>;
+  }, signal);
 }
 
-export async function getPublicStudentSession(joinCode: string): Promise<StudentSessionSnapshot> {
-  const res = await publicFetch(`/student/sessions/${encodeURIComponent(joinCode)}`);
-  return res.json() as Promise<StudentSessionSnapshot>;
+export async function getPublicStudentSession(
+  joinCode: string,
+  signal?: AbortSignal
+): Promise<StudentSessionSnapshot> {
+  return withRequestDeadline(async (requestSignal) => {
+    const res = await publicFetch(`/student/sessions/${encodeURIComponent(joinCode)}`, {
+      signal: requestSignal
+    });
+    return res.json() as Promise<StudentSessionSnapshot>;
+  }, signal);
 }
 
 export async function joinStudentSession(
@@ -80,6 +99,7 @@ export async function joinStudentSession(
   const authenticated = Boolean(getStoredAuth());
   const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/join`, {
     method: "POST",
+    headers: studentParticipantHeaders(participantToken),
     body: JSON.stringify(
       authenticated ? { groupId, participantToken } : { displayName, groupId, participantToken }
     )
@@ -95,6 +115,7 @@ export async function submitStudentName(
 ): Promise<StudentSessionSnapshot> {
   const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/name`, {
     method: "POST",
+    headers: studentParticipantHeaders(participantToken),
     body: JSON.stringify({ participantToken, lastName, firstName })
   });
   return res.json() as Promise<StudentSessionSnapshot>;
@@ -131,6 +152,7 @@ export async function submitStudentSignal(
   const authenticated = Boolean(getStoredAuth());
   const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/signals`, {
     method: "POST",
+    headers: studentParticipantHeaders(participantToken),
     body: JSON.stringify(
       authenticated ? { value, slideIdx } : { participantToken, value, slideIdx }
     )
@@ -158,11 +180,13 @@ export async function askStudentQuestion(
   joinCode: string,
   participantToken: string,
   text: string,
-  anonymous = false
+  anonymous = false,
+  operationKey = newOperationKey()
 ): Promise<StudentQuestion> {
   const authenticated = Boolean(getStoredAuth());
   const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/questions`, {
     method: "POST",
+    headers: { ...studentParticipantHeaders(participantToken), "Idempotency-Key": operationKey },
     body: JSON.stringify(
       authenticated ? { text, anonymous } : { participantToken, text, anonymous }
     )
@@ -199,7 +223,8 @@ export function connectStudentSession(
   joinCode: string,
   participantToken: string,
   onSnapshot: (snapshot: StudentSessionSnapshot) => void,
-  onStateChange: (state: StudentConnectionState) => void
+  onStateChange: (state: StudentConnectionState) => void,
+  readSnapshot?: (signal: AbortSignal) => Promise<StudentSessionSnapshot>
 ): StudentConnectionControls {
   const eventUrl = participantToken
     ? `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events?${new URLSearchParams({ participantToken })}`
@@ -207,7 +232,17 @@ export function connectStudentSession(
   let source: EventSource | null = null;
   let reconnectTimer: number | undefined;
   let pollingTimer: number | undefined;
+  let stableTimer: number | undefined;
+  let handshakeTimer: number | undefined;
+  let resumeTimer: number | undefined;
+  let lastResumeAt = 0;
   let failures = 0;
+  let pollFailures = 0;
+  let pollNotBefore = 0;
+  let pollingActive = false;
+  let pollingGeneration = 0;
+  let pollInFlight: Promise<void> | null = null;
+  let pollAbort: AbortController | null = null;
   let stopped = false;
   let ended = false;
   let state: StudentConnectionState = "CONNECTING";
@@ -219,13 +254,21 @@ export function connectStudentSession(
     onStateChange(next);
   };
 
-  const stopPolling = () => {
-    if (pollingTimer) window.clearInterval(pollingTimer);
-    pollingTimer = undefined;
-    pollingGeneration += 1;
+  const clearStreamTimers = () => {
+    if (stableTimer !== undefined) window.clearTimeout(stableTimer);
+    if (handshakeTimer !== undefined) window.clearTimeout(handshakeTimer);
+    stableTimer = undefined;
+    handshakeTimer = undefined;
   };
 
-  let pollingGeneration = 0;
+  const stopPolling = () => {
+    pollingActive = false;
+    if (pollingTimer !== undefined) window.clearTimeout(pollingTimer);
+    pollingTimer = undefined;
+    pollingGeneration += 1;
+    pollAbort?.abort();
+  };
+
   const acceptSnapshot = (snapshot: StudentSessionSnapshot, requestGeneration?: number) => {
     if (stopped) return false;
     const accepted =
@@ -238,59 +281,136 @@ export function connectStudentSession(
     ended = true;
     source?.close();
     source = null;
+    clearStreamTimers();
     stopPolling();
-    if (reconnectTimer) window.clearTimeout(reconnectTimer);
+    if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
     reconnectTimer = undefined;
     updateState("ENDED");
     return true;
   };
 
-  const pollSnapshot = async (requestGeneration: number) => {
-    if (stopped || ended || !navigator.onLine) return;
-    const snapshotGeneration = snapshotGate.generation;
-    try {
-      const snapshot = participantToken
-        ? await getStudentSession(joinCode, participantToken)
-        : await getPublicStudentSession(joinCode);
-      if (requestGeneration !== pollingGeneration || source?.readyState === EventSource.OPEN)
-        return;
-      acceptSnapshot(snapshot, snapshotGeneration);
-      if (!ended && source?.readyState !== EventSource.OPEN) updateState("POLLING");
-    } catch {
-      if (stopped || requestGeneration !== pollingGeneration) return;
-      updateState(navigator.onLine ? "RECONNECTING" : "OFFLINE");
-    }
+  const schedulePoll = (delay: number) => {
+    if (stopped || ended || !pollingActive || !navigator.onLine) return;
+    if (pollingTimer !== undefined) window.clearTimeout(pollingTimer);
+    pollingTimer = window.setTimeout(
+      () => {
+        pollingTimer = undefined;
+        void pollSnapshot();
+      },
+      Math.max(delay, pollNotBefore - Date.now())
+    );
   };
+
+  function pollSnapshot(): Promise<void> {
+    if (pollInFlight) return pollInFlight;
+    if (stopped || ended || !navigator.onLine || !pollingActive) return Promise.resolve();
+    const requestGeneration = pollingGeneration;
+    const snapshotGeneration = snapshotGate.generation;
+    const controller = new AbortController();
+    pollAbort = controller;
+    let nextDelay = 3000 + Math.floor(Math.random() * 1500);
+    const request = async () => {
+      try {
+        const snapshot = await (readSnapshot
+          ? withRequestDeadline(readSnapshot, controller.signal)
+          : participantToken
+            ? getStudentSession(joinCode, participantToken, controller.signal)
+            : getPublicStudentSession(joinCode, controller.signal));
+        if (
+          controller.signal.aborted ||
+          requestGeneration !== pollingGeneration ||
+          source?.readyState === EventSource.OPEN
+        )
+          return;
+        pollFailures = 0;
+        pollNotBefore = 0;
+        acceptSnapshot(snapshot, snapshotGeneration);
+        if (!ended && source?.readyState !== EventSource.OPEN) updateState("POLLING");
+      } catch (error) {
+        if (stopped || controller.signal.aborted || requestGeneration !== pollingGeneration) return;
+        updateState(navigator.onLine ? "RECONNECTING" : "OFFLINE");
+        pollFailures += 1;
+        nextDelay = retryDelayMs(pollFailures - 1, {
+          baseMs: 6000,
+          maxMs: 60000,
+          error
+        });
+        pollNotBefore = Date.now() + nextDelay;
+        // An authorization/validation rejection needs a new connection or user
+        // action. Do not keep hammering the same invalid request every few seconds.
+        if (!isRetryableError(error)) pollingActive = false;
+      } finally {
+        if (pollAbort === controller) pollAbort = null;
+        pollInFlight = null;
+        if (pollingActive) schedulePoll(nextDelay);
+      }
+    };
+    pollInFlight = request();
+    return pollInFlight;
+  }
 
   const startPolling = () => {
-    if (stopped || ended || pollingTimer) return;
-    const requestGeneration = ++pollingGeneration;
-    updateState(navigator.onLine ? "POLLING" : "OFFLINE");
-    void pollSnapshot(requestGeneration);
-    pollingTimer = window.setInterval(() => void pollSnapshot(requestGeneration), 3000);
+    if (stopped || ended || pollingActive || !navigator.onLine) return;
+    pollingActive = true;
+    pollingGeneration += 1;
+    updateState("RECONNECTING");
+    // Spread the transition of an entire class from SSE to HTTP as well.
+    schedulePoll(retryDelayMs(0, { baseMs: 1000, maxMs: 1000 }));
   };
 
-  const scheduleReconnect = (delay: number) => {
-    if (stopped || ended) return;
-    if (reconnectTimer) window.clearTimeout(reconnectTimer);
-    reconnectTimer = window.setTimeout(openStream, delay);
+  const scheduleReconnect = () => {
+    if (stopped || ended || !navigator.onLine || reconnectTimer !== undefined) return;
+    reconnectTimer = window.setTimeout(
+      () => {
+        reconnectTimer = undefined;
+        openStream();
+      },
+      retryDelayMs(Math.max(0, failures - 1), { baseMs: 1000, maxMs: 30000 })
+    );
   };
+
+  function streamFailed(nextSource: EventSource | null) {
+    if (stopped || ended || source !== nextSource) return;
+    nextSource?.close();
+    source = null;
+    clearStreamTimers();
+    failures += 1;
+    if (failures >= 3) startPolling();
+    else updateState(navigator.onLine ? "RECONNECTING" : "OFFLINE");
+    scheduleReconnect();
+  }
 
   function openStream() {
     if (stopped || ended) return;
     if (!navigator.onLine) {
       updateState("OFFLINE");
-      startPolling();
       return;
     }
-
-    source?.close();
-    const nextSource = new EventSource(eventUrl);
+    // Focus/pageshow/visibility often arrive together. Neither an open stream nor
+    // a handshake already in progress should be replaced by that event burst.
+    if (source && source.readyState !== EventSource.CLOSED) return;
+    source = null;
+    if (!pollingActive) updateState(failures > 0 ? "RECONNECTING" : "CONNECTING");
+    let nextSource: EventSource;
+    try {
+      nextSource = new EventSource(eventUrl);
+    } catch {
+      streamFailed(null);
+      return;
+    }
     source = nextSource;
-    if (!pollingTimer) updateState(failures > 0 ? "RECONNECTING" : "CONNECTING");
+    handshakeTimer = window.setTimeout(() => streamFailed(nextSource), 12000);
     nextSource.onopen = () => {
       if (stopped || source !== nextSource) return;
-      failures = 0;
+      if (handshakeTimer !== undefined) window.clearTimeout(handshakeTimer);
+      handshakeTimer = undefined;
+      // An open/error loop is still an unhealthy transport. Reset its backoff
+      // only after a stable connection, rather than on each TCP handshake.
+      stableTimer = window.setTimeout(() => {
+        stableTimer = undefined;
+        if (!stopped && source === nextSource && nextSource.readyState === EventSource.OPEN)
+          failures = 0;
+      }, 10000);
       stopPolling();
       updateState("CONNECTED");
     };
@@ -316,37 +436,41 @@ export function connectStudentSession(
         // Polling restores a missed or malformed personalized answer.
       }
     });
-    nextSource.onerror = () => {
-      if (stopped || source !== nextSource) return;
-      nextSource.close();
-      source = null;
-      failures += 1;
-      if (failures >= 3) {
-        startPolling();
-      } else {
-        updateState(navigator.onLine ? "RECONNECTING" : "OFFLINE");
-      }
-      scheduleReconnect(failures >= 3 ? 15000 : Math.min(1000 * 2 ** (failures - 1), 5000));
-    };
+    nextSource.onerror = () => streamFailed(nextSource);
   }
 
   const reconnect = () => {
-    if (stopped || ended) return;
-    failures = 0;
-    if (reconnectTimer) window.clearTimeout(reconnectTimer);
-    reconnectTimer = undefined;
-    void pollSnapshot(pollingGeneration);
-    openStream();
+    if (stopped || ended || !navigator.onLine) return;
+    if (source && source.readyState !== EventSource.CLOSED) return;
+    if (reconnectTimer !== undefined) return;
+    if (failures >= 3) startPolling();
+    // Even an online/resume burst preserves accumulated failure backoff.
+    scheduleReconnect();
   };
   const handleOnline = () => reconnect();
   const handleOffline = () => {
     source?.close();
     source = null;
+    clearStreamTimers();
+    if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
+    stopPolling();
     updateState("OFFLINE");
-    startPolling();
   };
   const handleVisibility = () => {
-    if (document.visibilityState === "visible") reconnect();
+    if (
+      stopped ||
+      ended ||
+      document.visibilityState !== "visible" ||
+      resumeTimer !== undefined ||
+      Date.now() - lastResumeAt < 1000
+    )
+      return;
+    resumeTimer = window.setTimeout(() => {
+      resumeTimer = undefined;
+      lastResumeAt = Date.now();
+      if (document.visibilityState === "visible") reconnect();
+    }, 0);
   };
 
   window.addEventListener("online", handleOnline);
@@ -362,8 +486,11 @@ export function connectStudentSession(
     disconnect: () => {
       stopped = true;
       source?.close();
+      source = null;
+      clearStreamTimers();
       stopPolling();
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      if (resumeTimer !== undefined) window.clearTimeout(resumeTimer);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
       document.removeEventListener("visibilitychange", handleVisibility);

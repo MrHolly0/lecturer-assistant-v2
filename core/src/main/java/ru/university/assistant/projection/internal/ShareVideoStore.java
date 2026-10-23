@@ -1,6 +1,8 @@
 package ru.university.assistant.projection.internal;
 
 import java.time.Clock;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -15,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import ru.university.assistant.shared.api.CapacityUnavailableException;
 import ru.university.assistant.iam.api.AuthenticatedUser;
 import ru.university.assistant.live.api.MediaViewingAccessApi.ViewerAccess;
 import ru.university.assistant.live.api.SessionStateChanged;
@@ -33,97 +36,127 @@ public class ShareVideoStore {
     private final Clock clock;
     private final Map<UUID, VideoRoom> rooms = new HashMap<>();
     private long storedBytes;
+    private final ShareCapacityProperties capacity;
 
-    public ShareVideoStore(ShareService shares, Clock clock) { this.shares = shares; this.clock = clock; }
-
-    public synchronized void authorizePublisher(AuthenticatedUser user, UUID course, UUID session, UUID share) {
-        publisher(user, course, session, share);
+    public ShareVideoStore(ShareService shares, Clock clock) {
+        this(shares, clock, new ShareCapacityProperties(), null);
     }
 
-    public synchronized void init(AuthenticatedUser user, UUID course, UUID session, UUID share,
+    @Autowired
+    ShareVideoStore(ShareService shares, Clock clock, ShareCapacityProperties capacity, MeterRegistry meters) {
+        this.shares = shares; this.clock = clock; this.capacity = capacity;
+        if (meters != null) {
+            meters.gauge("projection.video.bytes", this, ShareVideoStore::storedBytes);
+            meters.gauge("projection.video.rooms", this, value -> value.roomCount());
+        }
+    }
+
+    public void authorizePublisher(AuthenticatedUser user, UUID course, UUID session, UUID share) {
+        requirePublisher(shares.videoPublisher(user, course, session, share));
+    }
+
+    public void init(AuthenticatedUser user, UUID course, UUID session, UUID share,
             UUID epoch, String codec, byte[] bytes) {
-        VideoScope scope = publisher(user, course, session, share);
-        bound(bytes, MAX_INIT);
-        String checkedCodec = ShareVideoMp4.init(bytes, codec);
-        prune();
-        VideoRoom room = rooms.get(share);
-        if (room == null) {
-            if (rooms.size() >= 64) throw error(HttpStatus.TOO_MANY_REQUESTS, "Достигнут лимит видеопотоков");
-            room = new VideoRoom(session, share);
-        }
-        if (room.retired.contains(epoch)) throw error(HttpStatus.CONFLICT, "Видеопоток уже заменён");
-        if (epoch.equals(room.epoch)) {
-            if (!checkedCodec.equals(room.codec) || !Arrays.equals(bytes, room.init)) {
-                throw error(HttpStatus.CONFLICT, "Инициализация видеопотока уже принята");
+        VideoScope scope = shares.videoPublisher(user, course, session, share);
+        synchronized (this) {
+            requirePublisher(scope);
+            bound(bytes, MAX_INIT);
+            String checkedCodec = ShareVideoMp4.init(bytes, codec);
+            prune();
+            VideoRoom room = rooms.get(share);
+            if (room == null) {
+                if (rooms.size() >= capacity.getRooms()) {
+                    throw error(HttpStatus.TOO_MANY_REQUESTS, "Достигнут лимит видеопотоков");
+                }
+                room = new VideoRoom(session, share);
             }
-            return;
+            if (room.retired.contains(epoch)) throw error(HttpStatus.CONFLICT, "Видеопоток уже заменён");
+            if (epoch.equals(room.epoch)) {
+                if (!checkedCodec.equals(room.codec) || !Arrays.equals(bytes, room.init)) {
+                    throw error(HttpStatus.CONFLICT, "Инициализация видеопотока уже принята");
+                }
+                return;
+            }
+            if (room.retired.size() >= 128) {
+                throw error(HttpStatus.TOO_MANY_REQUESTS, "Начните демонстрацию заново");
+            }
+            budget(storedBytes - room.bytes + bytes.length);
+            retire(room);
+            room.epoch = epoch; room.codec = checkedCodec; room.init = bytes.clone();
+            room.bytes = bytes.length; storedBytes += bytes.length;
+            rooms.put(scope.shareId(), room);
         }
-        if (room.retired.size() >= 128) {
-            throw error(HttpStatus.TOO_MANY_REQUESTS, "Начните демонстрацию заново");
-        }
-        budget(storedBytes - room.bytes + bytes.length);
-        retire(room);
-        room.epoch = epoch; room.codec = checkedCodec; room.init = bytes.clone();
-        room.bytes = bytes.length; storedBytes += bytes.length;
-        rooms.put(scope.shareId(), room);
     }
 
-    public synchronized void segment(AuthenticatedUser user, UUID course, UUID session, UUID share,
+    public void segment(AuthenticatedUser user, UUID course, UUID session, UUID share,
             UUID epoch, long sequence, byte[] bytes) {
-        publisher(user, course, session, share);
-        bound(bytes, MAX_SEGMENT);
-        if (sequence < 0 || sequence == Long.MAX_VALUE) throw error(HttpStatus.BAD_REQUEST, "Некорректный номер");
-        ShareVideoMp4.segment(bytes);
-        prune();
-        VideoRoom room = current(share, epoch);
-        Segment existing = room.segments.get(sequence);
-        if (existing != null) {
-            if (!Arrays.equals(bytes, existing.bytes())) throw error(HttpStatus.CONFLICT, "Сегмент уже принят");
-            return;
+        VideoScope scope = shares.videoPublisher(user, course, session, share);
+        synchronized (this) {
+            requirePublisher(scope);
+            bound(bytes, MAX_SEGMENT);
+            if (sequence < 0 || sequence == Long.MAX_VALUE) throw error(HttpStatus.BAD_REQUEST, "Некорректный номер");
+            ShareVideoMp4.segment(bytes);
+            prune();
+            VideoRoom room = current(share, epoch);
+            Segment existing = room.segments.get(sequence);
+            if (existing != null) {
+                if (!Arrays.equals(bytes, existing.bytes())) throw error(HttpStatus.CONFLICT, "Сегмент уже принят");
+                return;
+            }
+            if (sequence < room.nextSequence) throw error(HttpStatus.GONE, "Сегмент больше недоступен");
+            if (sequence != room.nextSequence) {
+                throw error(HttpStatus.CONFLICT, "Нарушена последовательность сегментов");
+            }
+            TreeMap<Long, Segment> next = new TreeMap<>(room.segments);
+            next.put(sequence, new Segment(bytes, clock.instant()));
+            long retained = room.bytes + bytes.length;
+            while (next.size() > 6 || retained > capacity.getVideoRoomBytes()) {
+                retained -= next.pollFirstEntry().getValue().bytes().length;
+            }
+            budget(storedBytes - room.bytes + retained);
+            next.put(sequence, new Segment(bytes.clone(), clock.instant()));
+            storedBytes += retained - room.bytes; room.bytes = retained;
+            room.segments = next; room.nextSequence++;
         }
-        if (sequence < room.nextSequence) throw error(HttpStatus.GONE, "Сегмент больше недоступен");
-        if (sequence != room.nextSequence) throw error(HttpStatus.CONFLICT, "Нарушена последовательность сегментов");
-        TreeMap<Long, Segment> next = new TreeMap<>(room.segments);
-        next.put(sequence, new Segment(bytes, clock.instant()));
-        long retained = room.bytes + bytes.length;
-        while (next.size() > 6 || retained > MAX_ROOM_BYTES) {
-            retained -= next.pollFirstEntry().getValue().bytes().length;
+    }
+
+    public ShareVideoMetadata metadata(ViewerAccess access, UUID viewer) {
+        VideoScope scope = shares.videoViewer(access, viewer);
+        synchronized (this) {
+            VideoRoom room = read(scope);
+            if (room == null || room.epoch == null || room.segments.isEmpty()) return null;
+            return new ShareVideoMetadata(room.shareId, room.epoch, room.codec,
+                    room.segments.firstKey(), room.segments.lastKey());
         }
-        budget(storedBytes - room.bytes + retained);
-        next.put(sequence, new Segment(bytes.clone(), clock.instant()));
-        storedBytes += retained - room.bytes; room.bytes = retained;
-        room.segments = next; room.nextSequence++;
     }
 
-    public synchronized ShareVideoMetadata metadata(ViewerAccess access, UUID viewer) {
-        VideoRoom room = read(access, viewer);
-        if (room == null || room.epoch == null || room.segments.isEmpty()) return null;
-        return new ShareVideoMetadata(room.shareId, room.epoch, room.codec,
-                room.segments.firstKey(), room.segments.lastKey());
+    public byte[] initialization(ViewerAccess access, UUID viewer, UUID epoch) {
+        VideoScope scope = shares.videoViewer(access, viewer);
+        synchronized (this) {
+            VideoRoom room = readable(scope, epoch);
+            return room.init.clone();
+        }
     }
 
-    public synchronized byte[] initialization(ViewerAccess access, UUID viewer, UUID epoch) {
-        VideoRoom room = readable(access, viewer, epoch);
-        return room.init.clone();
+    public byte[] fragment(ViewerAccess access, UUID viewer, UUID epoch, long sequence) {
+        VideoScope scope = shares.videoViewer(access, viewer);
+        synchronized (this) {
+            VideoRoom room = readable(scope, epoch);
+            Segment segment = room.segments.get(sequence);
+            if (segment == null) throw error(HttpStatus.GONE, "Сегмент больше недоступен");
+            return segment.bytes().clone();
+        }
     }
 
-    public synchronized byte[] fragment(ViewerAccess access, UUID viewer, UUID epoch, long sequence) {
-        VideoRoom room = readable(access, viewer, epoch);
-        Segment segment = room.segments.get(sequence);
-        if (segment == null) throw error(HttpStatus.GONE, "Сегмент больше недоступен");
-        return segment.bytes().clone();
-    }
-
-    private VideoRoom readable(ViewerAccess access, UUID viewer, UUID epoch) {
-        VideoRoom room = read(access, viewer);
+    private VideoRoom readable(VideoScope scope, UUID epoch) {
+        VideoRoom room = read(scope);
         if (room == null || !epoch.equals(room.epoch) || room.init == null || room.segments.isEmpty()) {
             throw error(HttpStatus.GONE, "Видеопоток больше недоступен");
         }
         return room;
     }
 
-    private VideoRoom read(ViewerAccess access, UUID viewer) {
-        VideoScope scope = shares.videoViewer(access, viewer);
+    private VideoRoom read(VideoScope scope) {
         prune();
         if (scope == null) return null;
         VideoRoom room = rooms.get(scope.shareId());
@@ -131,14 +164,15 @@ public class ShareVideoStore {
         return room;
     }
 
-    private VideoScope publisher(AuthenticatedUser user, UUID course, UUID session, UUID share) {
-        VideoScope scope = shares.videoPublisher(user, course, session, share);
-        if (scope.paused()) {
-            VideoRoom room = rooms.get(share);
+    private synchronized void requirePublisher(VideoScope scope) {
+        if (scope.paused() || shares.videoRoomPaused(scope.sessionId(), scope.shareId())) {
+            VideoRoom room = rooms.get(scope.shareId());
             if (room != null) retire(room);
             throw error(HttpStatus.CONFLICT, "Демонстрация на паузе");
         }
-        return scope;
+        if (!shares.videoRoomExists(scope.sessionId(), scope.shareId())) {
+            throw error(HttpStatus.GONE, "Демонстрация остановлена");
+        }
     }
 
     private VideoRoom current(UUID share, UUID epoch) {
@@ -177,14 +211,17 @@ public class ShareVideoStore {
         room.bytes = 0; room.nextSequence = 0;
     }
     private void budget(long bytes) {
-        if (bytes > MAX_GLOBAL_BYTES) throw error(HttpStatus.TOO_MANY_REQUESTS, "Видеобуфер временно заполнен");
+        if (bytes > capacity.getVideoBytes()) throw error(HttpStatus.TOO_MANY_REQUESTS, "Видеобуфер временно заполнен");
     }
     private void bound(byte[] bytes, int maximum) {
         if (bytes.length > maximum) throw error(HttpStatus.PAYLOAD_TOO_LARGE, "Видеосегмент слишком большой");
     }
     private static ResponseStatusException error(HttpStatus status, String reason) {
-        return new ResponseStatusException(status, reason);
+        return status == HttpStatus.TOO_MANY_REQUESTS
+                ? new CapacityUnavailableException(status, reason, 1)
+                : new ResponseStatusException(status, reason);
     }
+    private synchronized int roomCount() { return rooms.size(); }
     synchronized long storedBytes() { return storedBytes; }
 
     private record Segment(byte[] bytes, Instant receivedAt) {}

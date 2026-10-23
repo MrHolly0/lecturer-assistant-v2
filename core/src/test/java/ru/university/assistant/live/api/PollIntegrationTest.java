@@ -180,8 +180,9 @@ class PollIntegrationTest extends LiveFlowTestBase {
         assertEquals(1L, count("analytics.events where verb = 'interaction.poll_closed'"));
 
         json(post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 409);
+                .header("Authorization", "Bearer " + lecturerToken), 200);
         assertEquals(1L, count("analytics.events where verb = 'interaction.poll_closed'"));
+        assertEquals(1L, count("analytics.events where verb = 'session.ended'"));
     }
 
     @Test

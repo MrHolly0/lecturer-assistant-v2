@@ -22,6 +22,10 @@ function startFakeCore(outboxMessages = []) {
       calls.push({ method: request.method, url: request.url, body: raw ? JSON.parse(raw) : undefined });
       if (request.url.endsWith("/capabilities")) {
         response.writeHead(204).end();
+      } else if (request.url.endsWith("/rate-slot")) {
+        response.writeHead(200, { "content-type": "application/json" }).end('{"delayMs":0,"reserved":true}');
+      } else if (request.url.endsWith("/cooldown")) {
+        response.writeHead(204).end();
       } else if (request.url.includes("/outbox")) {
         response.writeHead(200, { "content-type": "application/json" })
           .end(JSON.stringify({ messages: outboxMessages.splice(0) }));
@@ -78,6 +82,7 @@ test("requested slide is sent to MAX as an image attachment", async () => {
 
 function startFakeMax() {
   const messages = [];
+  const subscriptionCalls = [];
   let updatesServed = false;
   const server = http.createServer((request, response) => {
     let raw = "";
@@ -99,15 +104,17 @@ function startFakeMax() {
         messages.push({ query: Object.fromEntries(url.searchParams), body });
         response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ message: { mid: "m1" } }));
       } else if (url.pathname === "/subscriptions" && request.method === "GET") {
+        subscriptionCalls.push("GET");
         response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ subscriptions: [] }));
       } else if (url.pathname === "/subscriptions" && request.method === "POST") {
+        subscriptionCalls.push("POST");
         response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({}));
       } else {
         response.writeHead(404).end();
       }
     });
   });
-  return { server, messages };
+  return { server, messages, subscriptionCalls };
 }
 
 async function listen(server) {
@@ -187,7 +194,7 @@ test("bot_started via long polling replies with an open_app button carrying the 
   assert.equal(stderr, "", `adapter logged to stderr: ${stderr}`);
 });
 
-test("webhook mode checks the secret and the path before accepting an update", async () => {
+for (const registerOnStart of [true, false]) test(`webhook mode checks credentials; register=${registerOnStart}`, async () => {
   const core = startFakeCore();
   const max = startFakeMax();
   const corePort = await listen(core.server);
@@ -205,6 +212,7 @@ test("webhook mode checks the secret and the path before accepting an update", a
       MAX_WEBHOOK_URL: "https://stand.example/webhook",
       MAX_WEBHOOK_SECRET: secret,
       MAX_WEBHOOK_PORT: String(webhookPort),
+      MAX_REGISTER_WEBHOOK_ON_START: String(registerOnStart),
       MAX_RATE_LIMIT_RPS: "50",
     },
     stdio: ["ignore", "ignore", "pipe"],
@@ -230,6 +238,7 @@ test("webhook mode checks the secret and the path before accepting an update", a
       body: JSON.stringify({ update_type: "bot_started", user: { user_id: 999 }, payload: "ZZZ999" }),
     });
     assert.equal(okResponse.status, 200);
+    assert.deepEqual(max.subscriptionCalls, registerOnStart ? ["GET", "POST"] : []);
 
     await waitUntil(() => max.messages.some((message) => message.query.user_id === "999"));
     const sent = max.messages.find((message) => message.query.user_id === "999");

@@ -33,6 +33,8 @@ interface DrawingOverlayProps {
   onClose?: () => void;
   toolsVisible?: boolean;
   saveError?: boolean;
+  saveErrorMessage?: string;
+  retryLabel?: string;
   saving?: boolean;
   onRetry?: () => void;
 }
@@ -46,6 +48,8 @@ export function DrawingOverlay({
   onChange,
   onClose,
   saveError = false,
+  saveErrorMessage = "Рисунок не сохранён",
+  retryLabel = "Повторить",
   saving = false,
   onRetry
 }: DrawingOverlayProps) {
@@ -173,9 +177,9 @@ export function DrawingOverlay({
 
   const saveFailure = saveError && onRetry && (
     <div className="drawing-save-error" role="alert">
-      <span>Рисунок не сохранён</span>
+      <span>{saveErrorMessage}</span>
       <button type="button" onClick={onRetry} disabled={saving || !active}>
-        {saving ? "Сохраняем…" : "Повторить"}
+        {saving ? "Сохраняем…" : retryLabel}
       </button>
     </div>
   );

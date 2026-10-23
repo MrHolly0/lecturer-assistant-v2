@@ -81,6 +81,7 @@ export function renderKeyboard(keyboard) {
 // Простой ограничитель темпа: минимальный интервал между слотами, без внешнего состояния
 // кроме переданного объекта — удобно тестировать без реальных таймеров.
 export function createRateLimiter(rps, now = () => Date.now()) {
+  if (!Number.isFinite(rps) || rps <= 0) throw new Error("Rate limit must be positive");
   let nextSlotAt = 0;
   return function reserveSlot() {
     const current = now();
@@ -90,14 +91,32 @@ export function createRateLimiter(rps, now = () => Date.now()) {
   };
 }
 
-export async function retry429(request, sleep, { maxAttempts = 3, maxDelayMs = 1500, fallbackDelayMs = 500 } = {}) {
+export function parseRetryAfter(value, now = Date.now()) {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const seconds = Number(value);
+  const delay = Number.isFinite(seconds) && seconds >= 0
+    ? Math.ceil(seconds * 1000) : Date.parse(value) - now;
+  return Number.isSafeInteger(delay) && delay >= 0 ? delay : undefined;
+}
+
+export function retryDelay(attempt, { baseMs = 500, capMs = 30_000, random = Math.random } = {}) {
+  return Math.floor(random() * Math.min(capMs, baseMs * 2 ** Math.min(attempt, 20)));
+}
+
+// A long provider cooldown belongs in the durable outbox; never shorten Retry-After.
+export async function retry429(request, sleep, {
+  maxAttempts = 3, maxDelayMs = 2000, budgetMs = 5000, random = Math.random, now = Date.now,
+} = {}) {
+  let waited = 0;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const response = await request();
     if (response.status !== 429 || attempt === maxAttempts - 1) return response;
-    const header = response.headers?.get?.("retry-after");
-    const requestedDelay = header === null || header === undefined ? fallbackDelayMs : Number(header) * 1000;
-    const delay = Math.min(maxDelayMs, Math.max(0, Number.isFinite(requestedDelay) ? requestedDelay : fallbackDelayMs));
+    const requested = parseRetryAfter(response.headers?.get?.("retry-after"), now());
+    const delay = Math.max(requested ?? 0, retryDelay(attempt, { random, capMs: maxDelayMs }));
+    if (delay > maxDelayMs || waited + delay > budgetMs) return response;
+    await response.body?.cancel();
     await sleep(delay);
+    waited += delay;
   }
   throw new Error("Retry budget exhausted");
 }

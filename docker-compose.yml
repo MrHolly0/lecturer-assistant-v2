@@ -4,11 +4,35 @@
 
 x-restart: &restart
   restart: unless-stopped
+  logging:
+    driver: local
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 services:
   postgres:
     <<: *restart
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-768m}
+    cpus: ${POSTGRES_CPU_LIMIT:-2.0}
+    pids_limit: 128
     image: postgres:16-alpine
+    command:
+      - postgres
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-80}
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-128MB}
+      - -c
+      - work_mem=${POSTGRES_WORK_MEM:-4MB}
+      - -c
+      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-64MB}
+      - -c
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-512MB}
+      - -c
+      - max_parallel_workers=4
+      - -c
+      - max_parallel_workers_per_gather=2
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lecturer_assistant}
       POSTGRES_USER: ${POSTGRES_USER:-lecturer}
@@ -25,10 +49,20 @@ services:
 
   core:
     <<: *restart
+    mem_limit: ${CORE_MEMORY_LIMIT:-2g}
+    cpus: ${CORE_CPU_LIMIT:-2.0}
+    pids_limit: 256
     build:
       context: .
       dockerfile: core/Dockerfile
     environment:
+      # Heap leaves room for metaspace, direct buffers, thread stacks and native code.
+      JAVA_TOOL_OPTIONS: ${CORE_JAVA_TOOL_OPTIONS:--XX:InitialRAMPercentage=6.25 -XX:MaxRAMPercentage=60 -XX:ReservedCodeCacheSize=128m -XX:MaxDirectMemorySize=128m -XX:ActiveProcessorCount=2 -Xss512k -XX:+ExitOnOutOfMemoryError}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-16}
+      DB_POOL_MIN_IDLE: ${DB_POOL_MIN_IDLE:-2}
+      DB_SESSION_OPTIONS: ${DB_SESSION_OPTIONS:--c statement_timeout=30000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=60000}
+      HTTP_MAX_THREADS: ${HTTP_MAX_THREADS:-120}
+      HTTP_MAX_CONNECTIONS: ${HTTP_MAX_CONNECTIONS:-8192}
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/lecturer_assistant}
       DB_USERNAME: ${DB_USERNAME:-lecturer}
       DB_PASSWORD: ${DB_PASSWORD:-lecturer_dev_password}
@@ -48,6 +82,7 @@ services:
       MAX_INIT_DATA_MAX_AGE: ${MAX_INIT_DATA_MAX_AGE:-PT1H}
       CHANNEL_INTERNAL_API_KEY: ${CHANNEL_INTERNAL_API_KEY:-local-dev-channel-key-not-for-production}
       CHANNEL_DELIVERY_WORKER_DELAY_MS: ${CHANNEL_DELIVERY_WORKER_DELAY_MS:-5000}
+      MAX_RATE_LIMIT_RPS: ${MAX_RATE_LIMIT_RPS:-15}
       TELEGRAM_BOT: ${TELEGRAM_BOT:-}
       VK_BOT: ${VK_BOT:-}
       BLOB_ROOT: /data/blobs
@@ -58,7 +93,30 @@ services:
       CONTENT_IMPORT_CORE_POOL_SIZE: ${CONTENT_IMPORT_CORE_POOL_SIZE:-1}
       CONTENT_IMPORT_MAX_POOL_SIZE: ${CONTENT_IMPORT_MAX_POOL_SIZE:-2}
       CONTENT_IMPORT_QUEUE_CAPACITY: ${CONTENT_IMPORT_QUEUE_CAPACITY:-8}
+      CONTENT_WORKER_ENABLED: ${CONTENT_WORKER_ENABLED:-true}
+      CONTENT_IMPORT_LEASE_SECONDS: ${CONTENT_IMPORT_LEASE_SECONDS:-90}
+      CONTENT_IMPORT_MAX_ATTEMPTS: ${CONTENT_IMPORT_MAX_ATTEMPTS:-3}
+      CONTENT_IMPORT_DISPATCH_DELAY_MS: ${CONTENT_IMPORT_DISPATCH_DELAY_MS:-1000}
+      CONTENT_IMPORT_HEARTBEAT_DELAY_MS: ${CONTENT_IMPORT_HEARTBEAT_DELAY_MS:-10000}
+      CONTENT_IMPORT_MAX_QUEUED_JOBS: ${CONTENT_IMPORT_MAX_QUEUED_JOBS:-128}
       SSE_BROADCAST_WORKERS: ${SSE_BROADCAST_WORKERS:-4}
+      SSE_MAX_CLIENTS: ${SSE_MAX_CLIENTS:-20000}
+      SSE_MAX_CLIENTS_PER_SESSION: ${SSE_MAX_CLIENTS_PER_SESSION:-1000}
+      API_READS_PER_MINUTE: ${API_READS_PER_MINUTE:-1200}
+      API_WRITES_PER_MINUTE: ${API_WRITES_PER_MINUTE:-240}
+      API_ANALYTICS_PER_MINUTE: ${API_ANALYTICS_PER_MINUTE:-60}
+      API_ANONYMOUS_PER_MINUTE: ${API_ANONYMOUS_PER_MINUTE:-12000}
+      API_IMAGE_REQUESTS_PER_MINUTE: ${API_IMAGE_REQUESTS_PER_MINUTE:-120000}
+      API_CREDENTIAL_LOOKUPS_PER_MINUTE: ${API_CREDENTIAL_LOOKUPS_PER_MINUTE:-120000}
+      API_CREDENTIAL_LOOKUP_CONCURRENT: ${API_CREDENTIAL_LOOKUP_CONCURRENT:-4}
+      API_RATE_LIMIT_MAX_KEYS: ${API_RATE_LIMIT_MAX_KEYS:-20000}
+      API_CONCURRENT_REQUESTS: ${API_CONCURRENT_REQUESTS:-128}
+      API_CONCURRENT_ANALYTICS: ${API_CONCURRENT_ANALYTICS:-8}
+      SHARE_MAX_ROOMS: ${SHARE_MAX_ROOMS:-64}
+      SHARE_MAX_VIEWERS_PER_ROOM: ${SHARE_MAX_VIEWERS_PER_ROOM:-200}
+      SHARE_FRAME_BUFFER_BYTES: ${SHARE_FRAME_BUFFER_BYTES:-33554432}
+      SHARE_VIDEO_BUFFER_BYTES: ${SHARE_VIDEO_BUFFER_BYTES:-67108864}
+      SHARE_VIDEO_ROOM_BYTES: ${SHARE_VIDEO_ROOM_BYTES:-8388608}
       APP_VERSION: ${APP_VERSION:-0.0.1-SNAPSHOT}
       APP_CONTENT_CONVERTER_URL: http://converter:8000
       HTTP_SOCKET_IDLE_TIMEOUT: ${HTTP_SOCKET_IDLE_TIMEOUT:-10s}
@@ -81,6 +139,13 @@ services:
 
   converter:
     <<: *restart
+    mem_limit: ${CONVERTER_MEMORY_LIMIT:-1536m}
+    cpus: ${CONVERTER_CPU_LIMIT:-1.0}
+    pids_limit: 128
+    init: true
+    environment:
+      CONVERTER_MAX_CONVERSIONS: ${CONVERTER_MAX_CONVERSIONS:-2}
+      CONVERTER_MAX_HTTP_WORKERS: ${CONVERTER_MAX_HTTP_WORKERS:-16}
     build:
       context: .
       dockerfile: deploy/converter/Dockerfile
@@ -90,6 +155,11 @@ services:
 
   web:
     <<: *restart
+    mem_limit: ${WEB_MEMORY_LIMIT:-128m}
+    cpus: ${WEB_CPU_LIMIT:-0.5}
+    pids_limit: 64
+    environment:
+      NGINX_ENTRYPOINT_WORKER_PROCESSES_AUTOTUNE: "1"
     build:
       context: .
       dockerfile: web/Dockerfile
@@ -111,6 +181,10 @@ services:
   # остальной продукт работает (вход через веб).
   max-adapter:
     <<: *restart
+    mem_limit: ${MAX_ADAPTER_MEMORY_LIMIT:-256m}
+    cpus: ${MAX_ADAPTER_CPU_LIMIT:-0.5}
+    pids_limit: 64
+    init: true
     build:
       context: .
       dockerfile: adapters/max/Dockerfile
@@ -122,13 +196,18 @@ services:
       MAX_WEBHOOK_URL: ${MAX_WEBHOOK_URL:-}
       MAX_WEBHOOK_SECRET: ${MAX_WEBHOOK_SECRET:-}
       MAX_WEBHOOK_PORT: 8090
+      MAX_REGISTER_WEBHOOK_ON_START: ${MAX_REGISTER_WEBHOOK_ON_START:-true}
       MAX_RATE_LIMIT_RPS: ${MAX_RATE_LIMIT_RPS:-15}
+      NODE_OPTIONS: --max-old-space-size=128
     depends_on:
       core:
         condition: service_healthy
 
   telegram-adapter:
     <<: *restart
+    mem_limit: 192m
+    cpus: 0.5
+    pids_limit: 64
     # Для MAX-сценария не нужен: включается только по запросу.
     profiles: ["telegram"]
     build:

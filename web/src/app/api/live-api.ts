@@ -1,7 +1,9 @@
 import type { components } from "./schema";
 import { expireStoredAuth, getStoredAuth } from "../auth";
-import { apiFetch } from "./http";
+import { apiFetch, withRequestDeadline } from "./http";
 import { refreshAuthSession } from "./refresh";
+import { retryDelayMs } from "./retry";
+import { newOperationKey } from "./operation-key";
 
 export type SessionGroupRef = components["schemas"]["SessionGroup"];
 export type LiveSession = components["schemas"]["LiveSession"];
@@ -9,7 +11,9 @@ export type SessionParticipant = components["schemas"]["SessionParticipant"];
 export type LectureSummary = components["schemas"]["LectureSummary"];
 export type SessionHistoryItem = components["schemas"]["SessionHistoryItem"];
 export type SessionHistoryPage = components["schemas"]["SessionHistoryPage"];
-export type LiveSessionMessage = { type: string; session: LiveSession };
+export type LiveSessionMessage =
+  | { type: string; session: LiveSession }
+  | { type: "session.invalidate"; sessionId: string; version: number; eventType: string };
 export type LiveConnectionState =
   | "connecting"
   | "connected"
@@ -28,18 +32,28 @@ export async function getMyActiveSession(): Promise<ActiveSession | null> {
 export async function startLiveSession(
   courseId: string,
   lectureId: string,
-  request: StartSessionRequest
+  request: StartSessionRequest,
+  operationKey = newOperationKey()
 ): Promise<LiveSession> {
   const res = await apiFetch(`/courses/${courseId}/lectures/${lectureId}/sessions`, {
     method: "POST",
+    headers: { "Idempotency-Key": operationKey },
     body: JSON.stringify(request)
   });
   return res.json() as Promise<LiveSession>;
 }
 
-export async function getLiveSession(courseId: string, sessionId: string): Promise<LiveSession> {
-  const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}`);
-  return res.json() as Promise<LiveSession>;
+export async function getLiveSession(
+  courseId: string,
+  sessionId: string,
+  signal?: AbortSignal
+): Promise<LiveSession> {
+  return withRequestDeadline(async (requestSignal) => {
+    const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}`, {
+      signal: requestSignal
+    });
+    return res.json() as Promise<LiveSession>;
+  }, signal);
 }
 
 export async function beginLiveSession(courseId: string, sessionId: string): Promise<LiveSession> {
@@ -121,11 +135,12 @@ export async function joinLiveSession(courseId: string, joinCode: string): Promi
 export async function changeLiveSessionSlide(
   courseId: string,
   sessionId: string,
-  slideIdx: number
+  slideIdx: number,
+  expectedVersion?: number
 ): Promise<LiveSession> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/slide`, {
     method: "PUT",
-    body: JSON.stringify({ slideIdx })
+    body: JSON.stringify({ slideIdx, expectedVersion })
   });
   return res.json() as Promise<LiveSession>;
 }
@@ -133,11 +148,12 @@ export async function changeLiveSessionSlide(
 export async function saveLiveSessionAnnotations(
   courseId: string,
   sessionId: string,
-  annotations: Record<string, unknown>
+  annotations: Record<string, unknown>,
+  expectedVersion?: number
 ): Promise<LiveSession> {
   const res = await apiFetch(`/courses/${courseId}/sessions/${sessionId}/annotations`, {
     method: "PUT",
-    body: JSON.stringify({ annotations })
+    body: JSON.stringify({ annotations, expectedVersion })
   });
   return res.json() as Promise<LiveSession>;
 }
@@ -209,8 +225,17 @@ export function connectLiveSession(
     let connectionToken = "";
     let connectedTimer: number | undefined;
     let stableTimer: number | undefined;
-    const currentSocket = new WebSocket(url);
+    let currentSocket: WebSocket;
+    try {
+      currentSocket = new WebSocket(url);
+    } catch {
+      onStateChange?.("reconnecting");
+      scheduleReconnect();
+      return;
+    }
     socket = currentSocket;
+    // Includes TCP/TLS and the STOMP handshake, not only time after `open`.
+    connectedTimer = window.setTimeout(() => currentSocket.close(), 10000);
 
     currentSocket.addEventListener("open", () => {
       if (stopped || socket !== currentSocket) return currentSocket.close();
@@ -218,10 +243,6 @@ export function connectLiveSession(
       currentSocket.send(
         `CONNECT\naccept-version:1.2\nhost:${window.location.host}\nheart-beat:10000,10000\nAuthorization:Bearer ${connectionToken}\n\n\u0000`
       );
-      connectedTimer = window.setTimeout(() => {
-        // A slow handshake is a transport failure, not evidence of expired credentials.
-        currentSocket.close();
-      }, 10000);
     });
 
     currentSocket.addEventListener("message", (event) => {
@@ -299,12 +320,15 @@ export function connectLiveSession(
   }
 
   function scheduleReconnect() {
-    if (stopped) return;
+    if (stopped || !navigator.onLine) return;
     if (reconnectTimer) window.clearTimeout(reconnectTimer);
-    const delay = reconnectImmediately ? 0 : Math.min(500 * 2 ** attempt, 5000);
+    const delay = reconnectImmediately ? 0 : retryDelayMs(attempt, { baseMs: 500, maxMs: 30000 });
     reconnectImmediately = false;
     if (delay > 0) attempt += 1;
-    reconnectTimer = window.setTimeout(connect, delay);
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = undefined;
+      connect();
+    }, delay);
   }
 
   async function recoverAuthentication(token: string, currentSocket: WebSocket) {
@@ -343,13 +367,16 @@ export function connectLiveSession(
 
   const handleOnline = () => {
     if (stopped) return;
-    reconnectImmediately = true;
-    attempt = 0;
-    if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
-    else scheduleReconnect();
+    if (socket && socket.readyState < WebSocket.CLOSING) return;
+    if (reconnectTimer === undefined) scheduleReconnect();
   };
 
-  const handleOffline = () => onStateChange?.("offline");
+  const handleOffline = () => {
+    if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
+    onStateChange?.("offline");
+    socket?.close();
+  };
   let resumeTimer: number | undefined;
   const handleResume = () => {
     if (stopped || document.visibilityState !== "visible" || resumeTimer) return;
@@ -359,11 +386,12 @@ export function connectLiveSession(
       resumeTimer = undefined;
       if (stopped || document.visibilityState !== "visible") return;
       if (
-        !socket ||
-        socket.readyState >= WebSocket.CLOSING ||
-        (receiveTimeout > 0 && Date.now() - lastReceivedAt > receiveTimeout)
+        socket?.readyState === WebSocket.OPEN &&
+        receiveTimeout > 0 &&
+        Date.now() - lastReceivedAt > receiveTimeout
       )
-        handleOnline();
+        socket.close();
+      else handleOnline();
     }, 0);
   };
 

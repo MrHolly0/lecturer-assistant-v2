@@ -17,8 +17,8 @@ class FeedbackRepository {
         this.jdbc = jdbc;
     }
 
-    void saveSignal(UUID sessionId, UUID personId, String channelType, int slideIdx, SignalValue value) {
-        jdbc.sql(
+    boolean saveSignal(UUID sessionId, UUID personId, String channelType, int slideIdx, SignalValue value) {
+        return jdbc.sql(
                         """
                         insert into feedback.comprehension_signals
                             (id, session_id, person_id, channel_type, slide_idx, value)
@@ -28,6 +28,7 @@ class FeedbackRepository {
                             channel_type = excluded.channel_type,
                             value = excluded.value,
                             created_at = now()
+                        where comprehension_signals.value is distinct from excluded.value
                         """)
                 .param("id", UuidV7.generate())
                 .param("sessionId", sessionId)
@@ -35,7 +36,7 @@ class FeedbackRepository {
                 .param("channelType", channelType)
                 .param("slideIdx", slideIdx)
                 .param("value", value.name())
-                .update();
+                .update() == 1;
     }
 
     // Уникальность (session_id, person_id, slide_idx) гарантирует не больше одной строки на

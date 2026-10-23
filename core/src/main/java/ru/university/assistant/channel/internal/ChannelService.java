@@ -8,10 +8,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.university.assistant.channel.api.ChannelCapabilities;
+import ru.university.assistant.channel.api.ChannelRateSlot;
 import ru.university.assistant.channel.api.ContentType;
 import ru.university.assistant.channel.api.ChannelFanoutApi;
 import ru.university.assistant.channel.api.ChannelInternalApi;
@@ -43,11 +45,34 @@ public class ChannelService implements ChannelInternalApi, ChannelFanoutApi {
     private final ChannelRepository channels;
     private final ChannelIdentityApi identities;
     private final ChannelMediaStore media;
+    private final int maxRateIntervalMs;
 
-    ChannelService(ChannelRepository channels, ChannelIdentityApi identities, ChannelMediaStore media) {
+    ChannelService(ChannelRepository channels, ChannelIdentityApi identities, ChannelMediaStore media,
+            @Value("${app.channel.max-rate-limit-rps:15}") int rateLimitRps) {
         this.channels = channels;
         this.identities = identities;
         this.media = media;
+        this.maxRateIntervalMs = (int) Math.ceil(1000.0 / Math.max(1, Math.min(rateLimitRps, 30)));
+    }
+
+    @Override
+    @Transactional
+    public ChannelRateSlot reserveRateSlot(String channelType) {
+        requireMax(channelType);
+        return channels.reserveRateSlot("max", maxRateIntervalMs, 2000);
+    }
+
+    @Override
+    @Transactional
+    public void deferChannel(String channelType, long delayMs) {
+        requireMax(channelType);
+        channels.deferChannel("max", delayMs);
+    }
+
+    private void requireMax(String channelType) {
+        if (!"max".equalsIgnoreCase(channelType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported provider rate budget");
+        }
     }
 
     @Transactional

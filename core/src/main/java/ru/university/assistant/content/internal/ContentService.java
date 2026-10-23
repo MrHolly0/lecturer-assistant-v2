@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
-import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -37,7 +36,6 @@ public class ContentService implements StudentDeckApi {
     private final CourseAccessApi courseAccess;
     private final ContentRepository repository;
     private final BlobStorage blobStorage;
-    private final SlideImportWorker worker;
     private final ContentProperties properties;
     private final SignedSlideUrlService signedUrls;
 
@@ -45,13 +43,11 @@ public class ContentService implements StudentDeckApi {
             CourseAccessApi courseAccess,
             ContentRepository repository,
             BlobStorage blobStorage,
-            SlideImportWorker worker,
             ContentProperties properties,
             SignedSlideUrlService signedUrls) {
         this.courseAccess = courseAccess;
         this.repository = repository;
         this.blobStorage = blobStorage;
-        this.worker = worker;
         this.properties = properties;
         this.signedUrls = signedUrls;
     }
@@ -65,12 +61,13 @@ public class ContentService implements StudentDeckApi {
         String cleanTitle = title == null || title.isBlank()
                 ? filenameWithoutExtension(file.getOriginalFilename())
                 : title.trim();
+        repository.requireImportCapacity(Math.max(1, properties.importMaxQueuedJobs()));
         try {
             validateMagic(file.getOriginalFilename(), readHeader(file), file.getSize());
             StoredBlob source = blobStorage.store(
                     file.getInputStream(), file.getOriginalFilename(), file.getContentType(), file.getSize());
+            deleteSourceOnRollback(source);
             ImportJob job = repository.createJob(UuidV7.generate(), courseId, source, cleanTitle);
-            dispatchAfterCommit(job.id(), courseId, cleanTitle);
             return job;
         } catch (IOException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot store uploaded file", exception);
@@ -80,6 +77,7 @@ public class ContentService implements StudentDeckApi {
     @Transactional
     public ImportJob retryDeckImport(AuthenticatedUser user, UUID courseId, UUID jobId) {
         courseAccess.requireManage(user, courseId);
+        repository.requireImportCapacity(Math.max(1, properties.importMaxQueuedJobs()));
         ContentRepository.ImportRetrySource source = repository.lockRetrySource(courseId, jobId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Import job not found"));
         if (source.status() != ImportJobStatus.FAILED && source.status() != ImportJobStatus.PARTIAL) {
@@ -94,8 +92,9 @@ public class ContentService implements StudentDeckApi {
         String title = source.title() == null || source.title().isBlank()
                 ? filenameWithoutExtension(source.source().filename())
                 : source.title();
-        ImportJob retry = repository.createRetryJob(UuidV7.generate(), courseId, source);
-        dispatchAfterCommit(retry.id(), courseId, title);
+        ContentRepository.ImportRetrySource titledSource = new ContentRepository.ImportRetrySource(
+                source.id(), source.status(), source.progress(), source.processedSlides(), title, source.source());
+        ImportJob retry = repository.createRetryJob(UuidV7.generate(), courseId, titledSource);
         return retry;
     }
 
@@ -314,6 +313,23 @@ public class ContentService implements StudentDeckApi {
         }
     }
 
+    private void deleteSourceOnRollback(StoredBlob source) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) return;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_ROLLED_BACK) {
+                    try {
+                        blobStorage.deleteAll(List.of(source.ref()));
+                    } catch (IOException exception) {
+                        org.slf4j.LoggerFactory.getLogger(ContentService.class)
+                                .warn("Cannot clean up rolled back import source", exception);
+                    }
+                }
+            }
+        });
+    }
+
     private void deleteBlobsAfterCommit(List<String> refs) {
         Runnable delete = () -> {
             try {
@@ -330,19 +346,6 @@ public class ContentService implements StudentDeckApi {
             @Override
             public void afterCommit() {
                 delete.run();
-            }
-        });
-    }
-
-    private void dispatchAfterCommit(UUID jobId, UUID courseId, String title) {
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                try {
-                    worker.process(jobId, courseId, title);
-                } catch (TaskRejectedException exception) {
-                    worker.markRejected(jobId, "Очередь импорта переполнена. Повторите задание позже.");
-                }
             }
         });
     }

@@ -3,7 +3,8 @@ export class ApiError extends Error {
     public readonly status: number,
     message: string,
     public readonly code?: string,
-    public readonly details?: Record<string, unknown>
+    public readonly details?: Record<string, unknown>,
+    public readonly retryAfterMs?: number
   ) {
     super(message);
     this.name = "ApiError";
@@ -11,6 +12,10 @@ export class ApiError extends Error {
 }
 
 const KNOWN_MESSAGES: Array<[RegExp, string]> = [
+  [
+    /session changed in another window/i,
+    "Занятие изменилось в другом окне. Обновите данные перед повтором действия."
+  ],
   [
     /invalid participant token|participant token does not belong to session/i,
     "Ссылка подключения устарела. Откройте лекцию заново."
@@ -44,6 +49,7 @@ const STATUS_MESSAGES: Record<number, string> = {
 export async function apiErrorFromResponse(response: Response): Promise<ApiError> {
   let serverMessage: string | undefined;
   let code: string | undefined;
+  const retryAfterMs = parseRetryAfter(response.headers.get("Retry-After"));
   try {
     const data = (await response.clone().json()) as Record<string, unknown>;
     const errorValue = firstString(data.error);
@@ -57,12 +63,32 @@ export async function apiErrorFromResponse(response: Response): Promise<ApiError
       response.status,
       localizeApiMessage(response.status, serverMessage),
       code,
-      data
+      data,
+      retryAfterMs
     );
   } catch {
     // Non-JSON responses are converted using the HTTP status.
   }
-  return new ApiError(response.status, localizeApiMessage(response.status, serverMessage), code);
+  return new ApiError(
+    response.status,
+    localizeApiMessage(response.status, serverMessage),
+    code,
+    undefined,
+    retryAfterMs
+  );
+}
+
+/** Retry-After is a minimum delay, either seconds or an HTTP date. */
+export function parseRetryAfter(value: string | null, now = Date.now()): number | undefined {
+  if (!value?.trim()) return undefined;
+  const trimmed = value.trim();
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    const delay = Number(trimmed) * 1000;
+    return Number.isFinite(delay) ? delay : undefined;
+  }
+  if (!/^[A-Za-z]{3,9}[, ]/.test(trimmed)) return undefined;
+  const timestamp = Date.parse(trimmed);
+  return Number.isFinite(timestamp) ? Math.max(0, timestamp - now) : undefined;
 }
 
 export function userErrorMessage(error: unknown, fallback = "Не удалось выполнить действие.") {

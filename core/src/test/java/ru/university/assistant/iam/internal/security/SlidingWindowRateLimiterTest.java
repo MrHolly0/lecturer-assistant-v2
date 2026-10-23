@@ -1,6 +1,7 @@
 package ru.university.assistant.iam.internal.security;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Clock;
@@ -43,6 +44,20 @@ class SlidingWindowRateLimiterTest {
         clock.advance(Duration.ofMinutes(1).plusSeconds(1));
 
         assertTrue(limiter.tryAcquire("1.2.3.4")); // старое обращение уже вне окна
+    }
+
+    @Test
+    void keyChurnCannotResetLiveBudgetsAndIdleEntriesExpire() {
+        MutableClock clock = new MutableClock(Instant.parse("2026-09-24T10:00:00Z"));
+        SlidingWindowRateLimiter limiter = new SlidingWindowRateLimiter(1, Duration.ofSeconds(10), clock, 2);
+        assertTrue(limiter.tryAcquire("one"));
+        assertTrue(limiter.tryAcquire("two"));
+        assertFalse(limiter.tryAcquire("three"));
+        assertFalse(limiter.tryAcquire("one"));
+        assertEquals(2, limiter.keyCount());
+        clock.advance(Duration.ofSeconds(21));
+        assertTrue(limiter.tryAcquire("three"));
+        assertEquals(1, limiter.keyCount());
     }
 
     private static final class MutableClock extends Clock {

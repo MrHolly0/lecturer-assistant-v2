@@ -117,6 +117,11 @@ class LiveWebSocketSecurityIntegrationTest {
         post("/api/v1/courses/" + own.courseId() + "/sessions/" + ownSession + "/begin", own.token(), "{}", 200);
         assertTrue(ownEvents.message.await(3, TimeUnit.SECONDS), "Own session subscription should receive an update");
         assertNotNull(ownEvents.payload.get());
+        JsonNode notification = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree((byte[]) ownEvents.payload.get());
+        assertEquals("session.started", notification.path("type").asText());
+        assertEquals(ownSession.toString(), notification.path("session").path("id").asText(),
+                "Raw JSON bytes must reach the wire without a second/base64 conversion");
         valid.disconnect();
 
         assertRejectedSubscribe(own.token(), ownSession, "/topic/session/*");

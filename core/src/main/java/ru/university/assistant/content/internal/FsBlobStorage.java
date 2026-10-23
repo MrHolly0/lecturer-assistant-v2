@@ -99,7 +99,8 @@ class FsBlobStorage implements BlobStorage {
     private <T> T withBackupLock(IoSupplier<T> operation) throws IOException {
         try {
             return transactions.execute(status -> {
-                jdbc.sql("select pg_advisory_xact_lock(14713, 2525)")
+                // Writers use distinct UUID paths; only a backup needs exclusive ownership.
+                jdbc.sql("select pg_advisory_xact_lock_shared(14713, 2525)")
                         .query((rs, row) -> rs.getString(1))
                         .single();
                 try {

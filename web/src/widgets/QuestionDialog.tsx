@@ -28,6 +28,7 @@ import { questionAvailability } from "../shared/lib/questionAvailability";
 import { LectureMultiSelect } from "./LectureMultiSelect";
 import { listLectures } from "../app/api/content-api";
 import { RadioGroup, RadioGroupItem } from "../shared/ui/radio-group";
+import { PendingOperationKey } from "../app/api/operation-key";
 
 interface QuestionDialogProps {
   courseId: string;
@@ -72,6 +73,7 @@ export function QuestionDialog({
 }: QuestionDialogProps) {
   const id = useId();
   const submitting = useRef(false);
+  const pendingCreate = useRef(new PendingOperationKey());
   const [previewOpen, setPreviewOpen] = useState(false);
   const returnFocus = useRef<HTMLElement | null>(null);
   const [text, setText] = useState(initial?.text ?? "");
@@ -93,6 +95,7 @@ export function QuestionDialog({
   const [tagsText, setTagsText] = useState(initial?.tags.join(", ") ?? "");
   useEffect(() => {
     if (!open) return;
+    pendingCreate.current.clear();
     setText(initial?.text ?? "");
     setType(initial?.questionType ?? "CHOICE");
     setDrafts(optionDrafts(initial));
@@ -124,7 +127,9 @@ export function QuestionDialog({
       };
       return initial
         ? updateQuestion(courseId, initial.id, request)
-        : createQuestion(courseId, request);
+        : pendingCreate.current.run({ courseId, request }, (key) =>
+            createQuestion(courseId, request, key)
+          );
     },
     onSuccess: () => {
       toast.success(initial ? "Вопрос обновлён." : "Вопрос создан.");

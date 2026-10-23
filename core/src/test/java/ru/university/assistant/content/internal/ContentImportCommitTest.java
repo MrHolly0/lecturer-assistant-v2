@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23,15 +22,14 @@ import ru.university.assistant.org.api.CourseAccessApi;
 
 class ContentImportCommitTest {
     @Test
-    void startsWorkerOnlyAfterImportJobCommit() throws Exception {
+    void persistsJobWithoutStartingWorkInsideRequestTransaction() throws Exception {
         CourseAccessApi access = mock(CourseAccessApi.class);
         ContentRepository repository = mock(ContentRepository.class);
         BlobStorage storage = mock(BlobStorage.class);
-        SlideImportWorker worker = mock(SlideImportWorker.class);
         ContentProperties properties = new ContentProperties(
-                null, null, 1024, null, null, null, null, 0, 0, 0);
+                null, null, 1024, null, null, null, null, 0, 0, 0, 128);
         ContentService service = new ContentService(
-                access, repository, storage, worker, properties, mock(SignedSlideUrlService.class));
+                access, repository, storage, properties, mock(SignedSlideUrlService.class));
         UUID courseId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
         ImportJob job = new ImportJob(jobId, courseId, null, ImportJobStatus.PENDING,
@@ -47,11 +45,11 @@ class ContentImportCommitTest {
         TransactionSynchronizationManager.initSynchronization();
         try {
             assertEquals(job, service.startDeckImport(teacher, courseId, "Load deck", file));
-            verify(worker, never()).process(any(), any(), any());
+
             for (TransactionSynchronization synchronization : TransactionSynchronizationManager.getSynchronizations()) {
                 synchronization.afterCommit();
             }
-            verify(worker).process(jobId, courseId, "Load deck");
+            verify(repository).createJob(any(UUID.class), eq(courseId), eq(source), eq("Load deck"));
         } finally {
             TransactionSynchronizationManager.clearSynchronization();
         }

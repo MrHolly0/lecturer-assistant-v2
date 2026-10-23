@@ -27,6 +27,10 @@
 	}
 
 	handle /api/* {
+		@json header Content-Type application/*json*
+		request_body @json {
+			max_size 4MiB
+		}
 		reverse_proxy core:8080
 	}
 

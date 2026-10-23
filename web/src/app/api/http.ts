@@ -43,12 +43,14 @@ export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise
       else throw error;
     }
     if (refreshed) {
+      requestInit.signal?.throwIfAborted();
       responseToken = getStoredAuth()?.accessToken ?? null;
       response = await sendRequest(path, requestInit, responseToken);
     }
   }
 
   if (response.status === 401) {
+    requestInit.signal?.throwIfAborted();
     // Only expire the credentials that received this response. An older request
     // must not clear a token installed by a later login/account switch.
     if (!skipAuthRefresh && responseToken && getStoredAuth()?.accessToken === responseToken) {
@@ -59,6 +61,37 @@ export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise
   }
   await assertSuccessful(response);
   return response;
+}
+
+/** Bound a complete read, including the response body, without retrying commands. */
+export async function withRequestDeadline<T>(
+  request: (signal: AbortSignal) => Promise<T>,
+  parentSignal?: AbortSignal,
+  timeoutMs = 12_000
+): Promise<T> {
+  const controller = new AbortController();
+  const abort = () => controller.abort(parentSignal?.reason);
+  if (parentSignal?.aborted) abort();
+  else parentSignal?.addEventListener("abort", abort, { once: true });
+  const timer = window.setTimeout(
+    () => controller.abort(new DOMException("Request deadline exceeded", "TimeoutError")),
+    timeoutMs
+  );
+  let rejectOnAbort: (() => void) | undefined;
+  try {
+    controller.signal.throwIfAborted();
+    const cancelled = new Promise<never>((_resolve, reject) => {
+      rejectOnAbort = () => reject(controller.signal.reason);
+      controller.signal.addEventListener("abort", rejectOnAbort, { once: true });
+    });
+    const result = await Promise.race([request(controller.signal), cancelled]);
+    controller.signal.throwIfAborted();
+    return result;
+  } finally {
+    window.clearTimeout(timer);
+    if (rejectOnAbort) controller.signal.removeEventListener("abort", rejectOnAbort);
+    parentSignal?.removeEventListener("abort", abort);
+  }
 }
 
 async function sendRequest(

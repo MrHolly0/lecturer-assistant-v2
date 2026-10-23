@@ -35,6 +35,7 @@ import ru.university.assistant.org.api.CreateCourseRequest;
 import ru.university.assistant.org.api.CreateStudyGroupRequest;
 import ru.university.assistant.org.api.StudyGroup;
 import ru.university.assistant.shared.api.UuidV7;
+import ru.university.assistant.shared.api.CommandIdempotency;
 
 @Service
 public class CourseService implements CourseMembershipApi, CourseAccessApi {
@@ -42,12 +43,31 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     private final InvitationApi invitations;
     private final AccountStateApi accounts;
     private final Validator validator;
+    private final CommandIdempotency commands;
 
-    CourseService(CourseRepository courses, InvitationApi invitations, AccountStateApi accounts, Validator validator) {
+    CourseService(CourseRepository courses, InvitationApi invitations, AccountStateApi accounts, Validator validator,
+            CommandIdempotency commands) {
         this.courses = courses;
         this.accounts = accounts;
         this.invitations = invitations;
         this.validator = validator;
+        this.commands = commands;
+    }
+
+    @Transactional
+    public Course createCourse(AuthenticatedUser user, CreateCourseRequest request, String key) {
+        if (user.role() != PersonRole.ADMIN && user.role() != PersonRole.LECTURER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins and lecturers can create courses");
+        }
+        return commands.execute(user.id(), "POST /courses", key, commands.hash(request), Course.class,
+                () -> createCourse(user, request));
+    }
+
+    @Transactional
+    public StudyGroup createGroup(AuthenticatedUser user, UUID courseId, CreateStudyGroupRequest request, String key) {
+        requireManage(user, courseId);
+        return commands.execute(user.id(), "POST /courses/" + courseId + "/groups", key, commands.hash(request),
+                StudyGroup.class, () -> createGroup(user, courseId, request));
     }
 
     @Transactional

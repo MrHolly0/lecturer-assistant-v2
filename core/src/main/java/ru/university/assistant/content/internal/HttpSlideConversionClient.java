@@ -1,9 +1,10 @@
 package ru.university.assistant.content.internal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.BufferedReader;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -15,6 +16,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 class HttpSlideConversionClient implements SlideConversionClient {
+    static final int MAX_EVENT_BYTES = 2 * 1024 * 1024;
+    static final int MAX_ERROR_BYTES = 16 * 1024;
     private final BlobStorage blobStorage;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -38,7 +41,8 @@ class HttpSlideConversionClient implements SlideConversionClient {
     @Override
     public SlideConversionResult convert(
             StoredBlob source, String outputPrefix, UUID jobId, SlideConversionSink sink) {
-        return withBlobSnapshotLock(() -> restClient.post()
+        try {
+            return withBlobSnapshotLock(() -> restClient.post()
                 .uri("/convert")
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_NDJSON, MediaType.APPLICATION_JSON)
@@ -48,21 +52,28 @@ class HttpSlideConversionClient implements SlideConversionClient {
                         blobStorage.root().toString(),
                         outputPrefix))
                 .exchange((request, response) -> {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                            response.getBody(), StandardCharsets.UTF_8))) {
+                    try (InputStream reader = new BufferedInputStream(response.getBody())) {
+                        int statusCode = response.getStatusCode().value();
+                        if (statusCode == 429 || statusCode == 502 || statusCode == 503 || statusCode == 504) {
+                            throw new RetryableImportException("Converter temporarily unavailable",
+                                    response.getHeaders().getFirst("Retry-After"));
+                        }
                         if (!response.getStatusCode().is2xxSuccessful()) {
                             throw new IllegalStateException("Converter failed: " + readError(reader));
                         }
                         return readEvents(reader, sink);
                     } catch (IOException exception) {
-                        throw new IllegalStateException("Converter stream failed", exception);
+                        throw new RetryableImportException("Converter stream failed", exception);
                     }
                 }));
+        } catch (org.springframework.web.client.ResourceAccessException exception) {
+            throw new RetryableImportException("Converter connection failed", exception);
+        }
     }
 
     private <T> T withBlobSnapshotLock(java.util.function.Supplier<T> operation) {
         try (Connection connection = dataSource.getConnection()) {
-            try (PreparedStatement lock = connection.prepareStatement("select pg_advisory_lock(14713, 2525)")) {
+            try (PreparedStatement lock = connection.prepareStatement("select pg_advisory_lock_shared(14713, 2525)")) {
                 lock.execute();
             }
             RuntimeException operationFailure = null;
@@ -73,7 +84,7 @@ class HttpSlideConversionClient implements SlideConversionClient {
                 throw exception;
             } finally {
                 try (PreparedStatement unlock =
-                        connection.prepareStatement("select pg_advisory_unlock(14713, 2525)")) {
+                        connection.prepareStatement("select pg_advisory_unlock_shared(14713, 2525)")) {
                     unlock.execute();
                 } catch (SQLException exception) {
                     if (operationFailure != null) {
@@ -88,13 +99,13 @@ class HttpSlideConversionClient implements SlideConversionClient {
         }
     }
 
-    private SlideConversionResult readEvents(BufferedReader reader, SlideConversionSink sink) throws IOException {
+    SlideConversionResult readEvents(InputStream reader, SlideConversionSink sink) throws IOException {
         int totalSlides = 0;
         int renderedSlides = 0;
         int processedSlides = 0;
         String warningMessage = null;
         String line;
-        while ((line = reader.readLine()) != null) {
+        while ((line = readBoundedLine(reader, MAX_EVENT_BYTES)) != null) {
             if (line.isBlank()) {
                 continue;
             }
@@ -103,7 +114,7 @@ class HttpSlideConversionClient implements SlideConversionClient {
                 case "metadata" -> {
                     totalSlides = valueOrZero(event.totalSlides());
                     renderedSlides = valueOrZero(event.renderedSlides());
-                    warningMessage = firstNonBlank(warningMessage, event.warningMessage());
+                    warningMessage = mergeWarnings(warningMessage, event.warningMessage());
                     sink.metadata(totalSlides, renderedSlides, event.phase(), warningMessage);
                 }
                 case "slide" -> {
@@ -117,7 +128,7 @@ class HttpSlideConversionClient implements SlideConversionClient {
                             processedSlides,
                             totalSlides);
                 }
-                case "warning" -> warningMessage = firstNonBlank(warningMessage, event.warningMessage());
+                case "warning" -> warningMessage = mergeWarnings(warningMessage, event.warningMessage());
                 case "error" -> {
                     String message = firstNonBlank(event.errorMessage(), "Конвертер остановился во время импорта");
                     return new SlideConversionResult(totalSlides, processedSlides, processedSlides > 0, warningMessage,
@@ -125,7 +136,7 @@ class HttpSlideConversionClient implements SlideConversionClient {
                 }
                 case "done" -> {
                     boolean partial = Boolean.TRUE.equals(event.partial());
-                    warningMessage = firstNonBlank(warningMessage, event.warningMessage());
+                    warningMessage = mergeWarnings(warningMessage, event.warningMessage());
                     return new SlideConversionResult(
                             valueOrDefault(event.totalSlides(), totalSlides),
                             valueOrDefault(event.renderedSlides(), processedSlides),
@@ -143,17 +154,41 @@ class HttpSlideConversionClient implements SlideConversionClient {
         throw new IllegalStateException("Converter returned no slides");
     }
 
-    private String readError(BufferedReader reader) throws IOException {
-        String body = reader.lines().reduce("", (left, right) -> left + right);
-        if (body.isBlank()) {
-            return "empty response";
-        }
+    String readError(InputStream reader) throws IOException {
+        byte[] bytes = reader.readNBytes(MAX_ERROR_BYTES);
+        String body = new String(bytes, StandardCharsets.UTF_8);
+        if (body.isBlank()) return "empty response";
         try {
             ConvertEvent event = objectMapper.readValue(body, ConvertEvent.class);
             return firstNonBlank(event.errorMessage(), body);
         } catch (IOException ignored) {
             return body;
         }
+    }
+
+    static String readBoundedLine(InputStream input, int maximumBytes) throws IOException {
+        ByteArrayOutputStream line = new ByteArrayOutputStream(Math.min(8192, maximumBytes));
+        int value;
+        while ((value = input.read()) != -1) {
+            if (value == '\n') break;
+            if (line.size() >= maximumBytes) {
+                // This is a deterministic malformed/oversized result, not a transient network fault.
+                throw new IllegalStateException("Converter event exceeds the byte limit");
+            }
+            line.write(value);
+        }
+        if (value == -1 && line.size() == 0) return null;
+        byte[] bytes = line.toByteArray();
+        int length = bytes.length > 0 && bytes[bytes.length - 1] == '\r' ? bytes.length - 1 : bytes.length;
+        return new String(bytes, 0, length, StandardCharsets.UTF_8);
+    }
+
+    private String mergeWarnings(String current, String next) {
+        if (next == null || next.isBlank()) return current;
+        if (current == null || current.isBlank()) return next;
+        if (current.contains(next)) return current;
+        String combined = next.contains(current) ? next : current + " " + next;
+        return combined.substring(0, Math.min(16384, combined.length()));
     }
 
     private int valueOrZero(Integer value) {

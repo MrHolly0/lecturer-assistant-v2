@@ -8,8 +8,8 @@ import java.util.List;
 import java.util.UUID;
 
 public record CreateQuestionRequest(
-        @NotBlank String text,
+        @NotBlank @Size(max = 10000) String text,
         @NotNull QuestionType questionType,
-        @NotNull @Valid List<QuestionOption> options,
-        List<String> tags,
+        @NotNull @Size(max = 100) @Valid List<QuestionOption> options,
+        @Size(max = 50) List<@Size(max = 100) String> tags,
         @Size(max = 200) List<@NotNull UUID> lectureIds) {}

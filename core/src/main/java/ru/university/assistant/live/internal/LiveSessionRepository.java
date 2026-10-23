@@ -606,7 +606,10 @@ class LiveSessionRepository {
     }
 
     void touchWebParticipant(UUID participantId) {
-        jdbc.sql("update live.web_participant_tokens set last_seen_at = now() where id = :participantId")
+        jdbc.sql("""
+                        update live.web_participant_tokens set last_seen_at = now()
+                        where id = :participantId and last_seen_at < now() - interval '15 seconds'
+                        """)
                 .param("participantId", participantId)
                 .update();
     }

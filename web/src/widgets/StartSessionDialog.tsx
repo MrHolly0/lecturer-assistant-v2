@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { Lecture } from "../app/api/content-api";
 import { getCourse } from "../app/api/courses-api";
 import { userErrorMessage } from "../app/api/errors";
+import { PendingOperationKey } from "../app/api/operation-key";
 import { startLiveSession, type StartSessionRequest } from "../app/api/live-api";
 import { useMaxBridge } from "../app/max/context";
 import { isMobileMax, teacherRemotePath } from "../app/max/navigation";
@@ -42,6 +43,7 @@ export function StartSessionDialog({
 }: StartSessionDialogProps) {
   const navigate = useNavigate();
   const returnFocus = useRef<HTMLElement | null>(null);
+  const startKey = useRef(new PendingOperationKey());
   const maxEnvironment = useMaxBridge();
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<GroupMode>("existing");
@@ -72,7 +74,10 @@ export function StartSessionDialog({
   const startMutation = useMutation({
     mutationFn: (request: StartSessionRequest) => {
       if (!lecture) throw new Error("Лекция не выбрана");
-      return startLiveSession(courseId, lecture.id, request);
+      const lectureId = lecture.id;
+      return startKey.current.run({ courseId, lectureId, request }, (key) =>
+        startLiveSession(courseId, lectureId, request, key)
+      );
     },
     onSuccess: (session) => {
       void queryClient.invalidateQueries({ queryKey: ["active-session"] });

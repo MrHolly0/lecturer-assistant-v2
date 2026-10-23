@@ -10,4 +10,8 @@ public interface ChannelInternalApi {
     void report(String channelType, DeliveryReportBatch batch);
 
     void handleInbound(String channelType, InboundEvent event);
+
+    ChannelRateSlot reserveRateSlot(String channelType);
+
+    void deferChannel(String channelType, long delayMs);
 }

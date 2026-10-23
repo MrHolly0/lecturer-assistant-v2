@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import ru.university.assistant.shared.api.CommandIdempotency;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,11 +26,14 @@ class PollController {
     private final PollService pollService;
     private final CourseAccessApi courseAccess;
     private final LiveSessionAccessApi liveSessions;
+    private final CommandIdempotency commands;
 
-    PollController(PollService pollService, CourseAccessApi courseAccess, LiveSessionAccessApi liveSessions) {
+    PollController(PollService pollService, CourseAccessApi courseAccess, LiveSessionAccessApi liveSessions,
+            CommandIdempotency commands) {
         this.pollService = pollService;
         this.courseAccess = courseAccess;
         this.liveSessions = liveSessions;
+        this.commands = commands;
     }
 
     @PostMapping("/polls")
@@ -37,11 +42,16 @@ class PollController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
             @PathVariable UUID sessionId,
-            @Valid @RequestBody StartPollRequest request) {
+            @Valid @RequestBody StartPollRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
         courseAccess.requireManage(user, courseId);
-        PollResult result = pollService.start(courseId, sessionId, user.id(), request);
-        liveSessions.publishSessionUpdate(sessionId, "interaction.poll_started");
-        return result;
+        liveSessions.requireSessionInCourse(courseId, sessionId);
+        return commands.execute(user.id(), "POST /courses/" + courseId + "/sessions/" + sessionId + "/polls",
+                key, commands.hash(request), PollResult.class, () -> {
+                    PollResult result = pollService.start(courseId, sessionId, user.id(), request);
+                    liveSessions.publishSessionUpdate(sessionId, "interaction.poll_started");
+                    return result;
+                });
     }
 
     @PostMapping("/polls/from-bank")
@@ -50,11 +60,16 @@ class PollController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
             @PathVariable UUID sessionId,
-            @Valid @RequestBody StartBankPollRequest request) {
+            @Valid @RequestBody StartBankPollRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
         courseAccess.requireManage(user, courseId);
-        PollResult result = pollService.startFromBank(courseId, sessionId, user.id(), request.questionId());
-        liveSessions.publishSessionUpdate(sessionId, "interaction.poll_started");
-        return result;
+        liveSessions.requireSessionInCourse(courseId, sessionId);
+        return commands.execute(user.id(), "POST /courses/" + courseId + "/sessions/" + sessionId + "/polls/from-bank",
+                key, commands.hash(request), PollResult.class, () -> {
+                    PollResult result = pollService.startFromBank(courseId, sessionId, user.id(), request.questionId());
+                    liveSessions.publishSessionUpdate(sessionId, "interaction.poll_started");
+                    return result;
+                });
     }
 
     @GetMapping("/polls/active")

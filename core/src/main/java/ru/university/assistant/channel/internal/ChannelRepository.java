@@ -87,6 +87,8 @@ class ChannelRepository {
                             where channel_type = :channelType
                                 and status in ('QUEUED', 'FAILED')
                                 and next_attempt_at <= now()
+                                and not exists (select 1 from channel.rate_budgets b
+                                    where b.channel_type = :channelType and b.cooldown_until > now())
                             order by
                                 case priority
                                     when 'P0_INTERACTIVE' then 0
@@ -127,7 +129,8 @@ class ChannelRepository {
                         """
                         update channel.outbox
                         set status = case when attempts >= max_attempts then 'DLQ' else 'QUEUED' end,
-                            next_attempt_at = now() + (power(2, attempts) * interval '1 second'),
+                            next_attempt_at = now() + ((0.5 + random() * 0.5)
+                                * least(power(2, least(attempts, 20)), 3600) * interval '1 second'),
                             last_error = 'adapter lock expired',
                             updated_at = now()
                         where status = 'IN_FLIGHT'
@@ -228,7 +231,9 @@ class ChannelRepository {
                         """
                         update channel.outbox
                         set status = case when attempts >= max_attempts then 'DLQ' else 'QUEUED' end,
-                            next_attempt_at = now() + (least(power(2, attempts), 3600) * interval '1 second'),
+                            next_attempt_at = now() + (greatest(:retryAfterMs / 1000.0,
+                                (0.5 + random() * 0.5) * least(power(2, least(attempts, 20)), 3600))
+                                * interval '1 second'),
                             last_error = :error,
                             locked_until = null,
                             updated_at = now()
@@ -238,8 +243,49 @@ class ChannelRepository {
                 .param("id", report.messageId())
                 .param("channelType", channelType)
                 .param("error", report.errorMessage())
+                .param("retryAfterMs", report.retryAfterMs() == null ? 0L : report.retryAfterMs())
                 .param("attemptToken", report.attemptToken())
                 .update();
+    }
+
+    ru.university.assistant.channel.api.ChannelRateSlot reserveRateSlot(
+            String channelType, int intervalMs, int maxWaitMs) {
+        return jdbc.sql("""
+                        with granted as (
+                        insert into channel.rate_budgets(channel_type, next_slot_at)
+                        values (:channelType, clock_timestamp() + (:intervalMs * interval '1 millisecond'))
+                        on conflict (channel_type) do update set next_slot_at = greatest(clock_timestamp(),
+                            channel.rate_budgets.next_slot_at, channel.rate_budgets.cooldown_until)
+                            + (:intervalMs * interval '1 millisecond')
+                        where greatest(channel.rate_budgets.next_slot_at, channel.rate_budgets.cooldown_until)
+                            <= clock_timestamp() + (:maxWaitMs * interval '1 millisecond')
+                        returning greatest(0, ceil(extract(epoch from (
+                            greatest(next_slot_at - (:intervalMs * interval '1 millisecond'), cooldown_until)
+                            - clock_timestamp())) * 1000))::bigint as delay
+                        )
+                        select delay, true as reserved from granted
+                        union all
+                        select greatest(:maxWaitMs + 1, coalesce((select ceil(extract(epoch from (
+                            greatest(next_slot_at, cooldown_until) - clock_timestamp())) * 1000)::bigint
+                            from channel.rate_budgets where channel_type = :channelType), :maxWaitMs + 1)),
+                            false as reserved
+                        where not exists (select 1 from granted)
+                        """)
+                .param("channelType", channelType)
+                .param("intervalMs", intervalMs)
+                .param("maxWaitMs", maxWaitMs)
+                .query((rs, row) -> new ru.university.assistant.channel.api.ChannelRateSlot(
+                        rs.getLong("delay"), rs.getBoolean("reserved"))).single();
+    }
+
+    void deferChannel(String channelType, long delayMs) {
+        jdbc.sql("""
+                        insert into channel.rate_budgets(channel_type, cooldown_until)
+                        values (:channelType, clock_timestamp() + (:delayMs * interval '1 millisecond'))
+                        on conflict (channel_type) do update set cooldown_until =
+                            greatest(channel.rate_budgets.cooldown_until, excluded.cooldown_until)
+                        """)
+                .param("channelType", channelType).param("delayMs", delayMs).update();
     }
 
     private OutboundMessage mapMessage(ResultSet rs, int rowNumber) throws SQLException {

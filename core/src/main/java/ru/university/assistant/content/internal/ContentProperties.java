@@ -15,4 +15,5 @@ public record ContentProperties(
         Duration converterReadTimeout,
         int importCorePoolSize,
         int importMaxPoolSize,
-        int importQueueCapacity) {}
+        int importQueueCapacity,
+        int importMaxQueuedJobs) {}

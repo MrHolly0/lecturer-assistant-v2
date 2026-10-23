@@ -54,6 +54,9 @@ jobs:
       - name: Check backup scripts
         run: sh -n deploy/stand/backup/*.sh
 
+      - name: Verify converter admission
+        run: python3 -m unittest discover -s deploy/converter -p '*_test.py'
+
       - name: Validate compose
         run: docker compose config --quiet
 

@@ -5,6 +5,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { userErrorMessage } from "../app/api/errors";
+import { PendingOperationKey } from "../app/api/operation-key";
 import {
   archiveCourse,
   createCourse,
@@ -53,6 +54,7 @@ export function CoursesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const createReturnFocus = useRef<HTMLElement | null>(null);
   const [title, setTitle] = useState("");
+  const createKey = useRef(new PendingOperationKey());
   const [tab, setTab] = useState<CourseTab>("active");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState("");
@@ -115,7 +117,10 @@ export function CoursesPage() {
     if (selectedCourse) setSelectedId(selectedCourse.id);
   }, [selectedCourse]);
   const createMut = useMutation({
-    mutationFn: () => createCourse({ title: title.trim() }),
+    mutationFn: () => {
+      const request = { title: title.trim() };
+      return createKey.current.run(request, (key) => createCourse(request, key));
+    },
     onSuccess: (course) => {
       void qc.invalidateQueries({ queryKey: ["courses"] });
       setTitle("");

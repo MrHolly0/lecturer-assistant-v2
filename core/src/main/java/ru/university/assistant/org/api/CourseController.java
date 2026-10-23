@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -38,8 +39,9 @@ public class CourseController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Course create(@AuthenticationPrincipal AuthenticatedUser user,
-            @Valid @RequestBody CreateCourseRequest request) {
-        return courseService.createCourse(user, request);
+            @Valid @RequestBody CreateCourseRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+        return courseService.createCourse(user, request, key);
     }
 
     @GetMapping("/{courseId}")
@@ -162,8 +164,9 @@ public class CourseController {
     public StudyGroup createGroup(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
-            @Valid @RequestBody CreateStudyGroupRequest request) {
-        return courseService.createGroup(user, courseId, request);
+            @Valid @RequestBody CreateStudyGroupRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+        return courseService.createGroup(user, courseId, request, key);
     }
 
     @DeleteMapping("/{courseId}/groups/{groupId}")

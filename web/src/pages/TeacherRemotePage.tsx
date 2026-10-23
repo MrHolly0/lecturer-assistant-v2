@@ -15,7 +15,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { getDeck, slideImageUrl } from "../app/api/content-api";
-import { userErrorMessage } from "../app/api/errors";
+import { ApiError, userErrorMessage } from "../app/api/errors";
 import {
   beginLiveSession,
   changeLiveSessionSlide,
@@ -108,9 +108,13 @@ export function TeacherRemotePage({
   }, [queryClient, session?.status]);
 
   const slideMutation = useMutation({
-    mutationFn: (slideIdx: number) => changeLiveSessionSlide(courseId, sessionId, slideIdx),
+    mutationFn: (slideIdx: number) =>
+      changeLiveSessionSlide(courseId, sessionId, slideIdx, session?.version),
     onSuccess: setSession,
-    onError: (error) => toast.error(userErrorMessage(error, "Не удалось переключить слайд.")),
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409) void live.refresh();
+      toast.error(userErrorMessage(error, "Не удалось переключить слайд."));
+    },
     onSettled: () => {
       slideInFlightRef.current = false;
     }

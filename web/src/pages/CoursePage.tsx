@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { PendingOperationKey } from "../app/api/operation-key";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { Plus, UserRoundPlus } from "lucide-react";
@@ -52,6 +53,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
     setSearchParams(value === "members" ? { view: "people" } : { view: "people", section: value });
   };
   const [groupName, setGroupName] = useState("");
+  const groupKey = useRef(new PendingOperationKey());
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [participantDialogOpen, setParticipantDialogOpen] = useState(false);
   useEffect(() => {
@@ -77,7 +79,12 @@ export function CoursePage({ courseId }: { courseId: string }) {
   }, [activeTab, canManage, course, setSearchParams]);
 
   const createGroupMut = useMutation({
-    mutationFn: () => createStudyGroup(courseId, { name: groupName }),
+    mutationFn: () => {
+      const request = { name: groupName };
+      return groupKey.current.run({ courseId, request }, (key) =>
+        createStudyGroup(courseId, request, key)
+      );
+    },
     onSuccess: (created) => {
       qc.setQueryData(["courses", courseId], (current: typeof course | undefined) =>
         current && !current.groups.some((group) => group.id === created.id)

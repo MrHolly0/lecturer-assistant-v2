@@ -1,17 +1,21 @@
 package ru.university.assistant.live.internal;
 
 import java.util.List;
+import java.util.LinkedHashMap;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.content.api.Slide;
-import ru.university.assistant.content.api.SlideDeckDetails;
-import ru.university.assistant.content.api.StudentDeckApi;
+import ru.university.assistant.content.api.StudentSlideView;
+import ru.university.assistant.content.api.StudentSlideReadApi;
 import ru.university.assistant.feedback.api.FeedbackApi;
 import ru.university.assistant.interaction.api.ActivePollView;
 import ru.university.assistant.interaction.api.QuickPollApi;
@@ -26,22 +30,33 @@ import ru.university.assistant.qa.api.StudentQuestionAnswer;
 @Service
 class StudentSessionSnapshotService {
     private final LiveSessionRepository sessions;
-    private final StudentDeckApi decks;
+    private final StudentSlideReadApi decks;
+    private final JdbcClient jdbc;
+    private final Counter cacheHits;
+    private final Counter cacheMisses;
+    private final Timer loadTimer;
+    private final Map<UUID, CachedSnapshot> cache = new LinkedHashMap<>(16, 0.75f, true);
+    private long cachedBytes;
     private final FeedbackApi feedback;
     private final QuestionApi questions;
     private final QuickPollApi quickPolls;
 
     StudentSessionSnapshotService(
             LiveSessionRepository sessions,
-            StudentDeckApi decks,
+            StudentSlideReadApi decks,
             FeedbackApi feedback,
             QuestionApi questions,
-            QuickPollApi quickPolls) {
+            QuickPollApi quickPolls, JdbcClient jdbc, MeterRegistry meters) {
         this.sessions = sessions;
         this.decks = decks;
         this.feedback = feedback;
         this.questions = questions;
         this.quickPolls = quickPolls;
+        this.jdbc = jdbc;
+        cacheHits = meters.counter("live.student.snapshot_cache", "result", "hit");
+        cacheMisses = meters.counter("live.student.snapshot_cache", "result", "miss");
+        loadTimer = meters.timer("live.student.snapshot_load");
+        meters.gauge("live.student.snapshot_cache.bytes", this, value -> value.cachedBytes());
     }
 
     StudentSessionSnapshot create(LiveSession session, UUID viewerPersonId, boolean includeMyVote) {
@@ -65,20 +80,31 @@ class StudentSessionSnapshotService {
     }
 
     private SnapshotData load(LiveSession session) {
-        SlideDeckDetails deck = decks.getDeckForStudent(session.courseId(), session.deckId());
-        Slide slide = deck.slides().stream()
-                .filter(item -> item.idx() == session.currentSlideIdx())
-                .findFirst()
-                .orElseGet(() -> deck.slides().isEmpty() ? null : deck.slides().get(0));
-        if (slide == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session deck has no slides");
-        }
+        StudentSlideView deck = decks.slide(session.courseId(), session.deckId(), session.currentSlideIdx());
+        Slide slide = deck.slide();
+        String courseTitle = sessions.courseTitle(session.courseId());
+        long revision = jdbc.sql("""
+                select coalesce(sum(revision), 0)::bigint from live.student_snapshot_revisions
+                where session_id = :session
+                """).param("session", session.id()).query(Long.class).single();
+        SharedKey key = new SharedKey(revision, session.version(), courseTitle, session.lectureTitle(),
+                session.groups(), session.status(), session.currentSlideIdx(), session.annotations(),
+                session.showJoinCode(), deck);
+        boolean cacheable = !TransactionSynchronizationManager.isActualTransactionActive();
+        SnapshotData cached = cacheable ? cached(session.id(), key) : null;
+        if (cached != null) { cacheHits.increment(); return cached; }
+        cacheMisses.increment();
+        return loadTimer.record(() -> build(session, deck, slide, courseTitle, key, cacheable));
+    }
+
+    private SnapshotData build(LiveSession session, StudentSlideView deck, Slide slide,
+            String courseTitle, SharedKey key, boolean cacheable) {
         ActivePollView activePoll = quickPolls.activePollForSession(session.id()).orElse(null);
         List<QuestionAnswerAudience> answers = questions.answeredQuestions(session.id());
         StudentSessionSnapshot shared = new StudentSessionSnapshot(
                 session.id(),
                 session.courseId(),
-                sessions.courseTitle(session.courseId()),
+                courseTitle,
                 session.lectureTitle(),
                 session.groups(),
                 session.status(),
@@ -93,7 +119,9 @@ class StudentSessionSnapshotService {
                 visibleAnswers(answers, null),
                 false,
                 false, session.version(), session.showJoinCode(), List.of());
-        return new SnapshotData(shared, answers);
+        SnapshotData result = new SnapshotData(shared, answers);
+        if (cacheable) remember(session.id(), key, result);
+        return result;
     }
 
     private StudentSessionSnapshot personalize(
@@ -120,12 +148,21 @@ class StudentSessionSnapshotService {
                 shared.signalAggregate(),
                 kicked ? null : shared.activePoll(),
                 myVote,
-                kicked ? List.of() : visibleAnswers(data.answers(), viewerPersonId),
+                kicked ? List.of() : personalizedAnswers(data, viewerPersonId),
                 kicked,
                 state != null && state.active() && state.nameRequested(),
                 shared.version(), shared.showJoinCode(), kicked ? List.of() : personalQuestions,
                 !kicked && includeMyVote && viewerPersonId != null && shared.activePoll() != null
                         ? quickPolls.myTextAnswer(shared.activePoll().pollId(), viewerPersonId) : null);
+    }
+
+    private List<StudentQuestionAnswer> personalizedAnswers(SnapshotData data, UUID viewerPersonId) {
+        // Most viewers only receive public answers. Reuse that immutable list instead of copying
+        // the complete public answer history for every student on every SSE tick.
+        boolean hasPrivateAnswer = viewerPersonId != null && data.answers().stream()
+                .anyMatch(answer -> answer.answer().answerVisibility() != QuestionAnswerVisibility.SESSION
+                        && viewerPersonId.equals(answer.authorPersonId()));
+        return hasPrivateAnswer ? visibleAnswers(data.answers(), viewerPersonId) : data.shared().questionAnswers();
     }
 
     private List<StudentQuestionAnswer> visibleAnswers(
@@ -136,6 +173,34 @@ class StudentSessionSnapshotService {
                 .map(QuestionAnswerAudience::answer)
                 .toList();
     }
+
+    private synchronized SnapshotData cached(UUID id, SharedKey key) {
+        CachedSnapshot entry = cache.get(id);
+        return entry != null && entry.key().equals(key) ? entry.data() : null;
+    }
+
+    private synchronized long cachedBytes() { return cachedBytes; }
+
+    private synchronized void remember(UUID id, SharedKey key, SnapshotData data) {
+        long bytes = 1024 + 2L * (data.shared().annotations().toString().length()
+                + key.toString().length());
+        for (QuestionAnswerAudience answer : data.answers()) {
+            bytes += 256 + 2L * answer.answer().toString().length();
+        }
+        if (bytes > 32 * 1024 * 1024L) return;
+        CachedSnapshot previous = cache.put(id, new CachedSnapshot(key, data, bytes));
+        cachedBytes += bytes - (previous == null ? 0 : previous.bytes());
+        while (cache.size() > 512 || cachedBytes > 32 * 1024 * 1024L) {
+            var iterator = cache.entrySet().iterator();
+            cachedBytes -= iterator.next().getValue().bytes(); iterator.remove();
+        }
+    }
+
+    private record SharedKey(long revision, long version, String courseTitle, String lectureTitle,
+            List<ru.university.assistant.live.api.SessionGroup> groups,
+            ru.university.assistant.live.api.SessionStatus status, int slideIndex,
+            Map<String, Object> annotations, boolean showJoinCode, StudentSlideView slide) {}
+    private record CachedSnapshot(SharedKey key, SnapshotData data, long bytes) {}
 
     private record SnapshotData(
             StudentSessionSnapshot shared,

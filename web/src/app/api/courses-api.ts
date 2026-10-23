@@ -1,5 +1,6 @@
 import type { components } from "./schema";
 import { apiFetch } from "./http";
+import { newOperationKey } from "./operation-key";
 
 type Course = components["schemas"]["Course"];
 type CourseDetails = components["schemas"]["CourseDetails"];
@@ -15,8 +16,15 @@ export async function listCourses(): Promise<Course[]> {
   return res.json() as Promise<Course[]>;
 }
 
-export async function createCourse(req: CreateCourseRequest): Promise<Course> {
-  const res = await apiFetch("/courses", { method: "POST", body: JSON.stringify(req) });
+export async function createCourse(
+  req: CreateCourseRequest,
+  key = newOperationKey()
+): Promise<Course> {
+  const res = await apiFetch("/courses", {
+    method: "POST",
+    body: JSON.stringify(req),
+    headers: { "Idempotency-Key": key }
+  });
   return res.json() as Promise<Course>;
 }
 
@@ -39,10 +47,12 @@ export async function getCourse(courseId: string): Promise<CourseDetails> {
 
 export async function createStudyGroup(
   courseId: string,
-  req: CreateStudyGroupRequest
+  req: CreateStudyGroupRequest,
+  key = newOperationKey()
 ): Promise<StudyGroup> {
   const res = await apiFetch(`/courses/${courseId}/groups`, {
     method: "POST",
+    headers: { "Idempotency-Key": key },
     body: JSON.stringify(req)
   });
   return res.json() as Promise<StudyGroup>;

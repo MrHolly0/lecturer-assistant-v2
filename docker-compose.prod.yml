@@ -38,7 +38,18 @@ services:
   caddy:
     image: caddy:2.8-alpine
     restart: unless-stopped
+    mem_limit: ${CADDY_MEMORY_LIMIT:-256m}
+    cpus: ${CADDY_CPU_LIMIT:-1.0}
+    pids_limit: 128
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
+      GOMEMLIMIT: ${CADDY_GO_MEMORY_LIMIT:-160MiB}
+      GODEBUG: disablethp=1
+      GOMAXPROCS: ${CADDY_GO_MAX_PROCS:-1}
       SITE_ADDRESS: ${SITE_DOMAIN:?задайте SITE_DOMAIN в .env}
       ACME_EMAIL: ${ACME_EMAIL:?задайте ACME_EMAIL в .env}
     ports:
@@ -57,6 +68,14 @@ services:
   db-backup:
     image: postgres:16-alpine
     restart: unless-stopped
+    mem_limit: ${BACKUP_MEMORY_LIMIT:-256m}
+    cpus: ${BACKUP_CPU_LIMIT:-0.5}
+    pids_limit: 64
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       PGHOST: postgres
       PGDATABASE: ${POSTGRES_DB:-lecturer_assistant}

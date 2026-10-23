@@ -38,11 +38,13 @@ class ContentConfiguration {
     @Bean(name = "contentImportExecutor")
     ThreadPoolTaskExecutor contentImportExecutor(ContentProperties properties) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(properties.importCorePoolSize());
+        executor.setCorePoolSize(properties.importMaxPoolSize());
         executor.setMaxPoolSize(properties.importMaxPoolSize());
-        executor.setQueueCapacity(properties.importQueueCapacity());
+        // Claims remain capped at max workers; a tiny handoff queue covers a thread finishing its prior task.
+        executor.setQueueCapacity(properties.importMaxPoolSize());
         executor.setThreadNamePrefix("content-import-");
         executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
         executor.initialize();
         return executor;
     }

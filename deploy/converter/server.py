@@ -19,10 +19,44 @@ OFFICE_TIMEOUT_SECONDS = int(os.environ.get("CONVERTER_OFFICE_TIMEOUT_SECONDS", 
 OFFICE_QUEUE_TIMEOUT_SECONDS = int(os.environ.get("CONVERTER_OFFICE_QUEUE_TIMEOUT_SECONDS", "600"))
 PAGE_TIMEOUT_SECONDS = int(os.environ.get("CONVERTER_PAGE_TIMEOUT_SECONDS", "60"))
 SOFFICE_CONCURRENCY = int(os.environ.get("CONVERTER_SOFFICE_CONCURRENCY", "1"))
+MAX_CONVERSIONS = max(1, int(os.environ.get("CONVERTER_MAX_CONVERSIONS", "2")))
+MAX_HTTP_WORKERS = max(MAX_CONVERSIONS + 2, int(os.environ.get("CONVERTER_MAX_HTTP_WORKERS", "16")))
+MAX_REQUEST_BYTES = 16 * 1024
+MAX_PAGE_TEXT_BYTES = 256 * 1024
 ZIP_BOMB_RATIO = int(os.environ.get("CONVERTER_ZIP_BOMB_RATIO", "120"))
 ZIP_BOMB_UNCOMPRESSED_BYTES = int(os.environ.get("CONVERTER_ZIP_BOMB_UNCOMPRESSED_BYTES", str(350 * 1024 * 1024)))
 SUPPORTED_EXTENSIONS = {".pdf", ".ppt", ".pptx", ".odp"}
 SOFFICE_SEMAPHORE = threading.BoundedSemaphore(max(1, SOFFICE_CONCURRENCY))
+CONVERSION_SEMAPHORE = threading.BoundedSemaphore(MAX_CONVERSIONS)
+
+
+class BoundedHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, *args, **kwargs):
+        self.workers = threading.BoundedSemaphore(MAX_HTTP_WORKERS)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        request.settimeout(15)
+        if not self.workers.acquire(blocking=False):
+            try:
+                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nRetry-After: 3\r\n"
+                                b"Content-Length: 0\r\nConnection: close\r\n\r\n")
+            finally:
+                self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self.workers.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.workers.release()
 
 
 class ConvertHandler(BaseHTTPRequestHandler):
@@ -41,6 +75,18 @@ class ConvertHandler(BaseHTTPRequestHandler):
         if self.path != "/convert":
             self.send_error(404)
             return
+        if not CONVERSION_SEMAPHORE.acquire(blocking=False):
+            self.send_response(503)
+            self.send_header("Retry-After", "3")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        try:
+            self.convert_request()
+        finally:
+            CONVERSION_SEMAPHORE.release()
+
+    def convert_request(self):
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
         self.end_headers()
@@ -69,11 +115,15 @@ class ConvertHandler(BaseHTTPRequestHandler):
     def read_request_body(self):
         if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
             chunks = []
+            length = 0
             while True:
                 size_line = self.rfile.readline().strip().split(b";", 1)[0]
                 if not size_line:
                     raise ValueError("Некорректный chunked-запрос к converter")
                 size = int(size_line, 16)
+                length += size
+                if size < 0 or length > MAX_REQUEST_BYTES:
+                    raise ValueError("Слишком большой запрос к converter")
                 if size == 0:
                     while self.rfile.readline().strip():
                         pass
@@ -82,6 +132,8 @@ class ConvertHandler(BaseHTTPRequestHandler):
                 self.rfile.read(2)
             return b"".join(chunks)
         length = int(self.headers.get("Content-Length", "0"))
+        if length < 0 or length > MAX_REQUEST_BYTES:
+            raise ValueError("Слишком большой запрос к converter")
         return self.rfile.read(length)
 
 
@@ -124,6 +176,9 @@ def stream_convert(job_id: str, source: Path, output_dir: Path, output_prefix: s
             else:
                 shutil.copyfile(image, target)
             text = page_text(pdf, index, tmp)
+            if text.endswith(TEXT_TRUNCATED_MARKER):
+                note = "Извлечённый текст страницы сокращён до 256 КиБ; изображение слайда сохранено полностью."
+                warning = (warning + " " + note) if warning and note not in warning else warning or note
             if render_error:
                 text = (text + "\n\n" if text else "") + render_error
             processed = index
@@ -258,6 +313,20 @@ def render_page(pdf: Path, page: int, tmp: Path, dpi: int):
     return image if image.exists() and image.stat().st_size > 0 else None
 
 
+TEXT_TRUNCATED_MARKER = "\n[Извлечённый текст сокращён; изображение страницы сохранено полностью]"
+
+
+def bounded_page_text(text_file: Path):
+    with text_file.open("rb") as source:
+        data = source.read(MAX_PAGE_TEXT_BYTES + 1)
+    if len(data) <= MAX_PAGE_TEXT_BYTES:
+        return data.decode("utf-8", errors="ignore").strip()
+    # Decoding ignores only a cut final code point. The marker is included in the byte budget.
+    marker = TEXT_TRUNCATED_MARKER.encode("utf-8")
+    prefix = data[:MAX_PAGE_TEXT_BYTES - len(marker)].decode("utf-8", errors="ignore").rstrip()
+    return prefix + TEXT_TRUNCATED_MARKER
+
+
 def page_text(pdf: Path, page: int, tmp: Path):
     text_file = tmp / f"slide-{page}.txt"
     try:
@@ -271,7 +340,7 @@ def page_text(pdf: Path, page: int, tmp: Path):
             str(pdf),
             str(text_file),
         ], timeout=PAGE_TIMEOUT_SECONDS)
-        return text_file.read_text(encoding="utf-8", errors="ignore").strip()
+        return bounded_page_text(text_file)
     except Exception:
         return ""
 
@@ -351,4 +420,4 @@ def ensure_under(path: Path, root: Path):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", 8000), ConvertHandler).serve_forever()
+    BoundedHTTPServer(("0.0.0.0", 8000), ConvertHandler).serve_forever()

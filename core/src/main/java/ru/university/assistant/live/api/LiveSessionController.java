@@ -12,6 +12,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import ru.university.assistant.shared.api.CommandIdempotency;
+import ru.university.assistant.org.api.CourseAccessApi;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,10 +27,15 @@ import ru.university.assistant.live.internal.SessionHistoryService;
 public class LiveSessionController {
     private final LiveSessionService liveSessions;
     private final SessionHistoryService sessionHistory;
+    private final CommandIdempotency commands;
+    private final CourseAccessApi access;
 
-    LiveSessionController(LiveSessionService liveSessions, SessionHistoryService sessionHistory) {
+    LiveSessionController(LiveSessionService liveSessions, SessionHistoryService sessionHistory,
+            CommandIdempotency commands, CourseAccessApi access) {
         this.liveSessions = liveSessions;
         this.sessionHistory = sessionHistory;
+        this.commands = commands;
+        this.access = access;
     }
 
     @PostMapping("/lectures/{lectureId}/sessions")
@@ -36,8 +44,12 @@ public class LiveSessionController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
             @PathVariable UUID lectureId,
-            @Valid @RequestBody StartSessionRequest request) {
-        return liveSessions.schedule(user, courseId, lectureId, request);
+            @Valid @RequestBody StartSessionRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+        access.requireManage(user, courseId);
+        return commands.execute(user.id(), "POST /courses/" + courseId + "/lectures/" + lectureId + "/sessions",
+                key, commands.hash(request), LiveSession.class,
+                () -> liveSessions.schedule(user, courseId, lectureId, request));
     }
 
     @PostMapping("/sessions/{sessionId}/begin")

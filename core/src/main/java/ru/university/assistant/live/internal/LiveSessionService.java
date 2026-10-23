@@ -164,6 +164,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
         SessionParticipant participant = sessions.kickParticipant(sessionId, personId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Active participant not found"));
         event(user, current, "participant.kicked", Map.of("personId", personId));
+        publisher.participantAccessRevoked(current, personId);
         publisher.publish("participant.kicked", current);
         return participant;
     }
@@ -205,6 +206,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
         if (request.slideIdx() == before.currentSlideIdx()) {
             return before;
         }
+        requireExpectedVersion(before, request.expectedVersion());
         LiveSession after = sessions.updateSlide(courseId, sessionId, request.slideIdx());
         event(user, after, "session.slide_changed",
                 Map.of("from", before.currentSlideIdx(), "to", after.currentSlideIdx()));
@@ -220,6 +222,10 @@ public class LiveSessionService implements LiveSessionAccessApi {
         sessions.lock(sessionId);
         LiveSession current = session(courseId, sessionId);
         ensureLive(current);
+        if (current.annotations().equals(request.annotations())) {
+            return current;
+        }
+        requireExpectedVersion(current, request.expectedVersion());
         LiveSession after = sessions.updateAnnotations(courseId, sessionId, request.annotations());
         event(user, after, "slide.annotations_updated", Map.of("slideIdx", after.currentSlideIdx()));
         publisher.publish("slide.annotations_updated", after);
@@ -231,6 +237,9 @@ public class LiveSessionService implements LiveSessionAccessApi {
         courseAccess.requireManage(user, courseId);
         sessions.lock(sessionId);
         LiveSession current = session(courseId, sessionId);
+        if (current.status() == target) {
+            return current;
+        }
         ensureTransition(current.status(), target);
         if (target == SessionStatus.ENDED) {
             sessionPollLifecycle.closeOpenForSession(courseId, sessionId, user.id());
@@ -257,6 +266,13 @@ public class LiveSessionService implements LiveSessionAccessApi {
         LiveSession updated = sessions.projection(courseId, sessionId, showJoinCode);
         publisher.publish("session.projection_changed", updated);
         return updated;
+    }
+
+    private void requireExpectedVersion(LiveSession current, Long expectedVersion) {
+        if (expectedVersion != null && current.version() != expectedVersion) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Session changed in another window; refresh before applying this command");
+        }
     }
 
     private LiveSession session(UUID courseId, UUID sessionId) {

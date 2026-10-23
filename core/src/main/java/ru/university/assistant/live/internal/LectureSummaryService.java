@@ -25,16 +25,18 @@ public class LectureSummaryService {
     private final LiveSessionRepository sessions;
     private final LectureSummaryRepository summaries;
     private final EventBus events;
+    private final PreparedLectureSummary prepared;
 
     LectureSummaryService(
             CourseAccessApi courseAccess,
             LiveSessionRepository sessions,
             LectureSummaryRepository summaries,
-            EventBus events) {
+            EventBus events, PreparedLectureSummary prepared) {
         this.courseAccess = courseAccess;
         this.sessions = sessions;
         this.summaries = summaries;
         this.events = events;
+        this.prepared = prepared;
     }
 
     @Transactional
@@ -50,12 +52,25 @@ public class LectureSummaryService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Lecture session has no complete time range");
         }
 
+        LectureSummary summary = prepared.get(session, () -> build(session));
+        events.publish(new DomainEvent(
+                "live.session",
+                session.id(),
+                "summary.opened",
+                user.id(),
+                Map.of("courseId", courseId, "sessionId", session.id(), "lectureId", session.lectureId()),
+                Map.of("role", user.role().name())));
+        return summary;
+    }
+
+    private LectureSummary build(LiveSession session) {
+        UUID sessionId = session.id();
         List<SessionParticipant> participants = sessions.listParticipants(sessionId);
         List<StudentQuestion> unanswered = summaries.unansweredQuestions(sessionId);
         long durationSeconds = Duration.between(session.startedAt(), session.endedAt()).getSeconds();
         long activeDurationSeconds = session.activeDurationSeconds();
         long pausedDurationSeconds = Math.max(0, durationSeconds - activeDurationSeconds);
-        LectureSummary summary = new LectureSummary(
+        return new LectureSummary(
                 session.id(),
                 session.lectureId(),
                 session.lectureTitle(),
@@ -86,13 +101,5 @@ public class LectureSummaryService {
                                 summaries.questionCount(sessionId, group.id()),
                                 summaries.unansweredQuestionCount(sessionId, group.id())))
                         .toList());
-        events.publish(new DomainEvent(
-                "live.session",
-                session.id(),
-                "summary.opened",
-                user.id(),
-                Map.of("courseId", courseId, "sessionId", session.id(), "lectureId", session.lectureId()),
-                Map.of("role", user.role().name())));
-        return summary;
     }
 }

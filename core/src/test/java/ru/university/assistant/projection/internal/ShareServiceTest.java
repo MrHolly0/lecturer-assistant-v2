@@ -21,6 +21,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -285,6 +288,47 @@ class ShareServiceTest {
         service.uploadFrame(owner, course, sessionId, room.id(), second);
         clock.advance(15);
         assertNull(service.frame(access(person), viewer));
+    }
+
+    @Test
+    void slowDatabaseAuthorizationForOneRoomDoesNotLockAnotherRoom() throws Exception {
+        UUID secondSession = UUID.randomUUID();
+        currentSessions.put(secondSession, session(secondSession, SessionStatus.LIVE));
+        Status first = start();
+        Status second = service.start(owner, course, secondSession, "Second window");
+        CountDownLatch blocked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(call -> {
+            UUID id = call.getArgument(1);
+            if (sessionId.equals(id)) {
+                blocked.countDown();
+                assertTrue(release.await(3, TimeUnit.SECONDS));
+            }
+            return currentSessions.get(id);
+        }).when(sessions).requireSessionInCourse(any(), any());
+        CompletableFuture<Status> slow = CompletableFuture.supplyAsync(
+                () -> service.poll(owner, course, sessionId, first.id()));
+        try {
+            assertTrue(blocked.await(1, TimeUnit.SECONDS));
+            assertEquals(second.id(), CompletableFuture.supplyAsync(
+                    () -> service.poll(owner, course, secondSession, second.id())).get(1, TimeUnit.SECONDS).id());
+        } finally { release.countDown(); }
+        assertEquals(first.id(), slow.get(1, TimeUnit.SECONDS).id());
+    }
+
+    @Test
+    void configurableRoomCapacityRejectsWithoutReplacingExistingShow() {
+        ShareCapacityProperties capacity = new ShareCapacityProperties();
+        capacity.setRooms(1);
+        service = new ShareService(clock, courses, sessions, accounts,
+                new ShareIceConfiguration("", "", ""), capacity, null);
+        Status first = start();
+        UUID secondSession = UUID.randomUUID();
+        currentSessions.put(secondSession, session(secondSession, SessionStatus.LIVE));
+        expect(HttpStatus.TOO_MANY_REQUESTS, () -> service.start(owner, course, secondSession, "Second"));
+        assertEquals(first.id(), service.poll(owner, course, sessionId, first.id()).id());
+        service.stop(owner, course, sessionId, first.id());
+        assertNotNull(service.start(owner, course, secondSession, "Second"));
     }
 
     private Status start() { return service.start(owner, course, sessionId, "Teaching window"); }

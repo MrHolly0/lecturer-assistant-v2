@@ -40,6 +40,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -53,6 +54,7 @@ import ru.university.assistant.content.internal.SlideConversionSink;
 import ru.university.assistant.content.internal.StoredBlob;
 
 @Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest
 @AutoConfigureMockMvc
 class ContentIntegrationTest {
@@ -249,6 +251,31 @@ class ContentIntegrationTest {
         }
     }
 
+    @Test
+    void repeatedMultipartUploadReplaysJobAndChangedBytesConflict() throws Exception {
+        String adminToken = bootstrapAdmin();
+        String token = register(createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        UUID course = createCourse(token, "Imports");
+        byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
+        var title = new MockMultipartFile("title", "", "text/plain", "Once".getBytes());
+        var file = new MockMultipartFile("file", "once.pdf", "application/pdf", pdf);
+        var request = multipart("/api/v1/courses/{c}/decks", course).file(title).file(file)
+                .header("Authorization", bearer(token)).header("Idempotency-Key", "upload-once");
+        String response = mockMvc.perform(request).andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        String retry = mockMvc.perform(request).andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        assertEquals(objectMapper.readTree(response), objectMapper.readTree(retry));
+        assertEquals(1, jdbc.sql("select count(*) from content.import_jobs").query(Integer.class).single());
+        byte[] changed = java.util.Arrays.copyOf(pdf, pdf.length + 1);
+        mockMvc.perform(multipart("/api/v1/courses/{c}/decks", course).file(title)
+                        .file(new MockMultipartFile("file", "once.pdf", "application/pdf", changed))
+                        .header("Authorization", bearer(token)).header("Idempotency-Key", "upload-once"))
+                .andExpect(status().isConflict());
+        assertEquals(1, jdbc.sql("select count(*) from content.import_jobs").query(Integer.class).single());
+        waitForCompletedJob(token, course, objectMapper.readTree(response).get("id").asText());
+    }
+
     private boolean waitForBackupLockWaiter() throws InterruptedException {
         for (int attempt = 0; attempt < 100; attempt++) {
             Integer waitingLocks = jdbc.sql(
@@ -264,24 +291,26 @@ class ContentIntegrationTest {
     }
 
     @Test
-    void restartRecoveryMarksInterruptedJobsFailedOrPartial() throws Exception {
+    void recoveryDoesNotTouchAnotherWorkersLiveLease() throws Exception {
         String adminToken = bootstrapAdmin();
         String lecturerToken = register(
                 createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
-        UUID pendingId = UUID.randomUUID();
         UUID runningId = UUID.randomUUID();
-        insertInterruptedJob(pendingId, courseId, "PENDING", 0);
         insertInterruptedJob(runningId, courseId, "RUNNING", 2);
-
+        jdbc.sql("update content.import_jobs set lease_until = now() + interval '1 hour' where id = :id")
+                .param("id", runningId).update();
         importRecovery.recoverInterruptedJobs();
+        assertEquals("RUNNING", getImportJob(lecturerToken, courseId, runningId.toString()).get("status").asText());
 
-        JsonNode failed = getImportJob(lecturerToken, courseId, pendingId.toString());
+        jdbc.sql("update content.import_jobs set lease_until = now() - interval '1 second',"
+                + " attempts = 3 where id = :id")
+                .param("id", runningId).update();
+        importRecovery.recoverInterruptedJobs();
         JsonNode partial = getImportJob(lecturerToken, courseId, runningId.toString());
-        assertEquals("FAILED", failed.get("status").asText());
         assertEquals("PARTIAL", partial.get("status").asText());
-        assertEquals("INTERRUPTED_RESTART", partial.get("phase").asText());
-        assertTrue(failed.get("errorMessage").asText().contains("можно повторить"));
+        assertEquals("LEASE_EXPIRED", partial.get("phase").asText());
+        assertTrue(partial.get("errorMessage").asText().contains("можно повторить"));
     }
 
     private void insertInterruptedJob(UUID jobId, UUID courseId, String state, int processed) {

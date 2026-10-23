@@ -760,6 +760,8 @@ paths:
       operationId: createCourse
       summary: Create a course.
       tags: [courses]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -773,6 +775,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Course"
+        "409":
+          description: Idempotency-Key was already used for a different request.
   /courses/{courseId}:
     get:
       operationId: getCourse
@@ -988,6 +992,7 @@ paths:
       summary: Create a study group.
       tags: [courses]
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CourseId"
       requestBody:
         required: true
@@ -1002,6 +1007,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudyGroup"
+        "409":
+          description: Idempotency-Key was already used for a different request.
   /courses/{courseId}/groups/{groupId}:
     delete:
       operationId: deleteStudyGroup
@@ -1218,6 +1225,7 @@ paths:
       summary: Upload a presentation file and start a background import job.
       tags: [content]
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CourseId"
       requestBody:
         required: true
@@ -1240,6 +1248,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ImportJob"
+        "409":
+          description: Idempotency-Key was already used for a different request.
   /courses/{courseId}/import-jobs/{jobId}:
     get:
       operationId: getImportJob
@@ -1261,6 +1271,7 @@ paths:
       summary: Retry a failed or partial slide import using a new job and deck.
       tags: [content]
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CourseId"
         - $ref: "#/components/parameters/JobId"
       responses:
@@ -1271,7 +1282,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ImportJob"
         "409":
-          description: Job is not retryable or its source file is unavailable.
+          description: Job is not retryable or its source file is unavailable. The key also conflicts if reused for a different request.
   /courses/{courseId}/decks/{deckId}:
     get:
       operationId: getSlideDeck
@@ -1462,6 +1473,7 @@ paths:
       summary: Create lecture material.
       tags: [content]
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CourseId"
       requestBody:
         required: true
@@ -1476,6 +1488,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Lecture"
+        "409":
+          description: Idempotency-Key was already used for a different request.
   /courses/{courseId}/lectures/{lectureId}:
     get:
       operationId: getLecture
@@ -1588,6 +1602,7 @@ paths:
       description: Creates a SCHEDULED session. The presentation clock starts only at the begin endpoint.
       tags: [live]
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CourseId"
         - $ref: "#/components/parameters/LectureId"
       requestBody:
@@ -1603,6 +1618,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveSession"
+        "409":
+          description: Idempotency-Key was already used for a different request.
   /courses/{courseId}/sessions:
     get:
       operationId: listCompletedSessions
@@ -2179,6 +2196,7 @@ paths:
       tags: [student]
       security: []
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/JoinCode"
       requestBody:
         required: true
@@ -2194,7 +2212,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/StudentQuestion"
         "409":
-          description: Session is paused or ended.
+          description: Session is paused or ended. The key also conflicts if reused for a different request.
   /courses/{courseId}/sessions/{sessionId}/polls:
     get:
       operationId: listClosedPolls
@@ -2237,6 +2255,7 @@ paths:
       summary: Start a quick poll for the current session.
       tags: [interaction]
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CourseId"
         - $ref: "#/components/parameters/SessionId"
       requestBody:
@@ -2253,7 +2272,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PollResult"
         "409":
-          description: A poll is already open, or the session is paused or ended.
+          description: A poll is already open, or the session is paused or ended. The key also conflicts if reused for a different request.
         "404":
           description: Session does not belong to this course.
   /courses/{courseId}/sessions/{sessionId}/polls/active:
@@ -2283,6 +2302,7 @@ paths:
         option is revealed to students only after the poll closes.
       tags: [interaction]
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CourseId"
         - $ref: "#/components/parameters/SessionId"
       requestBody:
@@ -2301,7 +2321,7 @@ paths:
         "404":
           description: Session or question not found in this course.
         "409":
-          description: A poll is already open, or the session is paused or ended.
+          description: A poll is already open, or the session is paused or ended. The key also conflicts if reused for a different request.
         "422":
           description: The question type or option set cannot be used as a quick poll.
   /courses/{courseId}/sessions/{sessionId}/polls/{pollId}:
@@ -2437,6 +2457,7 @@ paths:
       summary: Create a question in the bank.
       tags: [interaction]
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CourseId"
       requestBody:
         required: true
@@ -2451,6 +2472,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuestionBankEntry"
+        "409":
+          description: Idempotency-Key was already used for a different request.
     get:
       operationId: listQuestions
       summary: List questions in the bank, optionally filtered by tag.
@@ -3822,6 +3845,20 @@ components:
       in: header
       name: X-Internal-Api-Key
   parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >
+        One key per create intent. For 24 hours the authenticated actor (or resolved student participant),
+        operation and key replay the original committed result without repeating writes or notifications.
+        Reusing a key with different content returns 409. Current authorization is checked on every retry.
+        Missing keys preserve compatibility and do not provide create deduplication.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[!-~]+$'
     CourseId:
       name: courseId
       in: path
@@ -5600,6 +5637,11 @@ components:
       type: object
       required: [slideIdx]
       properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optional observed session version. A conflicting change returns 409; an identical retry succeeds.
         slideIdx:
           type: integer
           minimum: 1
@@ -5607,6 +5649,11 @@ components:
       type: object
       required: [annotations]
       properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optional observed session version. A conflicting change returns 409; an identical retry succeeds.
         annotations:
           type: object
           additionalProperties: true
@@ -5802,6 +5849,7 @@ components:
       properties:
         text:
           type: string
+          maxLength: 4000
         correct:
           type: boolean
     QuestionBankEntry:
@@ -5845,10 +5893,12 @@ components:
         text:
           type: string
           minLength: 1
+          maxLength: 10000
         questionType:
           $ref: "#/components/schemas/QuestionType"
         options:
           type: array
+          maxItems: 100
           description: Empty for SHORT_ANSWER. Non-empty for option-based questions.
           items:
             $ref: "#/components/schemas/QuestionOption"
@@ -5861,8 +5911,10 @@ components:
             format: uuid
         tags:
           type: array
+          maxItems: 50
           items:
             type: string
+            maxLength: 100
     ActivityStrategy:
       type: string
       enum: [ALL, RANDOM_N, MANUAL]

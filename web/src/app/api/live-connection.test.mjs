@@ -10,6 +10,7 @@ const originals = Object.fromEntries(
   )
 );
 const originalNow = Date.now;
+const originalRandom = Math.random;
 let time, timers, nextTimer, sockets, requests, states, messages, disconnect;
 function advance(ms) {
   const until = time + ms;
@@ -124,12 +125,14 @@ beforeEach(() => {
   }))
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   Date.now = () => time;
+  Math.random = () => 0.5;
   setStoredAuth({ accessToken: "original" });
 });
 afterEach(() => {
   disconnect?.();
   invalidatePendingAuthRefresh();
   Date.now = originalNow;
+  Math.random = originalRandom;
   for (const [key, descriptor] of Object.entries(originals)) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor);
     else delete globalThis[key];
@@ -189,6 +192,8 @@ test("resume reconnects a suspended stale socket, while late old frames cannot a
   focus();
   advance(0);
   assert.equal(socket.closes, 1);
+  assert.equal(sockets.length, 1);
+  advance(500);
   assert.equal(sockets.length, 2);
   sockets[1].connected();
   const count = states.length;
@@ -234,7 +239,7 @@ test("offline status is reported and cleanup stops every reconnect and heartbeat
   assert.equal(states.at(-1), "offline");
   navigator.onLine = true;
   window.dispatchEvent(new Event("online"));
-  advance(0);
+  advance(500);
   sockets.at(-1).connected();
   disconnect();
   disconnect = undefined;
@@ -244,4 +249,34 @@ test("offline status is reported and cleanup stops every reconnect and heartbeat
   advance(60000);
   assert.equal(sockets.length, count);
   assert.equal(requests.length, 0);
+});
+
+test("a stalled TCP/TLS handshake has a deadline before the socket opens", () => {
+  const socket = start();
+  advance(9999);
+  assert.equal(socket.closes, 0);
+  advance(1);
+  assert.equal(socket.closes, 1);
+  advance(375);
+  assert.equal(sockets.length, 2);
+  assert.equal(requests.length, 0);
+});
+test("flapping sockets and repeated foreground events retain exponential jitter", () => {
+  const first = start();
+  first.connected();
+  first.close();
+  for (let i = 0; i < 5; i++) focus();
+  advance(374);
+  assert.equal(sockets.length, 1);
+  advance(1);
+  sockets[1].connected();
+  sockets[1].close();
+  for (let i = 0; i < 5; i++) {
+    window.dispatchEvent(new Event("online"));
+    focus();
+  }
+  advance(749);
+  assert.equal(sockets.length, 2);
+  advance(1);
+  assert.equal(sockets.length, 3);
 });

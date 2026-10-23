@@ -73,7 +73,7 @@ class SignedSlideUrlServiceTest {
         Clock clock = Clock.fixed(Instant.parse(instant), ZoneOffset.UTC);
         ContentProperties properties = new ContentProperties(
                 Path.of("."), "http://localhost:8000", 100, "test-slide-url-secret", TTL,
-                Duration.ofSeconds(5), Duration.ofMinutes(1), 1, 2, 8);
+                Duration.ofSeconds(5), Duration.ofMinutes(1), 1, 2, 8, 128);
         return new SignedSlideUrlService(properties, clock);
     }
 }

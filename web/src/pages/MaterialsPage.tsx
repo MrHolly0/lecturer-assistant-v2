@@ -31,6 +31,7 @@ import {
 import { useDeckSlideActions } from "./useDeckSlideActions";
 import { useSlideNoteActions } from "./useSlideNoteActions";
 import { useLectureCreation } from "./useLectureCreation";
+import { PendingOperationKey } from "../app/api/operation-key";
 
 export function MaterialsPage({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
@@ -58,6 +59,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const [partialReviewAccepted, setPartialReviewAccepted] = useState(false);
   const uploadRequestEpoch = useRef(0);
   const uploadInFlight = useRef(false);
+  const pendingUpload = useRef(new PendingOperationKey());
   const currentCourseId = useRef(courseId);
   currentCourseId.current = courseId;
   selectedDeckIdRef.current = selectedDeckId;
@@ -98,6 +100,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   useEffect(() => {
     uploadRequestEpoch.current += 1;
     uploadInFlight.current = false;
+    pendingUpload.current.clear();
     setTitle("");
     setFileName("");
     setUploadProgress(0);
@@ -192,6 +195,7 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
   const showLibrary = decks.length > 0 || lectures.length > 0;
   const openUpload = () => {
     if (!importing) {
+      pendingUpload.current.clear();
       setUploadedDeckId("");
       setUploadCompleted(false);
       setTitle("");
@@ -262,9 +266,23 @@ export function MaterialsPage({ courseId }: { courseId: string }) {
     setUploadProgress(1);
     setUploadOpen(true);
     try {
-      const uploadedJob = await uploadDeck(courseId, effectiveTitle, file, (progress) => {
-        if (isCurrentRequest()) setUploadProgress(progress);
-      });
+      const uploadedJob = await pendingUpload.current.run(
+        {
+          courseId,
+          title: effectiveTitle,
+          file: { name: file.name, size: file.size, type: file.type, modified: file.lastModified }
+        },
+        (key) =>
+          uploadDeck(
+            courseId,
+            effectiveTitle,
+            file,
+            (progress) => {
+              if (isCurrentRequest()) setUploadProgress(progress);
+            },
+            key
+          )
+      );
       if (!isCurrentRequest()) return;
       setJob(uploadedJob);
       setUploadProgress(uploadedJob.progressPercent);

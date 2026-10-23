@@ -5,6 +5,16 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/lecturer_assistant}
     username: ${DB_USERNAME:lecturer}
     password: ${DB_PASSWORD:lecturer_dev_password}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:16}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT_MS:3000}
+      validation-timeout: 1000
+      idle-timeout: 300000
+      max-lifetime: 1800000
+      data-source-properties:
+        # Apply to application sessions only: backups hold a longer advisory lock.
+        options: ${DB_SESSION_OPTIONS:-c statement_timeout=30000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=60000}
   servlet:
     multipart:
       max-file-size: ${MAX_UPLOAD_SIZE:100MB}
@@ -33,6 +43,11 @@ management:
 
 server:
   tomcat:
+    threads:
+      max: ${HTTP_MAX_THREADS:120}
+      min-spare: 10
+    max-connections: ${HTTP_MAX_CONNECTIONS:8192}
+    accept-count: ${HTTP_ACCEPT_COUNT:256}
     # NIO uses this idle timeout for socket writes too; SSE cannot hold a send worker indefinitely.
     connection-timeout: ${HTTP_SOCKET_IDLE_TIMEOUT:10s}
   port: ${SERVER_PORT:8080}
@@ -41,12 +56,20 @@ server:
 
 app:
   projection:
+    capacity:
+      rooms: ${SHARE_MAX_ROOMS:64}
+      viewers-per-room: ${SHARE_MAX_VIEWERS_PER_ROOM:200}
+      frame-bytes: ${SHARE_FRAME_BUFFER_BYTES:33554432}
+      video-bytes: ${SHARE_VIDEO_BUFFER_BYTES:67108864}
+      video-room-bytes: ${SHARE_VIDEO_ROOM_BYTES:8388608}
     releases:
       catalog-path: ${PROJECTOR_RELEASE_CATALOG_PATH:}
       trust-path: ${PROJECTOR_RELEASE_TRUST_PATH:}
   version: ${APP_VERSION:0.0.1-SNAPSHOT}
   live:
     sse-broadcast-workers: ${SSE_BROADCAST_WORKERS:4}
+    sse-maximum-clients: ${SSE_MAX_CLIENTS:20000}
+    sse-maximum-clients-per-session: ${SSE_MAX_CLIENTS_PER_SESSION:1000}
   security:
     admin-setup-token: ${ADMIN_SETUP_TOKEN:}
     jwt-secret: ${JWT_SECRET:phase-1-local-development-secret-change-me}
@@ -58,6 +81,17 @@ app:
     # запросы уже same-origin), поэтому в проде сюда достаточно поставить https://<SITE_DOMAIN>.
     # Локальные порты dev-профиля (docker-compose.dev.yml: WEB_PORT/CORE_PORT) — в дефолте.
     cors-allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+    admission:
+      reads-per-minute: ${API_READS_PER_MINUTE:1200}
+      images-per-minute: ${API_IMAGE_REQUESTS_PER_MINUTE:120000}
+      writes-per-minute: ${API_WRITES_PER_MINUTE:240}
+      analytics-per-minute: ${API_ANALYTICS_PER_MINUTE:60}
+      anonymous-per-minute: ${API_ANONYMOUS_PER_MINUTE:12000}
+      maximum-keys: ${API_RATE_LIMIT_MAX_KEYS:20000}
+      credential-lookups-per-minute: ${API_CREDENTIAL_LOOKUPS_PER_MINUTE:120000}
+      concurrent-credential-lookups: ${API_CREDENTIAL_LOOKUP_CONCURRENT:4}
+      concurrent-requests: ${API_CONCURRENT_REQUESTS:128}
+      concurrent-analytics: ${API_CONCURRENT_ANALYTICS:8}
     rate-limit:
       auth-max-per-minute: ${RATE_LIMIT_AUTH_MAX_PER_MINUTE:3000}
       signal-per-minute: ${RATE_LIMIT_SIGNAL_PER_MINUTE:6000}
@@ -68,6 +102,12 @@ app:
     slide-image-url-ttl: ${SLIDE_IMAGE_URL_TTL:PT1H}
     converter-connect-timeout: ${CONVERTER_CONNECT_TIMEOUT:PT5S}
     converter-read-timeout: ${CONVERTER_READ_TIMEOUT:PT20M}
+    import-max-queued-jobs: ${CONTENT_IMPORT_MAX_QUEUED_JOBS:128}
+    worker-enabled: ${CONTENT_WORKER_ENABLED:true}
+    import-lease-seconds: ${CONTENT_IMPORT_LEASE_SECONDS:90}
+    import-max-attempts: ${CONTENT_IMPORT_MAX_ATTEMPTS:3}
+    import-dispatch-delay-ms: ${CONTENT_IMPORT_DISPATCH_DELAY_MS:1000}
+    import-heartbeat-delay-ms: ${CONTENT_IMPORT_HEARTBEAT_DELAY_MS:10000}
     import-core-pool-size: ${CONTENT_IMPORT_CORE_POOL_SIZE:1}
     import-max-pool-size: ${CONTENT_IMPORT_MAX_POOL_SIZE:2}
     import-queue-capacity: ${CONTENT_IMPORT_QUEUE_CAPACITY:8}
@@ -77,5 +117,6 @@ app:
   channel:
     internal-api-key: ${CHANNEL_INTERNAL_API_KEY:phase-4-local-channel-key}
     delivery-worker-delay-ms: ${CHANNEL_DELIVERY_WORKER_DELAY_MS:5000}
+    max-rate-limit-rps: ${MAX_RATE_LIMIT_RPS:15}
     telegram-bot: ${TELEGRAM_BOT:}
     vk-bot: ${VK_BOT:}

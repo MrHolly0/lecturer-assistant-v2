@@ -26,6 +26,17 @@ class ContentRepository {
         this.jdbc = jdbc;
     }
 
+    void requireImportCapacity(int maximum) {
+        // Short queue admission lock is independent from the shared blob/backup lock.
+        jdbc.sql("select pg_advisory_xact_lock(14713, 2526)").query((rs, row) -> true).single();
+        int queued = jdbc.sql("select count(*) from content.import_jobs where status in ('PENDING', 'RUNNING')")
+                .query(Integer.class).single();
+        if (queued >= maximum) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "Import queue is full; retry later");
+        }
+    }
+
     ImportJob createJob(UUID id, UUID courseId, StoredBlob source) {
         return createJob(id, courseId, source, "");
     }
@@ -103,17 +114,91 @@ class ContentRepository {
                 .single();
     }
 
-    int failInterruptedJobs() {
+    /** Claims only persisted work; no job can be owned by two workers. */
+    Optional<ImportClaim> claimJob(UUID owner, int leaseSeconds) {
         return jdbc.sql("""
-                        update content.import_jobs
-                        set status = case when processed_slides > 0 then 'PARTIAL' else 'FAILED' end,
-                            progress = case when processed_slides > 0 then least(progress, 99) else 100 end,
-                            phase = 'INTERRUPTED_RESTART',
-                            error_message = 'Импорт прерван перезапуском. Его можно повторить.',
-                            updated_at = now()
-                        where status in ('PENDING', 'RUNNING')
+                        with next as (
+                            select id from content.import_jobs where status = 'PENDING' and available_at <= now()
+                            order by created_at, id for update skip locked limit 1
+                        )
+                        update content.import_jobs j
+                        set status = 'RUNNING', worker_id = :owner, claim_token = :token,
+                            lease_until = now() + make_interval(secs => :leaseSeconds),
+                            attempts = attempts + 1, updated_at = now()
+                        from next where j.id = next.id
+                        returning j.id, j.course_id, j.import_title, j.claim_token
                         """)
-                .update();
+                .param("owner", owner).param("token", UUID.randomUUID()).param("leaseSeconds", leaseSeconds)
+                .query((rs, row) -> new ImportClaim(rs.getObject("id", UUID.class),
+                        rs.getObject("course_id", UUID.class), rs.getString("import_title"),
+                        rs.getObject("claim_token", UUID.class)))
+                .optional();
+    }
+
+    boolean heartbeat(ImportClaim claim, int leaseSeconds) {
+        return jdbc.sql("""
+                        update content.import_jobs set lease_until = now() + make_interval(secs => :seconds)
+                        where id = :id and claim_token = :token and status = 'RUNNING' and lease_until > now()
+                        """)
+                .param("seconds", leaseSeconds).param("id", claim.id()).param("token", claim.token())
+                .update() == 1;
+    }
+
+    /** Fence every slide/deck write in its transaction, not just the completion ACK. */
+    void requireClaim(ImportClaim claim) {
+        boolean owned = jdbc.sql("""
+                        select exists(select 1 from content.import_jobs where id = :id
+                            and claim_token = :token and status = 'RUNNING' and lease_until > now() for update)
+                        """)
+                .param("id", claim.id()).param("token", claim.token()).query(Boolean.class).single();
+        if (!owned) {
+            throw new LostImportClaimException();
+        }
+    }
+
+    int recoverExpiredJobs(int maxAttempts) {
+        return jdbc.sql("""
+                        with expired as (
+                            select id from content.import_jobs where status = 'RUNNING' and lease_until < now()
+                            order by lease_until for update skip locked limit 100
+                        )
+                        update content.import_jobs
+                        set available_at = now() + make_interval(
+                                secs => (random() * least(300, power(2, attempts)))::int),
+                            status = case when attempts < :maxAttempts then 'PENDING'
+                                when processed_slides > 0 then 'PARTIAL' else 'FAILED' end,
+                            phase = case when attempts < :maxAttempts then 'QUEUED_RECOVERY' else 'LEASE_EXPIRED' end,
+                            error_message = case when attempts < :maxAttempts then null
+                                else 'Импорт прерван. Его можно повторить.' end,
+                            worker_id = null, claim_token = null, lease_until = null, updated_at = now()
+                        where id in (select id from expired)
+                        """)
+                .param("maxAttempts", maxAttempts).update();
+    }
+
+    boolean retryClaim(ImportClaim claim, int delaySeconds, int maxAttempts) {
+        return jdbc.sql("""
+                        update content.import_jobs set status = 'PENDING',
+                            available_at = now() + make_interval(secs => :seconds), phase = 'QUEUED_RETRY',
+                            worker_id = null, claim_token = null, lease_until = null, updated_at = now()
+                        where id = :id and claim_token = :token and status = 'RUNNING'
+                            and lease_until > now() and attempts < :maxAttempts
+                        """)
+                .param("seconds", delaySeconds).param("id", claim.id()).param("token", claim.token())
+                .param("maxAttempts", maxAttempts).update() == 1;
+    }
+
+    int attempts(ImportClaim claim) {
+        return jdbc.sql("select attempts from content.import_jobs where id = :id and claim_token = :token")
+                .param("id", claim.id()).param("token", claim.token()).query(Integer.class).single();
+    }
+
+    record ImportClaim(UUID id, UUID courseId, String title, UUID token) {}
+
+    static class LostImportClaimException extends RuntimeException {
+        LostImportClaimException() {
+            super("Import lease is no longer owned by this worker");
+        }
     }
 
     Optional<ImportJob> findJob(UUID courseId, UUID jobId) {
@@ -156,15 +241,26 @@ class ContentRepository {
             String errorMessage,
             String warningMessage,
             UUID deckId) {
-        jdbc.sql(
+        markJob(jobId, status, progress, phase, processedSlides, totalSlides, errorMessage,
+                warningMessage, deckId, null);
+    }
+
+    boolean markJob(UUID jobId, ImportJobStatus status, int progress, String phase, int processedSlides,
+            Integer totalSlides, String errorMessage, String warningMessage, UUID deckId, UUID claimToken) {
+        return jdbc.sql(
                         """
                         update content.import_jobs
                         set status = :status, progress = :progress, error_message = :errorMessage,
                             phase = :phase, processed_slides = :processedSlides, total_slides = :totalSlides,
                             warning_message = :warningMessage, deck_id = coalesce(:deckId, deck_id),
-                            updated_at = now()
-                        where id = :jobId
+                            updated_at = now(),
+                            lease_until = case when :status = 'RUNNING' then lease_until else null end,
+                            worker_id = case when :status = 'RUNNING' then worker_id else null end,
+                            claim_token = case when :status = 'RUNNING' then claim_token else null end
+                        where id = :jobId and (:claimToken::uuid is null or
+                            (claim_token = :claimToken and status = 'RUNNING' and lease_until > now()))
                         """)
+                .param("claimToken", claimToken)
                 .param("jobId", jobId)
                 .param("status", status.name())
                 .param("progress", progress)
@@ -174,10 +270,16 @@ class ContentRepository {
                 .param("errorMessage", errorMessage)
                 .param("warningMessage", warningMessage)
                 .param("deckId", deckId)
-                .update();
+                .update() == 1;
     }
 
     int nextDeckVersion(UUID courseId, String title) {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Deck version allocation requires a transaction");
+        }
+        // Shared by imports and copy-on-edit. The key uses the exact, case-sensitive unique-index title.
+        jdbc.sql("select pg_advisory_xact_lock(hashtextextended(:key, 0))")
+                .param("key", "deck-version:" + courseId + ":" + title).query((rs, row) -> true).single();
         Integer maxVersion = jdbc.sql(
                         """
                         select coalesce(max(version), 0)

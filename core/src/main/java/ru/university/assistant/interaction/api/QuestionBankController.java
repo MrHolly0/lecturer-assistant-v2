@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import ru.university.assistant.shared.api.CommandIdempotency;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,10 +26,12 @@ import ru.university.assistant.org.api.CourseAccessApi;
 class QuestionBankController {
     private final QuestionBankService service;
     private final CourseAccessApi courseAccess;
+    private final CommandIdempotency commands;
 
-    QuestionBankController(QuestionBankService service, CourseAccessApi courseAccess) {
+    QuestionBankController(QuestionBankService service, CourseAccessApi courseAccess, CommandIdempotency commands) {
         this.service = service;
         this.courseAccess = courseAccess;
+        this.commands = commands;
     }
 
     @PostMapping
@@ -35,9 +39,11 @@ class QuestionBankController {
     public QuestionBankEntry create(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
-            @Valid @RequestBody CreateQuestionRequest request) {
+            @Valid @RequestBody CreateQuestionRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
         courseAccess.requireManage(user, courseId);
-        return service.create(courseId, user.id(), request);
+        return commands.execute(user.id(), "POST /courses/" + courseId + "/questions", key,
+                commands.hash(request), QuestionBankEntry.class, () -> service.create(courseId, user.id(), request));
     }
 
     @GetMapping

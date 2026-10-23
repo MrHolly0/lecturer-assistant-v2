@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { PendingOperationKey } from "../app/api/operation-key";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart2,
@@ -46,6 +47,7 @@ export function PollPanel({
   container
 }: Props) {
   const qc = useQueryClient();
+  const startKey = useRef(new PendingOperationKey());
   const [view, setView] = useState<View>("idle");
   const [expandedClosedPollId, setExpandedClosedPollId] = useState<string | null>(null);
 
@@ -59,13 +61,21 @@ export function PollPanel({
   const activePoll = activeQuery.data;
 
   const startMut = useMutation({
-    mutationFn: (draft: PollDraft) =>
-      draft.questionId
-        ? startPollFromBank(courseId, sessionId, { questionId: draft.questionId })
-        : startPoll(courseId, sessionId, {
-            questionText: draft.questionText,
-            options: draft.options
-          }),
+    mutationFn: (draft: PollDraft) => {
+      return startKey.current.run({ courseId, sessionId, draft }, (key) =>
+        draft.questionId
+          ? startPollFromBank(courseId, sessionId, { questionId: draft.questionId }, key)
+          : startPoll(
+              courseId,
+              sessionId,
+              {
+                questionText: draft.questionText,
+                options: draft.options
+              },
+              key
+            )
+      );
+    },
     onSuccess: (result) => {
       qc.setQueryData(["poll", courseId, sessionId, "active"], result);
       setView("idle");

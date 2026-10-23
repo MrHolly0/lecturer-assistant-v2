@@ -76,16 +76,26 @@ class PausedSessionIntegrationTest extends LiveFlowTestBase {
     }
 
     @Test
-    void invalidRepeatedTransitionsReturnConflictAndPausedSessionCanEnd() throws Exception {
+    void repeatedTransitionsAreIdempotentAndEndedSessionCannotResume() throws Exception {
         json(post("/api/v1/courses/{c}/sessions/{s}/resume", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 409);
+                .header("Authorization", "Bearer " + lecturerToken), 200);
         json(post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
                 .header("Authorization", "Bearer " + lecturerToken), 200);
         json(post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 409);
+                .header("Authorization", "Bearer " + lecturerToken), 200);
         JsonNode ended = json(post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
                 .header("Authorization", "Bearer " + lecturerToken), 200);
         assertEquals("ENDED", ended.get("status").asText());
+        JsonNode repeated = json(post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 200);
+        assertEquals(ended.get("version"), repeated.get("version"));
+        json(post("/api/v1/courses/{c}/sessions/{s}/resume", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 409);
+        json(post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
+                .header("Authorization", "Bearer " + lecturerToken), 409);
+        assertEquals(1L, count("analytics.events where verb = 'session.paused'"));
+        assertEquals(1L, count("analytics.events where verb = 'session.ended'"));
+        assertEquals(0L, count("analytics.events where verb = 'session.resumed'"));
     }
 
     private UUID startPoll() throws Exception {

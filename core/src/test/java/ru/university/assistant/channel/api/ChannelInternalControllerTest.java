@@ -72,5 +72,13 @@ class ChannelInternalControllerTest {
             this.channelType = channelType;
             this.event = event;
         }
+
+        @Override
+        public ChannelRateSlot reserveRateSlot(String channelType) {
+            return new ChannelRateSlot(0);
+        }
+
+        @Override
+        public void deferChannel(String channelType, long delayMs) {}
     }
 }

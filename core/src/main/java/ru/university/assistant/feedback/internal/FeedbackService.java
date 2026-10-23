@@ -26,15 +26,24 @@ class FeedbackService implements FeedbackApi {
     @Transactional
     public SignalAggregate saveSignal(
             UUID sessionId, UUID personId, String channelType, int slideIdx, SignalValue value) {
-        repository.saveSignal(sessionId, personId, channelType, slideIdx, value);
-        events.publish(new DomainEvent(
+        return submitSignal(sessionId, personId, channelType, slideIdx, value).aggregate();
+    }
+
+    @Override
+    @Transactional
+    public SignalSubmission submitSignal(
+            UUID sessionId, UUID personId, String channelType, int slideIdx, SignalValue value) {
+        boolean changed = repository.saveSignal(sessionId, personId, channelType, slideIdx, value);
+        if (changed) {
+            events.publish(new DomainEvent(
                 "feedback.comprehension_signal",
                 sessionId,
                 "feedback.signal_submitted",
                 personId,
                 Map.of("sessionId", sessionId),
                 Map.of("channelType", channelType, "slideIdx", slideIdx, "value", value.name())));
-        return repository.aggregate(sessionId, slideIdx);
+        }
+        return new SignalSubmission(repository.aggregate(sessionId, slideIdx), changed);
     }
 
     @Override

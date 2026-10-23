@@ -97,6 +97,10 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
+        // A slow client must not turn the broker's default unbounded executor
+        // queues into an unbounded memory buffer. Rejection is intentional:
+        // clients reconnect and recover from the authoritative HTTP snapshot.
+        registration.taskExecutor().corePoolSize(2).maxPoolSize(4).queueCapacity(256);
         registration.interceptors(inboundAuthorizationInterceptor());
     }
 
@@ -140,6 +144,7 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureClientOutboundChannel(ChannelRegistration registration) {
+        registration.taskExecutor().corePoolSize(2).maxPoolSize(4).queueCapacity(256);
         registration.interceptors(new ChannelInterceptor() {
             @Override
             public Message<?> preSend(Message<?> message, MessageChannel channel) {

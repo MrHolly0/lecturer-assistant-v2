@@ -28,6 +28,7 @@ class SecurityConfig {
             HttpSecurity http,
             JwtAuthenticationFilter jwtAuthenticationFilter,
             RateLimitFilter rateLimitFilter,
+            JsonBodyBudgetFilter jsonBodyBudgetFilter,
             CorsConfigurationSource corsConfigurationSource)
             throws Exception {
         return http.csrf(csrf -> csrf.disable())
@@ -75,6 +76,7 @@ class SecurityConfig {
                 // которые всё равно будут отклонены.
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(jsonBodyBudgetFilter, JwtAuthenticationFilter.class)
                 .build();
     }
 

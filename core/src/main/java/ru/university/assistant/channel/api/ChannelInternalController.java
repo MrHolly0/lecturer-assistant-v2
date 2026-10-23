@@ -1,6 +1,8 @@
 package ru.university.assistant.channel.api;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.PositiveOrZero;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -68,6 +70,24 @@ public class ChannelInternalController {
         requireKey(key);
         channels.handleInbound(channelType, event);
     }
+
+    @PostMapping("/rate-slot")
+    public ChannelRateSlot reserveRateSlot(
+            @PathVariable String channelType, @RequestHeader("X-Internal-Api-Key") String key) {
+        requireKey(key);
+        return channels.reserveRateSlot(channelType);
+    }
+
+    @PostMapping("/cooldown")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deferChannel(@PathVariable String channelType,
+            @RequestHeader("X-Internal-Api-Key") String key,
+            @Valid @RequestBody Cooldown request) {
+        requireKey(key);
+        channels.deferChannel(channelType, request.delayMs());
+    }
+
+    public record Cooldown(@PositiveOrZero @Max(31536000000L) long delayMs) {}
 
     private void requireKey(String key) {
         if (!apiKey.equals(key)) {

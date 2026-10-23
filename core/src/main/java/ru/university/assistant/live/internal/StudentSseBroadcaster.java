@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -55,6 +56,12 @@ public class StudentSseBroadcaster {
     private final AtomicInteger slowClients = new AtomicInteger();
     private final Counter slowConsumerCounter;
     private final Timer writeTimer;
+    private final Counter rejectedBroadcasts;
+    @Value("${app.live.sse-maximum-clients:20000}")
+    private int maximumClients = 20_000;
+    @Value("${app.live.sse-maximum-clients-per-session:1000}")
+    private int maximumClientsPerSession = 1000;
+    private final Object registrationLock = new Object();
 
     @Autowired
     StudentSseBroadcaster(
@@ -86,9 +93,14 @@ public class StudentSseBroadcaster {
             meters.gauge("live.sse.slow_clients", slowClients);
             this.slowConsumerCounter = Counter.builder("live.sse.slow_consumer_disconnects").register(meters);
             this.writeTimer = Timer.builder("live.sse.write").register(meters);
+            this.rejectedBroadcasts = meters.counter("live.sse.snapshot_rejections");
+            meters.gauge("live.sse.snapshot.queue", broadcastWorkers, value -> value.getQueue().size());
+            meters.gauge("live.sse.send.queue", sendWorkers, value -> value.getQueue().size());
+            meters.gauge("live.sse.close.queue", closeWorkers, value -> value.getQueue().size());
         } else {
             this.slowConsumerCounter = null;
             this.writeTimer = null;
+            this.rejectedBroadcasts = null;
         }
     }
 
@@ -102,8 +114,16 @@ public class StudentSseBroadcaster {
     public void register(String joinCode, UUID viewerPersonId, SseEmitter emitter) {
         String code = joinCode.trim().toUpperCase();
         Client client = new Client(viewerPersonId, emitter);
-        Set<Client> set = clientsByCode.computeIfAbsent(code, key -> ConcurrentHashMap.newKeySet());
-        if (set.add(client)) activeClients.incrementAndGet();
+        synchronized (registrationLock) {
+            Set<Client> set = clientsByCode.computeIfAbsent(code, key -> ConcurrentHashMap.newKeySet());
+            long existing = viewerPersonId == null ? 0
+                    : set.stream().filter(item -> viewerPersonId.equals(item.viewerPersonId())).count();
+            if (activeClients.get() >= maximumClients || set.size() >= maximumClientsPerSession || existing >= 3) {
+                if (set.isEmpty()) clientsByCode.remove(code, set);
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Too many open student streams");
+            }
+            if (set.add(client)) activeClients.incrementAndGet();
+        }
         emitter.onCompletion(() -> remove(code, client));
         emitter.onTimeout(() -> {
             LOG.debug("Student stream timed out for {}", code);
@@ -134,6 +154,7 @@ public class StudentSseBroadcaster {
                 });
             } catch (RejectedExecutionException exception) {
                 inFlight.remove(code);
+                if (rejectedBroadcasts != null) rejectedBroadcasts.increment();
                 LOG.debug("Skipping SSE snapshot tick because the bounded worker queue is full");
             }
         }
@@ -156,6 +177,14 @@ public class StudentSseBroadcaster {
                 }));
     }
 
+    @EventListener
+    void closeRevokedParticipantStreams(ParticipantAccessRevoked event) {
+        String code = event.joinCode().trim().toUpperCase();
+        clientsByCode.getOrDefault(code, Set.of()).stream()
+                .filter(client -> event.personId().equals(client.viewerPersonId()))
+                .toList().forEach(client -> closeClient(code, client, new IOException("Participation was revoked")));
+    }
+
     @Scheduled(fixedDelay = 1000)
     void detachSlowConsumers() {
         long now = System.nanoTime();
@@ -176,7 +205,9 @@ public class StudentSseBroadcaster {
         Set<Client> set = clientsByCode.get(code);
         if (set == null) return;
         if (set.isEmpty()) {
-            clientsByCode.remove(code, set);
+            synchronized (registrationLock) {
+                if (set.isEmpty()) clientsByCode.remove(code, set);
+            }
             return;
         }
         Map<UUID, StudentSessionSnapshot> snapshots;
@@ -221,10 +252,23 @@ public class StudentSseBroadcaster {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     void publishAnswer(StudentQuestionAnswerPublished event) {
         String code = event.joinCode().trim().toUpperCase();
-        Set<Client> clients = clientsByCode.getOrDefault(code, Set.of());
+        java.util.List<Client> clients = java.util.List.copyOf(clientsByCode.getOrDefault(code, Set.of()));
+        if (clients.isEmpty()) return;
+        Set<UUID> viewers = clients.stream().map(Client::viewerPersonId).filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Set<UUID> recipients;
+        try { recipients = sessions.answerRecipients(code, viewers); }
+        catch (RuntimeException failure) {
+            // The authoritative next snapshot still carries the answer; never fail open on a DB error.
+            LOG.warn("Cannot prepare answer audience for {}: {}", code, failure.toString());
+            return;
+        }
         for (Client client : clients) {
-            boolean canReceive = client.viewerPersonId() == null
-                    || sessions.canReceive(code, client.viewerPersonId());
+            boolean canReceive = client.viewerPersonId() == null || recipients.contains(client.viewerPersonId());
+            if (!canReceive) {
+                closeClient(code, client, new IOException("Participation is no longer active"));
+                continue;
+            }
             boolean visible = event.answer().answerVisibility() == QuestionAnswerVisibility.SESSION
                             && canReceive
                     || client.viewerPersonId() != null
@@ -234,6 +278,14 @@ public class StudentSseBroadcaster {
             } else if (visible) {
                 scheduleSend(code, client);
             }
+        }
+    }
+
+    private boolean canSendPersonalAnswer(String code, UUID personId) {
+        try { return sessions.canReceive(code, personId); }
+        catch (RuntimeException failure) {
+            LOG.warn("Cannot recheck personal answer audience for {}: {}", code, failure.toString());
+            return false;
         }
     }
 
@@ -254,6 +306,14 @@ public class StudentSseBroadcaster {
                 PendingEvent event = client.pendingAnswers.poll();
                 if (event == null) event = client.latestSnapshot.getAndSet(null);
                 if (event == null) return;
+                if (client.closed.get()) return;
+                if ("question-answer".equals(event.name()) && client.viewerPersonId() != null
+                        && ((ru.university.assistant.qa.api.StudentQuestionAnswer) event.data()).answerVisibility()
+                                != QuestionAnswerVisibility.SESSION
+                        && !canSendPersonalAnswer(code, client.viewerPersonId())) {
+                    closeClient(code, client, new IOException("Answer permission was revoked"));
+                    return;
+                }
                 if (client.closed.get()) return;
                 client.sendingSinceNanos.set(System.nanoTime());
                 long started = System.nanoTime();
@@ -322,12 +382,14 @@ public class StudentSseBroadcaster {
         if (!client.closed.compareAndSet(false, true)) return false;
         client.pendingAnswers.clear();
         client.latestSnapshot.set(null);
-        Set<Client> set = clientsByCode.get(code);
-        if (set != null && set.remove(client)) {
-            activeClients.decrementAndGet();
-            if (client.slow.get()) slowClients.decrementAndGet();
+        synchronized (registrationLock) {
+            Set<Client> set = clientsByCode.get(code);
+            if (set != null && set.remove(client)) {
+                activeClients.decrementAndGet();
+                if (client.slow.get()) slowClients.decrementAndGet();
+            }
+            if (set != null && set.isEmpty()) clientsByCode.remove(code, set);
         }
-        if (set != null && set.isEmpty()) clientsByCode.remove(code, set);
         return true;
     }
 

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/errors";
+import { readRetryDelay, retryDelayMs, shouldRetryRead } from "../api/retry";
+import { createSnapshotInvalidationReader } from "./snapshotInvalidation";
 import {
   connectLiveSession,
   getLiveSession,
@@ -15,9 +17,12 @@ export function useLiveSession(courseId: string, sessionId: string) {
   const scope = `${courseId}/${sessionId}`;
   const scopeRef = useRef(scope);
   const generationRef = useRef(0);
-  const refreshRef = useRef<(blocking?: boolean) => Promise<void>>(() => Promise.resolve());
+  const refreshRef = useRef<(blocking?: boolean) => Promise<boolean>>(() => Promise.resolve(false));
   const transportRef = useRef<LiveConnectionState>("connecting");
   const httpConfirmedAt = useRef(0);
+  const readFailures = useRef(0);
+  const nextReadAt = useRef(0);
+  const pollingSpread = useRef(Math.random());
   const [, tickFreshness] = useState(0);
   const [snapshot, setSnapshot] = useState<LiveSession | null>(null);
   const [connection, setConnection] = useState<LiveConnectionState>("connecting");
@@ -28,6 +33,8 @@ export function useLiveSession(courseId: string, sessionId: string) {
     scopeRef.current = scope;
     snapshotRef.current = null;
     httpConfirmedAt.current = 0;
+    readFailures.current = 0;
+    nextReadAt.current = 0;
     generationRef.current += 1;
   }
   const versionOf = (value: LiveSession | null) => value?.version;
@@ -35,11 +42,24 @@ export function useLiveSession(courseId: string, sessionId: string) {
   const sessionQuery = useQuery({
     queryKey: ["live", courseId, sessionId],
     meta: { connectionSync: true },
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const generation = generationRef.current;
       const requestScope = scopeRef.current;
-      const fresh = await getLiveSession(courseId, sessionId);
+      let fresh: LiveSession;
+      try {
+        fresh = await getLiveSession(courseId, sessionId, signal);
+      } catch (error) {
+        if (!signal.aborted && scopeRef.current === requestScope) {
+          readFailures.current += 1;
+          nextReadAt.current =
+            Date.now() +
+            retryDelayMs(readFailures.current - 1, { baseMs: 10000, maxMs: 60000, error });
+        }
+        throw error;
+      }
       if (scopeRef.current !== requestScope) return fresh;
+      readFailures.current = 0;
+      nextReadAt.current = 0;
       httpConfirmedAt.current = Date.now();
       const current = snapshotRef.current;
       if (
@@ -60,8 +80,14 @@ export function useLiveSession(courseId: string, sessionId: string) {
       setSyncing(false);
       return fresh;
     },
-    retry: 1,
-    refetchInterval: connection === "connected" ? 30000 : 5000,
+    retry: shouldRetryRead,
+    retryDelay: readRetryDelay,
+    refetchInterval: () =>
+      readFailures.current > 0
+        ? Math.max(5000, nextReadAt.current - Date.now())
+        : connection === "connected"
+          ? 30000 + Math.floor(pollingSpread.current * 6000)
+          : 5000 + Math.floor(pollingSpread.current * 1000),
     refetchOnWindowFocus: false
   });
   const { refetch } = sessionQuery;
@@ -93,6 +119,7 @@ export function useLiveSession(courseId: string, sessionId: string) {
 
   const refreshAuthoritative = useCallback(
     async (blocking = true) => {
+      if (Date.now() < nextReadAt.current) return false;
       if (blocking) {
         setSyncing(true);
         setSyncError(false);
@@ -100,6 +127,7 @@ export function useLiveSession(courseId: string, sessionId: string) {
       try {
         const result = await refetch({ cancelRefetch: false });
         if (result.error) throw result.error;
+        return true;
       } catch (error) {
         if (
           blocking ||
@@ -108,6 +136,7 @@ export function useLiveSession(courseId: string, sessionId: string) {
         )
           setSyncError(true);
         setSyncing(false);
+        return false;
       }
     },
     [refetch]
@@ -117,26 +146,37 @@ export function useLiveSession(courseId: string, sessionId: string) {
   useEffect(() => {
     const id = snapshot?.id;
     if (!id) return undefined;
+    const invalidations = createSnapshotInvalidationReader(
+      () => refreshRef.current(false),
+      () => snapshotRef.current?.version
+    );
     const disconnect = connectLiveSession(
       id,
       (message) => {
         // The server publishes committed revisions. Apply them immediately; equal
         // revisions can still carry fresher durations and engagement events.
-        acceptSnapshot(message.session);
-        if (message.type.startsWith("interaction.poll")) {
+        let eventType = message.type;
+        if ("session" in message) {
+          acceptSnapshot(message.session);
+        } else {
+          if (message.sessionId !== id || message.type !== "session.invalidate") return;
+          eventType = message.eventType;
+          invalidations.invalidate(message.version);
+        }
+        if (eventType.startsWith("interaction.poll")) {
           void queryClient.invalidateQueries({ queryKey: ["poll", courseId, sessionId] });
         }
-        if (message.type.startsWith("participant.")) {
+        if (eventType.startsWith("participant.")) {
           void queryClient.invalidateQueries({
             queryKey: ["live", courseId, sessionId, "participants"]
           });
         }
-        if (message.type.startsWith("feedback.") || message.type.startsWith("qa.")) {
+        if (eventType.startsWith("feedback.") || eventType.startsWith("qa.")) {
           void queryClient.invalidateQueries({
             queryKey: ["live", courseId, sessionId, "engagement"]
           });
         }
-        if (message.type.startsWith("qa.")) {
+        if (eventType.startsWith("qa.")) {
           void queryClient.invalidateQueries({
             queryKey: ["live", courseId, sessionId, "questions"]
           });
@@ -166,6 +206,7 @@ export function useLiveSession(courseId: string, sessionId: string) {
       }
     );
     return () => {
+      invalidations.dispose();
       disconnect();
     };
   }, [acceptSnapshot, courseId, queryClient, sessionId, snapshot?.id]);
@@ -215,6 +256,7 @@ export function useLiveSession(courseId: string, sessionId: string) {
     !syncError
       ? "polling"
       : connection;
+  const getSnapshot = () => snapshotRef.current;
   const commandsBlocked =
     snapshot?.id !== sessionId ||
     syncing ||
@@ -224,6 +266,7 @@ export function useLiveSession(courseId: string, sessionId: string) {
   return {
     session: (snapshot?.id === sessionId ? snapshot : null) ?? sessionQuery.data ?? null,
     setSession: acceptSnapshot,
+    getSnapshot,
     connection: effectiveConnection,
     commandsBlocked,
     syncedAt,

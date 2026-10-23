@@ -3,10 +3,9 @@ package ru.university.assistant.content.internal;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
+import java.util.concurrent.ThreadLocalRandom;
 import org.springframework.transaction.support.TransactionTemplate;
 import ru.university.assistant.content.api.ImportJobStatus;
 import ru.university.assistant.shared.api.UuidV7;
@@ -16,76 +15,98 @@ class SlideImportWorker {
     private final ContentRepository repository;
     private final SlideConversionClient converter;
     private final TransactionTemplate transactionTemplate;
+    private final int maxAttempts;
 
     SlideImportWorker(
             ContentRepository repository,
             SlideConversionClient converter,
-            TransactionTemplate transactionTemplate) {
+            TransactionTemplate transactionTemplate,
+            @Value("${app.content.import-max-attempts:3}") int maxAttempts) {
         this.repository = repository;
         this.converter = converter;
         this.transactionTemplate = transactionTemplate;
+        this.maxAttempts = Math.max(1, maxAttempts);
     }
 
-    @Async("contentImportExecutor")
-    public void process(UUID jobId, UUID courseId, String title) {
+    public void process(ContentRepository.ImportClaim claim) {
+        UUID jobId = claim.id();
+        UUID courseId = claim.courseId();
         AtomicInteger processed = new AtomicInteger();
         AtomicInteger total = new AtomicInteger();
         AtomicReference<String> warning = new AtomicReference<>();
         UUID deckId = null;
         try {
+            var persisted = repository.findJob(courseId, jobId).orElseThrow();
+            processed.set(persisted.processedSlides());
+            total.set(persisted.totalSlides() == null ? 0 : persisted.totalSlides());
+            warning.set(persisted.warningMessage());
             StoredBlob source = repository.findJobSource(jobId)
                     .orElseThrow(() -> new IllegalStateException("Import source is missing"));
-            deckId = transactionTemplate.execute(status -> createOrReuseDeck(jobId, courseId, title, source));
-            mark(jobId, ImportJobStatus.RUNNING, 3, "CONVERTING_PDF", 0, null, null, null, deckId);
+            deckId = transactionTemplate.execute(status -> createOrReuseDeck(claim, source));
+            mark(claim, ImportJobStatus.RUNNING, progress(processed.get(), total.get()), "CONVERTING_PDF",
+                    processed.get(), total.get() == 0 ? null : total.get(), null, warning.get(), deckId);
             UUID currentDeckId = deckId;
             SlideConversionResult result = converter.convert(
                     source,
-                    "decks/" + jobId,
-                    jobId,
+                    "decks/" + jobId + "/" + claim.token(),
+                    claim.token(),
                     new SlideConversionSink() {
                 @Override
                 public void metadata(int totalSlides, int renderedSlides, String phase, String warningMessage) {
                     total.set(totalSlides);
                     warning.set(firstNonBlank(warning.get(), warningMessage));
-                    mark(jobId, ImportJobStatus.RUNNING, progress(0, renderedSlides), phase, 0, totalSlides,
+                    mark(claim, ImportJobStatus.RUNNING, progress(processed.get(), renderedSlides), phase,
+                            processed.get(), totalSlides,
                             null, warning.get(), currentDeckId);
                 }
 
                 @Override
                 public void slide(ConvertedSlide slide, int processedSlides, int totalSlides) {
-                    processed.set(processedSlides);
+                    processed.accumulateAndGet(processedSlides, Math::max);
                     total.set(totalSlides);
-                    transactionTemplate.executeWithoutResult(status ->
-                            repository.addSlide(UuidV7.generate(), currentDeckId, slide));
-                    mark(jobId, ImportJobStatus.RUNNING, progress(processedSlides, totalSlides),
+                    transactionTemplate.executeWithoutResult(status -> {
+                        repository.requireClaim(claim);
+                        repository.addSlide(UuidV7.generate(), currentDeckId, slide);
+                    });
+                    mark(claim, ImportJobStatus.RUNNING, progress(processedSlides, totalSlides),
                             "RENDERING " + processedSlides + "/" + totalSlides,
                             processedSlides, totalSlides, null, warning.get(), currentDeckId);
                 }
             });
             warning.set(firstNonBlank(warning.get(), result.warningMessage()));
+            int validatedSlides = Math.max(processed.get(), result.renderedSlides());
             boolean hasError = result.errorMessage() != null && !result.errorMessage().isBlank();
             ImportJobStatus finalStatus = hasError
-                    ? (result.renderedSlides() > 0 ? ImportJobStatus.PARTIAL : ImportJobStatus.FAILED)
+                    ? (validatedSlides > 0 ? ImportJobStatus.PARTIAL : ImportJobStatus.FAILED)
                     : result.partial() ? ImportJobStatus.PARTIAL : ImportJobStatus.COMPLETED;
             int finalProgress = finalStatus == ImportJobStatus.COMPLETED
-                    ? 100 : progress(result.renderedSlides(), result.totalSlides());
-            mark(jobId, finalStatus, finalProgress, finalStatus.name(), result.renderedSlides(), result.totalSlides(),
+                    ? 100 : progress(validatedSlides, result.totalSlides());
+            mark(claim, finalStatus, finalProgress, finalStatus.name(), validatedSlides, result.totalSlides(),
                     result.errorMessage(), warning.get(), deckId);
+        } catch (RetryableImportException exception) {
+            int attempts = repository.attempts(claim);
+            int jitter = ThreadLocalRandom.current().nextInt(1, Math.min(300, 1 << Math.min(8, attempts)) + 1);
+            if (!repository.retryClaim(claim, Math.max(jitter, exception.retryAfterSeconds()), maxAttempts)) {
+                mark(claim, processed.get() > 0 ? ImportJobStatus.PARTIAL : ImportJobStatus.FAILED,
+                        processed.get() > 0 ? progress(processed.get(), total.get()) : 100,
+                        "RETRY_EXHAUSTED", processed.get(), total.get() == 0 ? null : total.get(),
+                        "Конвертер временно недоступен. Импорт можно повторить.", warning.get(), deckId);
+            }
+        } catch (ContentRepository.LostImportClaimException exception) {
+            // A recovered worker owns the job now. Its progress and outcome must remain untouched.
         } catch (RuntimeException exception) {
             ImportJobStatus status = processed.get() > 0 ? ImportJobStatus.PARTIAL : ImportJobStatus.FAILED;
-            mark(jobId, status, processed.get() > 0 ? progress(processed.get(), total.get()) : 100,
+            mark(claim, status, processed.get() > 0 ? progress(processed.get(), total.get()) : 100,
                     status.name(), processed.get(), total.get() == 0 ? null : total.get(),
                     userMessage(exception), warning.get(), deckId);
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void markRejected(UUID jobId, String message) {
-        repository.markJob(jobId, ImportJobStatus.FAILED, 100, "QUEUE_FULL", 0, null,
-                message, null, null);
-    }
-
-    private UUID createOrReuseDeck(UUID jobId, UUID courseId, String title, StoredBlob source) {
+    private UUID createOrReuseDeck(ContentRepository.ImportClaim claim, StoredBlob source) {
+        repository.requireClaim(claim);
+        UUID jobId = claim.id();
+        UUID courseId = claim.courseId();
+        String title = claim.title();
         return repository.findDeckIdByJobId(jobId)
                 .orElseGet(() -> {
                     int version = repository.nextDeckVersion(courseId, title);
@@ -96,7 +117,7 @@ class SlideImportWorker {
     }
 
     private void mark(
-            UUID jobId,
+            ContentRepository.ImportClaim claim,
             ImportJobStatus status,
             int progress,
             String phase,
@@ -105,8 +126,10 @@ class SlideImportWorker {
             String errorMessage,
             String warningMessage,
             UUID deckId) {
-        repository.markJob(jobId, status, progress, phase, processedSlides, totalSlides,
-                errorMessage, warningMessage, deckId);
+        if (!repository.markJob(claim.id(), status, progress, phase, processedSlides, totalSlides,
+                errorMessage, warningMessage, deckId, claim.token())) {
+            throw new ContentRepository.LostImportClaimException();
+        }
     }
 
     private int progress(int processedSlides, int totalSlides) {
@@ -122,9 +145,10 @@ class SlideImportWorker {
     }
 
     private String firstNonBlank(String current, String next) {
-        if (current != null && !current.isBlank()) {
-            return current;
-        }
-        return next == null || next.isBlank() ? current : next;
+        if (next == null || next.isBlank()) return current;
+        if (current == null || current.isBlank()) return next;
+        if (current.contains(next)) return current;
+        String combined = next.contains(current) ? next : current + " " + next;
+        return combined.substring(0, Math.min(16384, combined.length()));
     }
 }
