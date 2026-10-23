@@ -17,10 +17,6 @@ const windows = new Map<string, Window>();
 const pending = new Map<string, Promise<Window>>();
 const modes = new WeakMap<Window, "pip" | "popup">();
 const collapsedViews = new Map<string, boolean>();
-const lastSizes = new WeakMap<
-  Window,
-  { width: number; height: number; collapsed: boolean; measuredWidth: number }
->();
 let pipRejected = false;
 const pinFailure =
   "Не удалось закрепить пульт. Нажмите «Вынести пульт» ещё раз, чтобы открыть обычное отдельное окно.";
@@ -45,71 +41,29 @@ export function rememberLectureRemoteCollapsed(windowKey: string, collapsed: boo
   collapsedViews.set(windowKey, collapsed);
 }
 
-/** Measure natural content, independently of the scroll viewport and browser window chrome. */
-export function fitLectureRemoteWindow(target: Window, panel: HTMLElement, force = false): void {
-  if (target.closed) return;
-  const collapsed = panel.classList.contains("is-collapsed");
-  const previous = lastSizes.get(target);
-  const width = collapsed
-    ? 264
-    : force || previous?.collapsed
-      ? 420
-      : previous && target.innerWidth === previous.measuredWidth
-        ? previous.width
-        : Math.min(420, target.innerWidth || 420);
-  const chromeHeight = Math.max(0, target.outerHeight - target.innerHeight);
-  const maxHeight = Math.max(64, Math.min(780, target.screen.availHeight - chromeHeight - 24));
-  const parts = [".floating-remote-header", ".floating-remote-content", ".floating-remote-footer"];
-  const naturalHeight = parts.reduce((height, selector, index) => {
-    if (collapsed && index > 0) return height;
-    return (
-      height + (panel.querySelector<HTMLElement>(selector)?.getBoundingClientRect().height ?? 0)
-    );
-  }, 0);
-  const height = Math.min(maxHeight, Math.max(60, Math.ceil(naturalHeight)));
-  if (!force && previous?.width === width && previous.height === height) {
-    previous.measuredWidth = target.innerWidth;
-    return;
-  }
-  try {
-    target.resizeTo(
-      width + Math.max(0, target.outerWidth - target.innerWidth),
-      height + chromeHeight
-    );
-    lastSizes.set(target, { width, height, collapsed, measuredWidth: target.innerWidth });
-  } catch {
-    // PiP can require a user gesture. The scroll viewport keeps every action accessible.
-  }
+const expandedSize = { width: 420, height: 640 };
+const collapsedSize = { width: 264, height: 60 };
+
+function remoteWindowSize(target: Window, collapsed: boolean) {
+  const size = collapsed ? collapsedSize : expandedSize;
+  return {
+    width: Math.min(size.width, Math.max(240, (target.screen?.availWidth || 444) - 24)),
+    height: Math.min(size.height, Math.max(60, (target.screen?.availHeight || 736) - 96))
+  };
 }
 
-/** Observe the natural inner content, never a height tied to the window being resized. */
-export function observeLectureRemoteWindowSize(target: Window, panel: HTMLElement): () => void {
-  let disposed = false;
-  const fit = () => {
-    if (!disposed) fitLectureRemoteWindow(target, panel);
-  };
-  const observer = new (target as Window & typeof globalThis).ResizeObserver(fit);
-  let interactionFrame = 0;
-  const afterInteraction = () => {
-    target.cancelAnimationFrame(interactionFrame);
-    interactionFrame = target.requestAnimationFrame(fit);
-  };
-  for (const part of panel.querySelectorAll<HTMLElement>(
-    ".floating-remote-header, .floating-remote-content, .floating-remote-footer"
-  ))
-    observer.observe(part);
-  const styles = target.document.querySelectorAll('link[rel="stylesheet"]');
-  styles.forEach((style) => style.addEventListener("load", fit));
-  target.document.addEventListener("click", afterInteraction);
-  void target.document.fonts.ready.then(fit);
-  fit();
-  return () => {
-    disposed = true;
-    observer.disconnect();
-    target.cancelAnimationFrame(interactionFrame);
-    target.document.removeEventListener("click", afterInteraction);
-    styles.forEach((style) => style.removeEventListener("load", fit));
-  };
+/** Only an explicit compact/expanded action may resize the remote, never its content. */
+export function resizeLectureRemoteWindow(target: Window, collapsed: boolean): void {
+  if (target.closed) return;
+  const size = remoteWindowSize(target, collapsed);
+  try {
+    target.resizeTo(
+      size.width + Math.max(0, target.outerWidth - target.innerWidth),
+      size.height + Math.max(0, target.outerHeight - target.innerHeight)
+    );
+  } catch {
+    // Browsers can refuse resizing. The panel still fits its viewport and scrolls inside.
+  }
 }
 
 /** Call directly from a click, before awaiting requests or mounting the panel. */
@@ -124,7 +78,7 @@ export function openLectureRemoteWindow(options: LectureRemoteWindowOptions = {}
   }
   const opening = pending.get(key);
   if (opening) return opening;
-  const size = { width: collapsed ? 264 : 420, height: collapsed ? 60 : 400 };
+  const size = remoteWindowSize(window, collapsed);
   const register = (target: Window, mode: "pip" | "popup") => {
     modes.set(target, mode);
     windows.set(key, target);

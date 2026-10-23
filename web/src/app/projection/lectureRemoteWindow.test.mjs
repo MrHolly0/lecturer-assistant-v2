@@ -87,7 +87,7 @@ test("Document PiP starts synchronously and repeated clicks share its pending re
     assert.equal(calls, 1);
     assert.deepEqual(options, {
       width: 420,
-      height: 400,
+      height: 640,
       disallowReturnToOpener: true,
       preferInitialWindowPlacement: true
     });
@@ -149,5 +149,84 @@ test("a blocked or synchronously failing popup rejects without throwing at its c
     } finally {
       api.restore();
     }
+  }
+});
+
+test("opening and refocusing request a stable size without resizing the opened window", async () => {
+  const opens = [];
+  const resizes = [];
+  const target = Object.assign(popup(), { resizeTo: (...args) => resizes.push(args) });
+  const api = await fixture({
+    screen: { availWidth: 1440, availHeight: 900 },
+    open(...args) {
+      opens.push(args);
+      return target;
+    }
+  });
+  try {
+    await api.openLectureRemoteWindow({ windowKey: "stable" });
+    assert.match(opens[0][2], /width=420,height=640/);
+    target.dispatchEvent(new Event("resize"));
+    target.dispatchEvent(new Event("focus"));
+    await api.openLectureRemoteWindow({ windowKey: "stable" });
+    assert.equal(opens.length, 1);
+    assert.deepEqual(resizes, []);
+  } finally {
+    api.restore();
+  }
+});
+
+test("explicit compact and expanded actions resize independently of content and browser chrome", async () => {
+  const resizes = [];
+  const target = Object.assign(popup(), {
+    innerWidth: 420,
+    outerWidth: 436,
+    innerHeight: 640,
+    outerHeight: 678,
+    screen: { availWidth: 1440, availHeight: 900 },
+    resizeTo: (...args) => resizes.push(args)
+  });
+  const api = await fixture({});
+  try {
+    api.resizeLectureRemoteWindow(target, true);
+    api.resizeLectureRemoteWindow(target, false);
+    assert.deepEqual(resizes, [
+      [280, 98],
+      [436, 678]
+    ]);
+    // A smaller monitor only limits a later explicit resize, not the act of moving there.
+    target.screen = { availWidth: 320, availHeight: 480 };
+    target.dispatchEvent(new Event("resize"));
+    assert.equal(resizes.length, 2);
+    api.resizeLectureRemoteWindow(target, false);
+    assert.deepEqual(resizes.at(-1), [312, 422]);
+    target.closed = true;
+    api.resizeLectureRemoteWindow(target, true);
+    assert.equal(resizes.length, 3);
+  } finally {
+    api.restore();
+  }
+});
+
+test("opening on a small work area is bounded and a refused explicit resize is harmless", async () => {
+  const opens = [];
+  const target = Object.assign(popup(), {
+    resizeTo() {
+      throw new DOMException("Gesture required", "NotAllowedError");
+    }
+  });
+  const api = await fixture({
+    screen: { availWidth: 320, availHeight: 480 },
+    open(...args) {
+      opens.push(args);
+      return target;
+    }
+  });
+  try {
+    await api.openLectureRemoteWindow();
+    assert.match(opens[0][2], /width=296,height=384/);
+    assert.doesNotThrow(() => api.resizeLectureRemoteWindow(target, false));
+  } finally {
+    api.restore();
   }
 });

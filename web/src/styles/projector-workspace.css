@@ -320,6 +320,7 @@
   place-content: center;
 }
 .floating-remote-scroll {
+  flex: 1;
   overflow-y: auto;
   min-height: 0;
 }
@@ -571,7 +572,7 @@
   position: static;
   width: min(100%, 420px);
   margin-inline: auto;
-  height: auto;
+  height: min(640px, 100dvh);
   max-height: 100dvh;
   border: none;
   border-radius: 0;
@@ -579,6 +580,7 @@
 }
 .floating-remote-document .floating-lecture-remote.is-detached.is-collapsed {
   width: min(100%, 264px);
+  height: 60px;
 }
 /* Service controls sit below modal dialogs, including a new source preview. */
 .floating-lecture-remote {

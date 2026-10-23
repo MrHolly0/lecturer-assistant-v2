@@ -3,8 +3,8 @@ import { createPortal, flushSync } from "react-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   MessageCircle,
-  Maximize2,
-  Minimize2,
+  PanelTopOpen,
+  PanelTopClose,
   X,
   Pause,
   Play,
@@ -33,8 +33,7 @@ import { ConfirmActionButton } from "./ConfirmActionButton";
 import { useSlideNoteDrafts } from "../app/live/useSlideNoteDrafts";
 import {
   prepareLectureRemoteWindow,
-  fitLectureRemoteWindow,
-  observeLectureRemoteWindowSize,
+  resizeLectureRemoteWindow,
   lectureRemoteCollapsed,
   rememberLectureRemoteCollapsed
 } from "../app/projection/lectureRemoteWindow";
@@ -78,7 +77,6 @@ export function FloatingLectureRemote({
   const share = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const sharing = share.scope?.sessionId === session.id && share.phase === "publishing";
   const { elapsed } = useSessionTimers(session);
-  const panel = useRef<HTMLElement>(null);
   const externalRef = useRef<Window | null>(initialWindow ?? null);
   const mountGeneration = useRef({ generation: 0 });
   const client = useQueryClient();
@@ -195,22 +193,17 @@ export function FloatingLectureRemote({
       external.removeEventListener("pagehide", back);
     };
   }, [external]);
-  useLayoutEffect(() => {
-    if (!external || external.closed || !panel.current) return;
-    return observeLectureRemoteWindowSize(external, panel.current);
-  }, [external]);
   function changeCollapsed(next: boolean) {
     rememberLectureRemoteCollapsed(session.id, next);
     // Commit before resizing while the click's PiP user activation is still available.
     flushSync(() => setCollapsed(next));
-    if (external && panel.current) fitLectureRemoteWindow(external, panel.current, true);
+    if (external) resizeLectureRemoteWindow(external, next);
   }
   const counts = questionPages[0]?.counts;
   const signals = feedback.data?.signalAggregate;
   if (!external || external.closed) return null;
   const content = (
     <aside
-      ref={panel}
       className={`floating-lecture-remote is-detached${collapsed ? " is-collapsed" : ""}`}
       aria-label="Приватный пульт занятия"
     >
@@ -240,7 +233,7 @@ export function FloatingLectureRemote({
           aria-label={collapsed ? "Развернуть пульт" : "Свернуть пульт"}
           onClick={() => changeCollapsed(!collapsed)}
         >
-          {collapsed ? <Maximize2 size={20} /> : <Minimize2 size={20} />}
+          {collapsed ? <PanelTopOpen size={20} /> : <PanelTopClose size={20} />}
         </Button>
         {!collapsed && (
           <Button variant="ghost" size="icon" aria-label="Закрыть пульт" onClick={onClose}>
