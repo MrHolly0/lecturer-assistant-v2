@@ -488,6 +488,36 @@ class MaxAuthIntegrationTest {
     }
 
     @Test
+    void reviewingTheSameLinkedAccountOnlyIssuesASessionAndRejectsIdentityDrift() throws Exception {
+        String lecturerToken = registerLecturer();
+        String init = signed(806, Instant.now());
+        JsonNode linked = loginWithCode(init, requestMaxLinkCode(lecturerToken), 200);
+        List<Map<String, Object>> identitiesBefore = jdbc.sql("select * from iam.channel_identities")
+                .query().listOfRows();
+
+        for (Map<String, String> proof : List.of(
+                Map.of("email", "lecturer@example.test", "password", "password-123"),
+                Map.of("linkCode", requestMaxLinkCode(lecturerToken)))) {
+            JsonNode review = preview(init, proof, 200);
+            assertTrue(review.get("alreadyLinked").asBoolean());
+            assertEquals(review.get("currentAccount").get("id"), review.get("targetAccount").get("id"));
+            JsonNode resumed = confirm(init, review.get("confirmationToken").asText(), 200);
+            assertEquals(linked.get("personId"), resumed.get("personId"));
+            assertEquals("LECTURER", resumed.get("role").asText());
+            assertEquals(identitiesBefore, jdbc.sql("select * from iam.channel_identities").query().listOfRows());
+        }
+
+        preview(init, Map.of("email", "lecturer@example.test", "password", "incorrect"), 401);
+        JsonNode review = preview(init,
+                Map.of("email", "lecturer@example.test", "password", "password-123"), 200);
+        mockMvc.perform(delete("/api/v1/identity/max")
+                        .header("Authorization", "Bearer " + linked.get("accessToken").asText()))
+                .andExpect(status().isNoContent());
+        confirm(init, review.get("confirmationToken").asText(), 409);
+        assertEquals(0L, count("iam.channel_identities"));
+    }
+
+    @Test
     void confirmationIsBoundToSignedMaxIdAndAccountVersion() throws Exception {
         registerLecturer();
         JsonNode review = preview(signed(802, Instant.now()),

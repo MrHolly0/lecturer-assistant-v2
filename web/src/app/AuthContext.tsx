@@ -129,6 +129,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     invalidatePendingAuthRefresh();
   }, []);
 
+  const applyMaxLinkedUser = useCallback(
+    (linkedUser: UserProfile, launchData: string) => {
+      rememberMaxPasswordSession(false);
+      queryClient.clear();
+      setMaxAuthChoice("session");
+      setRequestedMaxLinkCode(null);
+      setAllowMaxAuthWithoutCode(false);
+      setUserState(linkedUser);
+      writeMaxResume(launchData, String(linkedUser.id), "max");
+      setMaxLinkPreview(null);
+      setMaxLinkPreviewPending(false);
+      setMaxLinkCodeDraft("");
+      setPendingRegistration(false);
+      setMaxLinkRequired(false);
+      setMaxCredentialsRequired(false);
+      setMaxSignedOut(launchData, false);
+      setMaxSignedOutState(false);
+      setMaxAuthError(null);
+      setLoading(false);
+    },
+    [queryClient]
+  );
+
+  const acceptMaxLinkPreview = useCallback(
+    async (preview: MaxLinkPreview, launchData: string, canApply: () => boolean) => {
+      if (!canApply()) return;
+      if (preview.alreadyLinked && preview.currentAccount?.id === preview.targetAccount.id) {
+        // The server rechecks identity and account versions before issuing the session.
+        const { user: linkedUser } = await confirmMaxLinkRequest(
+          launchData,
+          preview.confirmationToken
+        );
+        if (canApply()) applyMaxLinkedUser(linkedUser, launchData);
+        return;
+      }
+      setMaxLinkPreview(preview);
+      setMaxAuthError(null);
+    },
+    [applyMaxLinkedUser]
+  );
+
   useEffect(() => {
     let active = true;
     const previousIdentity = lastMaxIdentityRef.current;
@@ -384,21 +425,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMaxLinkRequired(false);
       setMaxCredentialsRequired(false);
       if (linkCode) {
+        const previewRevision = authRevisionRef.current;
+        const canApply = () => active && previewRevision === authRevisionRef.current;
         setMaxLinkPreview(null);
         setMaxLinkPreviewPending(true);
         previewMaxLink({ initData, linkCode })
-          .then((preview) => {
-            if (!active) return;
-            setMaxLinkPreview(preview);
-            setMaxAuthError(null);
-          })
+          .then((preview) => acceptMaxLinkPreview(preview, initData, canApply))
           .catch((error: unknown) => {
-            if (!active) return;
+            if (!canApply()) return;
             setMaxAuthError(maxAuthErrorMessage(error, true));
             setMaxLinkRequired(true);
           })
           .finally(() => {
-            if (active) {
+            if (canApply()) {
               setMaxLinkPreviewPending(false);
               setLoading(false);
             }
@@ -460,7 +499,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient,
     requestedMaxLinkCode,
     startParam,
-    advanceAuthRevision
+    advanceAuthRevision,
+    acceptMaxLinkPreview
   ]);
 
   const authenticatedUserId = user?.id;
@@ -726,21 +766,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         maxLinkPreview.confirmationToken
       );
       if (revision !== authRevisionRef.current) return;
-      rememberMaxPasswordSession(false);
-      queryClient.clear();
-      setMaxAuthChoice("session");
-      setRequestedMaxLinkCode(null);
-      setAllowMaxAuthWithoutCode(false);
-      setUserState(linkedUser);
-      writeMaxResume(initData, String(linkedUser.id), "max");
-      setMaxLinkPreview(null);
-      setMaxLinkCodeDraft("");
-      setPendingRegistration(false);
-      setMaxLinkRequired(false);
-      setMaxCredentialsRequired(false);
-      setMaxSignedOut(initData, false);
-      setMaxSignedOutState(false);
-      setMaxAuthError(null);
+      applyMaxLinkedUser(linkedUser, initData);
     } catch (error) {
       if (revision !== authRevisionRef.current) return;
       clearStoredAuth();
@@ -812,7 +838,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       queryClient.clear();
       setUserState(null);
       setPendingRegistration(false);
-      setMaxLinkPreview(preview);
+      await acceptMaxLinkPreview(preview, initData, () => revision === authRevisionRef.current);
+      if (revision !== authRevisionRef.current) return;
       setMaxLinkRequired(false);
       setMaxCredentialsRequired(false);
       return;
@@ -844,18 +871,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!initData)
       throw new Error("MAX не передал данные для входа. Откройте мини-приложение снова.");
     advanceAuthRevision();
+    const revision = authRevisionRef.current;
     setMaxAuthError(null);
     setPendingRegistration(false);
     await registerByInvitation(name, email, password, invitationCode);
+    if (revision !== authRevisionRef.current) return;
     clearStoredAuth();
     setMaxAuthError(null);
     try {
       const preview = await previewMaxLink({ initData, email, password });
-      setMaxLinkPreview(preview);
+      if (revision !== authRevisionRef.current) return;
       setPendingRegistration(true);
+      await acceptMaxLinkPreview(preview, initData, () => revision === authRevisionRef.current);
+      if (revision !== authRevisionRef.current) return;
       setMaxCredentialsRequired(false);
       setMaxLinkRequired(false);
     } catch (error) {
+      if (revision !== authRevisionRef.current) return;
       clearStoredAuth();
       setPendingRegistration(false);
       setMaxAuthError(

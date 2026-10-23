@@ -40,8 +40,8 @@ export function MaxLinkCodeScreen({
             </h1>
           </div>
           <p className="auth-hint">
-            Введите код со страницы «MAX и вход». Сначала проверьте оба аккаунта; MAX подключится
-            только после подтверждения.
+            Введите код со страницы «MAX и вход». Для новой привязки или смены аккаунта потребуется
+            подтверждение.
           </p>
         </div>
         <form className="auth-form" onSubmit={submit}>
