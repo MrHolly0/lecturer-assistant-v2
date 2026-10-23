@@ -235,20 +235,24 @@ public class StudentSseBroadcaster {
             }
             return;
         }
+        // Membership can grow while the shared/private snapshots are queried.
+        // Dispatch only to the captured audience; newcomers wait for the next
+        // tick instead of being mistaken for participants whose access vanished.
+        List<Client> audience = List.copyOf(set);
         Map<UUID, StudentSessionSnapshot> snapshots;
         StudentSessionSnapshot publicSnapshot;
         try {
-            Set<UUID> viewers = set.stream()
+            Set<UUID> viewers = audience.stream()
                     .map(Client::viewerPersonId)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toSet());
             snapshots = viewers.isEmpty() ? Map.of() : sessions.snapshotsForViewers(code, viewers);
-            publicSnapshot = set.stream().anyMatch(client -> client.viewerPersonId() == null)
+            publicSnapshot = audience.stream().anyMatch(client -> client.viewerPersonId() == null)
                     ? sessions.snapshot(code) : null;
         } catch (RuntimeException exception) {
             if (exception instanceof ResponseStatusException status
                     && status.getStatusCode() == HttpStatus.NOT_FOUND) {
-                set.forEach(client -> {
+                audience.forEach(client -> {
                     closeClient(code, client, null);
                 });
                 return;
@@ -256,7 +260,7 @@ public class StudentSseBroadcaster {
             LOG.warn("Cannot prepare student stream snapshot for {}: {}", code, exception.toString());
             return;
         }
-        for (Client client : set) {
+        for (Client client : audience) {
             StudentSessionSnapshot snapshot = client.viewerPersonId() == null
                     ? publicSnapshot : snapshots.get(client.viewerPersonId());
             if (snapshot == null) {

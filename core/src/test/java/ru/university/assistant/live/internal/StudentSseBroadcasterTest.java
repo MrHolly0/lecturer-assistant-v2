@@ -30,6 +30,36 @@ import ru.university.assistant.qa.api.StudentQuestionAnswer;
 
 class StudentSseBroadcasterTest {
     @Test
+    void viewerRegisteredDuringSnapshotQueryWaitsForNextTickInsteadOfBeingClosed() throws Exception {
+        StudentWebSessionService sessions = mock(StudentWebSessionService.class);
+        StudentSseBroadcaster broadcaster = new StudentSseBroadcaster(sessions, 2);
+        UUID firstViewer = UUID.randomUUID();
+        UUID newViewer = UUID.randomUUID();
+        StudentSessionSnapshot snapshot = snapshot(1);
+        CountingEmitter first = new CountingEmitter();
+        CountingEmitter newcomer = new CountingEmitter();
+        when(sessions.snapshotsForViewers("JOIN01", Set.of(firstViewer))).thenAnswer(invocation -> {
+            // Reproduce a join after viewers have been captured but before the
+            // snapshot batch has returned to the broadcaster's dispatch loop.
+            broadcaster.register("JOIN01", newViewer, newcomer);
+            return Map.of(firstViewer, snapshot);
+        });
+        when(sessions.snapshotsForViewers("JOIN01", Set.of(firstViewer, newViewer)))
+                .thenReturn(Map.of(firstViewer, snapshot, newViewer, snapshot));
+        broadcaster.register("JOIN01", firstViewer, first);
+        try {
+            broadcaster.broadcast();
+            assertTrue(first.awaitEvents(1, 2, TimeUnit.SECONDS));
+            assertEquals(0, newcomer.events);
+            assertEquals(false, newcomer.completed);
+            broadcaster.broadcast();
+            assertTrue(newcomer.awaitEvents(1, 2, TimeUnit.SECONDS),
+                    "Newly registered viewer must remain eligible for the next batch");
+            assertEquals(false, newcomer.completed);
+        } finally { broadcaster.stop(); }
+    }
+
+    @Test
     void oneViewerCannotConsumeUnboundedStreams() {
         StudentSseBroadcaster broadcaster = new StudentSseBroadcaster(mock(StudentWebSessionService.class), 1);
         UUID viewer = UUID.randomUUID();
