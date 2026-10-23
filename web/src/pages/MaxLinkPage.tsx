@@ -33,19 +33,35 @@ import {
 export function MaxLinkPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { signOut } = useAuth();
+  const { user, signOut, chooseMaxCredentials } = useAuth();
   const { isMax } = useMaxBridge();
-  const [linkCode, setLinkCode] = useState<MaxLinkCode | null>(null);
+  const [createdCode, setCreatedCode] = useState<(MaxLinkCode & { userId: string }) | null>(null);
+  const linkCode = createdCode?.userId === user?.id ? createdCode : null;
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordChanged, setPasswordChanged] = useState(false);
   const [now, setNow] = useState(Date.now());
-  const status = useQuery({ queryKey: ["identity", "max"], queryFn: getMaxIdentityStatus });
+  const [statusPollInterval] = useState(() => 3_000 + Math.random() * 2_000);
+  const status = useQuery({
+    queryKey: ["identity", "max", user?.id],
+    queryFn: ({ signal }) => getMaxIdentityStatus(signal),
+    enabled: Boolean(user?.id),
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) =>
+      linkCode &&
+      Date.parse(linkCode.expiresAt) > Date.now() &&
+      query.state.status !== "error" &&
+      !query.state.data?.connected
+        ? statusPollInterval
+        : false,
+    meta: { connectionSync: true }
+  });
   const unlink = useMutation({
     mutationFn: unlinkMaxIdentity,
     onSuccess: async () => {
-      setLinkCode(null);
+      setCreatedCode(null);
       if (isMax) {
         await signOut();
         navigate("/login", { replace: true });
@@ -56,10 +72,10 @@ export function MaxLinkPage() {
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось отвязать MAX."))
   });
-  const createCode = useMutation({
+  const createCode = useMutation<MaxLinkCode, Error, string>({
     mutationFn: createMaxLinkCode,
-    onSuccess: (created) => {
-      setLinkCode(created);
+    onSuccess: (created, userId) => {
+      setCreatedCode({ ...created, userId });
       setNow(Date.now());
       toast.success("Код подключения создан");
     },
@@ -79,6 +95,7 @@ export function MaxLinkPage() {
   const remainingSeconds = Math.max(0, Math.ceil((expiresAt - now) / 1000));
   const expired = Boolean(linkCode && remainingSeconds === 0);
   const maxUrl = useMemo(() => buildMaxLinkUrl(linkCode?.code ?? ""), [linkCode?.code]);
+  const { dataUpdatedAt, refetch } = status;
 
   function submitPassword(event: FormEvent) {
     event.preventDefault();
@@ -95,17 +112,26 @@ export function MaxLinkPage() {
     return () => window.clearInterval(timer);
   }, [expired, linkCode]);
 
+  useEffect(() => {
+    if (status.data?.connected) setCreatedCode(null);
+  }, [status.data?.connected]);
+
+  useEffect(() => {
+    const refreshOnReturn = () => {
+      if (document.visibilityState === "visible" && Date.now() - dataUpdatedAt >= 5_000) {
+        void refetch({ cancelRefetch: false });
+      }
+    };
+    window.addEventListener("focus", refreshOnReturn);
+    return () => window.removeEventListener("focus", refreshOnReturn);
+  }, [dataUpdatedAt, refetch]);
+
   return (
     <div className="page max-link-page redesign-auth-settings">
       <div className="page-header">
         <div>
           <h1>MAX и вход</h1>
-          <p className="muted">MAX подключается к вашему аккаунту</p>
-          {status.data && (
-            <p className="muted">
-              {status.data.connected ? "MAX подключён к этому аккаунту" : "MAX пока не подключён"}
-            </p>
-          )}
+          <p className="muted">Учётная запись: {user?.displayName}</p>
         </div>
       </div>
 
@@ -123,71 +149,113 @@ export function MaxLinkPage() {
         </div>
       )}
 
-      <section className="max-link-panel">
-        <div className="max-link-copy">
-          <h2 className="max-link-copy__heading">
-            {status.data?.connected ? "MAX подключён" : "Подключите MAX"}
-          </h2>
-          <p className="muted">
-            Получите одноразовый код, затем откройте ссылку или отсканируйте QR. Код действует 5
-            минут.
-          </p>
-          <div className="max-link-actions">
-            {(maxUrl || buildMaxBotUrl()) && (
-              <Button asChild>
-                <a href={maxUrl || buildMaxBotUrl() || undefined} target="_blank" rel="noreferrer">
-                  <ExternalLink size={20} aria-hidden="true" /> Открыть MAX
-                </a>
-              </Button>
-            )}
-            {!linkCode && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={createCode.isPending}
-                onClick={() => createCode.mutate()}
-              >
-                <Link2 size={20} aria-hidden="true" />
-                {createCode.isPending ? "Получаем код…" : "Получить код подключения"}
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {linkCode && (
-          <div className={`max-link-result ${expired ? "max-link-result--expired" : ""}`}>
-            <div className="max-link-code" aria-label={`Код привязки ${linkCode.code}`}>
-              {linkCode.code}
-            </div>
-            <p className="max-link-timer" role="timer">
-              {expired
-                ? "Срок действия кода истёк. Получите новый код."
-                : `Осталось ${formatTime(remainingSeconds)}`}
-            </p>
-            {maxUrl ? (
-              <>
-                <LocalQrCode value={maxUrl} label="Открыть привязку в MAX" />
-                <a className="session-join-link" href={maxUrl} target="_blank" rel="noreferrer">
-                  {maxUrl}
-                </a>
-              </>
-            ) : (
-              <p className="form-warning">
-                Имя MAX-бота не настроено. Код можно ввести в мини-приложении вручную.
+      {status.data?.connected === false && (
+        <section className="max-link-panel">
+          <div className="max-link-copy">
+            <h2 className="max-link-copy__heading">Подключите MAX</h2>
+            {isMax && (
+              <p className="muted">
+                Вы вошли в учётную запись без подключения MAX. Подтвердите почту и пароль, чтобы
+                подключить этот MAX и в следующий раз входить без пароля.
               </p>
             )}
-            <Button
-              variant="outline"
-              type="button"
-              disabled={createCode.isPending}
-              onClick={() => createCode.mutate()}
-            >
-              <RefreshCw size={16} />
-              Обновить код
-            </Button>
+            {!isMax && (
+              <p className="muted">
+                Получите одноразовый код, затем откройте ссылку или отсканируйте QR. Код действует 5
+                минут.
+              </p>
+            )}
+            <div className="max-link-actions">
+              {isMax && (
+                <Button type="button" onClick={chooseMaxCredentials}>
+                  Подключить этот MAX
+                </Button>
+              )}
+              {!isMax && (maxUrl || buildMaxBotUrl()) && (
+                <Button asChild>
+                  <a
+                    href={maxUrl || buildMaxBotUrl() || undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ExternalLink size={20} aria-hidden="true" /> Открыть MAX
+                  </a>
+                </Button>
+              )}
+              {!isMax && !linkCode && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={createCode.isPending || status.isError}
+                  onClick={() => user && createCode.mutate(user.id)}
+                >
+                  <Link2 size={20} aria-hidden="true" />
+                  {createCode.isPending ? "Получаем код…" : "Получить код подключения"}
+                </Button>
+              )}
+            </div>
           </div>
-        )}
-      </section>
+
+          {linkCode && (
+            <div className={`max-link-result ${expired ? "max-link-result--expired" : ""}`}>
+              <div className="max-link-code" aria-label={`Код привязки ${linkCode.code}`}>
+                {linkCode.code}
+              </div>
+              <p className="max-link-timer" role="timer">
+                {expired
+                  ? "Срок действия кода истёк. Получите новый код."
+                  : `Осталось ${formatTime(remainingSeconds)}`}
+              </p>
+              {!expired && (
+                <p className="muted" role="status">
+                  Ожидаем подтверждения в MAX. Статус обновится автоматически.
+                </p>
+              )}
+              {maxUrl ? (
+                <>
+                  <LocalQrCode value={maxUrl} label="Открыть привязку в MAX" />
+                  <a className="session-join-link" href={maxUrl} target="_blank" rel="noreferrer">
+                    {maxUrl}
+                  </a>
+                </>
+              ) : (
+                <p className="form-warning">
+                  Имя MAX-бота не настроено. Код можно ввести в мини-приложении вручную.
+                </p>
+              )}
+              <Button
+                variant="outline"
+                type="button"
+                disabled={createCode.isPending || status.isError}
+                onClick={() => user && createCode.mutate(user.id)}
+              >
+                <RefreshCw size={16} />
+                Обновить код
+              </Button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {status.data?.connected && (
+        <section className="max-link-panel">
+          <div className="max-link-copy">
+            <h2 className="max-link-copy__heading">MAX подключён</h2>
+            <p className="muted">
+              Вы можете входить в эту учётную запись через MAX. Повторное подключение не требуется.
+            </p>
+            {buildMaxBotUrl() && (
+              <div className="max-link-actions">
+                <Button asChild>
+                  <a href={buildMaxBotUrl() || undefined} target="_blank" rel="noreferrer">
+                    <ExternalLink size={20} aria-hidden="true" /> Открыть MAX
+                  </a>
+                </Button>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {status.data?.connected && (
         <section className="max-link-unlink">

@@ -1,4 +1,4 @@
-import { apiFetch } from "./http";
+import { apiFetch, withRequestDeadline } from "./http";
 
 export interface MaxLinkCode {
   code: string;
@@ -10,9 +10,11 @@ export async function createMaxLinkCode(): Promise<MaxLinkCode> {
   return response.json() as Promise<MaxLinkCode>;
 }
 
-export async function getMaxIdentityStatus(): Promise<{ connected: boolean }> {
-  const response = await apiFetch("/identity/max");
-  return response.json() as Promise<{ connected: boolean }>;
+export async function getMaxIdentityStatus(signal?: AbortSignal): Promise<{ connected: boolean }> {
+  return withRequestDeadline(async (requestSignal) => {
+    const response = await apiFetch("/identity/max", { signal: requestSignal });
+    return response.json() as Promise<{ connected: boolean }>;
+  }, signal);
 }
 
 export async function unlinkMaxIdentity(): Promise<void> {

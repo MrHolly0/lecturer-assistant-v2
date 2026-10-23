@@ -50,7 +50,7 @@ interface AuthContextValue {
   maxLinkPreviewPending: boolean;
   maxLinkCodeInput: string;
   maxLinkRegistrationPending: boolean;
-  loginWithPassword: (email: string, password: string, connectMax?: boolean) => Promise<void>;
+  loginWithPassword: (email: string, password: string) => Promise<void>;
   registerAndLinkMax: (
     name: string,
     email: string,
@@ -780,14 +780,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMaxAuthAttempt((attempt) => attempt + 1);
   }
 
-  async function loginWithPassword(email: string, password: string, connectMax = false) {
+  async function loginWithPassword(email: string, password: string) {
     advanceAuthRevision();
     const revision = authRevisionRef.current;
     setMaxAuthError(null);
-    if (connectMax) {
-      if (!isMax || !initData)
+    if (isMax) {
+      if (!initData)
         throw new Error(
-          "MAX не передал данные для подключения. Откройте мини-приложение снова или снимите отметку подключения и войдите по почте."
+          "MAX не передал данные для подключения. Закройте и снова откройте мини-приложение."
         );
       const preview = await previewMaxLink({ initData, email, password });
       if (revision !== authRevisionRef.current) return;
@@ -812,13 +812,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     queryClient.clear();
     setUserState(result.user);
-    rememberMaxPasswordSession(true);
-    if (isMax) {
-      writeMaxResume(initData, String(result.user.id), "password");
-      setMaxSignedOut(initData, false);
-      setMaxSignedOutState(false);
-    }
-    setMaxAuthChoice("password");
     setMaxLinkPreview(null);
     setPendingRegistration(false);
     setMaxCredentialsRequired(false);
