@@ -91,7 +91,11 @@ export async function confirmMaxLink(
     const auth = (await response.json()) as MaxAuthResponse;
     ensureCurrent();
     issuedAccessToken = auth.accessToken;
-    setStoredAuth({ accessToken: auth.accessToken });
+    setStoredAuth({
+      accessToken: auth.accessToken,
+      refreshMode: "max",
+      accountId: auth.personId
+    });
     const user = await getCurrentUser({ skipAuthRefresh: true });
     ensureCurrent();
     return { auth, user };
@@ -153,7 +157,11 @@ async function performMaxLogin(
     const auth = (await res.json()) as MaxAuthResponse;
     ensureCurrent();
     issuedAccessToken = auth.accessToken;
-    setStoredAuth({ accessToken: auth.accessToken });
+    setStoredAuth({
+      accessToken: auth.accessToken,
+      refreshMode: "max",
+      accountId: auth.personId
+    });
     const user = await getCurrentUser({ skipAuthRefresh: true });
     ensureCurrent();
     return { auth, user };
@@ -175,7 +183,8 @@ export async function logout(): Promise<void> {
   if (!auth) return;
   try {
     await apiFetch("/auth/logout", {
-      method: "POST"
+      method: "POST",
+      headers: auth.refreshMode === "max" ? { "X-Auth-Channel": "max" } : undefined
     });
   } catch {
     // best-effort

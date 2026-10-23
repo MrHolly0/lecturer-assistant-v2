@@ -454,6 +454,14 @@ paths:
       summary: Rotate refresh token from httpOnly cookie.
       tags: [auth]
       security: []
+      parameters:
+        - in: header
+          name: X-Auth-Channel
+          description: Select the isolated MAX refresh cookie or the ordinary browser cookie.
+          schema:
+            type: string
+            enum: [browser, max]
+            default: browser
       responses:
         "200":
           description: Refreshed tokens.
@@ -473,6 +481,14 @@ paths:
       operationId: logout
       summary: Revoke current refresh token.
       tags: [auth]
+      parameters:
+        - in: header
+          name: X-Auth-Channel
+          description: Revoke only the selected authentication channel.
+          schema:
+            type: string
+            enum: [browser, max]
+            default: browser
       responses:
         "204":
           description: Logged out.

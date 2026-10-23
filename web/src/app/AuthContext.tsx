@@ -150,8 +150,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (isMax && maxIdentity && !previousIdentity) lastMaxIdentityRef.current = maxIdentity;
 
-    const expireAuth = () => {
-      if (isMax && initData && !maxSignedOut && maxAuthChoice === "automatic") {
+    const expireAuth = (event: Event) => {
+      const rejectedMode = (event as CustomEvent<{ refreshMode?: string }>).detail?.refreshMode;
+      if (
+        isMax &&
+        initData &&
+        !maxSignedOut &&
+        rejectedMode !== "max" &&
+        (maxAuthChoice === "automatic" || maxAuthChoice === "session")
+      ) {
         setLoading(true);
         void loginWithMax(initData, undefined, undefined, true)
           .then(({ user: restored }) => {
@@ -589,7 +596,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       checking = true;
       const revision = authRevisionRef.current;
       try {
-        const refreshed = await refreshAuthSession();
+        const refreshed = await refreshAuthSession({
+          expectedUserId: String(authenticatedUserId),
+          mode: isMax && maxAuthChoice !== "password" ? "max" : "browser"
+        });
         if (!active || revision !== authRevisionRef.current || maxSignedOut) return;
         if (refreshed) {
           setUserState(refreshed.user);
@@ -598,7 +608,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             writeMaxResume(initData, String(refreshed.user.id), mode);
           }
           await queryClient.invalidateQueries({ type: "active" });
-        } else if (isMax && initData && maxAuthChoice === "automatic") {
+        } else if (
+          isMax &&
+          initData &&
+          getStoredAuth()?.refreshMode !== "max" &&
+          (maxAuthChoice === "automatic" || maxAuthChoice === "session")
+        ) {
           const restored = await loginWithMax(initData, undefined, undefined, true);
           if (!active || revision !== authRevisionRef.current || maxSignedOut) return;
           setUserState(restored.user);
@@ -937,7 +952,10 @@ async function recoverMaxResume(
   initData: string | null | undefined,
   resume: MaxResumeRecord
 ): Promise<{ user: UserProfile | null }> {
-  const refreshed = await refreshAuthSession({ expectedUserId: resume.accountId });
+  const refreshed = await refreshAuthSession({
+    expectedUserId: resume.accountId,
+    mode: resume.mode === "max" ? "max" : "browser"
+  });
   if (refreshed) return { user: refreshed.user };
   if (resume.mode === "max" && initData) {
     const restored = await loginWithMax(initData, undefined, undefined, true);

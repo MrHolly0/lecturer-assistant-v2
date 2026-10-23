@@ -1,5 +1,5 @@
 import type { components } from "./schema";
-import { setStoredAuth } from "../auth";
+import { getStoredAuth, setStoredAuth } from "../auth";
 
 export type RefreshedAuth = components["schemas"]["AuthResponse"];
 
@@ -30,6 +30,7 @@ export class RefreshIdentityMismatchError extends Error {
 let refreshGeneration = 0;
 let refreshInFlight: {
   expectedUserId: string | null;
+  mode: "browser" | "max";
   promise: Promise<RefreshedAuth | null>;
 } | null = null;
 
@@ -48,11 +49,15 @@ export function captureAuthTransition(): () => void {
 }
 
 export function refreshAuthSession(
-  options: { expectedUserId?: string } = {}
+  options: { expectedUserId?: string; mode?: "browser" | "max" } = {}
 ): Promise<RefreshedAuth | null> {
-  const expectedUserId = options.expectedUserId ?? null;
+  const expectedUserId = options.expectedUserId ?? getStoredAuth()?.accountId ?? null;
+  const mode = options.mode ?? getStoredAuth()?.refreshMode ?? "browser";
   if (refreshInFlight) {
-    if (expectedUserId === null || refreshInFlight.expectedUserId === expectedUserId) {
+    if (
+      refreshInFlight.mode === mode &&
+      (expectedUserId === null || refreshInFlight.expectedUserId === expectedUserId)
+    ) {
       return refreshInFlight.promise;
     }
     // Do not let a refresh started for another MAX/account identity install a token.
@@ -64,23 +69,27 @@ export function refreshAuthSession(
   // rotation across the origin so two open cabinets cannot consume the same cookie.
   const refresh = async () => {
     if (navigator.locks) {
-      return navigator.locks.request("lecturer-assistant:refresh", () => {
-        if (generation !== refreshGeneration) throw new RefreshSupersededError();
-        return performRefresh(generation, expectedUserId);
-      });
+      return navigator.locks.request(
+        mode === "max" ? "lecturer-assistant:refresh:max" : "lecturer-assistant:refresh",
+        () => {
+          if (generation !== refreshGeneration) throw new RefreshSupersededError();
+          return performRefresh(generation, expectedUserId, mode);
+        }
+      );
     }
-    return performRefresh(generation, expectedUserId);
+    return performRefresh(generation, expectedUserId, mode);
   };
   const tracked = refresh().finally(() => {
     if (refreshInFlight?.promise === tracked) refreshInFlight = null;
   });
-  refreshInFlight = { expectedUserId, promise: tracked };
+  refreshInFlight = { expectedUserId, mode, promise: tracked };
   return tracked;
 }
 
 async function performRefresh(
   generation: number,
-  expectedUserId: string | null
+  expectedUserId: string | null,
+  mode: "browser" | "max"
 ): Promise<RefreshedAuth | null> {
   if (generation !== refreshGeneration) throw new RefreshSupersededError();
   let response: Response;
@@ -89,7 +98,10 @@ async function performRefresh(
       method: "POST",
       credentials: "include",
       signal: AbortSignal.timeout(12_000),
-      headers: { Accept: "application/json" }
+      headers: {
+        Accept: "application/json",
+        ...(mode === "max" ? { "X-Auth-Channel": "max" } : {})
+      }
     });
   } catch {
     if (generation !== refreshGeneration) throw new RefreshSupersededError();
@@ -124,7 +136,10 @@ async function performRefresh(
 
   if (generation !== refreshGeneration) throw new RefreshSupersededError();
   try {
-    setStoredAuth({ accessToken: data.accessToken });
+    setStoredAuth({
+      accessToken: data.accessToken,
+      ...(mode === "max" ? { refreshMode: "max" as const, accountId: String(data.user.id) } : {})
+    });
   } catch {
     throw new RefreshUnavailableError("Could not persist the refreshed access token");
   }

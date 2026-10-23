@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, beforeEach, test } from "node:test";
 
-const { getStoredAuth } = await import("../auth.ts");
+const { getStoredAuth, setStoredAuth } = await import("../auth.ts");
 const {
   invalidatePendingAuthRefresh,
   refreshAuthSession,
@@ -100,6 +100,42 @@ test("concurrent refresh callers share one rotation request", async () => {
   const [firstResult, secondResult] = await Promise.all([first, second]);
   assert.equal(fetchCount, 1);
   assert.equal(firstResult.accessToken, secondResult.accessToken);
+});
+
+test("MAX refresh uses its isolated cookie channel and retains the mode after rotation", async () => {
+  setStoredAuth({ accessToken: "expired-max-token", refreshMode: "max" });
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, headers: init.headers, credentials: init.credentials });
+    return response(200, authBody("renewed-max-token"));
+  };
+  await refreshAuthSession({ expectedUserId: "person-1" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].headers["X-Auth-Channel"], "max");
+  assert.equal(calls[0].credentials, "include");
+  assert.deepEqual(getStoredAuth(), { accessToken: "renewed-max-token", refreshMode: "max", accountId: "person-1" });
+});
+
+test("cold MAX refresh selects its channel even before an access token exists", async () => {
+  let headers;
+  globalThis.fetch = async (_url, init) => {
+    headers = init.headers;
+    return response(200, authBody());
+  };
+  await refreshAuthSession({ mode: "max", expectedUserId: "person-1" });
+  assert.equal(headers["X-Auth-Channel"], "max");
+  assert.equal(getStoredAuth().refreshMode, "max");
+});
+
+test("browser refresh does not send the MAX channel selector", async () => {
+  let headers;
+  globalThis.fetch = async (_url, init) => {
+    headers = init.headers;
+    return response(200, authBody());
+  };
+  await refreshAuthSession({ mode: "browser" });
+  assert.equal(headers["X-Auth-Channel"], undefined);
+  assert.deepEqual(getStoredAuth(), { accessToken: "access-1" });
 });
 
 test("only authoritative unauthorized/forbidden refresh responses return null", async () => {

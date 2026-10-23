@@ -2,6 +2,8 @@ const KEY = "la_auth";
 
 export interface StoredAuth {
   accessToken: string;
+  refreshMode?: "max";
+  accountId?: string;
 }
 
 export function getStoredAuth(): StoredAuth | null {
@@ -22,7 +24,10 @@ export function clearStoredAuth(): void {
 }
 
 export function expireStoredAuth(): void {
-  if (!getStoredAuth()) return;
+  const rejected = getStoredAuth();
+  if (!rejected) return;
   clearStoredAuth();
-  window.dispatchEvent(new CustomEvent("auth:expired"));
+  window.dispatchEvent(
+    new CustomEvent("auth:expired", { detail: { refreshMode: rejected.refreshMode } })
+  );
 }

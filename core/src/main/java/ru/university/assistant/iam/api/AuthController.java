@@ -27,6 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/auth")
 public class AuthController {
     private static final String REFRESH_COOKIE = "la_refresh";
+    private static final String MAX_REFRESH_COOKIE = "la_max_refresh";
 
     private final AuthService authService;
     private final MaxLinkService maxLinks;
@@ -76,7 +77,7 @@ public class AuthController {
         AuthTokens tokens = authService.loginWithMax(
                 request.initData(), request.linkCode(), request.startParam(), request.existingOnly());
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie(tokens.refreshToken()).toString())
+                .header(HttpHeaders.SET_COOKIE, maxRefreshCookie(tokens.refreshToken(), refreshTtl).toString())
                 .body(tokens.toMaxResponse());
     }
 
@@ -89,23 +90,37 @@ public class AuthController {
     public ResponseEntity<MaxAuthResponse> confirmMaxLink(@Valid @RequestBody MaxLinkConfirmRequest request) {
         AuthTokens tokens = maxLinks.confirm(request);
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie(tokens.refreshToken()).toString())
+                .header(HttpHeaders.SET_COOKIE, maxRefreshCookie(tokens.refreshToken(), refreshTtl).toString())
                 .body(tokens.toMaxResponse());
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(
-            @CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken) {
-        return authenticated(authService.refresh(requireRefreshToken(refreshToken)));
+            @CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken,
+            @CookieValue(name = MAX_REFRESH_COOKIE, required = false) String maxRefreshToken,
+            @RequestHeader(name = "X-Auth-Channel", defaultValue = "browser") String channel) {
+        boolean max = isMaxChannel(channel);
+        AuthTokens tokens = authService.refresh(requireRefreshToken(max ? maxRefreshToken : refreshToken));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, (max
+                        ? maxRefreshCookie(tokens.refreshToken(), refreshTtl)
+                        : refreshCookie(tokens.refreshToken())).toString())
+                .body(tokens.toResponse());
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken) {
-        if (refreshToken != null && !refreshToken.isBlank()) {
-            authService.logout(refreshToken);
+    public ResponseEntity<Void> logout(
+            @CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken,
+            @CookieValue(name = MAX_REFRESH_COOKIE, required = false) String maxRefreshToken,
+            @RequestHeader(name = "X-Auth-Channel", defaultValue = "browser") String channel) {
+        boolean max = isMaxChannel(channel);
+        String token = max ? maxRefreshToken : refreshToken;
+        if (token != null && !token.isBlank()) {
+            authService.logout(token);
         }
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, expiredRefreshCookie().toString())
+                .header(HttpHeaders.SET_COOKIE, (max
+                        ? maxRefreshCookie("", Duration.ZERO) : expiredRefreshCookie()).toString())
                 .build();
     }
 
@@ -142,6 +157,20 @@ public class AuthController {
                 .path("/api/v1/auth")
                 .maxAge(refreshTtl)
                 .build();
+    }
+
+    private boolean isMaxChannel(String channel) {
+        if (!"browser".equals(channel) && !"max".equals(channel)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown authentication channel");
+        }
+        return "max".equals(channel);
+    }
+
+    /** The MAX iframe needs its own HttpOnly cookie, isolated from the browser cabinet. */
+    private ResponseCookie maxRefreshCookie(String value, Duration ttl) {
+        return ResponseCookie.from(MAX_REFRESH_COOKIE, value)
+                .httpOnly(true).secure(true).sameSite("None").partitioned(true)
+                .path("/api/v1/auth").maxAge(ttl).build();
     }
 
     private ResponseCookie expiredRefreshCookie() {

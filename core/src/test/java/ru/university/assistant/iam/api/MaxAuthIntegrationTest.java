@@ -1,15 +1,19 @@
 package ru.university.assistant.iam.api;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.Cookie;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -106,6 +110,56 @@ class MaxAuthIntegrationTest {
         login(signed(101, Instant.now().minus(Duration.ofHours(2))), 401);
 
         assertEquals(0L, count("iam.persons"));
+    }
+
+    @Test
+    void maxSessionRotatesWithoutRevalidatingAnExpiredLaunchAndWithoutUsingBrowserCookie() throws Exception {
+        registerLecturer();
+        var browserLogin = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"lecturer@example.test\",\"password\":\"password-123\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        Cookie browserCookie = browserLogin.getCookie("la_refresh");
+        assertTrue(browserLogin.getHeader("Set-Cookie").contains("SameSite=Strict"));
+
+        var maxLogin = mockMvc.perform(post("/api/v1/auth/max")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("initData", signed(9901, Instant.now())))))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        String maxPerson = objectMapper.readTree(maxLogin.getContentAsString()).get("personId").asText();
+        String header = maxLogin.getHeader("Set-Cookie");
+        assertTrue(header.contains("la_max_refresh="));
+        assertTrue(header.contains("HttpOnly"));
+        assertTrue(header.contains("Secure"));
+        assertTrue(header.contains("SameSite=None"));
+        assertTrue(header.contains("Partitioned"));
+        assertFalse(maxLogin.getContentAsString().contains("refreshToken"));
+        Cookie initial = maxLogin.getCookie("la_max_refresh");
+        mockMvc.perform(post("/api/v1/auth/refresh").cookie(initial)).andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/auth/refresh").header("X-Auth-Channel", "unknown").cookie(initial))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(options("/api/v1/auth/refresh")
+                .header("Origin", "https://untrusted.example")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "X-Auth-Channel"))
+                .andExpect(status().isForbidden());
+        login(signed(9901, Instant.now().minus(Duration.ofHours(2))), 401);
+        var rotated = mockMvc.perform(post("/api/v1/auth/refresh")
+                .header("X-Auth-Channel", "max").cookie(initial, browserCookie))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.user.id").value(maxPerson))
+                .andReturn().getResponse();
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .header("X-Auth-Channel", "max").cookie(initial)).andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/auth/refresh").cookie(browserCookie))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.user.role").value("LECTURER"));
+        mockMvc.perform(post("/api/v1/auth/logout")
+                .header("X-Auth-Channel", "max")
+                .header("Authorization", "Bearer " + objectMapper.readTree(rotated.getContentAsString()).get("accessToken").asText())
+                .cookie(rotated.getCookie("la_max_refresh")))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .header("X-Auth-Channel", "max").cookie(rotated.getCookie("la_max_refresh")))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

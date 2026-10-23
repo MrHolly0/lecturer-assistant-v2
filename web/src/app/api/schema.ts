@@ -4658,7 +4658,10 @@ export interface operations {
   refresh: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Select the isolated MAX refresh cookie or the ordinary browser cookie. */
+        "X-Auth-Channel"?: "browser" | "max";
+      };
       path?: never;
       cookie?: never;
     };
@@ -4687,7 +4690,10 @@ export interface operations {
   logout: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Revoke only the selected authentication channel. */
+        "X-Auth-Channel"?: "browser" | "max";
+      };
       path?: never;
       cookie?: never;
     };
