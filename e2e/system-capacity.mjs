@@ -29,19 +29,23 @@ const deliveryBudget = Number(process.env.CAPACITY_DELIVERY_P95_MS || 2000);
 const joinConcurrency = Number(process.env.CAPACITY_JOIN_CONCURRENCY || 16);
 const openConcurrency = Number(process.env.CAPACITY_OPEN_CONCURRENCY || 32);
 const ioConcurrency = Number(process.env.CAPACITY_IO_CONCURRENCY || 32);
+const sseEncoding = process.env.CAPACITY_SSE_ACCEPT_ENCODING;
+if (sseEncoding && !['identity', 'gzip'].includes(sseEncoding)) throw new Error('Unsupported diagnostic SSE encoding');
 for (const value of [joinConcurrency, openConcurrency, ioConcurrency]) {
   if (!Number.isInteger(value) || value < 1 || value > 128) throw new Error('Concurrency must be within 1..128.');
 }
 const summary = { runId, base: base.origin, startedAt: new Date().toISOString(),
   revision: process.env.REVISION || null, path: 'client -> Caddy -> core -> PostgreSQL',
-  mediaIncluded: false, plan, stages: [], setup: {}, passed: false };
+  mediaIncluded: false, sseRequestEncoding: sseEncoding || 'default', plan, stages: [], setup: {}, passed: false };
 const stats = { requests: 0, retries: 0, statuses: {}, networkFailures: 0 };
+let stageProgress;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const ratio = (actual, expected) => expected ? actual / expected : 0;
 const percentile = (values, percent) => values.length ? [...values].sort((a,b) => a-b)[Math.ceil(values.length * percent)-1] : null;
 const log = value => process.stdout.write(`${JSON.stringify(value)}\n`);
 const progress = setInterval(() => log({ progress: true, requests: stats.requests,
-  completedStages: summary.stages.length, retries: stats.retries }), 20000);
+  completedStages: summary.stages.length, retries: stats.retries,
+  ...(stageProgress ? { stage: stageProgress() } : {}) }), 20000);
 function retryAfter(value) {
   if (!value) return 0;
   const seconds = Number(value);
@@ -157,16 +161,44 @@ async function stage(configuration) {
     privacyErrors: 0, streamErrors: 0, scopeDenials: { expected: configuration.lectures > 1 ? configuration.lectures : 0, received: 0 }, images: { expected: expected * deck.slides.length, received: 0, bytes: 0 },
     delivery: [], fallback: { expected: expected * 3, received: 0, maximumPerClientInflight: 0 },
     votes: { expected, accepted: 0, duplicateRejected: 0, closedTotal: 0 }, feedbackVerified: 0,
+    sse: { opened: 0, statuses: {}, encodings: {}, chunks: 0, bytes: 0, frames: 0, dataFrames: 0,
+      snapshotFrames: 0, acceptedSnapshots: 0, wrongSession: 0, wrongCode: 0, wrongCourse: 0,
+      unrecognizedShapes: {}, maximumBufferedCharacters: 0 },
     failures: [], passed: false };
   const imageMs = [];
   const imageQueue = new WorkQueue(ioConcurrency);
   const sessions = [];
   const clients = [];
+  let phase = 'session-setup';
+  stageProgress = () => ({ name: `${configuration.lectures}x${configuration.students}`, phase,
+    expected, joined: result.joined, initialSeen: clients.filter(client => client.generationSeen >= 1).length,
+    delivered: clients.filter(client => client.deliveryRecorded).length, images: result.images.received,
+    sse: result.sse });
   const issue = (step, error) => { if (result.failures.length < 30) result.failures.push({ step, error: error instanceof HttpFailure ? `HTTP ${error.status}` : error.message }); };
-  function inspect(client, snapshot) {
+  async function closeStreams(items) {
+    items.forEach(client => {
+      client.controller?.abort();
+      // Cancel the decoded stream too: an incomplete gzip member can otherwise keep its read pending.
+      client.streamReader?.cancel().catch(() => {});
+    });
+    let deadline;
+    const completed = await Promise.race([
+      Promise.allSettled(items.map(client => client.reader)).then(() => true),
+      new Promise(resolve => { deadline = setTimeout(() => resolve(false), 5000); })
+    ]);
+    clearTimeout(deadline);
+    if (!completed) issue('sse-close', new Error('Decoded stream cancellation exceeded 5 seconds'));
+  }
+  function inspect(client, snapshot, fromSse = false) {
     if (snapshot.sessionId !== client.session.id || snapshot.joinCode !== client.session.joinCode || snapshot.courseId !== course.id) {
+      if (fromSse) {
+        if (snapshot.sessionId !== client.session.id) result.sse.wrongSession++;
+        if (snapshot.joinCode !== client.session.joinCode) result.sse.wrongCode++;
+        if (snapshot.courseId !== course.id) result.sse.wrongCourse++;
+      }
       result.privacyErrors++; return;
     }
+    if (fromSse) result.sse.acceptedSnapshots++;
     if ((snapshot.myQuestions || []).some(question => question.id !== client.questionId &&
           !(client.number === 0 && question.text === `Private ${runId}`)) ||
         (snapshot.questionAnswers || []).some(answer => answer.answerVisibility === 'AUTHOR' && answer.questionId !== client.questionId)) result.privacyErrors++;
@@ -193,30 +225,52 @@ async function stage(configuration) {
     const untilHeaders = setTimeout(() => controller.abort(), requestTimeout);
     let response;
     try {
-      response = await fetch(new URL(`/api/v1/student/sessions/${client.session.joinCode}/events?participantToken=${encodeURIComponent(client.token)}`, base), { signal: controller.signal, redirect: 'error' });
+      response = await fetch(new URL(`/api/v1/student/sessions/${client.session.joinCode}/events?participantToken=${encodeURIComponent(client.token)}`, base), {
+        signal: controller.signal, redirect: 'error', headers: sseEncoding ? { 'Accept-Encoding': sseEncoding } : {} });
       clearTimeout(untilHeaders);
+      result.sse.statuses[response.status] = (result.sse.statuses[response.status] || 0) + 1;
+      const encoding = response.headers.get('Content-Encoding') || 'identity';
+      result.sse.encodings[encoding] = (result.sse.encodings[encoding] || 0) + 1;
       if (!response.ok || !response.headers.get('Content-Type')?.includes('text/event-stream')) {
         await response.body?.cancel(); throw new HttpFailure(response.status);
       }
+      result.sse.opened++;
     } catch (error) { clearTimeout(untilHeaders); issue('sse-open', error); return; }
     client.reader = (async () => {
       let buffer = ''; const decoder = new TextDecoder();
+      const streamReader = response.body.getReader(); client.streamReader = streamReader;
       try {
-        for await (const bytes of response.body) {
+        while (true) {
+          const chunk = await streamReader.read();
+          if (chunk.done) break;
+          const bytes = chunk.value;
+          result.sse.chunks++; result.sse.bytes += bytes.length;
           buffer = (buffer + decoder.decode(bytes, { stream: true })).replace(/\r\n/g, '\n');
+          result.sse.maximumBufferedCharacters = Math.max(result.sse.maximumBufferedCharacters, buffer.length);
           if (buffer.length > 4 * 1024 * 1024) throw new Error('Oversized SSE frame');
           let boundary;
           while ((boundary = buffer.indexOf('\n\n')) >= 0) {
             const frame = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
+            result.sse.frames++;
             const data = frame.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
             if (!data) continue;
+            result.sse.dataFrames++;
             const value = JSON.parse(data);
-            if (value.sessionId && value.joinCode) inspect(client, value);
+            if (value.sessionId && value.joinCode) {
+              result.sse.snapshotFrames++; inspect(client, value, true);
+            }
             else if (value.answerVisibility === 'AUTHOR' && value.questionId !== client.questionId) result.privacyErrors++;
+            else {
+              const shape = Object.keys(value).sort().join(',').slice(0, 400);
+              if (Object.keys(result.sse.unrecognizedShapes).length < 8 || result.sse.unrecognizedShapes[shape]) {
+                result.sse.unrecognizedShapes[shape] = (result.sse.unrecognizedShapes[shape] || 0) + 1;
+              }
+            }
           }
         }
         if (!controller.signal.aborted && client.generation === generation) result.streamErrors++;
       } catch (error) { if (!controller.signal.aborted) { result.streamErrors++; issue('sse-read', error); } }
+      finally { streamReader.releaseLock(); }
     })();
   }
   try {
@@ -235,23 +289,28 @@ async function stage(configuration) {
       } catch (error) { issue('join', error); }
     });
     const joined = clients.filter(client => client.token);
+    phase = 'initial-sse';
     await pool(joined, openConcurrency, open);
-    await waitUntil(() => joined.every(client => client.generationSeen === 1));
+    const initialReady = await waitUntil(() => joined.every(client => client.generationSeen === 1));
     result.sseInitial = joined.filter(client => client.generationSeen === 1).length;
+    if (!initialReady) throw new Error(`Initial SSE snapshot deadline: ${result.sseInitial}/${expected}`);
     await imageQueue.drain();
     for (const slide of deck.slides.filter(slide => slide.idx > 1)) {
+      phase = `slide-${slide.idx}`;
       joined.forEach(client => { client.expectedSlide = slide.idx; client.changeStarted = performance.now(); client.deliveryRecorded = false; });
       await pool(sessions, 8, async session => {
         // Set timestamp immediately before each lecture's command; setup time for other lectures is excluded.
         joined.filter(client => client.session.id === session.id).forEach(client => { client.changeStarted = performance.now(); });
         await request('PUT', `/api/v1/courses/${course.id}/sessions/${session.id}/slide`, { token: session.teacher.accessToken, body: { slideIdx: slide.idx } });
       });
-      await waitUntil(() => joined.every(client => client.deliveryRecorded));
+      const delivered = await waitUntil(() => joined.every(client => client.deliveryRecorded));
       const samples = joined.filter(client => client.deliveryRecorded).map(client => client.deliveryMs);
       result.delivery.push({ slideIdx: slide.idx, expected, received: samples.length, p95Ms: percentile(samples, .95) });
+      if (!delivered) throw new Error(`Slide delivery deadline: ${samples.length}/${expected}`);
       await imageQueue.drain();
     }
     // Private answers must be delivered only to their author, also during reconnect and fallback reads.
+    phase = 'privacy-and-polls';
     await pool(sessions, 8, async session => {
       const author = joined.find(client => client.session.id === session.id);
       if (!author) return;
@@ -303,9 +362,9 @@ async function stage(configuration) {
       const engagement = await request('GET', `/api/v1/courses/${course.id}/sessions/${session.id}/engagement`, { token: session.teacher.accessToken });
       if (engagement.signalAggregate?.total === configuration.students || engagement.signals?.total === configuration.students) result.feedbackVerified++;
     });
-    joined.forEach(client => client.controller?.abort());
-    await Promise.all(joined.map(client => client.reader));
+    await closeStreams(joined);
     for (let round = 0; round < 3; round++) {
+      phase = `fallback-${round + 1}`;
       const roundStarted = performance.now();
       await pool(joined, ioConcurrency, async client => {
         client.inflight++; result.fallback.maximumPerClientInflight = Math.max(result.fallback.maximumPerClientInflight, client.inflight);
@@ -317,8 +376,10 @@ async function stage(configuration) {
       await sleep(Math.max(0, 3000 - (performance.now() - roundStarted)));
     }
     await pool(joined, openConcurrency, open);
-    await waitUntil(() => joined.every(client => client.generationSeen === 2));
+    phase = 'reconnect';
+    const reconnected = await waitUntil(() => joined.every(client => client.generationSeen === 2));
     result.reconnected = joined.filter(client => client.generationSeen === 2).length;
+    if (!reconnected) throw new Error(`Reconnect snapshot deadline: ${result.reconnected}/${expected}`);
     await imageQueue.drain();
     result.images.p95Ms = percentile(imageMs, .95);
     result.images.maximumInflight = imageQueue.maximum;
@@ -327,13 +388,13 @@ async function stage(configuration) {
       ratio(result.fallback.received, result.fallback.expected) >= .99 && result.privacyErrors === 0 &&
       result.votes.accepted === expected && result.votes.duplicateRejected === expected && result.votes.closedTotal === expected &&
       result.feedbackVerified === configuration.lectures && result.fallback.maximumPerClientInflight === 1 &&
-      result.streamErrors === 0 && result.scopeDenials.received === result.scopeDenials.expected &&
+      result.streamErrors === 0 && result.failures.length === 0 && result.scopeDenials.received === result.scopeDenials.expected &&
       result.images.p95Ms < pngBudget &&
       result.delivery.every(item => ratio(item.received, item.expected) >= .99 && item.p95Ms < deliveryBudget);
   } catch (error) { issue('stage', error); }
   finally {
-    clients.forEach(client => client.controller?.abort());
-    await Promise.allSettled(clients.map(client => client.reader));
+    phase = 'cleanup';
+    await closeStreams(clients);
     await pool(sessions.filter(Boolean), 8, async session => {
       try { await request('POST', `/api/v1/courses/${course.id}/sessions/${session.id}/end`, { token: session.teacher.accessToken }); }
       catch (error) { issue('cleanup-end-session', error); result.passed = false; }
@@ -341,6 +402,7 @@ async function stage(configuration) {
     await imageQueue.drain();
   }
   result.durationMs = Math.round(performance.now() - started);
+  stageProgress = null;
   return result;
 }
 await mkdir(output, { recursive: true });

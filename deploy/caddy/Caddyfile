@@ -7,7 +7,11 @@
 # Let's Encrypt (MAX не принимает самоподписанные сертификаты и вебхуки по HTTP).
 # В режиме туннеля SITE_ADDRESS=:80 — HTTPS снаружи обеспечивает ngrok.
 {$SITE_ADDRESS} {
-	encode gzip
+	# Streaming events must not wait for a compression buffer to fill.
+	@compressible not path /api/v1/student/sessions/*/events /api/v1/student/sessions/*/events/public
+	encode @compressible gzip
+	@studentEvents path /api/v1/student/sessions/*/events /api/v1/student/sessions/*/events/public
+	header @studentEvents Cache-Control "no-cache, no-transform"
 
 	request_body {
 		max_size 100MB
