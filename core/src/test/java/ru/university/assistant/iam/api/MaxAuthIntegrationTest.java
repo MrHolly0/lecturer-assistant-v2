@@ -154,7 +154,8 @@ class MaxAuthIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.user.role").value("LECTURER"));
         mockMvc.perform(post("/api/v1/auth/logout")
                 .header("X-Auth-Channel", "max")
-                .header("Authorization", "Bearer " + objectMapper.readTree(rotated.getContentAsString()).get("accessToken").asText())
+                .header("Authorization", "Bearer " + objectMapper.readTree(rotated.getContentAsString())
+                        .get("accessToken").asText())
                 .cookie(rotated.getCookie("la_max_refresh")))
                 .andExpect(status().isNoContent());
         mockMvc.perform(post("/api/v1/auth/refresh")
