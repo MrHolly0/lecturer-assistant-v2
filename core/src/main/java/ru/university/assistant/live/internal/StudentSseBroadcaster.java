@@ -6,6 +6,9 @@ import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -45,6 +48,7 @@ import ru.university.assistant.qa.api.QuestionAnswerVisibility;
 public class StudentSseBroadcaster {
     private static final Logger LOG = LoggerFactory.getLogger(StudentSseBroadcaster.class);
     private static final int MAX_PENDING_ANSWERS = 8;
+    private static final int SNAPSHOT_QUEUE_CAPACITY = 256;
     private static final long WRITE_TIMEOUT_NANOS = Duration.ofSeconds(15).toNanos();
     private final Map<String, Set<Client>> clientsByCode = new ConcurrentHashMap<>();
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
@@ -62,25 +66,32 @@ public class StudentSseBroadcaster {
     @Value("${app.live.sse-maximum-clients-per-session:1000}")
     private int maximumClientsPerSession = 1000;
     private final Object registrationLock = new Object();
+    private String lastScheduledCode;
 
     @Autowired
     StudentSseBroadcaster(
             StudentWebSessionService sessions,
             @Value("${app.live.sse-broadcast-workers:4}") int workerCount,
             MeterRegistry meters) {
-        this(sessions, workerCount, meters, true);
+        this(sessions, workerCount, meters, true, null);
     }
 
     StudentSseBroadcaster(StudentWebSessionService sessions, int workerCount) {
-        this(sessions, workerCount, null, false);
+        this(sessions, workerCount, null, false, null);
+    }
+
+    StudentSseBroadcaster(StudentWebSessionService sessions, int workerCount,
+            ThreadPoolExecutor broadcastWorkers) {
+        this(sessions, workerCount, null, false, broadcastWorkers);
     }
 
     private StudentSseBroadcaster(
-            StudentWebSessionService sessions, int workerCount, MeterRegistry meters, boolean registerMeters) {
+            StudentWebSessionService sessions, int workerCount, MeterRegistry meters, boolean registerMeters,
+            ThreadPoolExecutor snapshotExecutor) {
         this.sessions = sessions;
         int workers = Math.max(1, workerCount);
-        this.broadcastWorkers = new ThreadPoolExecutor(
-                workers, workers, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(64),
+        this.broadcastWorkers = snapshotExecutor != null ? snapshotExecutor : new ThreadPoolExecutor(
+                workers, workers, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(SNAPSHOT_QUEUE_CAPACITY),
                 task -> daemon("student-sse-snapshot", task), new ThreadPoolExecutor.AbortPolicy());
         this.sendWorkers = new ThreadPoolExecutor(
                 workers, workers, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(2048),
@@ -140,9 +151,18 @@ public class StudentSseBroadcaster {
     }
 
     @Scheduled(fixedRate = 1000)
-    void scheduleBroadcast() {
+    synchronized void scheduleBroadcast() {
         if (broadcastWorkers.isShutdown()) return;
-        for (String code : clientsByCode.keySet()) {
+        List<String> codes = new ArrayList<>(clientsByCode.keySet());
+        if (codes.isEmpty()) return;
+        Collections.sort(codes);
+        int start = 0;
+        if (lastScheduledCode != null) {
+            int previous = Collections.binarySearch(codes, lastScheduledCode);
+            start = previous >= 0 ? previous + 1 : -previous - 1;
+        }
+        for (int offset = 0; offset < codes.size(); offset++) {
+            String code = codes.get((start + offset) % codes.size());
             if (!inFlight.add(code)) continue;
             try {
                 broadcastWorkers.execute(() -> {
@@ -152,10 +172,15 @@ public class StudentSseBroadcaster {
                         inFlight.remove(code);
                     }
                 });
+                lastScheduledCode = code;
             } catch (RejectedExecutionException exception) {
+                // The next tick resumes after the last admitted code, rather
+                // than repeatedly favouring the same ConcurrentHashMap prefix.
+                // Rejection must not leave the unqueued code marked in flight.
                 inFlight.remove(code);
                 if (rejectedBroadcasts != null) rejectedBroadcasts.increment();
                 LOG.debug("Skipping SSE snapshot tick because the bounded worker queue is full");
+                break;
             }
         }
     }

@@ -38,7 +38,7 @@ services:
   caddy:
     image: caddy:2.8-alpine
     restart: unless-stopped
-    mem_limit: ${CADDY_MEMORY_LIMIT:-256m}
+    mem_limit: ${CADDY_MEMORY_LIMIT:-512m}
     cpus: ${CADDY_CPU_LIMIT:-1.0}
     pids_limit: 128
     logging:
@@ -47,7 +47,7 @@ services:
         max-size: "10m"
         max-file: "3"
     environment:
-      GOMEMLIMIT: ${CADDY_GO_MEMORY_LIMIT:-160MiB}
+      GOMEMLIMIT: ${CADDY_GO_MEMORY_LIMIT:-320MiB}
       GODEBUG: disablethp=1
       GOMAXPROCS: ${CADDY_GO_MAX_PROCS:-1}
       SITE_ADDRESS: ${SITE_DOMAIN:?задайте SITE_DOMAIN в .env}
