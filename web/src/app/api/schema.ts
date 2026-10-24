@@ -1505,7 +1505,7 @@ export interface paths {
     put?: never;
     /**
      * Acknowledge delivery of student state or the session completion.
-     * @description Requires an existing active participation identified by JWT or participant token. Does not join, unkick or renew a presenter. Ordinary receipts are coalesced; completion requires recent delivery and a receipt within two minutes of the end.
+     * @description Requires an existing active participation identified by JWT or participant token. Does not join, unkick or renew a presenter. Ordinary receipts are coalesced; completion requires a receipt within two minutes of the end.
      */
     post: operations["acknowledgeStudentDelivery"];
     delete?: never;
@@ -3622,7 +3622,7 @@ export interface components {
       lastSeenAt?: string | null;
       /**
        * Format: date-time
-       * @description Authoritative session end, only if received by a recently connected client.
+       * @description Authoritative session end, only if acknowledged by a connected client.
        */
       completedAt?: string | null;
     };

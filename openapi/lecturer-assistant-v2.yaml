@@ -2139,7 +2139,7 @@ paths:
       description: >
         Requires an existing active participation identified by JWT or participant token.
         Does not join, unkick or renew a presenter. Ordinary receipts are coalesced;
-        completion requires recent delivery and a receipt within two minutes of the end.
+        completion requires a receipt within two minutes of the end.
       tags: [student]
       security: []
       parameters:
@@ -5716,7 +5716,7 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: Authoritative session end, only if received by a recently connected client.
+          description: Authoritative session end, only if acknowledged by a connected client.
     ChangeSlideRequest:
       type: object
       required: [slideIdx]

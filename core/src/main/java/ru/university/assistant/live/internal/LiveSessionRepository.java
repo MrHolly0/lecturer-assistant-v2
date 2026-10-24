@@ -669,15 +669,24 @@ class LiveSessionRepository {
 
     void recordStudentDelivery(UUID sessionId, UUID personId, boolean completed) {
         if (completed) {
-            // A historical revisit cannot create attendance at the end. Both contact and receipt
-            // must be close to the authoritative completion, and the participant must still be allowed.
+            // The terminal frame can beat the first coalesced ordinary receipt. Its acknowledgement
+            // is itself delivery evidence; never require an earlier heartbeat to count it.
+            jdbc.sql("""
+                    insert into live.student_delivery_receipts(session_id, person_id, channel_type, last_seen_at)
+                    select s.id, p.person_id, 'web', s.ended_at
+                    from live.sessions s join live.session_participants p on p.session_id = s.id
+                    where s.id = :session and p.person_id = :person and p.channel_type = 'web'
+                        and s.status in ('ENDED', 'ARCHIVED') and s.ended_at is not null
+                        and now() <= s.ended_at + interval '2 minutes' and not p.kicked and p.left_at is null
+                    on conflict (session_id, person_id, channel_type) do nothing
+                    """).param("session", sessionId).param("person", personId).update();
             jdbc.sql("""
                     update live.student_delivery_receipts r set completed_at = s.ended_at
                     from live.sessions s, live.session_participants p
                     where r.session_id = :session and r.person_id = :person and r.channel_type = 'web'
                         and s.id = r.session_id and s.status in ('ENDED', 'ARCHIVED')
                         and s.ended_at is not null and now() <= s.ended_at + interval '2 minutes'
-                        and r.last_seen_at >= s.ended_at - interval '2 minutes' and r.completed_at is null
+                        and r.completed_at is null
                         and p.session_id = r.session_id and p.person_id = r.person_id
                         and p.channel_type = 'web' and not p.kicked and p.left_at is null
                     """).param("session", sessionId).param("person", personId).update();

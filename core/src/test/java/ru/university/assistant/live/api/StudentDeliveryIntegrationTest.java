@@ -58,10 +58,8 @@ class StudentDeliveryIntegrationTest extends LiveFlowTestBase {
         receipt(token, false, 204);
         jdbc.sql("update live.student_delivery_receipts set last_seen_at = now() - interval '5 minutes'").update();
         Instant departed = lastSeen();
-        String legacy = join(null, "{\"displayName\":\"Legacy\"}").path("participantToken").asText();
+        join(null, "{\"displayName\":\"Legacy\"}");
         end();
-        receipt(token, true, 204);
-        receipt(legacy, true, 204);
         JsonNode participants = summary().path("participants");
         for (JsonNode participant : participants) {
             assertTrue(participant.path("completedAt").isNull());
@@ -83,6 +81,19 @@ class StudentDeliveryIntegrationTest extends LiveFlowTestBase {
                 .param("id", sessionId).update();
         receipt(token, true, 204);
         assertTrue(summary().at("/participants/0/completedAt").isNull());
+    }
+
+    @Test
+    void completionMayBeTheFirstReceiptAndRefreshesAnAlreadyPreparedReport() throws Exception {
+        String token = join(null, "{\"displayName\":\"Just connected\"}").path("participantToken").asText();
+        end();
+        assertTrue(summary().at("/participants/0/lastSeenAt").isNull());
+        receipt(token, true, 204);
+        JsonNode after = summary();
+        assertEquals(after.path("endedAt"), after.at("/participants/0/completedAt"));
+        long revision = revision();
+        receipt(token, true, 204);
+        assertEquals(revision, revision());
     }
 
     @Test

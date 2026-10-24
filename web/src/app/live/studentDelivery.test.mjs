@@ -95,6 +95,14 @@ test("completion is immediate, finite, and survives terminal UI cleanup", async 
   assert.equal(calls.length, 2);
 });
 
+test("a terminal frame before the first coalesced receipt still acknowledges the end", async () => {
+  tracker.received(live);
+  tracker.received(end);
+  tracker.stop();
+  await advance(0);
+  assert.deepEqual(calls.map((c) => c.completed), [true]);
+});
+
 test("completion arriving during an ordinary request is not lost", async () => {
   let resolve;
   send = () => new Promise((done) => (resolve = done));
