@@ -14,4 +14,6 @@ public record SessionParticipant(
         Instant leftAt,
         boolean kicked,
         Instant nameRequestedAt,
-        Instant nameSubmittedAt) {}
+        Instant nameSubmittedAt,
+        Instant lastSeenAt,
+        Instant completedAt) {}

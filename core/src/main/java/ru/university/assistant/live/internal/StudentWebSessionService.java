@@ -388,6 +388,27 @@ public class StudentWebSessionService {
     }
 
     @Transactional
+    public void acknowledgeDelivery(String joinCode, String participantToken, AuthenticatedUser user,
+            ru.university.assistant.live.api.StudentDeliveryReceipt receipt) {
+        LiveSession session = sessionByCode(joinCode);
+        if (!session.id().equals(receipt.sessionId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session changed");
+        }
+        UUID personId = viewerId(session, user, participantToken);
+        if (personId == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Participant token or login is required");
+        }
+        if (user != null && !user.id().equals(personId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Participant belongs to another account");
+        }
+        if (receipt.personId() != null && !receipt.personId().equals(personId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account changed");
+        }
+        requireActive(session.id(), personId);
+        sessions.recordStudentDelivery(session.id(), personId, receipt.completed());
+    }
+
+    @Transactional
     public StudentSessionSnapshot submitName(
             String joinCode, StudentNameRequest request, AuthenticatedUser user) {
         ParticipantSession current = participantSession(joinCode, request.participantToken(), user);

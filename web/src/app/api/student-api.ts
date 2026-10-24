@@ -54,6 +54,31 @@ export function studentParticipantHeaders(participantToken?: string): Record<str
   return !getStoredAuth() && participantToken ? { "X-Participant-Token": participantToken } : {};
 }
 
+export async function acknowledgeStudentDelivery(
+  joinCode: string,
+  participantToken: string,
+  sessionId: string,
+  completed: boolean,
+  signal: AbortSignal,
+  personId?: string
+): Promise<void> {
+  // Authenticated windows keep working when another device rotates the SSE token.
+  // The captured personId prevents a delayed request from acknowledging for a different login.
+  const receiptFetch = personId ? apiFetch : publicFetch;
+  await withRequestDeadline(
+    (deadline) =>
+      receiptFetch(`/student/sessions/${encodeURIComponent(joinCode)}/delivery-receipt`, {
+        method: "POST",
+        headers: personId ? {} : { "X-Participant-Token": participantToken },
+        body: JSON.stringify({ sessionId, completed, personId }),
+        signal: deadline,
+        keepalive: completed
+      }),
+    signal,
+    8000
+  );
+}
+
 export async function getMyStudentActiveSession(): Promise<StudentActiveSessionSummary | null> {
   const response = await apiFetch("/me/student-active-session");
   if (response.status === 204) return null;
@@ -224,7 +249,8 @@ export function connectStudentSession(
   participantToken: string,
   onSnapshot: (snapshot: StudentSessionSnapshot) => void,
   onStateChange: (state: StudentConnectionState) => void,
-  readSnapshot?: (signal: AbortSignal) => Promise<StudentSessionSnapshot>
+  readSnapshot?: (signal: AbortSignal) => Promise<StudentSessionSnapshot>,
+  onDelivery?: (snapshot: StudentSessionSnapshot) => void
 ): StudentConnectionControls {
   const eventUrl = participantToken
     ? `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events?${new URLSearchParams({ participantToken })}`
@@ -276,6 +302,7 @@ export function connectStudentSession(
         ? snapshotGate.accept(snapshot)
         : snapshotGate.acceptRequest(snapshot, requestGeneration);
     if (!accepted) return false;
+    onDelivery?.(snapshot);
     onSnapshot(snapshot);
     if (snapshot.status !== "ENDED" && snapshot.status !== "ARCHIVED") return true;
     ended = true;
@@ -435,6 +462,10 @@ export function connectStudentSession(
       } catch {
         // Polling restores a missed or malformed personalized answer.
       }
+    });
+    nextSource.addEventListener("keepalive", () => {
+      if (stopped || source !== nextSource || !snapshotGate.current) return;
+      onDelivery?.(snapshotGate.current);
     });
     nextSource.onerror = () => streamFailed(nextSource);
   }

@@ -145,6 +145,22 @@ test("focus bursts preserve a healthy or connecting SSE without extra HTTP reads
   assert.equal(states.at(-1), "CONNECTED");
 });
 
+test("named keepalive delivers contact on an unchanged slide without replacing UI snapshots", async () => {
+  const deliveries = [];
+  const connection = connectStudentSession("FIXTURE", "token", (s) => snapshots.push(s),
+    () => undefined, undefined, (s) => deliveries.push(s));
+  cleanup.push(connection);
+  const source = sources.at(-1);
+  source.open();
+  source.snapshot({ version: 3, status: "LIVE", questionAnswers: [] });
+  source.dispatchEvent(new MessageEvent("keepalive", { data: "{}" }));
+  assert.equal(deliveries.length, 2);
+  assert.equal(snapshots.length, 1);
+  connection.disconnect();
+  source.dispatchEvent(new MessageEvent("keepalive", { data: "{}" }));
+  assert.equal(deliveries.length, 2);
+});
+
 test("rapid SSE open/error flapping retains exponential backoff until a stable channel", async () => {
   const source = start();
   source.open();

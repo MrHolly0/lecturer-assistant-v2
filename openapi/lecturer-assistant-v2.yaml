@@ -2132,6 +2132,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SessionGroupJoinConflict"
+  /student/sessions/{joinCode}/delivery-receipt:
+    post:
+      operationId: acknowledgeStudentDelivery
+      summary: Acknowledge delivery of student state or the session completion.
+      description: >
+        Requires an existing active participation identified by JWT or participant token.
+        Does not join, unkick or renew a presenter. Ordinary receipts are coalesced;
+        completion requires recent delivery and a receipt within two minutes of the end.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+        - name: X-Participant-Token
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, completed]
+              properties:
+                sessionId:
+                  type: string
+                  format: uuid
+                completed:
+                  type: boolean
+                personId:
+                  type: string
+                  format: uuid
+                  description: Expected account for authenticated receipts; mismatches are rejected.
+      responses:
+        "204":
+          description: Receipt processed; inapplicable or duplicate receipts have no effect.
   /student/sessions/{joinCode}/name:
     post:
       operationId: submitStudentName
@@ -2180,7 +2217,8 @@ paths:
       responses:
         "200":
           description: >
-            Emits snapshot events filtered for the participant and immediate question-answer events.
+            Emits snapshot events filtered for the participant, immediate question-answer events,
+            and named keepalive events on unchanged state (approximately every 15 seconds).
           content:
             text/event-stream:
               schema:
@@ -5669,6 +5707,16 @@ components:
           type: string
           format: date-time
           nullable: true
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last acknowledged delivery. Unknown for historical untracked clients.
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Authoritative session end, only if received by a recently connected client.
     ChangeSlideRequest:
       type: object
       required: [slideIdx]

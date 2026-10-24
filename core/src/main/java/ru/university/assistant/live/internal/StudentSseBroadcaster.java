@@ -349,7 +349,7 @@ public class StudentSseBroadcaster {
                 boolean sent;
                 try {
                     if ("keepalive".equals(event.name())) {
-                        client.emitter.send(SseEmitter.event().comment("keepalive"));
+                        client.emitter.send(SseEmitter.event().name("keepalive").data(Map.of()));
                         client.nextHeartbeatAt = System.nanoTime() + Duration.ofSeconds(15).toNanos();
                         sent = true;
                     } else {

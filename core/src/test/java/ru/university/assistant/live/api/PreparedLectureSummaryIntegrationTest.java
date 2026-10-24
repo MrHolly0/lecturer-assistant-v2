@@ -30,7 +30,7 @@ class PreparedLectureSummaryIntegrationTest extends LiveFlowTestBase {
         double misses = meter("miss");
         assertEquals(first, summary());
         assertTrue(meter("miss") > misses);
-        assertEquals(1L, count("analytics.lecture_summaries where schema_version = 1"));
+        assertEquals(1L, count("analytics.lecture_summaries where schema_version = 2"));
     }
 
     @Test

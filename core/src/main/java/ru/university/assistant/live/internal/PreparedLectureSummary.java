@@ -21,7 +21,7 @@ import ru.university.assistant.live.api.LiveSession;
 /** Rebuildable PostgreSQL read model. A fingerprint is read before building, never after it. */
 @Component
 public class PreparedLectureSummary {
-    private static final int SCHEMA_VERSION = 1;
+    private static final int SCHEMA_VERSION = 2;
     private static final int MAXIMUM_PAYLOAD_BYTES = 8 * 1024 * 1024;
     private final JdbcClient jdbc;
     private final ObjectMapper mapper;

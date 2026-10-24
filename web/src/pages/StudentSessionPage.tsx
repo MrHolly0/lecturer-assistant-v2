@@ -10,6 +10,7 @@ import {
   storeTabStudentToken
 } from "../app/studentResume";
 import {
+  acknowledgeStudentDelivery,
   askStudentQuestion,
   connectStudentSession,
   getStudentSession,
@@ -28,6 +29,7 @@ import { ApiError, userErrorMessage } from "../app/api/errors";
 import { mutationRetryDelay, shouldRetryMutation } from "../app/api/retry";
 import { PendingOperationKey } from "../app/api/operation-key";
 import { StudentSnapshotGate } from "../app/api/student-snapshot-gate";
+import { trackStudentDelivery } from "../app/live/studentDelivery";
 import { useAuth } from "../app/AuthContext";
 import { DrawingOverlay, type LiveAnnotations } from "../widgets/DrawingOverlay";
 import { BrandMark } from "../shared/brand/BrandMark";
@@ -392,6 +394,16 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
 
   useEffect(() => {
     if (!participantToken || !normalizedCode) return undefined;
+    const delivery = trackStudentDelivery((sessionId, completed, signal) =>
+      acknowledgeStudentDelivery(
+        normalizedCode,
+        participantToken,
+        sessionId,
+        completed,
+        signal,
+        user?.id
+      )
+    );
     const connection = connectStudentSession(
       normalizedCode,
       participantToken,
@@ -414,14 +426,16 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         if (result.error) throw result.error;
         if (!result.data) throw new ApiError(0, "Не удалось обновить занятие.");
         return result.data;
-      }
+      },
+      delivery.received
     );
     reconnectRef.current = connection.reconnect;
     return () => {
       reconnectRef.current = () => undefined;
       connection.disconnect();
+      delivery.stop();
     };
-  }, [normalizedCode, participantToken, refetch, scope]);
+  }, [normalizedCode, participantToken, refetch, scope, user?.id]);
 
   const slideLabel = current ? `${current.currentSlideIdx} из ${current.slideCount}` : "";
   const feedbackUnavailableMessage =

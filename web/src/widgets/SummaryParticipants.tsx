@@ -99,7 +99,7 @@ export function SummaryParticipants({ summary }: { summary: LectureSummary }) {
                 <th scope="col">Участник</th>
                 <th scope="col">Учебная группа</th>
                 <th scope="col">Подключился</th>
-                <th scope="col">Вышел</th>
+                <th scope="col">Завершил участие</th>
               </tr>
             </thead>
             <tbody>
@@ -121,8 +121,19 @@ export function SummaryParticipants({ summary }: { summary: LectureSummary }) {
                   <td data-label="Подключился">
                     <ParticipantTime value={participant.joinedAt} />
                   </td>
-                  <td data-label="Вышел">
-                    <ParticipantTime value={participant.leftAt} />
+                  <td data-label="Завершил участие">
+                    <div className="report-participants__identity">
+                      <ParticipantTime
+                        value={
+                          participant.leftAt || participant.completedAt || participant.lastSeenAt
+                        }
+                      />
+                      {!participant.leftAt && participant.completedAt ? (
+                        <small className="muted">До конца занятия</small>
+                      ) : !participant.leftAt && participant.lastSeenAt ? (
+                        <small className="muted">Последняя связь</small>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -145,7 +156,9 @@ export function SummaryParticipants({ summary }: { summary: LectureSummary }) {
       />
       <p className="muted report-method-note">
         Показаны сохранённые подключения, включая вышедших и исключённых участников. Один человек
-        мог подключаться несколькими способами. Время выхода могло не сохраниться.
+        мог подключаться несколькими способами. «Последняя связь» — получение данных, обычно с
+        точностью около 40 секунд. «До конца занятия» — получено его завершение. Для старых
+        подключений время могло не сохраниться.
       </p>
     </section>
   );

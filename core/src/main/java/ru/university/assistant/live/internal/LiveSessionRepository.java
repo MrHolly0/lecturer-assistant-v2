@@ -419,6 +419,13 @@ class LiveSessionRepository {
     /** Bearer proof of the guest token promotes one lecture participation to the signed-in person. */
     void claimGuestParticipation(UUID sessionId, UUID guestId, UUID personId, String guestName) {
         jdbc.sql("""
+                insert into live.student_delivery_receipts(session_id, person_id, channel_type, last_seen_at)
+                select session_id, :person, channel_type, last_seen_at from live.student_delivery_receipts
+                where session_id = :session and person_id = :guest
+                on conflict (session_id, person_id, channel_type) do update
+                    set last_seen_at = greatest(live.student_delivery_receipts.last_seen_at, excluded.last_seen_at)
+                """).param("session", sessionId).param("guest", guestId).param("person", personId).update();
+        jdbc.sql("""
                         update live.session_participants profile
                         set display_name = case when :guestName like 'Гость %'
                                                 then profile.display_name else :guestName end,
@@ -649,16 +656,45 @@ class LiveSessionRepository {
     List<SessionParticipant> listParticipants(UUID sessionId) {
         return jdbc.sql(
                         """
-                        select session_id, person_id, channel_type, display_name,
-                               group_id, group_name_snapshot, joined_at, left_at, kicked,
-                               name_requested_at, name_submitted_at
-                        from live.session_participants
-                        where session_id = :sessionId
+                        select p.*, r.last_seen_at, r.completed_at
+                        from live.session_participants p
+                        left join live.student_delivery_receipts r using (session_id, person_id, channel_type)
+                        where p.session_id = :sessionId
                         order by left_at nulls first, joined_at desc
                         """)
                 .param("sessionId", sessionId)
-                .query(this::mapParticipant)
+                .query((rs, rowNumber) -> mapParticipant(rs, rowNumber, true))
                 .list();
+    }
+
+    void recordStudentDelivery(UUID sessionId, UUID personId, boolean completed) {
+        if (completed) {
+            // A historical revisit cannot create attendance at the end. Both contact and receipt
+            // must be close to the authoritative completion, and the participant must still be allowed.
+            jdbc.sql("""
+                    update live.student_delivery_receipts r set completed_at = s.ended_at
+                    from live.sessions s, live.session_participants p
+                    where r.session_id = :session and r.person_id = :person and r.channel_type = 'web'
+                        and s.id = r.session_id and s.status in ('ENDED', 'ARCHIVED')
+                        and s.ended_at is not null and now() <= s.ended_at + interval '2 minutes'
+                        and r.last_seen_at >= s.ended_at - interval '2 minutes' and r.completed_at is null
+                        and p.session_id = r.session_id and p.person_id = r.person_id
+                        and p.channel_type = 'web' and not p.kicked and p.left_at is null
+                    """).param("session", sessionId).param("person", personId).update();
+            return;
+        }
+        // Shared locks order receipts before a concurrent end/kick without serializing students.
+        // The database clock is authoritative; background timers alone never generate receipts.
+        jdbc.sql("""
+                insert into live.student_delivery_receipts(session_id, person_id, channel_type, last_seen_at)
+                select s.id, p.person_id, 'web', now()
+                from live.sessions s join live.session_participants p on p.session_id = s.id
+                where s.id = :session and p.person_id = :person and p.channel_type = 'web'
+                    and s.status in ('SCHEDULED', 'LIVE', 'PAUSED') and not p.kicked and p.left_at is null
+                for share of s, p
+                on conflict (session_id, person_id, channel_type) do update set last_seen_at = excluded.last_seen_at
+                where live.student_delivery_receipts.last_seen_at < now() - interval '20 seconds'
+                """).param("session", sessionId).param("person", personId).update();
     }
 
     private LiveSession mapSession(ResultSet rs, int rowNumber) throws SQLException {
@@ -771,6 +807,10 @@ class LiveSessionRepository {
     private record TimingEvent(String verb, Instant occurredAt) {}
 
     private SessionParticipant mapParticipant(ResultSet rs, int rowNumber) throws SQLException {
+        return mapParticipant(rs, rowNumber, false);
+    }
+
+    private SessionParticipant mapParticipant(ResultSet rs, int rowNumber, boolean receipts) throws SQLException {
         return new SessionParticipant(
                 rs.getObject("session_id", UUID.class),
                 rs.getObject("person_id", UUID.class),
@@ -782,7 +822,11 @@ class LiveSessionRepository {
                 rs.getTimestamp("left_at") == null ? null : rs.getTimestamp("left_at").toInstant(),
                 rs.getBoolean("kicked"),
                 rs.getTimestamp("name_requested_at") == null ? null : rs.getTimestamp("name_requested_at").toInstant(),
-                rs.getTimestamp("name_submitted_at") == null ? null : rs.getTimestamp("name_submitted_at").toInstant());
+                rs.getTimestamp("name_submitted_at") == null ? null : rs.getTimestamp("name_submitted_at").toInstant(),
+                !receipts || rs.getTimestamp("last_seen_at") == null
+                        ? null : rs.getTimestamp("last_seen_at").toInstant(),
+                !receipts || rs.getTimestamp("completed_at") == null
+                        ? null : rs.getTimestamp("completed_at").toInstant());
     }
 
     private WebParticipant mapWebParticipant(ResultSet rs, int rowNumber) throws SQLException {

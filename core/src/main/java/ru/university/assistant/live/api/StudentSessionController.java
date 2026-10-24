@@ -94,6 +94,16 @@ class StudentSessionController {
         return studentSessions.join(joinCode, request, user);
     }
 
+    @PostMapping("/api/v1/student/sessions/{joinCode}/delivery-receipt")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deliveryReceipt(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String joinCode,
+            @RequestHeader(value = "X-Participant-Token", required = false) String participantToken,
+            @Valid @RequestBody StudentDeliveryReceipt request) {
+        studentSessions.acknowledgeDelivery(joinCode, participantToken, user, request);
+    }
+
     @PostMapping("/api/v1/student/sessions/{joinCode}/name")
     public StudentSessionSnapshot submitName(
             @AuthenticationPrincipal AuthenticatedUser user,

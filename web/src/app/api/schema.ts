@@ -1494,6 +1494,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/student/sessions/{joinCode}/delivery-receipt": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Acknowledge delivery of student state or the session completion.
+     * @description Requires an existing active participation identified by JWT or participant token. Does not join, unkick or renew a presenter. Ordinary receipts are coalesced; completion requires recent delivery and a receipt within two minutes of the end.
+     */
+    post: operations["acknowledgeStudentDelivery"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/student/sessions/{joinCode}/name": {
     parameters: {
       query?: never;
@@ -3595,6 +3615,16 @@ export interface components {
       nameRequestedAt?: string | null;
       /** Format: date-time */
       nameSubmittedAt?: string | null;
+      /**
+       * Format: date-time
+       * @description Last acknowledged delivery. Unknown for historical untracked clients.
+       */
+      lastSeenAt?: string | null;
+      /**
+       * Format: date-time
+       * @description Authoritative session end, only if received by a recently connected client.
+       */
+      completedAt?: string | null;
     };
     ChangeSlideRequest: {
       /**
@@ -7144,6 +7174,41 @@ export interface operations {
       };
     };
   };
+  acknowledgeStudentDelivery: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** Format: uuid */
+          sessionId: string;
+          completed: boolean;
+          /**
+           * Format: uuid
+           * @description Expected account for authenticated receipts; mismatches are rejected.
+           */
+          personId?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Receipt processed; inapplicable or duplicate receipts have no effect. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   submitStudentName: {
     parameters: {
       query?: never;
@@ -7212,7 +7277,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Emits snapshot events filtered for the participant and immediate question-answer events. */
+      /** @description Emits snapshot events filtered for the participant, immediate question-answer events, and named keepalive events on unchanged state (approximately every 15 seconds). */
       200: {
         headers: {
           [name: string]: unknown;
