@@ -1258,6 +1258,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/sessions/{sessionId}/presenter-presence": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Keep an open presenter or remote connected to the session.
+     * @description Requires course management. Renews shared presenter presence for LIVE and PAUSED sessions, without changing their visible revision. Repeated requests are safe and writes are coalesced. Sessions with no presenter for 30 minutes are completed by the server. Participant and projector connections do not renew presenter presence.
+     */
+    post: operations["retainPresenterPresence"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/sessions/join": {
     parameters: {
       query?: never;
@@ -6666,6 +6686,41 @@ export interface operations {
       };
       /** @description Session was already ended or archived. */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  retainPresenterPresence: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Presence accepted; completed and scheduled sessions are unchanged. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The caller cannot manage this course. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found in this course. */
+      404: {
         headers: {
           [name: string]: unknown;
         };

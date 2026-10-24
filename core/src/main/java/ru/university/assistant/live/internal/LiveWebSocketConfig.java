@@ -128,11 +128,16 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 if (h.getCommand() == StompCommand.SEND) throw denied();
                 if (h.getCommand() == StompCommand.SUBSCRIBE) {
                     UUID id = destinationId(h.getDestination());
+                    String subscription = h.getSubscriptionId();
+                    if (subscription == null || subscription.isBlank()) throw denied();
                     AuthenticatedUser user = tokens.parseAccessToken(authorization.token)
                             .orElseThrow(LiveWebSocketConfig::denied);
                     courseAccess.requireManage(user, sessions.courseId(id));
-                    authorization.subscriptions.add(id);
+                    authorization.subscriptions.put(subscription, id);
+                    sessions.touchPresenter(id);
                     authorization.checkedAt = 0;
+                } else if (h.getCommand() == StompCommand.UNSUBSCRIBE) {
+                    if (h.getSubscriptionId() != null) authorization.subscriptions.remove(h.getSubscriptionId());
                 } else if (h.getCommand() != StompCommand.UNSUBSCRIBE
                         && h.getCommand() != StompCommand.ACK && h.getCommand() != StompCommand.NACK) {
                     throw denied();
@@ -158,7 +163,7 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 UUID id;
                 try { id = destinationId(h.getDestination()); }
                 catch (RuntimeException exception) { return null; }
-                return authorization.subscriptions.contains(id) ? message : null;
+                return authorization.subscriptions.containsValue(id) ? message : null;
             }
         });
     }
@@ -166,6 +171,18 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Scheduled(fixedDelay = 1000)
     void revokeExpiredConnections() {
         authorizations.forEach((id, authorization) -> { if (!valid(authorization)) disconnect(id); });
+    }
+
+    @Scheduled(fixedDelay = 30_000)
+    void retainConnectedPresenters() {
+        Set<UUID> present = ConcurrentHashMap.newKeySet();
+        authorizations.forEach((id, authorization) -> {
+            WebSocketSession transport = transports.get(id);
+            if (transport != null && transport.isOpen() && valid(authorization)) {
+                present.addAll(authorization.subscriptions.values());
+            }
+        });
+        present.forEach(sessions::touchPresenter);
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -182,7 +199,9 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
         try {
             AuthenticatedUser user = tokens.parseAccessToken(authorization.token)
                     .orElseThrow(LiveWebSocketConfig::denied);
-            for (UUID id : authorization.subscriptions) courseAccess.requireManage(user, sessions.courseId(id));
+            for (UUID id : authorization.subscriptions.values()) {
+                courseAccess.requireManage(user, sessions.courseId(id));
+            }
             authorization.checkedAt = now;
             return true;
         } catch (RuntimeException exception) { return false; }
@@ -222,7 +241,7 @@ class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private static final class Authorization {
         final UUID personId;
         final String token;
-        final Set<UUID> subscriptions = ConcurrentHashMap.newKeySet();
+        final Map<String, UUID> subscriptions = new ConcurrentHashMap<>();
         volatile long checkedAt;
         Authorization(UUID personId, String token) { this.personId = personId; this.token = token; }
     }

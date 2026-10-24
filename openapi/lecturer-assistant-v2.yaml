@@ -1817,6 +1817,26 @@ paths:
           description: Session not found in this course.
         "409":
           description: Session was already ended or archived.
+  /courses/{courseId}/sessions/{sessionId}/presenter-presence:
+    post:
+      operationId: retainPresenterPresence
+      summary: Keep an open presenter or remote connected to the session.
+      description: >
+        Requires course management. Renews shared presenter presence for LIVE and PAUSED sessions,
+        without changing their visible revision. Repeated requests are safe and writes are coalesced.
+        Sessions with no presenter for 30 minutes are completed by the server. Participant and
+        projector connections do not renew presenter presence.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "204":
+          description: Presence accepted; completed and scheduled sessions are unchanged.
+        "403":
+          description: The caller cannot manage this course.
+        "404":
+          description: Session not found in this course.
   /courses/{courseId}/sessions/join:
     post:
       operationId: joinLiveSession

@@ -85,8 +85,35 @@ class LiveSessionRepository {
                 .param("id", sessionId).update();
     }
 
+    void touchPresenter(UUID sessionId) {
+        jdbc.sql("""
+                update live.sessions set presenter_seen_at = now()
+                where id = :id and status in ('LIVE', 'PAUSED')
+                    and (presenter_seen_at is null or presenter_seen_at <= now() - interval '30 seconds')
+                """).param("id", sessionId).update();
+    }
+
+    List<UUID> absentPresenterCandidates() {
+        return jdbc.sql("""
+                select id from live.sessions
+                where status in ('LIVE', 'PAUSED')
+                    and presenter_seen_at <= now() - interval '30 minutes'
+                order by presenter_seen_at, id limit 100
+                """).query(UUID.class).list();
+    }
+
+    boolean lockIfPresenterAbsent(UUID sessionId) {
+        return jdbc.sql("""
+                select id from live.sessions
+                where id = :id and status in ('LIVE', 'PAUSED')
+                    and presenter_seen_at <= now() - interval '30 minutes'
+                for update skip locked
+                """).param("id", sessionId).query(UUID.class).optional().isPresent();
+    }
+
     LiveSession projection(UUID courseId, UUID sessionId, boolean showJoinCode) {
-        jdbc.sql("update live.sessions set show_join_code = :show, version = version + 1 where id = :id")
+        jdbc.sql("update live.sessions set show_join_code = :show, version = version + 1, "
+                        + "presenter_seen_at = now() where id = :id")
                 .param("show", showJoinCode).param("id", sessionId).update();
         return findByCourse(courseId, sessionId).orElseThrow();
     }
@@ -260,7 +287,8 @@ class LiveSessionRepository {
         return jdbc.sql(
                         """
                         update live.sessions
-                        set status = 'LIVE', version = version + 1, started_at = now(), updated_at = now()
+                        set status = 'LIVE', version = version + 1, started_at = now(), updated_at = now(),
+                            presenter_seen_at = now()
                         where id = :sessionId and status = 'SCHEDULED'
                             and lecture_id in (select id from live.lectures where course_id = :courseId)
                         """)
@@ -273,7 +301,8 @@ class LiveSessionRepository {
         jdbc.sql(
                         """
                         update live.sessions
-                        set current_slide_idx = :slideIdx, version = version + 1, updated_at = now()
+                        set current_slide_idx = :slideIdx, version = version + 1, updated_at = now(),
+                            presenter_seen_at = now()
                         where id = :sessionId
                             and lecture_id in (select id from live.lectures where course_id = :courseId)
                         """)
@@ -296,7 +325,8 @@ class LiveSessionRepository {
         jdbc.sql(
                         """
                         update live.sessions
-                        set annotations = cast(:annotations as jsonb), version = version + 1, updated_at = now()
+                        set annotations = cast(:annotations as jsonb), version = version + 1, updated_at = now(),
+                            presenter_seen_at = now()
                         where id = :sessionId
                             and lecture_id in (select id from live.lectures where course_id = :courseId)
                         """)
@@ -313,6 +343,8 @@ class LiveSessionRepository {
                         update live.sessions
                         set status = :status, version = version + 1,
                             ended_at = case when :status = 'ENDED' then now() else ended_at end,
+                            presenter_seen_at = case when :status in ('LIVE', 'PAUSED')
+                                then now() else presenter_seen_at end,
                             updated_at = now()
                         where id = :sessionId
                             and lecture_id in (select id from live.lectures where course_id = :courseId)

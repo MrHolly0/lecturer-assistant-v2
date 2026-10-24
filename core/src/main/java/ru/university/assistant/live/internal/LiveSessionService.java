@@ -150,6 +150,21 @@ public class LiveSessionService implements LiveSessionAccessApi {
         return session(courseId, sessionId);
     }
 
+    @Transactional
+    public void presenterPresent(AuthenticatedUser user, UUID courseId, UUID sessionId) {
+        courseAccess.requireManage(user, courseId);
+        session(courseId, sessionId);
+        sessions.touchPresenter(sessionId);
+    }
+
+    @Transactional
+    public boolean endIfPresenterAbsent(UUID sessionId) {
+        if (!sessions.lockIfPresenterAbsent(sessionId)) return false;
+        LiveSession current = requireSession(sessionId);
+        applyTransition(current, SessionStatus.ENDED, null, Map.of("reason", "presenter_absent_timeout"));
+        return true;
+    }
+
     public List<SessionParticipant> participants(AuthenticatedUser user, UUID courseId, UUID sessionId) {
         courseAccess.requireManage(user, courseId);
         session(courseId, sessionId);
@@ -241,8 +256,15 @@ public class LiveSessionService implements LiveSessionAccessApi {
             return current;
         }
         ensureTransition(current.status(), target);
+        return applyTransition(current, target, user.id(), Map.of());
+    }
+
+    private LiveSession applyTransition(
+            LiveSession current, SessionStatus target, UUID actorId, Map<String, Object> details) {
+        UUID courseId = current.courseId();
+        UUID sessionId = current.id();
         if (target == SessionStatus.ENDED) {
-            sessionPollLifecycle.closeOpenForSession(courseId, sessionId, user.id());
+            sessionPollLifecycle.closeOpenForSession(courseId, sessionId, actorId);
         }
         LiveSession after = sessions.updateStatus(courseId, sessionId, target);
         String verb = switch (target) {
@@ -252,7 +274,9 @@ public class LiveSessionService implements LiveSessionAccessApi {
             case ARCHIVED -> "session.archived";
             case SCHEDULED -> "session.scheduled";
         };
-        event(user, after, verb, Map.of("status", target.name()));
+        Map<String, Object> payload = new LinkedHashMap<>(details);
+        payload.put("status", target.name());
+        event(actorId, after, verb, payload);
         publisher.publish(verb, after);
         return after;
     }
@@ -332,11 +356,15 @@ public class LiveSessionService implements LiveSessionAccessApi {
     }
 
     private void event(AuthenticatedUser user, LiveSession session, String verb, Map<String, Object> payload) {
+        event(user.id(), session, verb, payload);
+    }
+
+    private void event(UUID actorId, LiveSession session, String verb, Map<String, Object> payload) {
         events.publish(new DomainEvent(
                 "live.session",
                 session.id(),
                 verb,
-                user.id(),
+                actorId,
                 Map.of("courseId", session.courseId(), "sessionId", session.id(), "lectureId", session.lectureId()),
                 payload));
     }

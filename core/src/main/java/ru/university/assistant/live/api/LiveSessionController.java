@@ -81,6 +81,15 @@ public class LiveSessionController {
         return sessionHistory.list(user, courseId, limit, offset, query, groupId, endedFrom, endedBefore);
     }
 
+    @PostMapping("/sessions/{sessionId}/presenter-presence")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void presenterPresence(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID sessionId) {
+        liveSessions.presenterPresent(user, courseId, sessionId);
+    }
+
     @GetMapping("/sessions/{sessionId}/participants")
     public List<SessionParticipant> participants(
             @AuthenticationPrincipal AuthenticatedUser user,

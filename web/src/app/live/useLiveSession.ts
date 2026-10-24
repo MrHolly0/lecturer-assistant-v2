@@ -3,9 +3,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/errors";
 import { readRetryDelay, retryDelayMs, shouldRetryRead } from "../api/retry";
 import { createSnapshotInvalidationReader } from "./snapshotInvalidation";
+import { startPresenterPresence } from "./presenterPresence";
 import {
   connectLiveSession,
   getLiveSession,
+  retainPresenterPresence,
   type LiveConnectionState,
   type LiveSession
 } from "../api/live-api";
@@ -91,6 +93,11 @@ export function useLiveSession(courseId: string, sessionId: string) {
     refetchOnWindowFocus: false
   });
   const { refetch } = sessionQuery;
+  const presenceStatus = snapshot?.status ?? sessionQuery.data?.status;
+  useEffect(() => {
+    if (presenceStatus !== "LIVE" && presenceStatus !== "PAUSED") return;
+    return startPresenterPresence((signal) => retainPresenterPresence(courseId, sessionId, signal));
+  }, [courseId, sessionId, presenceStatus]);
 
   const acceptSnapshot = useCallback(
     (next: LiveSession) => {

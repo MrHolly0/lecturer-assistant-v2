@@ -63,6 +63,21 @@ export async function beginLiveSession(courseId: string, sessionId: string): Pro
   return res.json() as Promise<LiveSession>;
 }
 
+export async function retainPresenterPresence(
+  courseId: string,
+  sessionId: string,
+  signal: AbortSignal
+): Promise<void> {
+  await withRequestDeadline(
+    (requestSignal) =>
+      apiFetch(`/courses/${courseId}/sessions/${sessionId}/presenter-presence`, {
+        method: "POST",
+        signal: requestSignal
+      }),
+    signal
+  );
+}
+
 export async function listSessionParticipants(
   courseId: string,
   sessionId: string
