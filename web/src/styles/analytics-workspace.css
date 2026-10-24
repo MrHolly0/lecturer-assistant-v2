@@ -584,6 +584,39 @@
   border-radius: 8px;
   background: var(--surface);
 }
+.report-participants__filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.report-participants__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.report-participants__table .data-table {
+  border: 0;
+  border-radius: 0;
+}
+.report-group-members.ui-button {
+  justify-content: flex-start;
+  max-width: 100%;
+  height: auto;
+  padding: 0;
+  text-align: left;
+  white-space: normal;
+  line-height: 1.4;
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .report-participants__filters {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+}
 .report-method-note {
   padding-top: 24px;
   margin-top: 28px;

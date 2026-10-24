@@ -11,6 +11,7 @@ import {
   LockKeyhole,
   Maximize2,
   MessageCircle,
+  UserRound,
   UsersRound,
   Globe2
 } from "lucide-react";
@@ -44,6 +45,7 @@ import {
 } from "../shared/ui/dialog";
 import { SessionGroups } from "./SessionGroups";
 import { PollOptionText } from "./PollOptionText";
+import { SummaryParticipants } from "./SummaryParticipants";
 
 interface PresenterSessionSummaryProps {
   courseId: string;
@@ -75,7 +77,13 @@ export function PresenterSessionSummary({
     setParams((current) => {
       const next = new URLSearchParams(current);
       next.set("summaryTab", value);
-      if (selection) next.set(selection.key, selection.value);
+      if (selection) {
+        next.set(selection.key, selection.value);
+        if (selection.key === "summaryParticipantGroup") {
+          next.delete("summaryParticipantSearch");
+          next.delete("summaryParticipantPage");
+        }
+      }
       return next;
     });
   }
@@ -84,6 +92,12 @@ export function PresenterSessionSummary({
     queryFn: () => getLectureSummary(courseId, session.id)
   });
   const summary = summaryQuery.data;
+  useEffect(() => {
+    if (!summary) return;
+    document
+      .querySelector<HTMLElement>('.report-tabs__list [data-state="active"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [summary, tab]);
 
   return (
     <main
@@ -137,6 +151,10 @@ export function PresenterSessionSummary({
               <TabsTrigger value="overview">
                 <BarChart3 size={18} aria-hidden="true" />
                 Сводка
+              </TabsTrigger>
+              <TabsTrigger value="participants">
+                <UserRound size={18} aria-hidden="true" />
+                Участники <span>{summary.participants.length}</span>
               </TabsTrigger>
               <TabsTrigger value="slides">
                 <FileText size={18} aria-hidden="true" />
@@ -204,7 +222,15 @@ export function PresenterSessionSummary({
               />
             </TabsContent>
             <TabsContent value="groups" className="report-panel">
-              <GroupBreakdown summary={summary} />
+              <GroupBreakdown
+                summary={summary}
+                onOpenParticipants={(groupId = "all") =>
+                  openTab("participants", { key: "summaryParticipantGroup", value: groupId }, true)
+                }
+              />
+            </TabsContent>
+            <TabsContent value="participants" className="report-panel">
+              <SummaryParticipants summary={summary} />
             </TabsContent>
           </Tabs>
         </>
@@ -1029,7 +1055,13 @@ function QuestionDetail({ question }: { question: StudentQuestion }) {
   );
 }
 
-function GroupBreakdown({ summary }: { summary: LectureSummary }) {
+function GroupBreakdown({
+  summary,
+  onOpenParticipants
+}: {
+  summary: LectureSummary;
+  onOpenParticipants: (groupId?: string) => void;
+}) {
   return (
     <section
       className="session-analytics__section report-groups"
@@ -1040,6 +1072,9 @@ function GroupBreakdown({ summary }: { summary: LectureSummary }) {
           <h2 id="group-results-title">Результаты по группам</h2>
           <p className="muted">Группы, выбранные для этого занятия.</p>
         </div>
+        <Button variant="outline" onClick={() => onOpenParticipants()}>
+          Все участники <ArrowRight size={16} aria-hidden="true" />
+        </Button>
       </div>
       {summary.groupBreakdowns.length === 0 ? (
         <p className="session-analytics__empty">Занятие проводилось без учебных групп.</p>
@@ -1061,7 +1096,15 @@ function GroupBreakdown({ summary }: { summary: LectureSummary }) {
                   return (
                     <tr key={group.group.id}>
                       <td data-label="Учебная группа">
-                        <strong>{group.group.name || "Без названия"}</strong>
+                        <Button
+                          variant="link"
+                          className="report-group-members"
+                          aria-label={`Показать участников группы ${group.group.name || "Без названия"}`}
+                          onClick={() => onOpenParticipants(group.group.id)}
+                        >
+                          {group.group.name || "Без названия"}
+                          <ArrowRight size={16} aria-hidden="true" />
+                        </Button>
                       </td>
                       <td data-label="Подключения">{group.participantCount}</td>
                       <td data-label="Сигналы «Не понимаю»">

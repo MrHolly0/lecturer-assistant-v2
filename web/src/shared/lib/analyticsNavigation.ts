@@ -1,4 +1,11 @@
-export const SUMMARY_TABS = ["overview", "slides", "checks", "questions", "groups"] as const;
+export const SUMMARY_TABS = [
+  "overview",
+  "participants",
+  "slides",
+  "checks",
+  "questions",
+  "groups"
+] as const;
 export type SummaryTab = (typeof SUMMARY_TABS)[number];
 
 export function summaryTab(value: string | null): SummaryTab {
