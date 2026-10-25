@@ -9,4 +9,5 @@ public record StudentQuestionAnswer(
         String questionText,
         String answerText,
         QuestionAnswerVisibility answerVisibility,
-        Instant answeredAt) {}
+        Instant answeredAt,
+        Integer slideIdx) {}

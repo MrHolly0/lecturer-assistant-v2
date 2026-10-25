@@ -3904,6 +3904,8 @@ export interface components {
       slideIdx?: number;
     };
     StudentQuestionRequest: {
+      /** @description One-based slide visible when the student opened the question form. Omission uses the current server slide for older clients. */
+      slideIdx?: number | null;
       /**
        * @description Hide the author from teaching staff; retain server-side routing for private answers.
        * @default false
@@ -3913,6 +3915,8 @@ export interface components {
       text: string;
     };
     StudentQuestion: {
+      /** @description One-based slide in this session deck. Null means the slide was not recorded for a historical question. */
+      slideIdx?: number | null;
       /** @description When true, displayName is a nonidentifying label in all staff responses. */
       anonymous: boolean;
       /** Format: uuid */
@@ -3952,6 +3956,8 @@ export interface components {
     QuestionAnswerVisibility: "AUTHOR" | "SESSION";
     /** @description Student-safe answer without the question author's identity. */
     StudentQuestionAnswer: {
+      /** @description Slide of the original question, preserved when the teacher answers after navigation. */
+      slideIdx?: number | null;
       /** Format: uuid */
       questionId: string;
       questionText: string;

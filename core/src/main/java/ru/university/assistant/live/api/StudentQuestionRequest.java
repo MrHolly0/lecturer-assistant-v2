@@ -1,9 +1,11 @@
 package ru.university.assistant.live.api;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
 public record StudentQuestionRequest(
         String participantToken,
         @NotBlank @Size(min = 2, max = 2000) String text,
-        boolean anonymous) {}
+        boolean anonymous,
+        @Min(1) Integer slideIdx) {}

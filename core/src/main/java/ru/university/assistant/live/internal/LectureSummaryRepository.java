@@ -127,7 +127,7 @@ class LectureSummaryRepository {
     List<StudentQuestion> unansweredQuestions(UUID sessionId) {
         return jdbc.sql("""
                         select id, session_id, display_name, channel_type, text, status, created_at,
-                               answer_text, answered_at, answer_visibility, anonymous
+                               answer_text, answered_at, answer_visibility, anonymous, slide_idx
                         from qa.questions
                         where session_id = :sessionId and status = 'OPEN'
                         order by created_at asc
@@ -243,7 +243,8 @@ class LectureSummaryRepository {
                 rs.getString("answer_visibility") == null
                         ? null
                         : QuestionAnswerVisibility.valueOf(rs.getString("answer_visibility")),
-                rs.getBoolean("anonymous"));
+                rs.getBoolean("anonymous"),
+                rs.getObject("slide_idx", Integer.class));
     }
 
     private List<String> options(String json) {

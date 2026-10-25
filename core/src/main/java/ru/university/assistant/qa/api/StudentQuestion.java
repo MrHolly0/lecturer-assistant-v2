@@ -14,4 +14,5 @@ public record StudentQuestion(
         String answerText,
         Instant answeredAt,
         QuestionAnswerVisibility answerVisibility,
-        boolean anonymous) {}
+        boolean anonymous,
+        Integer slideIdx) {}

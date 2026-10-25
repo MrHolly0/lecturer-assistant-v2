@@ -24,14 +24,14 @@ class QuestionRepository {
 
     StudentQuestion create(
             UUID id, UUID sessionId, UUID personId, String displayName,
-            String channelType, String text, boolean anonymous) {
+            String channelType, String text, boolean anonymous, Integer slideIdx) {
         return jdbc.sql(
                         """
                         insert into qa.questions
-                            (id, session_id, person_id, display_name, channel_type, text, status, anonymous)
-                        values (:id, :sessionId, :personId, :displayName, :channelType, :text, 'OPEN', :anonymous)
+                            (id, session_id, person_id, display_name, channel_type, text, status, anonymous, slide_idx)
+                        values (:id, :sessionId, :personId, :displayName, :channelType, :text, 'OPEN', :anonymous, :slideIdx)
                         returning id, session_id, display_name, channel_type, text, status, created_at,
-                                  answer_text, answered_at, answer_visibility, anonymous
+                                  answer_text, answered_at, answer_visibility, anonymous, slide_idx
                         """)
                 .param("id", id)
                 .param("sessionId", sessionId)
@@ -40,6 +40,7 @@ class QuestionRepository {
                 .param("channelType", channelType)
                 .param("text", text)
                 .param("anonymous", anonymous)
+                .param("slideIdx", slideIdx)
                 .query(this::mapQuestion)
                 .single();
     }
@@ -48,7 +49,7 @@ class QuestionRepository {
         return jdbc.sql(
                         """
                         select id, session_id, display_name, channel_type, text, status, created_at,
-                               answer_text, answered_at, answer_visibility, anonymous
+                               answer_text, answered_at, answer_visibility, anonymous, slide_idx
                         from qa.questions
                         where session_id = :sessionId and status = 'OPEN'
                         order by created_at desc
@@ -63,7 +64,7 @@ class QuestionRepository {
         List<StudentQuestion> items = jdbc.sql(
                         """
                         select id, session_id, display_name, channel_type, text, status, created_at,
-                               answer_text, answered_at, answer_visibility, anonymous
+                               answer_text, answered_at, answer_visibility, anonymous, slide_idx
                         from qa.questions
                         where session_id = :sessionId and status = :status
                           and position(lower(:query) in lower(text)) > 0
@@ -103,7 +104,7 @@ class QuestionRepository {
         return jdbc.sql(
                         """
                         select id, session_id, display_name, channel_type, text, status, created_at,
-                               answer_text, answered_at, answer_visibility, anonymous
+                               answer_text, answered_at, answer_visibility, anonymous, slide_idx
                         from qa.questions
                         where session_id = :sessionId and id = :questionId
                         """)
@@ -125,7 +126,7 @@ class QuestionRepository {
                             answer_visibility = :answerVisibility, answered_at = now()
                         where session_id = :sessionId and id = :questionId and status = 'OPEN'
                         returning id, session_id, display_name, channel_type, text, status, created_at,
-                                  answer_text, answered_at, answer_visibility, anonymous
+                                  answer_text, answered_at, answer_visibility, anonymous, slide_idx
                         """)
                 .param("sessionId", sessionId)
                 .param("questionId", questionId)
@@ -147,7 +148,7 @@ class QuestionRepository {
     List<QuestionAnswerAudience> answeredQuestions(UUID sessionId) {
         return jdbc.sql(
                         """
-                        select person_id, id, text, answer_text, answer_visibility, answered_at
+                        select person_id, id, text, answer_text, answer_visibility, answered_at, slide_idx
                         from qa.questions
                         where session_id = :sessionId and status = 'ANSWERED'
                             and answer_text is not null and answer_visibility is not null
@@ -161,7 +162,8 @@ class QuestionRepository {
                                 rs.getString("text"),
                                 rs.getString("answer_text"),
                                 QuestionAnswerVisibility.valueOf(rs.getString("answer_visibility")),
-                                rs.getTimestamp("answered_at").toInstant())))
+                                rs.getTimestamp("answered_at").toInstant(),
+                                rs.getObject("slide_idx", Integer.class))))
                 .list();
     }
 
@@ -170,7 +172,7 @@ class QuestionRepository {
         java.util.Map<UUID, List<StudentQuestion>> result = new java.util.HashMap<>();
         jdbc.sql("""
                         select person_id, id, session_id, display_name, channel_type, text, status, created_at,
-                               answer_text, answered_at, answer_visibility, anonymous
+                               answer_text, answered_at, answer_visibility, anonymous, slide_idx
                         from qa.questions where session_id = :sessionId and person_id in (:ids)
                         order by created_at, id
                         """).param("sessionId", sessionId).param("ids", personIds)
@@ -196,6 +198,7 @@ class QuestionRepository {
                 rs.getString("answer_visibility") == null
                         ? null
                         : QuestionAnswerVisibility.valueOf(rs.getString("answer_visibility")),
-                rs.getBoolean("anonymous"));
+                rs.getBoolean("anonymous"),
+                rs.getObject("slide_idx", Integer.class));
     }
 }

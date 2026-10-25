@@ -313,11 +313,19 @@ public class StudentWebSessionService {
         ensureInteractive(current.session());
         return commands.execute(current.participant().personId(),
                 "POST /student/sessions/" + current.session().id() + "/questions", key,
-                commands.hash(Map.of("text", request.text(), "anonymous", request.anonymous())),
+                commands.hash(request.slideIdx() == null
+                        ? Map.of("text", request.text(), "anonymous", request.anonymous())
+                        : Map.of("text", request.text(), "anonymous", request.anonymous(),
+                                "slideIdx", request.slideIdx())),
                 StudentQuestion.class, () -> {
+                    int slideIdx = request.slideIdx() == null
+                            ? current.session().currentSlideIdx() : request.slideIdx();
+                    if (!studentDecks.containsSlide(current.session().courseId(), current.session().deckId(), slideIdx)) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Question slide does not exist");
+                    }
                     StudentQuestion question = questions.ask(
                             current.session().id(), current.participant().personId(),
-                            current.participant().displayName(), "web", request.text(), request.anonymous());
+                            current.participant().displayName(), "web", request.text(), request.anonymous(), slideIdx);
                     touch(current.participant());
                     publisher.publish("qa.question_asked", current.session());
                     return question;

@@ -32,16 +32,18 @@ class QuestionService implements QuestionApi {
     @Override
     @Transactional
     public StudentQuestion ask(
-            UUID sessionId, UUID personId, String displayName, String channelType, String text, boolean anonymous) {
+            UUID sessionId, UUID personId, String displayName, String channelType, String text,
+            boolean anonymous, Integer slideIdx) {
         StudentQuestion question = repository.create(UuidV7.generate(), sessionId, personId,
-                displayName, channelType, text.trim(), anonymous);
+                displayName, channelType, text.trim(), anonymous, slideIdx);
         events.publish(new DomainEvent(
                 "qa.question",
                 question.id(),
                 "qa.question_asked",
                 anonymous ? null : personId,
                 Map.of("sessionId", sessionId),
-                Map.of("channelType", channelType)));
+                slideIdx == null ? Map.of("channelType", channelType)
+                        : Map.of("channelType", channelType, "slideIdx", slideIdx)));
         return question;
     }
 
@@ -157,7 +159,8 @@ class QuestionService implements QuestionApi {
                         question.text(),
                         question.answerText(),
                         question.answerVisibility(),
-                        question.answeredAt())
+                        question.answeredAt(),
+                        question.slideIdx())
                 : null;
         return new ResolvedQuestion(question, authorPersonId, answer, changed);
     }

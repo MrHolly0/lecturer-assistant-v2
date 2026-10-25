@@ -131,6 +131,11 @@ public class ContentService implements StudentDeckApi {
     }
 
     @Override
+    public boolean containsSlide(UUID courseId, UUID deckId, int slideIdx) {
+        return repository.findSlideRecord(courseId, deckId, slideIdx).isPresent();
+    }
+
+    @Override
     public String slideImageUrlForDelivery(UUID courseId, UUID deckId, int slideIdx) {
         SlideDeckDetails deck = repository.findDeck(courseId, deckId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));

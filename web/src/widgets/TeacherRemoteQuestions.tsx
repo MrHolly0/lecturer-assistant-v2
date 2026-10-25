@@ -9,6 +9,7 @@ import {
   type StudentQuestion
 } from "../app/api/student-api";
 import { pluralizeRu } from "../shared/lib/plural";
+import { questionSlideLabel } from "../shared/lib/questionSlide";
 import { Button } from "../shared/ui/button";
 import { Textarea } from "../shared/ui/textarea";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../shared/ui/sheet";
@@ -290,7 +291,8 @@ export function TeacherRemoteQuestions({
                     <span>
                       <strong>{question.text}</strong>
                       <small>
-                        {authorLabel(question)} · {formatTime(question.createdAt)}
+                        {questionSlideLabel(question.slideIdx)} · {authorLabel(question)} ·{" "}
+                        {formatTime(question.createdAt)}
                       </small>
                     </span>
                   </div>

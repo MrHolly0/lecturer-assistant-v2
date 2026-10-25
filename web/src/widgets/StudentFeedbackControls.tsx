@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { questionSlideLabel } from "../shared/lib/questionSlide";
 import {
   Check,
   EyeOff,
@@ -42,6 +43,8 @@ interface StudentFeedbackControlsProps {
   onSignal: (value: SignalValue) => void;
   onQuestionChange: (value: string) => void;
   onQuestionSubmit: () => void;
+  onQuestionOpen?: () => void;
+  questionSlideIdx?: number | null;
   questionError?: boolean;
   onAnonymousChange: (value: boolean) => void;
   unavailableMessage?: string;
@@ -141,6 +144,7 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
   }
 
   function openQuestionDialog() {
+    props.onQuestionOpen?.();
     viewportRestoreCleanupRef.current?.();
     viewportRestoreCleanupRef.current = null;
     questionScrollTopRef.current = window.scrollY;
@@ -153,6 +157,7 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
   function handleQuestionOpenChange(open: boolean) {
     if (open) {
       if (!questionOpen) {
+        props.onQuestionOpen?.();
         viewportRestoreCleanupRef.current?.();
         viewportRestoreCleanupRef.current = null;
         questionScrollTopRef.current = window.scrollY;
@@ -306,8 +311,10 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
                         Задать вопрос
                       </h2>
                     </DialogTitle>
-                    <DialogDescription className="sr-only">
-                      Вопрос будет отправлен преподавателю занятия.
+                    <DialogDescription>
+                      {props.questionSlideIdx
+                        ? `Вопрос по слайду ${props.questionSlideIdx}`
+                        : "Вопрос будет отправлен преподавателю занятия."}
                     </DialogDescription>
                   </div>
                   <DialogClose asChild>
@@ -422,7 +429,10 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
                 <li key={item.id}>
                   <span>{item.text}</span>
                   {item.anonymous && <small>Анонимно</small>}
-                  <small>{new Date(item.createdAt).toLocaleTimeString("ru-RU")}</small>
+                  <small>
+                    {questionSlideLabel(item.slideIdx)} ·{" "}
+                    {new Date(item.createdAt).toLocaleTimeString("ru-RU")}
+                  </small>
                 </li>
               ))}
             </ul>

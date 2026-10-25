@@ -6294,6 +6294,11 @@ components:
       type: object
       required: [text]
       properties:
+        slideIdx:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: One-based slide visible when the student opened the question form. Omission uses the current server slide for older clients.
         anonymous:
           type: boolean
           default: false
@@ -6308,6 +6313,11 @@ components:
       type: object
       required: [id, sessionId, displayName, channelType, text, status, createdAt, anonymous]
       properties:
+        slideIdx:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: One-based slide in this session deck. Null means the slide was not recorded for a historical question.
         anonymous:
           type: boolean
           description: When true, displayName is a nonidentifying label in all staff responses.
@@ -6386,6 +6396,11 @@ components:
       required: [questionId, questionText, answerText, answerVisibility, answeredAt]
       description: Student-safe answer without the question author's identity.
       properties:
+        slideIdx:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: Slide of the original question, preserved when the teacher answers after navigation.
         questionId:
           type: string
           format: uuid

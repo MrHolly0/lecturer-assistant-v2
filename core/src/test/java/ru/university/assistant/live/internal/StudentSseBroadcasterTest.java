@@ -250,7 +250,7 @@ class StudentSseBroadcasterTest {
             broadcaster.broadcast();
             assertTrue(blockedWrite.await(2, TimeUnit.SECONDS));
             StudentQuestionAnswer answer = new StudentQuestionAnswer(
-                    UUID.randomUUID(), "Question", "Answer", QuestionAnswerVisibility.SESSION, Instant.now());
+                    UUID.randomUUID(), "Question", "Answer", QuestionAnswerVisibility.SESSION, Instant.now(), 1);
             for (int index = 0; index < 9; index++) {
                 broadcaster.publishAnswer(new StudentQuestionAnswerPublished("SLOW03", UUID.randomUUID(), answer));
             }
@@ -290,7 +290,7 @@ class StudentSseBroadcasterTest {
 
             when(sessions.answerRecipients("FAST04", Set.of(activePerson))).thenReturn(Set.of(activePerson));
             StudentQuestionAnswer answer = new StudentQuestionAnswer(
-                    UUID.randomUUID(), "Question", "Answer", QuestionAnswerVisibility.SESSION, Instant.now());
+                    UUID.randomUUID(), "Question", "Answer", QuestionAnswerVisibility.SESSION, Instant.now(), 1);
             broadcaster.publishAnswer(new StudentQuestionAnswerPublished("FAST04", UUID.randomUUID(), answer));
             assertTrue(activeDelivered.await(2, TimeUnit.SECONDS));
         } finally {
@@ -316,7 +316,7 @@ class StudentSseBroadcasterTest {
         try {
             broadcaster.publishAnswer(new StudentQuestionAnswerPublished("BATCH1", active,
                     new StudentQuestionAnswer(UUID.randomUUID(), "Question", "Answer",
-                            QuestionAnswerVisibility.SESSION, Instant.now())));
+                            QuestionAnswerVisibility.SESSION, Instant.now(), 1)));
             assertTrue(activeEmitter.awaitEvents(1, 2, TimeUnit.SECONDS));
             assertEquals(0, kickedEmitter.events);
             assertEquals(0, leftEmitter.events);
@@ -340,7 +340,7 @@ class StudentSseBroadcasterTest {
         try {
             broadcaster.publishAnswer(new StudentQuestionAnswerPublished("PRIV01", viewer,
                     new StudentQuestionAnswer(UUID.randomUUID(), "Question", "Private answer",
-                            QuestionAnswerVisibility.AUTHOR, Instant.now())));
+                            QuestionAnswerVisibility.AUTHOR, Instant.now(), 1)));
             assertTrue(closed.await(2, TimeUnit.SECONDS));
             assertEquals(0, checked.events);
         } finally { broadcaster.stop(); }
@@ -362,7 +362,7 @@ class StudentSseBroadcasterTest {
             revoke.get(1, TimeUnit.SECONDS);
             broadcaster.publishAnswer(new StudentQuestionAnswerPublished("KICK01", viewer,
                     new StudentQuestionAnswer(UUID.randomUUID(), "Question", "Answer",
-                            QuestionAnswerVisibility.SESSION, Instant.now())));
+                            QuestionAnswerVisibility.SESSION, Instant.now(), 1)));
             verify(sessions, never()).answerRecipients(anyString(), org.mockito.ArgumentMatchers.anySet());
         } finally { emitter.releaseWriteLock.countDown(); broadcaster.stop(); }
     }

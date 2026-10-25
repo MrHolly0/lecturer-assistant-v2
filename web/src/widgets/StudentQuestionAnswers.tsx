@@ -1,5 +1,6 @@
 import { Globe2, LockKeyhole, MessageSquareReply } from "lucide-react";
 import type { StudentQuestionAnswer } from "../app/api/student-api";
+import { questionSlideLabel } from "../shared/lib/questionSlide";
 
 export function StudentQuestionAnswers({ answers }: { answers: StudentQuestionAnswer[] }) {
   if (answers.length === 0) return null;
@@ -15,6 +16,7 @@ export function StudentQuestionAnswers({ answers }: { answers: StudentQuestionAn
           const personal = answer.answerVisibility === "AUTHOR";
           return (
             <li key={answer.questionId}>
+              <small>{questionSlideLabel(answer.slideIdx)}</small>
               <small>
                 {personal ? (
                   <LockKeyhole size={14} aria-hidden="true" />

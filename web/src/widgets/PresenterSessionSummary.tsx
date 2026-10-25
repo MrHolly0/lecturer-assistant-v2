@@ -34,6 +34,7 @@ import {
 } from "../app/api/student-api";
 import { pollAnalytics, signalShare } from "../shared/lib/sessionAnalytics";
 import { pluralizeRu } from "../shared/lib/plural";
+import { questionSlideLabel } from "../shared/lib/questionSlide";
 import { Button, LinkButton } from "../shared/ui/button";
 import {
   Dialog,
@@ -963,7 +964,7 @@ function QuestionHistory({
                   <strong>{question.text}</strong>
                   <span>
                     {question.anonymous ? "Анонимный вопрос" : question.displayName || "Студент"} ·{" "}
-                    {formatClock(question.createdAt)}
+                    {formatClock(question.createdAt)} · {questionSlideLabel(question.slideIdx)}
                   </span>
                   <span
                     className={`session-analytics__question-status is-${question.status.toLowerCase()}`}
@@ -1016,7 +1017,9 @@ function QuestionDetail({ question }: { question: StudentQuestion }) {
             {questionStatusLabel(question.status)}
           </span>
         </p>
-        <p className="muted">{formatDateTime(question.createdAt)}</p>
+        <p className="muted">
+          {formatDateTime(question.createdAt)} · {questionSlideLabel(question.slideIdx)}
+        </p>
         <h2>{question.text}</h2>
       </header>
       {question.status === "ANSWERED" && (

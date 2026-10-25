@@ -5,7 +5,8 @@ import java.util.UUID;
 
 public interface QuestionApi {
     StudentQuestion ask(
-            UUID sessionId, UUID personId, String displayName, String channelType, String text, boolean anonymous);
+            UUID sessionId, UUID personId, String displayName, String channelType, String text,
+            boolean anonymous, Integer slideIdx);
 
     List<StudentQuestion> openQuestions(UUID sessionId);
 

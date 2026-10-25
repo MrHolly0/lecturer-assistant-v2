@@ -84,11 +84,16 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const questionHistoryKey = user
     ? `student-question-history:${normalizedCode}:${user.id}`
     : `student-question-history:${normalizedCode}`;
-  const [question, setQuestion] = useState(() => {
+  const [{ text: question, slideIdx: questionSlideIdx }, setQuestionDraft] = useState(() => {
     try {
-      return sessionStorage.getItem(questionDraftKey) ?? "";
+      const text = sessionStorage.getItem(questionDraftKey) ?? "";
+      const slideIdx = Number(sessionStorage.getItem(`${questionDraftKey}:slide`));
+      return {
+        text,
+        slideIdx: text && Number.isInteger(slideIdx) && slideIdx > 0 ? slideIdx : null
+      };
     } catch {
-      return "";
+      return { text: "", slideIdx: null as number | null };
     }
   });
   const [snapshotSyncing, setSnapshotSyncing] = useState(false);
@@ -235,6 +240,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       text: string;
       anonymous: boolean;
       operationKey: string;
+      slideIdx: number;
       scope: string;
     }) =>
       askStudentQuestion(
@@ -242,13 +248,16 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         participantToken,
         request.text,
         request.anonymous,
-        request.operationKey
+        request.operationKey,
+        request.slideIdx
       ),
     onSuccess: (created, request) => {
       pendingQuestion.current.clear(request.operationKey);
       if (scopeRef.current !== request.scope) return;
       setQuestions((items) => [created, ...items]);
-      setQuestion((draft) => (draft.trim() === request.text ? "" : draft));
+      setQuestionDraft((draft) =>
+        draft.text.trim() === request.text ? { text: "", slideIdx: null } : draft
+      );
       toast.success("Вопрос отправлен преподавателю.");
     },
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось отправить вопрос."))
@@ -310,10 +319,13 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     try {
       if (question) sessionStorage.setItem(questionDraftKey, question);
       else sessionStorage.removeItem(questionDraftKey);
+      if (question && questionSlideIdx) {
+        sessionStorage.setItem(`${questionDraftKey}:slide`, String(questionSlideIdx));
+      } else sessionStorage.removeItem(`${questionDraftKey}:slide`);
     } catch {
       // Keep the draft in component state if storage is unavailable.
     }
-  }, [question, questionDraftKey]);
+  }, [question, questionDraftKey, questionSlideIdx]);
 
   useEffect(() => {
     try {
@@ -723,9 +735,24 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             questions={mergeStudentQuestions(current.myQuestions ?? [], questions)}
             answers={current.questionAnswers ?? []}
             onSignal={(value) => signalMut.mutate({ value, slideIdx: current.currentSlideIdx })}
-            onQuestionChange={setQuestion}
+            questionSlideIdx={questionSlideIdx}
+            onQuestionOpen={() =>
+              setQuestionDraft((draft) =>
+                draft.text.trim() ? draft : { ...draft, slideIdx: current.currentSlideIdx }
+              )
+            }
+            onQuestionChange={(text) =>
+              setQuestionDraft((draft) => ({
+                text,
+                slideIdx: draft.slideIdx ?? current.currentSlideIdx
+              }))
+            }
             onQuestionSubmit={() => {
-              const request = { text: question.trim(), anonymous: questionAnonymous };
+              const request = {
+                text: question.trim(),
+                anonymous: questionAnonymous,
+                slideIdx: questionSlideIdx ?? current.currentSlideIdx
+              };
               questionMut.mutate({
                 ...request,
                 scope,

@@ -206,14 +206,17 @@ export async function askStudentQuestion(
   participantToken: string,
   text: string,
   anonymous = false,
-  operationKey = newOperationKey()
+  operationKey = newOperationKey(),
+  slideIdx?: number
 ): Promise<StudentQuestion> {
   const authenticated = Boolean(getStoredAuth());
   const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}/questions`, {
     method: "POST",
     headers: { ...studentParticipantHeaders(participantToken), "Idempotency-Key": operationKey },
     body: JSON.stringify(
-      authenticated ? { text, anonymous } : { participantToken, text, anonymous }
+      authenticated
+        ? { text, anonymous, slideIdx }
+        : { participantToken, text, anonymous, slideIdx }
     )
   });
   return res.json() as Promise<StudentQuestion>;
