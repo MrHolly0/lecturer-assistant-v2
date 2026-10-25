@@ -29,7 +29,8 @@ class QuestionRepository {
                         """
                         insert into qa.questions
                             (id, session_id, person_id, display_name, channel_type, text, status, anonymous, slide_idx)
-                        values (:id, :sessionId, :personId, :displayName, :channelType, :text, 'OPEN', :anonymous, :slideIdx)
+                        values (:id, :sessionId, :personId, :displayName, :channelType,
+                                :text, 'OPEN', :anonymous, :slideIdx)
                         returning id, session_id, display_name, channel_type, text, status, created_at,
                                   answer_text, answered_at, answer_visibility, anonymous, slide_idx
                         """)

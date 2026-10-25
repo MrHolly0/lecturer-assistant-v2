@@ -320,7 +320,8 @@ public class StudentWebSessionService {
                 StudentQuestion.class, () -> {
                     int slideIdx = request.slideIdx() == null
                             ? current.session().currentSlideIdx() : request.slideIdx();
-                    if (!studentDecks.containsSlide(current.session().courseId(), current.session().deckId(), slideIdx)) {
+                    if (!studentDecks.containsSlide(
+                            current.session().courseId(), current.session().deckId(), slideIdx)) {
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Question slide does not exist");
                     }
                     StudentQuestion question = questions.ask(
