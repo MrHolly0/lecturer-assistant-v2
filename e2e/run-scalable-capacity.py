@@ -21,6 +21,8 @@ def main():
     parser.add_argument('--stages', default='10x100,100x100')
     parser.add_argument('--fixture', type=Path, default=Path('/tmp/lecturer-scale-fixture.json'))
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--expect-stopped', action='append', default=[],
+        choices=['core-a', 'core-b', 'realtime-a', 'realtime-b', 'realtime-c', 'rabbit-a', 'rabbit-b', 'rabbit-c'])
     args = parser.parse_args()
     for stage in args.stages.split(','):
         if not re.fullmatch(r'\d+x\d+', stage):
@@ -37,7 +39,10 @@ def main():
         ('scalable-linux-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))).resolve()
     if not destination.is_relative_to(ROOT / 'artifacts'):
         parser.error('Output must be a new directory under artifacts/')
-    subprocess.run([sys.executable, str(ROOT / 'deploy/scalable/verify-ready.py')], check=True)
+    readiness = [sys.executable, str(ROOT / 'deploy/scalable/verify-ready.py')]
+    for service in args.expect_stopped:
+        readiness.extend(['--expect-stopped', service])
+    subprocess.run(readiness, check=True)
     destination.mkdir(parents=True, exist_ok=False)
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     dirty = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT))
@@ -45,6 +50,7 @@ def main():
         '{"docker":{{json .ServerVersion}},"cpus":{{.NCPU}},"memoryBytes":{{.MemTotal}}}'], text=True))
     environment.update({'revision': revision, 'dirty': dirty, 'generatorImage': IMAGE,
         'generatorLimits': {'cpus': 2, 'memoryBytes': 1073741824},
+        'expectedStopped': args.expect_stopped,
         'mediaIncluded': False, 'route': 'Linux generator -> edge -> gateway/authority/application',
         'stages': args.stages})
     (destination / 'environment.json').write_text(json.dumps(environment, indent=2))

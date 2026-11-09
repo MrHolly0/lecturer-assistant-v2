@@ -13,25 +13,49 @@ async function api(path, body, headers = {}, method = 'POST') {
 }
 const auth = await api('/auth/login', { email: f.email, password: f.password });
 const staff = { Authorization: 'Bearer ' + auth.accessToken };
+const fresh = process.env.SCALE_MEDIA_FRESH_SESSION === 'true';
+const viewerCount = Number(process.env.SCALE_MEDIA_VIEWERS ?? 1);
+if (!Number.isInteger(viewerCount) || viewerCount < 1 || viewerCount > 32)
+  throw new Error('Viewer count must be within 1..32');
+if (fresh) {
+  const lecture = await api(`/courses/${f.course.id}/lectures`, {
+    title: 'Isolated media capacity ' + randomUUID(), deckId: f.deck.id
+  }, staff);
+  f.session = await api(`/courses/${f.course.id}/lectures/${lecture.id}/sessions`,
+    { groups: [{ groupName: 'Synthetic media viewers' }] }, staff);
+  await api(`/courses/${f.course.id}/sessions/${f.session.id}/begin`, undefined, staff);
+}
 const path = `/courses/${f.course.id}/sessions/${f.session.id}/sfu-share`;
 const room = await api(path, { sourceName: 'Synthetic browser test' }, staff);
-const viewerId = randomUUID();
-const viewerPath = `/student/sessions/${f.session.joinCode}/sfu-share/${viewerId}`;
-const viewerHeaders = { 'X-Participant-Token': f.students[1].participantToken };
+const viewers = [];
+for (let i = 0; i < viewerCount; i++) {
+  const student = fresh || viewerCount > 1 ? await api(`/student/sessions/${f.session.joinCode}/join`,
+    { displayName: `Synthetic media viewer ${i}` }) : f.students[1];
+  viewers.push({ path: `/student/sessions/${f.session.joinCode}/sfu-share/${randomUUID()}`,
+    headers: { 'X-Participant-Token': student.participantToken } });
+}
 const pulse = setInterval(() => void api(path + '/' + room.id, undefined, staff, 'GET').catch(() => {}), 3000);
 const presence = setInterval(() => void api(path.replace('/sfu-share', '/presenter-presence'), undefined, staff)
   .catch(() => {}), 30000);
-const viewerPulse = setInterval(() => void api(viewerPath, undefined, viewerHeaders).catch(() => {}), 15000);
+const viewerPulse = setInterval(() => {
+  for (const viewer of viewers) void api(viewer.path, undefined, viewer.headers).catch(() => {});
+}, 15000);
 const html = `<!doctype html><meta charset="utf-8"><title>Isolated SFU media test</title>
 <style>body{font:24px sans-serif;background:#fff;color:#111}video,canvas{max-width:95vw;border:1px solid #aaa}</style>
 <h1>Isolated SFU media test</h1><div id="status">Ready</div><video id="video" autoplay muted playsinline></video>
 <script src="/sdk.js"></script><script>
 window.framesDecoded=()=>document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames;
-window.start=async role=>{
- const ticket=await(await fetch('/ticket?role='+role)).json();
+window.videoStats=async()=>{
+ const stats=await window.remoteTrack?.getReceiverStats();const video=document.querySelector('video');
+ return {framesDecoded:stats?.framesDecoded??0,displayedFrames:window.framesDecoded(),
+  frameWidth:video.videoWidth,frameHeight:video.videoHeight,bytesReceived:stats?.bytesReceived??0,
+  packetsReceived:stats?.packetsReceived??0,packetsLost:stats?.packetsLost??0,timestamp:stats?.timestamp??0};
+};
+window.start=async(role,viewer=0)=>{
+ const ticket=await(await fetch('/ticket?role='+role+'&viewer='+viewer)).json();
  const room=new LivekitClient.Room({adaptiveStream:false,dynacast:false}); window.room=room;
  room.on(LivekitClient.RoomEvent.TrackSubscribed,track=>{
-  if(track.kind==='video'){track.attach(document.querySelector('video'));document.querySelector('#status').textContent='Receiving';}
+  if(track.kind==='video'){window.remoteTrack=track;track.attach(document.querySelector('video'));document.querySelector('#status').textContent='Receiving';}
  });
  await room.connect(ticket.url,ticket.token,{autoSubscribe:role!=='publisher'});
  if(role==='publisher'){
@@ -54,8 +78,12 @@ const server = createServer(async (request, response) => {
     }
     const role = new URL(request.url, 'http://localhost').searchParams.get('role');
     if (request.url.startsWith('/ticket?') && ['publisher', 'subscriber'].includes(role)) {
+      const index = Number(new URL(request.url, 'http://localhost').searchParams.get('viewer') ?? 0);
+      if (!Number.isInteger(index) || index < 0 || index >= viewers.length) {
+        response.writeHead(400).end('{}'); return;
+      }
       const ticket = role === 'publisher' ? await api(path + '/' + room.id + '/ticket', undefined, staff)
-        : (await api(viewerPath, undefined, viewerHeaders)).ticket;
+        : (await api(viewers[index].path, undefined, viewers[index].headers)).ticket;
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(ticket));
       return;
     }
@@ -67,5 +95,6 @@ const stop = async () => {
   clearInterval(pulse); clearInterval(presence); clearInterval(viewerPulse);
   server.close(); server.closeAllConnections();
   await api(path + '/' + room.id, undefined, staff, 'DELETE').catch(() => {});
+  if (fresh) await api(`/courses/${f.course.id}/sessions/${f.session.id}/end`, undefined, staff).catch(() => {});
 };
 process.on('SIGTERM', stop); process.on('SIGINT', stop);
