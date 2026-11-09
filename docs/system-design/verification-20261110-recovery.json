@@ -1,0 +1,383 @@
+{
+  "date": "2026-11-10",
+  "overallTarget": "NOT_QUALIFIED",
+  "controlPath": "PASSED_SYNTHETIC_10000_AND_PROCESS_REPLICA_LOSS",
+  "baseline": {
+    "environment": {
+      "docker": "29.3.1",
+      "cpus": 8,
+      "memoryBytes": 8321994752,
+      "revision": "06161b44df23fc7a7acfd157555f9b35acf11bee",
+      "dirty": false,
+      "generatorImage": "node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8",
+      "generatorLimits": {
+        "cpus": 2,
+        "memoryBytes": 1073741824
+      },
+      "mediaIncluded": false,
+      "route": "Linux generator -> edge -> gateway/authority/application",
+      "stages": "10x100,100x100"
+    },
+    "startedAt": "2026-11-09T23:17:12.870Z",
+    "finishedAt": "2026-11-09T23:20:54.216Z",
+    "http": {
+      "requests": 145039,
+      "retries": 272,
+      "statuses": {
+        "200": 144206,
+        "201": 631,
+        "202": 1,
+        "401": 110,
+        "503": 91
+      },
+      "networkFailures": 0,
+      "networkFailureCodes": {}
+    },
+    "generator": {
+      "runtime_process_resident_memory_bytes": 506683392,
+      "runtime_process_heap_used_bytes": 244970976,
+      "runtime_event_loop_utilization": 1,
+      "runtime_process_cpu_ratio": 1.0431232108327164,
+      "runtime_process_cpu_seconds_total": 152.862477,
+      "runtime_event_loop_delay_max_seconds": 1.128267775,
+      "runtime_event_loop_delay_recent_max_seconds": 0.020545535,
+      "runtime_event_loop_delay_p99_seconds": 0.020545535,
+      "runtime_sample_max_gap_seconds": 10.247801878999978,
+      "runtime_gc_count_total": 1752,
+      "runtime_gc_seconds_total": 3.380784649004927,
+      "runtime_gc_max_seconds": 0.062142167000100015,
+      "runtime_major_page_faults_total": 1,
+      "runtime_involuntary_context_switches_total": 165825,
+      "runtime_voluntary_context_switches_total": 317108
+    },
+    "stages": [
+      {
+        "lectures": 10,
+        "students": 100,
+        "expectedClients": 1000,
+        "joined": 1000,
+        "sseInitial": 1000,
+        "reconnected": 1000,
+        "streamErrors": 0,
+        "privacyErrors": 0,
+        "delivery": [
+          {
+            "slideIdx": 2,
+            "expected": 1000,
+            "received": 1000,
+            "p95Ms": 363.33491700000013
+          },
+          {
+            "slideIdx": 3,
+            "expected": 1000,
+            "received": 1000,
+            "p95Ms": 234.748834
+          },
+          {
+            "slideIdx": 4,
+            "expected": 1000,
+            "received": 1000,
+            "p95Ms": 257.9394169999996
+          },
+          {
+            "slideIdx": 5,
+            "expected": 1000,
+            "received": 1000,
+            "p95Ms": 294.8217089999998
+          }
+        ],
+        "images": {
+          "expected": 5000,
+          "received": 5000,
+          "bytes": 846901000,
+          "p95Ms": 25.3348330000008,
+          "maximumInflight": 32
+        },
+        "votes": {
+          "expected": 1000,
+          "accepted": 1000,
+          "duplicateRejected": 1000,
+          "closedTotal": 1000
+        },
+        "fallback": {
+          "expected": 3000,
+          "received": 3000,
+          "maximumPerClientInflight": 1
+        },
+        "feedbackVerified": 10,
+        "scopeDenials": {
+          "expected": 10,
+          "received": 10
+        },
+        "failures": [],
+        "durationMs": 28265,
+        "passed": true
+      },
+      {
+        "lectures": 100,
+        "students": 100,
+        "expectedClients": 10000,
+        "joined": 10000,
+        "sseInitial": 10000,
+        "reconnected": 10000,
+        "streamErrors": 0,
+        "privacyErrors": 0,
+        "delivery": [
+          {
+            "slideIdx": 2,
+            "expected": 10000,
+            "received": 10000,
+            "p95Ms": 1623.0637089999946
+          },
+          {
+            "slideIdx": 3,
+            "expected": 10000,
+            "received": 10000,
+            "p95Ms": 1597.6295419999951
+          },
+          {
+            "slideIdx": 4,
+            "expected": 10000,
+            "received": 10000,
+            "p95Ms": 1706.4469580000004
+          },
+          {
+            "slideIdx": 5,
+            "expected": 10000,
+            "received": 10000,
+            "p95Ms": 1584.6919170000037
+          }
+        ],
+        "images": {
+          "expected": 50000,
+          "received": 50000,
+          "bytes": 8469010000,
+          "p95Ms": 83.76050000000396,
+          "maximumInflight": 32
+        },
+        "votes": {
+          "expected": 10000,
+          "accepted": 10000,
+          "duplicateRejected": 10000,
+          "closedTotal": 10000
+        },
+        "fallback": {
+          "expected": 30000,
+          "received": 30000,
+          "maximumPerClientInflight": 1
+        },
+        "feedbackVerified": 100,
+        "scopeDenials": {
+          "expected": 100,
+          "received": 100
+        },
+        "failures": [],
+        "durationMs": 188961,
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "replicasStoppedBeforeLoad": {
+    "environment": {
+      "docker": "29.3.1",
+      "cpus": 8,
+      "memoryBytes": 8321994752,
+      "revision": "6a0736d8bfa1bb7a27c33e7573a52e6c8fa95f30",
+      "dirty": false,
+      "generatorImage": "node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8",
+      "generatorLimits": {
+        "cpus": 2,
+        "memoryBytes": 1073741824
+      },
+      "expectedStopped": [
+        "core-b",
+        "realtime-c",
+        "rabbit-c"
+      ],
+      "mediaIncluded": false,
+      "route": "Linux generator -> edge -> gateway/authority/application",
+      "stages": "100x100"
+    },
+    "startedAt": "2026-11-09T23:26:56.764Z",
+    "finishedAt": "2026-11-09T23:29:53.212Z",
+    "http": {
+      "requests": 132679,
+      "retries": 1007,
+      "statuses": {
+        "200": 131106,
+        "201": 601,
+        "202": 1,
+        "401": 100,
+        "503": 871
+      },
+      "networkFailures": 0,
+      "networkFailureCodes": {}
+    },
+    "generator": {
+      "runtime_process_resident_memory_bytes": 482099200,
+      "runtime_process_heap_used_bytes": 219674440,
+      "runtime_event_loop_utilization": 1,
+      "runtime_process_cpu_ratio": 1.0590132624269488,
+      "runtime_process_cpu_seconds_total": 135.625822,
+      "runtime_event_loop_delay_max_seconds": 8.568963071,
+      "runtime_event_loop_delay_recent_max_seconds": 8.568963071,
+      "runtime_event_loop_delay_p99_seconds": 0,
+      "runtime_sample_max_gap_seconds": 9.289040420000005,
+      "runtime_gc_count_total": 1755,
+      "runtime_gc_seconds_total": 2.8132920430046506,
+      "runtime_gc_max_seconds": 0.0661826669999864,
+      "runtime_major_page_faults_total": 1,
+      "runtime_involuntary_context_switches_total": 90378,
+      "runtime_voluntary_context_switches_total": 287705
+    },
+    "stages": [
+      {
+        "lectures": 100,
+        "students": 100,
+        "expectedClients": 10000,
+        "joined": 10000,
+        "sseInitial": 10000,
+        "reconnected": 10000,
+        "streamErrors": 0,
+        "privacyErrors": 0,
+        "delivery": [
+          {
+            "slideIdx": 2,
+            "expected": 10000,
+            "received": 10000,
+            "p95Ms": 1765.8067089999968
+          },
+          {
+            "slideIdx": 3,
+            "expected": 10000,
+            "received": 10000,
+            "p95Ms": 1633.2470010000034
+          },
+          {
+            "slideIdx": 4,
+            "expected": 10000,
+            "received": 10000,
+            "p95Ms": 1577.0373760000002
+          },
+          {
+            "slideIdx": 5,
+            "expected": 10000,
+            "received": 10000,
+            "p95Ms": 1542.9128339999952
+          }
+        ],
+        "images": {
+          "expected": 50000,
+          "received": 50000,
+          "bytes": 8469010000,
+          "p95Ms": 81.42754099999729,
+          "maximumInflight": 32
+        },
+        "votes": {
+          "expected": 10000,
+          "accepted": 10000,
+          "duplicateRejected": 10000,
+          "closedTotal": 10000
+        },
+        "fallback": {
+          "expected": 30000,
+          "received": 30000,
+          "maximumPerClientInflight": 1
+        },
+        "feedbackVerified": 100,
+        "scopeDenials": {
+          "expected": 100,
+          "received": 100
+        },
+        "failures": [],
+        "durationMs": 171547,
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "permissionRecovery": {
+    "passed": true,
+    "pauseMs": 8000,
+    "allowedStreamErrors": 0,
+    "presenterStreamErrors": 0,
+    "deniedFramesAfterPause": 0,
+    "resumedOnSameConnections": true,
+    "revokedClosed": true,
+    "recoveryMs": 101.97400000000016,
+    "authorityPauseMs": 8000,
+    "authoritySuspendedConnections": 3,
+    "authorityRecoveryMs": 870.6974159999991
+  },
+  "browserMedia": {
+    "passed": true,
+    "viewers": 16,
+    "syntheticVideo": true,
+    "targetResolution": [
+      1280,
+      720
+    ],
+    "observationSeconds": 5,
+    "pageErrors": 0,
+    "qualification": "small browser decode check; not 10000 viewers or a 6 Mbps workload",
+    "phase": "complete"
+  },
+  "browserMediaMeasurements": {
+    "decodedFramesPerViewerIn5Seconds": 73,
+    "maxBitrateBps": 130798.17879705265,
+    "packetLossDuringSample": 0
+  },
+  "runtimeLogRedaction": {
+    "requestErrorsChecked": 112,
+    "requestHeadersPresent": 0,
+    "requestUrisPresent": 0
+  },
+  "testsRepeated": {
+    "serviceUnit": 21,
+    "isolatedPostgresIntegration": 1,
+    "httpPoolIntegration": 2,
+    "haRenderer": 3
+  },
+  "earlierVerification": "verification-20261110.json",
+  "originalLongPauseRootCause": "NOT_ESTABLISHED; not observed in the final configuration; no isolated causal comparison",
+  "limitations": [
+    "single Docker Desktop VM, 8 vCPU/about 8 GB; other user projects coexist",
+    "each load run uses one course and the same five-slide golden PDF; no cold independent material dataset",
+    "students are synthetic guests; 100 teacher command accounts, no 300 additional presenter/projector sockets",
+    "votes/signals/fallback are phased and bounded; 10000 votes within five seconds not established",
+    "no six-hour mixed soak, independent-host failover, PITR/DR or measured RPO/RTO",
+    "no 10000 video subscribers at 6/12 Mbps, TURN or constrained network qualification",
+    "no real MAX, Safari, iOS or physical projector verification in the new media mode"
+  ],
+  "preservedFailedRuns": [
+    "artifacts/scalable-recovery-1000/summary.json",
+    "artifacts/scalable-recovery-node24/summary.json",
+    "artifacts/scalable-recovery-node24-8gb/summary.json",
+    "artifacts/scalable-linux-final/summary.json"
+  ],
+  "syntheticCleanup": {
+    "matchedSyntheticSessions": 91,
+    "ended": 91,
+    "remaining": 0
+  },
+  "finalSmoke": {
+    "passed": true,
+    "deliveryMs": 273,
+    "privateAnswer": true,
+    "internalBlocked": true,
+    "sfuGrants": true,
+    "analytics": true,
+    "preparedFixtureReused": true,
+    "newPdfImportsVerifiedInCapacityRuns": true
+  },
+  "finalCleanup": {
+    "syntheticSessionsStillLive": 0,
+    "outboxPending": 0,
+    "outboxDead": 0,
+    "labContainersStopped": 20,
+    "legacyStandContainersStopped": 8,
+    "restartPolicy": "no",
+    "ownTestScriptsRemaining": 0
+  }
+}
