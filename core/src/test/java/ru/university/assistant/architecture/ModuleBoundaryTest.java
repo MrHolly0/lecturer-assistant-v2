@@ -30,7 +30,8 @@ class ModuleBoundaryTest {
             "channel",
             "analytics",
             "projection",
-            "shared");
+            "shared",
+            "integration");
 
     @ArchTest
     static final ArchRule modules_must_not_depend_on_other_modules_internal_packages =

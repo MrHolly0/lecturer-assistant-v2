@@ -57,6 +57,17 @@ class AccountStateService implements AccountStateApi {
     }
 
     @Override
+    public java.util.Map<UUID, Long> enabledVersions(Set<UUID> personIds) {
+        if (personIds.isEmpty()) return java.util.Map.of();
+        java.util.Map<UUID, Long> result = new java.util.HashMap<>();
+        jdbc.sql("select id, auth_version from iam.persons where id in (:ids)"
+                + " and status in ('ACTIVE', 'EPHEMERAL')").param("ids", personIds)
+                .query((rs, row) -> java.util.Map.entry(rs.getObject("id", UUID.class), rs.getLong("auth_version")))
+                .list().forEach(entry -> result.put(entry.getKey(), entry.getValue()));
+        return result;
+    }
+
+    @Override
     public Set<UUID> enabledPeople(Set<UUID> personIds) {
         if (personIds.isEmpty()) return Set.of();
         return new HashSet<>(jdbc.sql("""

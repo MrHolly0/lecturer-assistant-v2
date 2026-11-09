@@ -1,0 +1,28 @@
+# Mount a private populated copy as Secret livekit-config:livekit.yaml.
+# SFU hosts expose 7881/TCP, 7882/UDP and TURN; 7880 and 8096 remain private.
+port: 7880
+bind_addresses: ["0.0.0.0"]
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: true
+redis:
+  sentinel_master_name: media
+  sentinel_addresses: [redis-sentinel-0:26379, redis-sentinel-1:26379, redis-sentinel-2:26379]
+  sentinel_password: REPLACE_WITH_SENTINEL_PASSWORD
+  password: REPLACE_WITH_REDIS_PASSWORD
+keys:
+  REPLACE_WITH_API_KEY: REPLACE_WITH_API_SECRET
+room:
+  max_participants: 1500
+  empty_timeout: 60
+  departure_timeout: 10
+turn:
+  enabled: true
+  domain: turn.example.edu
+  tls_port: 5349
+  udp_port: 3478
+  cert_file: /etc/turn/tls.crt
+  key_file: /etc/turn/tls.key
+logging:
+  level: warn

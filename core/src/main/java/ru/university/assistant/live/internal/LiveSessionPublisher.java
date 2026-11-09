@@ -24,11 +24,25 @@ class LiveSessionPublisher {
     private final SimpMessagingTemplate messaging;
     private final ApplicationEventPublisher events;
     private final ObjectMapper json;
+    private final ru.university.assistant.integration.api.IntegrationEvents integration;
 
     LiveSessionPublisher(SimpMessagingTemplate messaging, ApplicationEventPublisher events, ObjectMapper json) {
+        this(messaging, events, json, null);
+    }
+
+    LiveSessionPublisher(SimpMessagingTemplate messaging, ApplicationEventPublisher events, ObjectMapper json,
+            ru.university.assistant.integration.api.IntegrationEvents integration) {
         this.messaging = messaging;
         this.events = events;
         this.json = json;
+        this.integration = integration;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    LiveSessionPublisher(org.springframework.beans.factory.ObjectProvider<SimpMessagingTemplate> messaging,
+            ApplicationEventPublisher events, ObjectMapper json,
+            ru.university.assistant.integration.api.IntegrationEvents integration) {
+        this(messaging.getIfAvailable(), events, json, integration);
     }
 
     void participantAccessRevoked(LiveSession session, UUID personId) {
@@ -41,12 +55,14 @@ class LiveSessionPublisher {
     }
 
     void publish(String type, LiveSession session) {
+        if (integration != null) integration.sessionChanged(type, session.id());
         Runnable send = () -> {
             if (type.equals("session.paused") || type.equals("session.resumed")
                     || type.equals("session.ended") || type.equals("session.archived")
                     || type.equals("session.cancelled")) {
                 events.publishEvent(new SessionStateChanged(session.id(), session.status()));
             }
+            if (messaging == null) return;
             try {
                 // Queue only bounded serialized bytes. Large annotations remain
                 // in HTTP storage, never as a large session object per subscriber.

@@ -19,6 +19,26 @@ import org.springframework.http.MediaType;
 /** B-04 / D-01 / D-14: участник лекции — это человек, повторный вход не плодит участников и членов курса. */
 class StudentIdentityIntegrationTest extends LiveFlowTestBase {
     @Test
+    void passwordlessStudentAccountsCannotUseTheirStoredMarkerAsPassword() throws Exception {
+        JsonNode guest = join(null, "{\"displayName\":\"Passwordless guest\"}");
+        String guestId = jdbc.sql("select id::text from iam.persons where display_name = 'Passwordless guest'")
+                .query(String.class).single();
+        String maxId = personIdOf(maxLogin(9907));
+        for (String id : new String[] {guestId, maxId}) {
+            MapEntry entry = jdbc.sql("select email, password_hash from iam.persons where id = cast(:id as uuid)")
+                    .param("id", id).query((rs, row) -> new MapEntry(rs.getString(1), rs.getString(2))).single();
+            assertEquals("!password-login-disabled", entry.hash());
+            json(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(java.util.Map.of(
+                            "email", entry.email(), "password", entry.hash()))), id.equals(guestId) ? 403 : 401);
+        }
+        json(get("/api/v1/student/sessions/{joinCode}", joinCode)
+                .header("X-Participant-Token", guest.get("participantToken").asText()), 200);
+    }
+
+    private record MapEntry(String email, String hash) {}
+
+    @Test
     void maxLoginClaimsGuestParticipationWithNameGroupAndAnswers() throws Exception {
         JsonNode guest = join(null, "{\"displayName\":\"Анна Смирнова\"}");
         String guestToken = guest.get("participantToken").asText();

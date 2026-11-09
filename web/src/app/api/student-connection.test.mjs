@@ -75,6 +75,21 @@ function focus() {
   window.dispatchEvent(new Event("pageshow"));
   document.dispatchEvent(new Event("visibilitychange"));
 }
+
+test("gateway invalidations coalesce HTTP reads while preserving healthy stream", async () => {
+  const source = start(); source.open();
+  for (let i = 0; i < 100; i++) source.dispatchEvent(new MessageEvent("invalidate", { data: "{}" }));
+  await advance(300);
+  assert.equal(requests.length, 1);
+  assert.equal(states.at(-1), "CONNECTED");
+  assert.equal(source.closes, 0);
+  assert.equal(snapshots.length, 1);
+  for (let i = 0; i < 10; i++) source.dispatchEvent(new MessageEvent("invalidate", { data: "{}" }));
+  await advance(500);
+  assert.equal(requests.length, 1);
+  await advance(500);
+  assert.equal(requests.length, 2);
+});
 async function reachPolling() {
   start().fail();
   await advance(750);

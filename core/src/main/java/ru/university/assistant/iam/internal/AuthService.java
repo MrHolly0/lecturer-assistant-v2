@@ -43,6 +43,8 @@ import ru.university.assistant.shared.api.UuidV7;
 @Service
 public class AuthService implements EphemeralPersonApi {
     private static final String MAX_CHANNEL = "max";
+    // No password credential exists for these accounts. Never hash a disposable random password on join.
+    private static final String NO_PASSWORD = "!password-login-disabled";
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final PersonRepository persons;
@@ -126,7 +128,8 @@ public class AuthService implements EphemeralPersonApi {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
         person = persons.lock(person.id());
         ensureActive(person);
-        if (!passwordEncoder.matches(request.password(), person.passwordHash())) {
+        if (NO_PASSWORD.equals(person.passwordHash())
+                || !passwordEncoder.matches(request.password(), person.passwordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
         return issueTokens(person);
@@ -181,7 +184,7 @@ public class AuthService implements EphemeralPersonApi {
                 maxDisplayName(data),
                 // A previous profile keeps its address after MAX is rebound or unlinked.
                 "max-" + personId + "@max.local",
-                passwordEncoder.encode(randomToken()),
+                NO_PASSWORD,
                 PersonRole.STUDENT);
         identities.createIdentity(UuidV7.generate(), personId, MAX_CHANNEL, externalId, data.username());
         return person;
@@ -219,7 +222,8 @@ public class AuthService implements EphemeralPersonApi {
     @Transactional
     public void changePassword(AuthenticatedUser user, ChangePasswordRequest request) {
         PersonRecord person = persons.lock(user.id());
-        if (!passwordEncoder.matches(request.currentPassword(), person.passwordHash())) {
+        if (NO_PASSWORD.equals(person.passwordHash())
+                || !passwordEncoder.matches(request.currentPassword(), person.passwordHash())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is invalid");
         }
         persons.updatePassword(user.id(), passwordEncoder.encode(request.newPassword()));
@@ -243,7 +247,7 @@ public class AuthService implements EphemeralPersonApi {
                         personId,
                         cleanName,
                         "web-" + personId + "@ephemeral.local",
-                        passwordEncoder.encode(randomToken()),
+                        NO_PASSWORD,
                         PersonRole.STUDENT,
                         PersonStatus.EPHEMERAL)
                 .toProfile();

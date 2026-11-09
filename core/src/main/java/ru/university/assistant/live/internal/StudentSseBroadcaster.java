@@ -45,6 +45,8 @@ import ru.university.assistant.qa.api.QuestionAnswerVisibility;
  * one replaceable snapshot and a small bounded queue for non-snapshot events.
  */
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "app.live.legacy-transports-enabled", havingValue = "true", matchIfMissing = true)
 public class StudentSseBroadcaster {
     private static final Logger LOG = LoggerFactory.getLogger(StudentSseBroadcaster.class);
     private static final int MAX_PENDING_ANSWERS = 8;

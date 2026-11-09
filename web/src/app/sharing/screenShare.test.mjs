@@ -107,6 +107,7 @@ async function fixture(t, capture) {
     .replace('from "./shareQuality"', `from ${JSON.stringify(mockUrl)}`)
     .replace('from "./rtc"', `from ${JSON.stringify(mockUrl)}`)
     .replace('from "./videoPublisher"', `from ${JSON.stringify(mockUrl)}`)
+    .replace('from "./sfuPublisher"', `from ${JSON.stringify(new URL("./sfuPublisher.ts", import.meta.url).href)}`)
     .replace(
       'from "./capturePolicy"',
       `from ${JSON.stringify(new URL("./capturePolicy.ts", import.meta.url).href)}`

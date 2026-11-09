@@ -34,9 +34,10 @@ class StudentSessionController {
     private final StudentWebSessionService studentSessions;
     private final StudentSseBroadcaster broadcaster;
 
-    StudentSessionController(StudentWebSessionService studentSessions, StudentSseBroadcaster broadcaster) {
+    StudentSessionController(StudentWebSessionService studentSessions,
+            org.springframework.beans.factory.ObjectProvider<StudentSseBroadcaster> broadcaster) {
         this.studentSessions = studentSessions;
-        this.broadcaster = broadcaster;
+        this.broadcaster = broadcaster.getIfAvailable();
     }
 
     @GetMapping("/api/v1/me/student-active-session")
@@ -134,6 +135,7 @@ class StudentSessionController {
 
     @GetMapping(path = "/api/v1/student/sessions/{joinCode}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter events(@PathVariable String joinCode, @RequestParam String participantToken) {
+        requireLegacyTransport();
         UUID viewerPersonId = studentSessions.participantPersonId(joinCode, participantToken);
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L);
         broadcaster.register(joinCode, viewerPersonId, emitter);
@@ -144,10 +146,16 @@ class StudentSessionController {
             path = "/api/v1/student/sessions/{joinCode}/events/public",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter publicEvents(@PathVariable String joinCode) {
+        requireLegacyTransport();
         studentSessions.snapshot(joinCode);
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L);
         broadcaster.registerPublic(joinCode, emitter);
         return emitter;
+    }
+
+    private void requireLegacyTransport() {
+        if (broadcaster == null) throw new org.springframework.web.server.ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE, "Use the realtime gateway for streaming");
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/signals")

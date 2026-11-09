@@ -436,6 +436,21 @@ public class ProjectionService {
         return new ViewerAccess(session, grant.id());
     }
 
+    public boolean canReceiveSfu(UUID deviceId, UUID sessionId) {
+        if (!policy(false).agentAllowed()) return false;
+        var device = jdbc.sql("""
+                select d.* from projection.devices d join projection.commands c on c.id = d.active_command_id
+                where d.id = ? and d.active_session_id = ? and d.active_until > now()
+                    and d.revoked_at is null and c.type = 'START_PUBLIC_PROJECTION'
+                    and c.view_token_expires_at > now()
+                """).params(deviceId, sessionId).query(this::deviceRow).optional();
+        if (device.isEmpty()) return false;
+        try {
+            var value = device.get();
+            return canShow(currentStaff(value.ownerId()), value.activeCourseId(), sessionId);
+        } catch (ResponseStatusException revoked) { return false; }
+    }
+
     /** Independent native remote: current device lease, one lesson, and explicit HTTP capabilities only. */
     @Transactional(readOnly = true)
     public AuthenticatedUser requireLectureControl(String method, String path, String token) {

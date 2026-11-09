@@ -38,6 +38,8 @@ import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.shared.api.OriginList;
 
 @Configuration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "app.live.legacy-transports-enabled", havingValue = "true", matchIfMissing = true)
 @EnableWebSocketMessageBroker
 class LiveWebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final TokenAuthenticationApi tokens;

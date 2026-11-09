@@ -32,11 +32,7 @@ public class PreparedLectureSummary {
     }
 
     LectureSummary get(LiveSession session, Supplier<LectureSummary> build) {
-        long revision = jdbc.sql("""
-                select coalesce(sum(revision), 0)::bigint from live.student_snapshot_revisions
-                where session_id = :session
-                """).param("session", session.id()).query(Long.class).single();
-        String fingerprint = fingerprint(session, revision);
+        String fingerprint = sourceFingerprint(session);
         Optional<LectureSummary> cached = find(session.id(), fingerprint);
         if (cached.isPresent()) {
             meters.counter("analytics.summary_cache", "result", "hit").increment();
@@ -64,6 +60,14 @@ public class PreparedLectureSummary {
                     .param("schema", SCHEMA_VERSION).param("payload", payload).update();
         }
         return summary;
+    }
+
+    String sourceFingerprint(LiveSession session) {
+        long revision = jdbc.sql("""
+                select coalesce(sum(revision), 0)::bigint from live.student_snapshot_revisions
+                where session_id = :session
+                """).param("session", session.id()).query(Long.class).single();
+        return fingerprint(session, revision);
     }
 
     private Optional<LectureSummary> find(UUID session, String fingerprint) {

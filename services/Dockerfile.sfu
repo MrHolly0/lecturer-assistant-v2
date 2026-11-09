@@ -1,0 +1,24 @@
+FROM golang:1.27.3-alpine3.24 AS livekit
+ARG LIVEKIT_COMMIT=385aa40f9292fe1db8caad87301e4b285b7c198a
+WORKDIR /src
+RUN wget -qO source.tar.gz "https://github.com/livekit/livekit/archive/${LIVEKIT_COMMIT}.tar.gz" \
+    && tar xzf source.tar.gz --strip-components=1 && rm source.tar.gz
+COPY services/livekit/access_inventory.go pkg/service/access_inventory.go
+COPY services/livekit/access_inventory_test.go pkg/service/access_inventory_test.go
+RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod \
+    test "$(grep -c 'rtcService.SetupRoutes(mux)' pkg/service/server.go)" = 1 \
+    && sed -i '/rtcService.SetupRoutes(mux)/i\	mux.HandleFunc("/internal/access-inventory", s.accessInventory)' pkg/service/server.go \
+    && gofmt -w pkg/service/access_inventory.go pkg/service/access_inventory_test.go \
+    && find pkg/service -maxdepth 1 -name '*_test.go' ! -name access_inventory_test.go -delete \
+    && GOTOOLCHAIN=local CGO_ENABLED=0 go test ./pkg/service -run '^TestAccessInventory' -count=1 \
+    && GOTOOLCHAIN=local CGO_ENABLED=0 go build -trimpath -o /livekit-server ./cmd/server
+FROM node:22-alpine
+COPY --from=livekit /livekit-server /usr/local/bin/livekit-server
+COPY --from=livekit /src/LICENSE /usr/share/licenses/livekit/LICENSE
+WORKDIR /app
+COPY services/package.json services/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY services/ ./
+USER node
+EXPOSE 7880 7881 7882/udp 3478/udp 8096
+CMD ["node", "media-supervisor/index.mjs"]

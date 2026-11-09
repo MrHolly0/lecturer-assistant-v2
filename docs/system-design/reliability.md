@@ -30,7 +30,7 @@
 | SFU process/host | HTTP-команды, вопросы, голосования, слайды | Повторная публикация/подписка пострадавших комнат; reserve N+1; это разрыв видео, не бесшовная миграция |
 | TURN узел | Прямые WebRTC-подключения и другой TURN | Проверять настоящий relay traffic; surviving TURN не должен стать узким местом |
 | Media Access Agent | Другие SFU-узлы и бизнес-команды | Supervisor останавливает связанную SFU-инстанцию, чтобы expiry прав не зависел от зависшего agent |
-| PostgreSQL primary | Уже загруженные материалы и часть media delivery | Только eligible synchronous standby становится primary; команды ограниченно ждут, затем понятный временный отказ |
+| PostgreSQL primary | Уже загруженные материалы; media до expiry прав | Только eligible synchronous standby становится primary; команды ограниченно ждут, затем понятный временный отказ |
 | Потеря DB quorum/нужной sync replica | Чтение уже разрешённого локального материала | Записи закрываются по deadline, не подтверждаются «в память»; не продвигать отставший узел ради зелёного health |
 | RabbitMQ node | Quorum очередей 2/3 | Confirm/ACK, повтор eventId и inbox; не считать transient gateway queue долговременным журналом |
 | Весь broker | Команды до установленного бюджета outbox; медиа | Gateway временно сверяет состояние пакетно по комнатам; рост outbox ограничен и виден оператору |
@@ -47,7 +47,12 @@
 
 ## База и split brain
 
-Предлагаемый базовый контур: PostgreSQL primary + 2 standby на независимых узлах,
+В поставляемом `deploy/scalable/ha/data.yaml` выбран CloudNativePG 1.28:
+primary + 2 standby, обязательная синхронная копия и failover quorum. Это reference
+ресурсы для площадки, не запущенный production-кластер. Приведённый ниже Patroni
+остаётся альтернативой при выборе иной платформы, а не вторым контроллером той же БД.
+
+Альтернативный контур: PostgreSQL primary + 2 standby на независимых узлах,
 Patroni, DCS quorum из 3 участников, стабильный write endpoint и проверенное fencing.
 `synchronous_mode` вместе с `synchronous_mode_strict`, `synchronous_commit=on` и
 правилом выбора допустимой replica должны быть согласованы. При отсутствии

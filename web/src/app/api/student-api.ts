@@ -285,10 +285,78 @@ export function connectStudentSession(
   let pollingGeneration = 0;
   let pollInFlight: Promise<void> | null = null;
   let pollAbort: AbortController | null = null;
+  let invalidationTimer: number | undefined;
+  let invalidationAbort: AbortController | null = null;
+  let invalidationPending = false;
+  let invalidationNotBefore = 0;
+  let invalidationFailures = 0;
   let stopped = false;
   let ended = false;
   let state: StudentConnectionState = "CONNECTING";
   const snapshotGate = new StudentSnapshotGate<StudentSessionSnapshot>();
+
+  function stopInvalidationRead() {
+    if (invalidationTimer !== undefined) window.clearTimeout(invalidationTimer);
+    invalidationTimer = undefined;
+    invalidationPending = false;
+    invalidationAbort?.abort();
+  }
+
+  // Large gateway updates carry an invalidation, keeping each stream's queue small.
+  // Coalesce reads without replacing a healthy stream or blocking the controls.
+  function scheduleInvalidationRead() {
+    if (
+      stopped ||
+      ended ||
+      !invalidationPending ||
+      invalidationAbort ||
+      invalidationTimer !== undefined
+    )
+      return;
+    invalidationTimer = window.setTimeout(
+      () => {
+        invalidationTimer = undefined;
+        if (stopped || ended || !source || source.readyState !== EventSource.OPEN) return;
+        invalidationPending = false;
+        const controller = new AbortController();
+        invalidationAbort = controller;
+        const generation = snapshotGate.generation;
+        invalidationNotBefore = Date.now() + 1000;
+        void (
+          readSnapshot
+            ? withRequestDeadline(readSnapshot, controller.signal)
+            : participantToken
+              ? getStudentSession(joinCode, participantToken, controller.signal)
+              : getPublicStudentSession(joinCode, controller.signal)
+        )
+          .then((snapshot) => {
+            if (controller.signal.aborted || stopped) return;
+            invalidationFailures = 0;
+            acceptSnapshot(snapshot, generation);
+          })
+          .catch((error) => {
+            if (controller.signal.aborted || stopped) return;
+            if (!isRetryableError(error)) {
+              streamFailed(source);
+              return;
+            }
+            invalidationPending = true;
+            invalidationNotBefore =
+              Date.now() +
+              retryDelayMs(invalidationFailures++, {
+                baseMs: 2000,
+                maxMs: 30000,
+                error
+              });
+          })
+          .finally(() => {
+            if (invalidationAbort === controller) invalidationAbort = null;
+            scheduleInvalidationRead();
+          });
+      },
+      Math.max(100 + Math.floor(Math.random() * 400), invalidationNotBefore - Date.now())
+    );
+  }
 
   const updateState = (next: StudentConnectionState) => {
     if (state === next) return;
@@ -322,6 +390,7 @@ export function connectStudentSession(
     onSnapshot(snapshot);
     if (snapshot.status !== "ENDED" && snapshot.status !== "ARCHIVED") return true;
     ended = true;
+    stopInvalidationRead();
     source?.close();
     source = null;
     clearStreamTimers();
@@ -418,6 +487,7 @@ export function connectStudentSession(
     source = null;
     clearStreamTimers();
     failures += 1;
+    stopInvalidationRead();
     if (failures >= 3) startPolling();
     else updateState(navigator.onLine ? "RECONNECTING" : "OFFLINE");
     scheduleReconnect();
@@ -465,6 +535,11 @@ export function connectStudentSession(
         // A malformed event is ignored; the next snapshot or polling pass restores state.
       }
     });
+    nextSource.addEventListener("invalidate", () => {
+      if (stopped || source !== nextSource) return;
+      invalidationPending = true;
+      scheduleInvalidationRead();
+    });
     nextSource.addEventListener("question-answer", (event) => {
       if (stopped || source !== nextSource) return;
       try {
@@ -496,6 +571,7 @@ export function connectStudentSession(
   };
   const handleOnline = () => reconnect();
   const handleOffline = () => {
+    stopInvalidationRead();
     source?.close();
     source = null;
     clearStreamTimers();
@@ -532,6 +608,7 @@ export function connectStudentSession(
     reconnect,
     disconnect: () => {
       stopped = true;
+      stopInvalidationRead();
       source?.close();
       source = null;
       clearStreamTimers();

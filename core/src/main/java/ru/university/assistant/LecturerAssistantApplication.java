@@ -11,6 +11,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 public class LecturerAssistantApplication {
 
     public static void main(String[] args) {
+        if ("content-worker".equals(System.getenv("APP_ROLE"))) {
+            ru.university.assistant.content.api.ContentWorker.run(args);
+            return;
+        }
         SpringApplication.run(LecturerAssistantApplication.class, args);
     }
 }

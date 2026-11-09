@@ -1,0 +1,11 @@
+:80 {
+    handle /internal/* {
+        reverse_proxy core-a:8080 core-b:8080 {
+            lb_policy least_conn
+            health_uri /actuator/health
+            health_interval 5s
+            health_timeout 2s
+        }
+    }
+    respond 404
+}

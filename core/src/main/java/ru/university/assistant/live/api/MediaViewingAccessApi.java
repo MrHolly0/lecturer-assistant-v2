@@ -5,5 +5,6 @@ import ru.university.assistant.iam.api.AuthenticatedUser;
 /** Revalidates actual participation before each media signalling exchange. */
 public interface MediaViewingAccessApi {
     ViewerAccess requireViewer(String joinCode, AuthenticatedUser user, String participantToken);
+    java.util.Set<java.util.UUID> allowedViewers(String joinCode, java.util.Set<java.util.UUID> people);
     record ViewerAccess(LiveSession session, java.util.UUID personId) {}
 }

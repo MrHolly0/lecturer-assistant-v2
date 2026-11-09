@@ -15,5 +15,7 @@ public interface AccountStateApi {
 
     Set<UUID> enabledPeople(Set<UUID> personIds);
 
+    java.util.Map<UUID, Long> enabledVersions(Set<UUID> personIds);
+
     record State(UUID id, String displayName, String email, PersonRole role, PersonStatus status, long version) {}
 }

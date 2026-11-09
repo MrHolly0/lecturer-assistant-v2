@@ -36,4 +36,5 @@ out
 *.sql.gz
 .env
 .env.*
+deploy/scalable/livekit.local.yaml
 !.env.example

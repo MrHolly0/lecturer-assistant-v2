@@ -1,0 +1,258 @@
+{
+  "date": "2026-11-10",
+  "branch": "feature/scalable-architecture",
+  "source_base": "a404fa50223795a9fb43e18741a19ad2a701ad97",
+  "scope": "isolated synthetic lab; no production data",
+  "environment": {
+    "docker_vm_ram_mib": 4096,
+    "multi_host_ha_tested": false
+  },
+  "code_checks": {
+    "core_tests": 396,
+    "web_tests": 141,
+    "node_unit_tests": 16,
+    "node_real_postgres_tests": 1,
+    "max_adapter_tests": 28,
+    "sfu_go_tests": 3,
+    "ha_renderer_tests": 3,
+    "capacity_arithmetic_tests": 8,
+    "core_verify": "PASS",
+    "web_lint_format_build": "PASS",
+    "images_build": "PASS"
+  },
+  "final_control_1000": {
+    "raw_report": "artifacts/scalable-capacity-final-1000/summary.json",
+    "startedAt": "2026-11-09T22:05:47.801Z",
+    "finishedAt": "2026-11-09T22:06:25.284Z",
+    "mediaIncluded": false,
+    "http": {
+      "requests": 13225,
+      "retries": 70,
+      "statuses": {
+        "200": 13115,
+        "201": 61,
+        "202": 1,
+        "401": 10,
+        "503": 38
+      },
+      "networkFailures": 0
+    },
+    "lectures": 10,
+    "students": 100,
+    "expectedClients": 1000,
+    "joined": 1000,
+    "sseInitial": 1000,
+    "reconnected": 1000,
+    "privacyErrors": 0,
+    "streamErrors": 0,
+    "images": {
+      "expected": 5000,
+      "received": 5000,
+      "bytes": 846901000,
+      "p95Ms": 40.52808300000106,
+      "maximumInflight": 32
+    },
+    "delivery": [
+      {
+        "slideIdx": 2,
+        "expected": 1000,
+        "received": 1000,
+        "p95Ms": 352.5837909999991
+      },
+      {
+        "slideIdx": 3,
+        "expected": 1000,
+        "received": 1000,
+        "p95Ms": 312.8798339999994
+      },
+      {
+        "slideIdx": 4,
+        "expected": 1000,
+        "received": 1000,
+        "p95Ms": 315.9255840000005
+      },
+      {
+        "slideIdx": 5,
+        "expected": 1000,
+        "received": 1000,
+        "p95Ms": 259.05345900000066
+      }
+    ],
+    "votes": {
+      "expected": 1000,
+      "accepted": 1000,
+      "duplicateRejected": 1000,
+      "closedTotal": 1000
+    },
+    "feedbackVerified": 10,
+    "fallback": {
+      "expected": 3000,
+      "received": 3000,
+      "maximumPerClientInflight": 1
+    },
+    "failures": [],
+    "passed": true,
+    "durationMs": 35719
+  },
+  "target_10000": {
+    "qualification": "NOT_PASSED",
+    "latest_attempt": {
+      "raw_report": "artifacts/scalable-capacity-streaming/summary.json",
+      "startedAt": "2026-11-09T22:00:52.386Z",
+      "finishedAt": "2026-11-09T22:03:25.417Z",
+      "mediaIncluded": false,
+      "http": {
+        "requests": 25243,
+        "retries": 109,
+        "statuses": {
+          "200": 24841,
+          "201": 401,
+          "202": 1
+        },
+        "networkFailures": 0
+      },
+      "lectures": 100,
+      "students": 100,
+      "expectedClients": 10000,
+      "joined": 10000,
+      "sseInitial": 10000,
+      "reconnected": 0,
+      "privacyErrors": 0,
+      "streamErrors": 10000,
+      "images": {
+        "expected": 50000,
+        "received": 14434,
+        "bytes": 2512332090
+      },
+      "delivery": [
+        {
+          "slideIdx": 2,
+          "expected": 10000,
+          "received": 4434,
+          "p95Ms": 14695.938757000004
+        }
+      ],
+      "votes": {
+        "expected": 10000,
+        "accepted": 0,
+        "duplicateRejected": 0,
+        "closedTotal": 0
+      },
+      "feedbackVerified": 0,
+      "fallback": {
+        "expected": 30000,
+        "received": 0,
+        "maximumPerClientInflight": 0
+      },
+      "failures": [
+        {
+          "step": "stage",
+          "error": "Slide delivery deadline: 4434/10000"
+        }
+      ],
+      "passed": false,
+      "durationMs": 147384
+    },
+    "earlier_attempt_with_complete_data_path": {
+      "raw_report": "artifacts/scalable-capacity-internal/summary.json",
+      "startedAt": "2026-11-09T21:41:09.699Z",
+      "finishedAt": "2026-11-09T21:44:03.620Z",
+      "mediaIncluded": false,
+      "http": {
+        "requests": 131939,
+        "retries": 243,
+        "statuses": {
+          "200": 131105,
+          "201": 601,
+          "202": 1,
+          "401": 100,
+          "503": 132
+        },
+        "networkFailures": 0
+      },
+      "lectures": 100,
+      "students": 100,
+      "expectedClients": 10000,
+      "joined": 10000,
+      "sseInitial": 10000,
+      "reconnected": 10000,
+      "privacyErrors": 0,
+      "streamErrors": 10000,
+      "images": {
+        "expected": 50000,
+        "received": 50000,
+        "bytes": 8469010000,
+        "p95Ms": 41.18866600000183,
+        "maximumInflight": 32
+      },
+      "delivery": [
+        {
+          "slideIdx": 2,
+          "expected": 10000,
+          "received": 10000,
+          "p95Ms": 1616.7805009999938
+        },
+        {
+          "slideIdx": 3,
+          "expected": 10000,
+          "received": 10000,
+          "p95Ms": 1657.833375999995
+        },
+        {
+          "slideIdx": 4,
+          "expected": 10000,
+          "received": 10000,
+          "p95Ms": 1623.6145010000037
+        },
+        {
+          "slideIdx": 5,
+          "expected": 10000,
+          "received": 10000,
+          "p95Ms": 1586.0060430000012
+        }
+      ],
+      "votes": {
+        "expected": 10000,
+        "accepted": 10000,
+        "duplicateRejected": 10000,
+        "closedTotal": 10000
+      },
+      "feedbackVerified": 100,
+      "fallback": {
+        "expected": 30000,
+        "received": 30000,
+        "maximumPerClientInflight": 1
+      },
+      "failures": [],
+      "passed": false,
+      "durationMs": 170113
+    },
+    "earlier_attempt_note": "before permission DB pool isolation; not a passing final release test",
+    "observed_event_loop_pause_seconds": [
+      6,
+      38
+    ],
+    "observed_wall_clock_step_seconds": 15,
+    "pause_root_cause": "not established"
+  },
+  "video_fault": {
+    "synthetic_resolution": [
+      1280,
+      720
+    ],
+    "application_apis_stopped": 2,
+    "last_frame_change_from_probe_start_ms": 9952,
+    "observation_ms": 49490,
+    "frame_count_after_stop": 622,
+    "final_browser_state": "signalReconnecting",
+    "sfu_listener_stopped": true,
+    "meaning": "fail-closed delivery only; not 10000 video viewers or seamless recovery"
+  },
+  "not_tested": [
+    "10000 simultaneous video viewers",
+    "multi-host Kubernetes failover",
+    "PITR/DR restore and measured RPO/RTO",
+    "six-hour mixed soak",
+    "new SFU mode inside real MAX/iOS/Safari"
+  ]
+}

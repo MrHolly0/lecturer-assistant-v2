@@ -9,18 +9,22 @@ import org.springframework.stereotype.Component;
 import ru.university.assistant.analytics.api.DomainEvent;
 import ru.university.assistant.analytics.api.EventBus;
 import ru.university.assistant.shared.api.UuidV7;
+import ru.university.assistant.integration.api.IntegrationEvents;
 
 @Component
 class JdbcEventBus implements EventBus {
     private final JdbcClient jdbc;
     private final ObjectMapper objectMapper;
+    private final IntegrationEvents integration;
 
-    JdbcEventBus(JdbcClient jdbc, ObjectMapper objectMapper) {
+    JdbcEventBus(JdbcClient jdbc, ObjectMapper objectMapper, IntegrationEvents integration) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.integration = integration;
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public UUID publish(DomainEvent event) {
         UUID eventId = UuidV7.generate();
         jdbc.sql(
@@ -38,6 +42,16 @@ class JdbcEventBus implements EventBus {
                 .param("context", json(event.context()))
                 .param("payload", json(event.payload()))
                 .update();
+        if (!integration.enabled()) return eventId;
+        Object session = event.context() == null ? null : event.context().get("sessionId");
+        UUID sessionId = session == null ? null : UUID.fromString(session.toString());
+        Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("verb", event.verb());
+        data.put("actorPersonId", event.actorPersonId());
+        data.put("context", event.context());
+        data.put("payload", event.payload());
+        integration.append(eventId, "domain", event.verb(), event.aggregateType(),
+                event.aggregateId(), sessionId, data);
         return eventId;
     }
 

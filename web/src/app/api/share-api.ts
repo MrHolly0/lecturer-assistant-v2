@@ -1,18 +1,64 @@
 import { apiFetch } from "./http";
 import { studentFetch, publicFetch } from "./student-api";
 import type { components } from "./schema";
-export type ShareStatus = components["schemas"]["ShareStatus"];
+import { newOperationKey } from "./operation-key";
+export type ShareStatus = components["schemas"]["ShareStatus"] & { transport?: "SFU" };
 export type ShareViewer = components["schemas"]["ShareViewer"];
 const path = (courseId: string, sessionId: string) =>
   `/courses/${courseId}/sessions/${sessionId}/screen-share`;
+let provider: Promise<"sfu" | "legacy"> | undefined;
+export function getMediaProvider(): Promise<"sfu" | "legacy"> {
+  return (provider ??= publicFetch("/media/capabilities")
+    .then((response) => response.json())
+    .then((value) => (value.provider === "sfu" ? ("sfu" as const) : ("legacy" as const)))
+    .catch((error) => {
+      provider = undefined;
+      throw error;
+    }));
+}
+const controlPath = async (course: string, session: string) =>
+  (await getMediaProvider()) === "sfu"
+    ? `/courses/${course}/sessions/${session}/sfu-share`
+    : path(course, session);
+export type SfuTicket = { url: string; token: string; room: string; expiresAt: string };
+export async function publisherSfuTicket(
+  course: string,
+  session: string,
+  id: string
+): Promise<SfuTicket> {
+  return (
+    await apiFetch(`/courses/${course}/sessions/${session}/sfu-share/${id}/ticket`, {
+      method: "POST"
+    })
+  ).json();
+}
+export async function viewerSfuTicket(
+  code: string,
+  viewer: string,
+  token: string,
+  projector?: string | null,
+  signal?: AbortSignal
+): Promise<(ShareStatus & { ticket?: SfuTicket }) | null> {
+  const route = projector
+    ? `/projection/agent/view/sessions/${encodeURIComponent(code)}`
+    : `/student/sessions/${encodeURIComponent(code)}`;
+  const response = await (projector ? publicFetch : studentFetch)(`${route}/sfu-share/${viewer}`, {
+    method: "POST",
+    signal,
+    headers: projector ? { "X-Projection-View-Token": projector } : { "X-Participant-Token": token }
+  });
+  return response.status === 204 ? null : response.json();
+}
 export async function startShare(
   courseId: string,
   sessionId: string,
-  sourceName: string
+  sourceName: string,
+  operationKey = newOperationKey()
 ): Promise<ShareStatus> {
   return (
-    await apiFetch(path(courseId, sessionId), {
+    await apiFetch(await controlPath(courseId, sessionId), {
       method: "POST",
+      headers: { "Idempotency-Key": operationKey },
       body: JSON.stringify({ sourceName })
     })
   ).json();
@@ -22,7 +68,7 @@ export async function pollShare(
   sessionId: string,
   id: string
 ): Promise<ShareStatus> {
-  return (await apiFetch(`${path(courseId, sessionId)}/${id}`)).json();
+  return (await apiFetch(`${await controlPath(courseId, sessionId)}/${id}`)).json();
 }
 export async function offerShare(
   courseId: string,
@@ -37,7 +83,7 @@ export async function offerShare(
   });
 }
 export async function stopShare(courseId: string, sessionId: string, id: string) {
-  await apiFetch(`${path(courseId, sessionId)}/${id}`, { method: "DELETE" });
+  await apiFetch(`${await controlPath(courseId, sessionId)}/${id}`, { method: "DELETE" });
 }
 export async function viewShare(
   code: string,

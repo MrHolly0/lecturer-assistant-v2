@@ -34,6 +34,7 @@ spring:
       - channel
       - analytics
       - projection
+      - integration
 
 management:
   endpoints:
@@ -55,6 +56,23 @@ server:
     include-message: always
 
 app:
+  media:
+    provider: ${MEDIA_PROVIDER:legacy}
+    service-url: ${MEDIA_SERVICE_URL:http://media-control:8093}
+  analytics:
+    service-url: ${ANALYTICS_SERVICE_URL:}
+  integration:
+    enabled: ${INTEGRATION_ENABLED:false}
+    max-pending-bytes: ${INTEGRATION_MAX_PENDING_BYTES:268435456}
+    max-pending-count: ${INTEGRATION_MAX_PENDING_COUNT:50000}
+    max-attempts: ${INTEGRATION_MAX_ATTEMPTS:12}
+    permission-pool-size: ${PERMISSION_DB_POOL_SIZE:4}
+  services:
+    events-key: ${SERVICE_EVENTS_KEY:}
+    realtime-key: ${SERVICE_REALTIME_KEY:}
+    analytics-key: ${SERVICE_ANALYTICS_KEY:}
+    content-key: ${SERVICE_CONTENT_KEY:}
+    media-key: ${SERVICE_MEDIA_KEY:}
   projection:
     capacity:
       rooms: ${SHARE_MAX_ROOMS:64}
@@ -67,6 +85,7 @@ app:
       trust-path: ${PROJECTOR_RELEASE_TRUST_PATH:}
   version: ${APP_VERSION:0.0.1-SNAPSHOT}
   live:
+    legacy-transports-enabled: ${LEGACY_LIVE_TRANSPORTS_ENABLED:true}
     sse-broadcast-workers: ${SSE_BROADCAST_WORKERS:4}
     sse-maximum-clients: ${SSE_MAX_CLIENTS:20000}
     sse-maximum-clients-per-session: ${SSE_MAX_CLIENTS_PER_SESSION:1000}

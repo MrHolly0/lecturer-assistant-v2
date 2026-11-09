@@ -40,7 +40,7 @@ class SecurityConfig {
                 }))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers(HttpMethod.GET, "/api/v1/system/info")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/system/info", "/api/v1/media/capabilities")
                         .permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/info")
                         .permitAll()

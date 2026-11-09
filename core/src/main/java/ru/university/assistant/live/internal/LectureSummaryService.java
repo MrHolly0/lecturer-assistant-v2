@@ -26,17 +26,19 @@ public class LectureSummaryService {
     private final LectureSummaryRepository summaries;
     private final EventBus events;
     private final PreparedLectureSummary prepared;
+    private final RemoteLectureSummary remote;
 
     LectureSummaryService(
             CourseAccessApi courseAccess,
             LiveSessionRepository sessions,
             LectureSummaryRepository summaries,
-            EventBus events, PreparedLectureSummary prepared) {
+            EventBus events, PreparedLectureSummary prepared, RemoteLectureSummary remote) {
         this.courseAccess = courseAccess;
         this.sessions = sessions;
         this.summaries = summaries;
         this.events = events;
         this.prepared = prepared;
+        this.remote = remote;
     }
 
     @Transactional
@@ -52,6 +54,7 @@ public class LectureSummaryService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Lecture session has no complete time range");
         }
 
+        if (remote.enabled()) return remote.get(session.id(), prepared.sourceFingerprint(session));
         LectureSummary summary = prepared.get(session, () -> build(session));
         events.publish(new DomainEvent(
                 "live.session",
@@ -61,6 +64,19 @@ public class LectureSummaryService {
                 Map.of("courseId", courseId, "sessionId", session.id(), "lectureId", session.lectureId()),
                 Map.of("role", user.role().name())));
         return summary;
+    }
+
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public Map<String, Object> export(UUID sessionId) {
+        LiveSession session = sessions.findById(sessionId).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        if ((session.status() != SessionStatus.ENDED && session.status() != SessionStatus.ARCHIVED)
+                || session.startedAt() == null || session.endedAt() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session has not ended");
+        }
+        String fingerprint = prepared.sourceFingerprint(session);
+        return Map.of("sessionId", sessionId, "fingerprint", fingerprint,
+                "summary", prepared.get(session, () -> build(session)));
     }
 
     private LectureSummary build(LiveSession session) {

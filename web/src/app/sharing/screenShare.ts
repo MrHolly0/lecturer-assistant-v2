@@ -17,6 +17,7 @@ import {
 import { gatheredDescription, localShareChannel } from "./rtc";
 import { configureScreenSenders, encodeShareFrame } from "./shareQuality";
 import { ShareVideoPublisher } from "./videoPublisher";
+import { SfuPublisher } from "./sfuPublisher";
 
 type Scope = { courseId: string; sessionId: string; joinCode: string };
 type ShareSource = { stream: MediaStream; sourceName: string; surface: CaptureSurface };
@@ -57,12 +58,14 @@ class ScreenShare {
   private generation = 0;
   private selectionGeneration = 0;
   private publishGeneration: number | null = null;
+  private publishIntent: string | null = null;
   private detachProjectionListener: (() => boolean) | null = null;
   private frameVideo: HTMLVideoElement | null = null;
   private frameCanvas: HTMLCanvasElement | null = null;
   private frameTimer: ReturnType<typeof setTimeout> | null = null;
   private frameAbort: AbortController | null = null;
   private videoPublisher: ShareVideoPublisher | null = null;
+  private sfuPublisher: SfuPublisher | null = null;
   private videoRetry: ReturnType<typeof setTimeout> | null = null;
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
@@ -174,7 +177,13 @@ class ScreenShare {
     const generation = this.generation;
     this.publishGeneration = generation;
     try {
-      const share = await startShare(scope.courseId, scope.sessionId, this.state.sourceName);
+      this.publishIntent ??= crypto.randomUUID();
+      const share = await startShare(
+        scope.courseId,
+        scope.sessionId,
+        this.state.sourceName,
+        this.publishIntent
+      );
       if (generation !== this.generation) {
         void stopShare(scope.courseId, scope.sessionId, share.id);
         return;
@@ -216,8 +225,19 @@ class ScreenShare {
         else this.sendLocalStatus();
       }, 1000);
       void this.poll(generation);
-      void this.startFrames(generation);
-      this.startVideo(generation);
+      if (share.transport === "SFU") {
+        this.sfuPublisher = new SfuPublisher();
+        void this.sfuPublisher.sync(
+          scope.courseId,
+          scope.sessionId,
+          share.id,
+          stream,
+          share.paused
+        );
+      } else {
+        void this.startFrames(generation);
+        this.startVideo(generation);
+      }
     } catch (error) {
       if (generation !== this.generation) return;
       this.update({
@@ -235,6 +255,14 @@ class ScreenShare {
       if (generation !== this.generation) return;
       this.share = share;
       this.setPaused(share.paused);
+      if (share.transport === "SFU" && this.state.stream)
+        void this.sfuPublisher?.sync(
+          scope.courseId,
+          scope.sessionId,
+          share.id,
+          this.state.stream,
+          share.paused
+        );
       const ids = new Set(share.peers.map((item) => item.id));
       for (const [id, peer] of this.peers)
         if (!this.localPeers.has(id) && !ids.has(id)) {
@@ -414,7 +442,8 @@ class ScreenShare {
     this.update({ paused });
     if (changed) {
       if (paused) this.stopVideo();
-      else this.startVideo(this.generation);
+      else if (this.share?.transport !== "SFU") this.startVideo(this.generation);
+      if (paused) this.sfuPublisher?.stop();
     }
     this.sendLocalStatus();
   }
@@ -427,6 +456,9 @@ class ScreenShare {
     ++this.generation;
     this.cancelSelection();
     this.publishGeneration = null;
+    this.publishIntent = null;
+    this.sfuPublisher?.stop();
+    this.sfuPublisher = null;
     this.stopVideo();
     this.detachProjectionListener?.();
     this.detachProjectionListener = null;

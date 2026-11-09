@@ -24,7 +24,7 @@ class CapacityPlanningTest(unittest.TestCase):
         r = CAPACITY.estimate(MODEL)
         self.assertEqual(10300, r['gateway']['total_connections'])
         self.assertEqual(5150, r['gateway']['connections_each_after_failure'])
-        self.assertEqual(4060, r['total_auth_subject_checks_per_second'])
+        self.assertEqual(11950, r['total_auth_subject_checks_per_second'])
         self.assertTrue(r['gateway']['connection_budget_fits'])
         self.assertEqual(138, r['database']['all_max_replica_pools'])
         self.assertEqual(168, r['database']['total_with_reserve'])
@@ -57,9 +57,10 @@ class CapacityPlanningTest(unittest.TestCase):
 
     def test_custom_lease_and_reconnect_windows_are_reflected_in_the_report(self):
         m = copy.deepcopy(MODEL)
-        m.update(auth_lease_seconds=10, media_auth_lease_seconds=20, reconnect_window_seconds=60)
+        m.update(auth_lease_seconds=10, media_auth_lease_seconds=20, auth_refresh_seconds=10,
+                 media_auth_refresh_seconds=20, reconnect_window_seconds=60)
         r = CAPACITY.estimate(m)
-        self.assertEqual(1530, r['total_auth_subject_checks_per_second'])
+        self.assertEqual(1540, r['total_auth_subject_checks_per_second'])
         self.assertIn('за 60 секунд', CAPACITY.markdown(r))
         self.assertIn('lease 10 секунд', CAPACITY.markdown(r))
 

@@ -29,6 +29,8 @@ import ru.university.assistant.projection.internal.ShareService;
 import ru.university.assistant.projection.internal.ProjectionService;
 
 @RestController
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "app.media.provider", havingValue = "legacy", matchIfMissing = true)
 public class ShareController {
     private static final String STAFF = "/api/v1/courses/{courseId}/sessions/{sessionId}/screen-share";
     private static final String VIEWER = "/api/v1/student/sessions/{joinCode}/screen-share/viewers/{viewerId}";

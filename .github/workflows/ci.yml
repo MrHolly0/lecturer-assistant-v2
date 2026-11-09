@@ -11,6 +11,18 @@ jobs:
   verify:
     runs-on: ubuntu-latest
 
+    services:
+      analytics-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: analytics_test
+          POSTGRES_PASSWORD: isolated_ci_only
+          POSTGRES_DB: analytics_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U analytics_test -d analytics_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +58,22 @@ jobs:
       - name: Verify MAX adapter
         run: node --test adapters/max/*.test.mjs
 
+      - name: Verify distributed services
+        working-directory: services
+        env:
+          SERVICES_TEST_DATABASE_URL: postgres://analytics_test:isolated_ci_only@localhost:5432/analytics_test
+        run: |
+          npm ci
+          npm test
+
+      - name: Verify HA rendering
+        run: python3 -m unittest discover -s deploy/scalable/ha -p '*_test.py'
+
+      - name: Validate scalable lab configuration
+        run: |
+          python3 deploy/scalable/init-local.py
+          docker compose --env-file deploy/scalable/.env -f deploy/scalable/compose.yml config --quiet
+
       - name: Check optional adapter syntax
         run: |
           node --check adapters/telegram/telegram-adapter.mjs
@@ -65,3 +93,9 @@ jobs:
 
       - name: Build web image
         run: docker build -f web/Dockerfile -t lecturer-assistant-web:ci .
+
+      - name: Build services image
+        run: docker build -f services/Dockerfile -t lecturer-assistant-services:ci .
+
+      - name: Verify and build SFU image
+        run: docker build -f services/Dockerfile.sfu -t lecturer-assistant-sfu:ci .

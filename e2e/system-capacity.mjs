@@ -37,6 +37,8 @@ for (const value of [joinConcurrency, openConcurrency, ioConcurrency]) {
 const summary = { runId, base: base.origin, startedAt: new Date().toISOString(),
   revision: process.env.REVISION || null, path: 'client -> Caddy -> core -> PostgreSQL',
   mediaIncluded: false, sseRequestEncoding: sseEncoding || 'default', plan, stages: [], setup: {}, passed: false };
+if (process.env.CAPACITY_TRANSPORT_GATEWAY === 'true')
+  summary.path = 'client -> nginx edge -> realtime gateway -> authority/core -> PostgreSQL; outbox/RabbitMQ invalidations';
 const stats = { requests: 0, retries: 0, statuses: {}, networkFailures: 0 };
 let stageProgress;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -126,8 +128,12 @@ let deck;
 let teacherFixtures = [];
 async function setup(count) {
   const started = performance.now();
+  const existing = process.env.CAPACITY_ADMIN_FIXTURE
+    ? JSON.parse(await readFile(process.env.CAPACITY_ADMIN_FIXTURE, 'utf8')) : null;
   const password = `Capacity-${randomUUID()}`;
-  admin = await request('POST', '/api/v1/auth/bootstrap-admin', {
+  admin = existing ? await request('POST', '/api/v1/auth/login', {
+    body: { email: existing.email, password: existing.password }
+  }) : await request('POST', '/api/v1/auth/bootstrap-admin', {
     headers: { 'X-Admin-Setup-Token': process.env.ADMIN_SETUP_TOKEN },
     body: { displayName: 'Capacity Admin', email: `capacity-${runId}@example.invalid`, password } });
   course = await request('POST', '/api/v1/courses', { token: admin.accessToken, key: intent(), body: { title: `Capacity ${runId}` } });
@@ -220,22 +226,33 @@ async function stage(configuration) {
     }
   }
   async function open(client) {
-    const controller = new AbortController(); client.controller = controller; client.generation++;
+    client.generation++;
     const generation = client.generation;
-    const untilHeaders = setTimeout(() => controller.abort(), requestTimeout);
-    let response;
-    try {
-      response = await fetch(new URL(`/api/v1/student/sessions/${client.session.joinCode}/events?participantToken=${encodeURIComponent(client.token)}`, base), {
-        signal: controller.signal, redirect: 'error', headers: sseEncoding ? { 'Accept-Encoding': sseEncoding } : {} });
-      clearTimeout(untilHeaders);
-      result.sse.statuses[response.status] = (result.sse.statuses[response.status] || 0) + 1;
-      const encoding = response.headers.get('Content-Encoding') || 'identity';
-      result.sse.encodings[encoding] = (result.sse.encodings[encoding] || 0) + 1;
-      if (!response.ok || !response.headers.get('Content-Type')?.includes('text/event-stream')) {
-        await response.body?.cancel(); throw new HttpFailure(response.status);
+    let response, controller;
+    for (let attempt = 0; ; attempt++) {
+      controller = new AbortController(); client.controller = controller;
+      const untilHeaders = setTimeout(() => controller.abort(), requestTimeout);
+      try {
+        response = await fetch(new URL(`/api/v1/student/sessions/${client.session.joinCode}/events?participantToken=${encodeURIComponent(client.token)}`, base), {
+          signal: controller.signal, redirect: 'error', headers: sseEncoding ? { 'Accept-Encoding': sseEncoding } : {} });
+        clearTimeout(untilHeaders);
+        result.sse.statuses[response.status] = (result.sse.statuses[response.status] || 0) + 1;
+        const encoding = response.headers.get('Content-Encoding') || 'identity';
+        result.sse.encodings[encoding] = (result.sse.encodings[encoding] || 0) + 1;
+        if (!response.ok || !response.headers.get('Content-Type')?.includes('text/event-stream')) {
+          await response.body?.cancel(); throw new HttpFailure(response.status);
+        }
+        result.sse.opened++; break;
+      } catch (error) {
+        clearTimeout(untilHeaders); controller.abort();
+        if (attempt < 5 && (!(error instanceof HttpFailure) || [429, 502, 503, 504].includes(error.status))) {
+          stats.retries++;
+          await sleep(Math.max(retryAfter(response?.headers.get('Retry-After')),
+            Math.random() * Math.min(5000, 500 * 2 ** attempt))); continue;
+        }
+        issue('sse-open', error); return;
       }
-      result.sse.opened++;
-    } catch (error) { clearTimeout(untilHeaders); issue('sse-open', error); return; }
+    }
     client.reader = (async () => {
       let buffer = ''; const decoder = new TextDecoder();
       const streamReader = response.body.getReader(); client.streamReader = streamReader;

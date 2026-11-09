@@ -35,11 +35,13 @@ def estimate(model):
     integer_fields = [
         'students', 'lessons', 'video_viewers', 'gateway_replicas',
         'gateway_connection_acceptance_target', 'public_event_bytes', 'latest_state_queue_bytes',
-        'private_queue_items', 'private_item_bytes', 'connection_metadata_bytes',
+        'private_item_bytes', 'connection_metadata_bytes',
         'postgres_max_connections', 'postgres_reserved_connections'
     ]
     for key in integer_fields:
         positive(model[key], key, integer=True)
+    positive(model['private_queue_items'], 'private_queue_items', integer=True, allow_zero=True)
+    positive(model.get('transport_buffer_bytes', 0), 'transport_buffer_bytes', integer=True, allow_zero=True)
     for key in ['teacher_connections_per_lesson', 'projector_connections_per_lesson', 'failed_nodes']:
         positive(model[key], key, integer=True, allow_zero=True)
     for key in [
@@ -50,6 +52,12 @@ def estimate(model):
     ]:
         positive(model[key], key)
     positive(model['turn_fraction'], 'turn_fraction', allow_zero=True)
+    refresh = model.get('auth_refresh_seconds', model['auth_lease_seconds'])
+    media_refresh = model.get('media_auth_refresh_seconds', model['media_auth_lease_seconds'])
+    positive(refresh, 'auth_refresh_seconds')
+    positive(media_refresh, 'media_auth_refresh_seconds')
+    if refresh > model['auth_lease_seconds'] or media_refresh > model['media_auth_lease_seconds']:
+        raise ValueError('Permission refresh must not exceed its lease')
     if model['usable_nic_fraction'] > 1 or model['turn_fraction'] > 1:
         raise ValueError('Fractions must not exceed one')
     if model['network_overhead_factor'] < 1:
@@ -98,6 +106,8 @@ def estimate(model):
     per_gateway = math.ceil(connections / surviving)
     per_client_queue = model['latest_state_queue_bytes'] + (
         model['private_queue_items'] * model['private_item_bytes']) + model['connection_metadata_bytes']
+    per_client_queue += model.get('transport_buffer_bytes', 0)
+    media_subjects = model['video_viewers'] + model['lessons'] * (1 + model['projector_connections_per_lesson'])
     rates = {
         'votes': model['students'] / model['vote_window_seconds'],
         'signals': model['students'] / model['signal_window_seconds'],
@@ -133,10 +143,11 @@ def estimate(model):
             'full_reconnects_per_second': connections / model['reconnect_window_seconds'],
             'reconnect_window_seconds': model['reconnect_window_seconds'],
             'auth_lease_seconds': model['auth_lease_seconds'],
-            'auth_subject_checks_per_second': connections / model['auth_lease_seconds']
+            'auth_refresh_seconds': refresh,
+            'auth_subject_checks_per_second': connections / refresh
         },
-        'media_auth_subject_checks_per_second': model['video_viewers'] / model['media_auth_lease_seconds'],
-        'total_auth_subject_checks_per_second': connections / model['auth_lease_seconds'] + model['video_viewers'] / model['media_auth_lease_seconds'],
+        'media_auth_subject_checks_per_second': media_subjects / media_refresh,
+        'total_auth_subject_checks_per_second': connections / refresh + media_subjects / media_refresh,
         'write_operations_rps': rates,
         'combined_peak_operation_rps': sum(rates.values()),
         'database': {'max_connections': model['postgres_max_connections'], 'all_max_replica_pools': pools,
@@ -173,7 +184,7 @@ def markdown(report):
               f"- Только pending queues одной gateway-реплики после отказа: {g['pending_queue_only_mib_each_after_failure']:.1f} МиБ, без TLS/heap/native/TCP.",
               f"- Верхний сценарий общего fanout: {g['public_fanout_budget_mbps']:.1f} Мбит/с.",
               f"- Полное восстановление за {g['reconnect_window_seconds']:g} секунд: {g['full_reconnects_per_second']:.1f} подключений/с.",
-              f"- Проверки субъектов gateway при lease {g['auth_lease_seconds']:g} секунд: {g['auth_subject_checks_per_second']:.0f}/с, нужны batch-запросы.",
+              f"- Проверки субъектов gateway: lease {g['auth_lease_seconds']:g} секунд, refresh {g['auth_refresh_seconds']:g} секунд: {g['auth_subject_checks_per_second']:.0f}/с, нужны batch-запросы.",
               f"- Вместе с проверками media agent: {report['total_auth_subject_checks_per_second']:.0f} subject checks/с.",
               f"- Сумма заданных пиков бизнес-операций: {report['combined_peak_operation_rps']:.1f}/с; это не количество SQL-записей.",
               f"- DB pools на максимуме реплик: {d['all_max_replica_pools']}; вместе с резервом {d['total_with_reserve']} из {d['max_connections']}.", '',

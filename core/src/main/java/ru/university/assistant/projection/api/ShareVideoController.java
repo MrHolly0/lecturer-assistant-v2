@@ -21,6 +21,8 @@ import ru.university.assistant.projection.internal.ShareVideoStore;
 
 /** Authenticated encoded-video relay; binary bodies are bounded before allocation. */
 @RestController
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "app.media.provider", havingValue = "legacy", matchIfMissing = true)
 public class ShareVideoController {
     private static final String STAFF =
             "/api/v1/courses/{courseId}/sessions/{sessionId}/screen-share/{shareId}/video/{epoch}";

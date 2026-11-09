@@ -1,0 +1,18 @@
+{
+  "name": "lecturer-assistant-services",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "amqplib": "2.3.1",
+    "livekit-server-sdk": "2.19.2",
+    "pg": "8.23.1",
+    "ws": "8.22.2"
+  }
+}

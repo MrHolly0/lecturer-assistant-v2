@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lecturer-assistant:integration-event:v1",
+  "type": "object",
+  "required": ["eventId", "schemaVersion", "type", "aggregate", "sessionId", "occurredAt", "audience", "data"],
+  "properties": {
+    "eventId": {"type": "string", "format": "uuid"},
+    "schemaVersion": {"const": 1},
+    "type": {"type": "string", "minLength": 1, "maxLength": 128},
+    "aggregate": {
+      "type": "object", "required": ["type", "id", "revision"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "format": "uuid"},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}
+      }
+    },
+    "sessionId": {"type": ["string", "null"], "format": "uuid"},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "audience": {"const": "INTERNAL"},
+    "data": {"type": "object"}
+  }
+}

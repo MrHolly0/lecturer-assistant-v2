@@ -6,14 +6,45 @@ import {
   getProjectionShareFrame,
   getShareFrame,
   viewProjectionShare,
-  viewShare
+  viewShare,
+  getMediaProvider
 } from "../app/api/share-api";
 import { ApiError } from "../app/api/http";
 import { gatheredDescription, localShareChannel } from "../app/sharing/rtc";
 import { ShareVideoPlayback } from "../app/sharing/videoPlayback";
 import { ScreenSharePresentation } from "./ScreenSharePresentation";
+import { SfuScreenShareViewer } from "./SfuScreenShareViewer";
 
-export function ScreenShareViewer({
+export type ScreenShareViewerProps = Parameters<typeof LegacyScreenShareViewer>[0];
+export function ScreenShareViewer(props: ScreenShareViewerProps) {
+  const [provider, setProvider] = useState<"sfu" | "legacy" | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = () =>
+      void getMediaProvider()
+        .then((value) => {
+          if (alive) setProvider(value);
+        })
+        .catch(() => {
+          if (alive) timer = setTimeout(load, 2000 + Math.random() * 3000);
+        });
+    load();
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+  if (props.local && !props.projectionViewToken) return <LegacyScreenShareViewer {...props} />;
+  if (!provider) return <>{props.children}</>;
+  return provider === "sfu" ? (
+    <SfuScreenShareViewer {...props} />
+  ) : (
+    <LegacyScreenShareViewer {...props} />
+  );
+}
+
+function LegacyScreenShareViewer({
   joinCode,
   participantToken = "",
   local = false,

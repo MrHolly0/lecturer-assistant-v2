@@ -12,4 +12,8 @@ class MediaViewingAccessService implements MediaViewingAccessApi {
     public ViewerAccess requireViewer(String joinCode, AuthenticatedUser user, String participantToken) {
         return students.requireMediaViewer(joinCode, user, participantToken);
     }
+    @Override
+    public java.util.Set<java.util.UUID> allowedViewers(String code, java.util.Set<java.util.UUID> people) {
+        return students.answerRecipients(code, people);
+    }
 }
