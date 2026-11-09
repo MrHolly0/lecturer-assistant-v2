@@ -43,7 +43,8 @@ function fixture(options = {}) {
   };
   const hub = new RealtimeHub(rpc, { now: () => time, ...options });
   return { hub, calls, advance: ms => { time += ms; }, change: () => { version++; },
-    revoke: () => { allowed = false; }, outage: () => { unavailable = true; } };
+    revoke: () => { allowed = false; }, outage: () => { unavailable = true; },
+    restore: () => { unavailable = false; } };
 }
 
 test('6,000 connections share batched authority reads and preserve personal answers', async () => {
@@ -74,7 +75,7 @@ test('connection burst cannot consume unbounded authority work reserved for rene
   hub.close();
 });
 
-test('revocation removes private stream and authority outage fails closed within lease', async () => {
+test('revocation closes immediately; authority outage suspends delivery then closes at recovery deadline', async () => {
   const f = fixture(), privateOutput = new Output(), publicOutput = new Output();
   await f.hub.addStudent('ABCDEF', 'person', privateOutput);
   await f.hub.addStudent('ABCDEF', '', publicOutput, true);
@@ -84,9 +85,110 @@ test('revocation removes private stream and authority outage fails closed within
   const g = fixture(), output = new Output();
   await g.hub.addStudent('ABCDEF', 'person', output);
   g.outage(); g.advance(5000); g.hub.tick(); await settle();
+  assert.equal(output.destroyed, false);
+  assert.equal(g.hub.stats.suspended, 1);
+  const frames = output.frames.length;
+  g.hub.snapshot([...g.hub.clients][0], { version: 99, secret: 'forbidden' });
+  assert.equal(output.frames.length, frames);
+  g.advance(30000); g.hub.tick(); await settle();
   assert.equal(output.destroyed, true);
   assert.equal(g.hub.clients.size, 0);
+  assert.equal(g.hub.stats.suspended, 0);
+  assert.equal(g.hub.stats.recoveryTimeouts, 1);
   f.hub.close(); g.hub.close();
+});
+
+test('process pause reauthorizes the same sockets and sends only current private state', async () => {
+  const f = fixture(), a = new Output(), b = new Output(), socket = new Socket();
+  const ca = await f.hub.addStudent('ABCDEF', 'a', a);
+  await f.hub.addStudent('ABCDEF', 'b', b);
+  const presenter = await f.hub.addPresenter(sessionId, 'fixture', socket);
+  presenter.subscription = 'session';
+  f.advance(10000); f.change(); f.hub.tick();
+  assert.equal(f.hub.stats.suspended, 3);
+  assert.equal(a.frames.length, 1);
+  assert.equal(socket.frames.length, 0);
+  await settle();
+  assert.equal(f.hub.clients.size, 3);
+  assert.equal(f.hub.stats.suspended, 0);
+  assert.equal(f.hub.stats.resumed, 3);
+  assert.equal(a.destroyed, false);
+  assert.match(a.frames.at(-1), /"version":2/);
+  assert.match(a.frames.at(-1), /"questionAnswers":\["a"\]/);
+  assert.doesNotMatch(a.frames.at(-1), /"questionAnswers":\["b"\]/);
+  assert.match(socket.frames.at(-1), /"version":2/);
+  assert.equal(presenter.initialSession, undefined);
+  assert.equal(f.hub.valid(ca), true);
+  f.hub.close();
+});
+
+test('buffered private frames and stale replies never bypass expired permission', async () => {
+  const f = fixture(), output = new Output(); output.blocked = true;
+  const client = await f.hub.addStudent('ABCDEF', 'person', output);
+  f.hub.snapshot(client, { version: 2, private: 'old' });
+  assert.ok(client.pending);
+  f.outage(); f.advance(6000); f.hub.tick(); await settle();
+  assert.equal(client.pending, null);
+  output.blocked = false; output.emit('drain');
+  assert.equal(output.frames.length, 1);
+  const deadline = client.recoveryDeadline;
+  f.advance(1000);
+  assert.equal(f.hub.renew(client, { permissionDeadline: 0 }), false);
+  assert.equal(client.recoveryDeadline, deadline);
+  f.revoke(); f.restore(); f.hub.tick(); await settle();
+  assert.equal(output.destroyed, true);
+  assert.equal(output.frames.length, 1);
+  f.hub.close();
+});
+
+test('late successful renewal cannot resurrect a socket beyond its fixed recovery budget', async () => {
+  const f = fixture(), output = new Output();
+  const client = await f.hub.addStudent('ABCDEF', 'person', output);
+  f.outage(); f.advance(6000); f.hub.tick(); await settle();
+  f.advance(30000);
+  assert.equal(f.hub.renew(client, { permissionDeadline: 999999 }), false);
+  assert.equal(output.destroyed, true);
+  assert.equal(f.hub.stats.resumed, 0);
+});
+
+test('slow authority work schedules the next renewal before the actual lease deadline', async () => {
+  let now = 100000;
+  const rpc = async path => {
+    const permissionDeadline = now + 4750;
+    if (path.endsWith('student-grant')) return {
+      personId: 'person', authVersion: 1, permissionDeadline,
+      snapshot: { sessionId, status: 'LIVE', version: 1 }
+    };
+    now += 1800;
+    return { permissionDeadline, allowed: ['person'], oversized: [], overlays: {} };
+  };
+  const hub = new RealtimeHub(rpc, { now: () => now });
+  const client = await hub.addStudent('ABCDEF', 'token', new Output());
+  client.room.dirty = false; client.room.lastSnapshot = now;
+  hub.tick(); await settle();
+  assert.ok(client.room.due <= client.expiresAt - 2000);
+  assert.equal(hub.stats.suspended, 0);
+  hub.close();
+});
+
+test('authority outage backs off per room instead of retrying every scheduler tick', async () => {
+  const f = fixture();
+  await f.hub.addStudent('ABCDEF', 'person', new Output());
+  f.outage();
+  const room = [...f.hub.rooms.values()][0];
+  for (let i = 0; i < 4; i++) {
+    f.hub.tick(); await settle();
+    assert.equal(room.failures, i + 1);
+    const calls = f.calls.length;
+    f.hub.invalidate({ schemaVersion: 1, sessionId, type: 'changed' });
+    f.advance(100); f.hub.tick(); await settle();
+    assert.equal(f.calls.length, calls);
+    f.advance(2000);
+  }
+  f.restore(); f.hub.tick(); await settle();
+  assert.equal(room.failures, 0);
+  assert.equal(f.hub.clients.size, 1);
+  f.hub.close();
 });
 
 test('slow SSE retains only latest frame and oversized snapshots send invalidations', async () => {

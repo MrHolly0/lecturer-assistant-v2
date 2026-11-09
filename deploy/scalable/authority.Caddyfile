@@ -1,3 +1,15 @@
+{
+    log default {
+        format filter {
+            wrap json
+            fields {
+                request>headers delete
+                request>uri delete
+            }
+        }
+    }
+}
+
 :80 {
     handle /internal/* {
         reverse_proxy core-a:8080 core-b:8080 {

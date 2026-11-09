@@ -1,3 +1,4 @@
+ARG SERVICE_NODE_IMAGE=node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8
 FROM golang:1.27.3-alpine3.24 AS livekit
 ARG LIVEKIT_COMMIT=385aa40f9292fe1db8caad87301e4b285b7c198a
 WORKDIR /src
@@ -12,7 +13,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/g
     && find pkg/service -maxdepth 1 -name '*_test.go' ! -name access_inventory_test.go -delete \
     && GOTOOLCHAIN=local CGO_ENABLED=0 go test ./pkg/service -run '^TestAccessInventory' -count=1 \
     && GOTOOLCHAIN=local CGO_ENABLED=0 go build -trimpath -o /livekit-server ./cmd/server
-FROM node:22-alpine
+FROM ${SERVICE_NODE_IMAGE}
 COPY --from=livekit /livekit-server /usr/local/bin/livekit-server
 COPY --from=livekit /src/LICENSE /usr/share/licenses/livekit/LICENSE
 WORKDIR /app

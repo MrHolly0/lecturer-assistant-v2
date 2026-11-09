@@ -5,16 +5,20 @@ import { openBroker, EXCHANGE } from '../common/broker.mjs';
 import { rpcClient, requiredKey, integer, backoff, sleep, logFailure, healthHandler } from '../common/runtime.mjs';
 import { RealtimeHub } from './hub.mjs';
 import { attachStomp } from './stomp.mjs';
+import { runtimeDiagnostics } from '../common/diagnostics.mjs';
 
 const rpc = rpcClient(process.env.CORE_URL ?? 'http://core:8080', requiredKey('SERVICE_REALTIME_KEY'));
 const hub = new RealtimeHub(rpc, { maxConnections: integer(process.env.MAX_CONNECTIONS, 6000),
   maxRooms: integer(process.env.MAX_ROOMS, 1024), concurrency: integer(process.env.RPC_CONCURRENCY, 16, 1, 128),
-  grantConcurrency: integer(process.env.GRANT_CONCURRENCY, 8, 1, 64) });
+  grantConcurrency: integer(process.env.GRANT_CONCURRENCY, 8, 1, 64),
+  permissionRecoveryMs: integer(process.env.PERMISSION_RECOVERY_MS, 30000, 0, 30000) });
 const origins = new Set((process.env.CORS_ALLOWED_ORIGINS ?? 'http://localhost:18089').split(',').map(x => x.trim()));
 const originAllowed = request => !request.headers.origin || origins.has(request.headers.origin);
 const shutdown = new AbortController();
 let authorityReady = false, probeBusy = false, brokerConnected = false, broker, rawSockets = 0;
-const health = healthHandler(() => authorityReady && !hub.closed, () => ({
+const diagnostics = runtimeDiagnostics();
+const health = healthHandler(() => authorityReady && brokerConnected && !hub.closed, () => ({
+  ...diagnostics.snapshot(),
   realtime_connections: hub.clients.size, realtime_rooms: hub.rooms.size,
   realtime_rpc_in_flight: hub.inFlight, realtime_snapshots_total: hub.stats.snapshots,
   realtime_pending_grants: hub.pendingGrants,
@@ -22,6 +26,9 @@ const health = healthHandler(() => authorityReady && !hub.closed, () => ({
   realtime_rpc_errors_total: hub.stats.rpcErrors, realtime_broker_connected: Number(brokerConnected),
   realtime_expired_leases_total: hub.stats.expiredLeases, realtime_denied_total: hub.stats.denied,
   realtime_stale_grants_total: hub.stats.staleGrants, realtime_rpc_max_seconds: hub.stats.rpcMaxMs / 1000,
+  realtime_rpc_seconds_total: hub.stats.rpcTotalMs / 1000, realtime_rpc_calls_total: hub.stats.rpcCalls,
+  realtime_suspended_connections: hub.stats.suspended, realtime_resumed_total: hub.stats.resumed,
+  realtime_recovery_timeouts_total: hub.stats.recoveryTimeouts,
   realtime_tick_max_gap_seconds: hub.stats.tickMaxGapMs / 1000,
   realtime_clock_offset_seconds: (Date.now() - hub.now()) / 1000,
   realtime_invalidations_total: hub.stats.invalidations,
@@ -69,7 +76,7 @@ const probe = setInterval(async () => {
   finally { probeBusy = false; }
 }, 2000);
 const stop = () => {
-  shutdown.abort(); clearInterval(tick); clearInterval(probe); hub.close();
+  shutdown.abort(); clearInterval(tick); clearInterval(probe); diagnostics.close(); hub.close();
   sockets.close(); server.close(); server.closeIdleConnections();
   void broker?.connection.close().catch(() => {});
 };

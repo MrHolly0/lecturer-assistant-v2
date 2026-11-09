@@ -43,7 +43,8 @@ export function attachStomp(socket, sessionId, hub) {
           if (headers.destination !== `/topic/session/${sessionId}` || !headers.id || headers.id.length > 64
               || !/^[a-zA-Z0-9_-]+$/.test(headers.id)) throw new Error('Invalid destination');
           client.subscription = headers.id;
-          hub.presenterSnapshot(client, client.initialSession, 'session.snapshot');
+          if (client.initialSession) hub.presenterSnapshot(client, client.initialSession, 'session.snapshot');
+          client.initialSession = undefined;
           client.room.dirty = true; client.room.due = 0;
         } else if (command === 'UNSUBSCRIBE') client.subscription = null;
         else if (command === 'DISCONNECT') socket.close(1000);

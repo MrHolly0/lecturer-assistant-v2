@@ -9,20 +9,26 @@ const lease = (grant, now) => Number.isFinite(grant.permissionDeadline)
 /** Connections are disposable. Only the authority owns participants and lecture state. */
 export class RealtimeHub {
   constructor(rpc, { maxConnections = 6000, maxRooms = 1024, concurrency = 16,
-    grantConcurrency = 8, maxFrameBytes = 16384, maxBufferBytes = 32768, now = monotonicEpoch } = {}) {
+    grantConcurrency = 8, maxFrameBytes = 16384, maxBufferBytes = 32768,
+    permissionRecoveryMs = 30000, now = monotonicEpoch } = {}) {
     Object.assign(this, { rpc, maxConnections, maxRooms, concurrency, grantConcurrency,
-      maxFrameBytes, maxBufferBytes, now });
+      maxFrameBytes, maxBufferBytes, permissionRecoveryMs, now });
     this.clients = new Set(); this.rooms = new Map(); this.sessions = new Map();
     this.inFlight = 0; this.pendingGrants = 0; this.cursor = 0; this.closed = false;
     this.studentCount = 0; this.pendingStudents = 0;
     this.stats = { snapshots: 0, coalesced: 0, slowConsumers: 0, revoked: 0, rpcErrors: 0,
       invalidations: 0, matchedInvalidations: 0, expiredLeases: 0, denied: 0, staleGrants: 0,
-      rpcMaxMs: 0, tickMaxGapMs: 0 };
+      rpcMaxMs: 0, rpcTotalMs: 0, rpcCalls: 0,
+      tickMaxGapMs: 0, suspended: 0, resumed: 0, recoveryTimeouts: 0 };
     this.lastTick = this.now();
     this.rpc = async (...args) => {
       const started = this.now();
       try { return await rpc(...args); }
-      finally { this.stats.rpcMaxMs = Math.max(this.stats.rpcMaxMs, this.now() - started); }
+      finally {
+        const elapsed = this.now() - started;
+        this.stats.rpcMaxMs = Math.max(this.stats.rpcMaxMs, elapsed);
+        this.stats.rpcTotalMs += elapsed; this.stats.rpcCalls++;
+      }
     };
   }
 
@@ -37,7 +43,7 @@ export class RealtimeHub {
     if (room) return room;
     if (this.rooms.size >= this.maxRooms) throw Object.assign(new Error('Room limit'), { status: 503 });
     room = { code, sessionId, clients: new Set(), dirty: true, eventType: 'session.snapshot',
-      due: 0, lastSnapshot: 0, lastPresence: 0, busy: false };
+      due: 0, lastSnapshot: 0, lastPresence: 0, busy: false, failures: 0 };
     this.rooms.set(code, room);
     if (sessionId) this.sessions.set(sessionId, room);
     return room;
@@ -94,10 +100,11 @@ export class RealtimeHub {
     } finally { this.pendingGrants--; }
   }
 
-  valid(client) { return this.clients.has(client) && client.expiresAt > this.now(); }
+  valid(client) { return this.clients.has(client) && !client.suspended && client.expiresAt > this.now(); }
 
   remove(client) {
     if (!client || !this.clients.delete(client)) return;
+    if (client.suspended) this.stats.suspended--;
     if (client.kind === 'sse') this.studentCount--;
     client.pending = null;
     client.room.clients.delete(client);
@@ -112,6 +119,36 @@ export class RealtimeHub {
     this.remove(client);
     if (client.kind === 'sse') client.response.end();
     else client.socket.close(1008, revoked ? 'Permission expired' : 'Reconnect');
+  }
+
+  suspend(client) {
+    if (!this.clients.has(client) || client.suspended) return;
+    // Retaining the socket grants no access: every outgoing frame still checks expiresAt.
+    // Drop unsent private state and force a fresh snapshot after successful authorization.
+    client.suspended = true; client.recoveryDeadline = client.expiresAt + this.permissionRecoveryMs;
+    client.pending = null; client.lastHash = ''; client.initialSession = undefined;
+    client.room.dirty = true;
+    if (!client.room.failures) client.room.due = 0;
+    this.stats.suspended++; this.stats.expiredLeases++;
+  }
+
+  renew(client, grant) {
+    if (client.suspended && this.now() >= client.recoveryDeadline) {
+      this.stats.recoveryTimeouts++; this.closeClient(client, true); return false;
+    }
+    const expiresAt = lease(grant, this.now());
+    if (expiresAt <= this.now()) {
+      this.stats.staleGrants++;
+      this.suspend(client);
+      return false;
+    }
+    client.expiresAt = expiresAt;
+    if (client.suspended) {
+      client.suspended = false; this.stats.suspended--; this.stats.resumed++;
+      // An in-flight permission-only response may precede suspension.
+      client.room.dirty = true;
+    }
+    return true;
   }
 
   write(client, frame) {
@@ -162,7 +199,8 @@ export class RealtimeHub {
     const room = this.sessions.get(event.sessionId);
     if (room) {
       this.stats.matchedInvalidations++;
-      room.dirty = true; room.eventType = event.type; room.due = 0;
+      room.dirty = true; room.eventType = event.type;
+      if (!room.failures) room.due = 0;
     }
   }
 
@@ -171,7 +209,13 @@ export class RealtimeHub {
     this.stats.tickMaxGapMs = Math.max(this.stats.tickMaxGapMs, now - this.lastTick);
     this.lastTick = now;
     for (const client of this.clients) {
-      if (client.expiresAt <= now) { this.stats.expiredLeases++; this.closeClient(client, true); continue; }
+      if (client.expiresAt <= now) {
+        this.suspend(client);
+        if (now >= client.recoveryDeadline) {
+          this.stats.recoveryTimeouts++; this.closeClient(client, true);
+        }
+        continue;
+      }
       if (client.kind === 'ws' && now - client.lastReceived > 45000) {
         this.closeClient(client); continue;
       }
@@ -188,8 +232,20 @@ export class RealtimeHub {
       const room = rooms[(i + offset) % rooms.length];
       if (room.busy || room.due > now) continue;
       room.busy = true; this.inFlight++;
-      void this.refresh(room).catch(() => { this.stats.rpcErrors++; room.dirty = true; }).finally(() => {
-        room.busy = false; room.due = this.now() + (room.dirty ? 250 : 1800 + Math.random() * 400); this.inFlight--;
+      void this.refresh(room).then(() => { room.failures = 0; }).catch(() => {
+        this.stats.rpcErrors++; room.dirty = true; room.failures++;
+      }).finally(() => {
+        room.busy = false;
+        const now = this.now();
+        // Completion-relative timers accumulate RPC latency. Renew ahead of the earliest
+        // actual permission deadline, leaving a budget for the next authority request.
+        let earliest = Infinity;
+        for (const client of room.clients) earliest = Math.min(earliest, client.expiresAt);
+        const interval = room.failures
+          ? Math.min(2000, 250 * 2 ** Math.min(room.failures, 3)) * (0.5 + Math.random() / 2)
+          : Math.min(room.dirty ? 250 : 1800 + Math.random() * 400,
+          Math.max(250, earliest - now - 2000));
+        room.due = now + interval; this.inFlight--;
       });
     }
   }
@@ -213,8 +269,7 @@ export class RealtimeHub {
       for (const client of students.filter(c => chunkIds.has(c.personId))) {
         if (!this.clients.has(client)) continue;
         if (!allowed.has(client.personId)) { this.stats.denied++; this.closeClient(client, true); continue; }
-        client.expiresAt = lease(response, this.now());
-        if (!this.valid(client)) { this.stats.staleGrants++; this.closeClient(client, true); continue; }
+        if (!this.renew(client, response)) continue;
         if (includeSnapshots && response.shared) {
           if (response.shared.gatewayInvalidation || response.oversized.includes(client.personId))
             this.invalidateSnapshot(client, response.shared);
@@ -235,8 +290,7 @@ export class RealtimeHub {
         const grant = await this.rpc('/internal/v1/realtime/presenter-grant', {
           sessionId: client.sessionId, accessToken: client.accessToken
         });
-        client.expiresAt = lease(grant, this.now());
-        if (!this.valid(client)) { this.closeClient(client, true); continue; }
+        if (!this.renew(client, grant)) continue;
         if (includeSnapshots) this.presenterSnapshot(client, grant.session, eventType);
       } catch (error) {
         if ([401, 403, 404].includes(error.status)) this.closeClient(client, true);

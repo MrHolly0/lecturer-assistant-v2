@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { runtimeDiagnostics } from '../services/common/diagnostics.mjs';
 
 const base = new URL(process.env.BASE_URL || 'http://caddy');
 const privateV4 = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
@@ -35,11 +36,13 @@ for (const value of [joinConcurrency, openConcurrency, ioConcurrency]) {
   if (!Number.isInteger(value) || value < 1 || value > 128) throw new Error('Concurrency must be within 1..128.');
 }
 const summary = { runId, base: base.origin, startedAt: new Date().toISOString(),
+  generatorRuntime: { node: process.version, platform: process.platform, arch: process.arch },
   revision: process.env.REVISION || null, path: 'client -> Caddy -> core -> PostgreSQL',
   mediaIncluded: false, sseRequestEncoding: sseEncoding || 'default', plan, stages: [], setup: {}, passed: false };
 if (process.env.CAPACITY_TRANSPORT_GATEWAY === 'true')
   summary.path = 'client -> nginx edge -> realtime gateway -> authority/core -> PostgreSQL; outbox/RabbitMQ invalidations';
 const stats = { requests: 0, retries: 0, statuses: {}, networkFailures: 0 };
+const diagnostics = runtimeDiagnostics();
 let stageProgress;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const ratio = (actual, expected) => expected ? actual / expected : 0;
@@ -47,6 +50,7 @@ const percentile = (values, percent) => values.length ? [...values].sort((a,b) =
 const log = value => process.stdout.write(`${JSON.stringify(value)}\n`);
 const progress = setInterval(() => log({ progress: true, requests: stats.requests,
   completedStages: summary.stages.length, retries: stats.retries,
+  generator: diagnostics.snapshot(),
   ...(stageProgress ? { stage: stageProgress() } : {}) }), 20000);
 function retryAfter(value) {
   if (!value) return 0;
@@ -436,6 +440,7 @@ try {
 } catch (error) { summary.setupFailure = error instanceof HttpFailure ? `HTTP ${error.status}` : error.message; }
 finally {
   clearInterval(progress); summary.finishedAt = new Date().toISOString(); summary.http = stats;
+  summary.generator = diagnostics.snapshot(); diagnostics.close();
   await writeFile(resolve(output, 'summary.json'), JSON.stringify(summary, null, 2));
 }
 log({ finished: true, passed: summary.passed, completedStages: summary.stages.length, expectedStages: plan.length });

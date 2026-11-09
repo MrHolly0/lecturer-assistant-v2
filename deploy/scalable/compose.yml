@@ -8,7 +8,11 @@ x-logging: &logs
 
 x-node: &node
   image: lecturer-assistant/services:scale-local
-  build: {context: ../.., dockerfile: services/Dockerfile}
+  build:
+    context: ../..
+    dockerfile: services/Dockerfile
+    # Optional exact image for controlled LTS comparisons; default is pinned in Dockerfile.
+    args: {SERVICE_NODE_IMAGE: "${SERVICE_NODE_IMAGE:-node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8}"}
   restart: "no"
   init: true
   cpus: 1.0
