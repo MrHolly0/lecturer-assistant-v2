@@ -46,6 +46,8 @@ interface StudentFeedbackControlsProps {
   onQuestionOpen?: () => void;
   questionSlideIdx?: number | null;
   questionError?: boolean;
+  questionErrorMessage?: string;
+  questionPostingMuted?: boolean;
   onAnonymousChange: (value: boolean) => void;
   unavailableMessage?: string;
   restoreFocusOnClose?: boolean;
@@ -136,11 +138,17 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
     }
   }, [props.answers]);
   const unansweredQuestions = props.questions.filter(
-    (question) => !props.answers.some((answer) => answer.questionId === question.id)
+    (question) =>
+      question.status === "OPEN" &&
+      !props.answers.some((answer) => answer.questionId === question.id)
   );
+  const hiddenQuestionsCount = props.questions.filter(
+    (question) => question.status === "DISMISSED"
+  ).length;
   function submitQuestion(event: FormEvent) {
     event.preventDefault();
-    if (props.question.trim()) props.onQuestionSubmit();
+    if (props.isLive && !props.questionPostingMuted && props.question.trim())
+      props.onQuestionSubmit();
   }
 
   function openQuestionDialog() {
@@ -277,12 +285,19 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
           </div>
 
           <section className="student-question-entry">
+            {props.questionPostingMuted && (
+              <p className="question-privacy-hint" role="status">
+                Преподаватель запретил отправку вопросов до конца занятия. Слайды, сигналы и
+                проверки остаются доступны.
+              </p>
+            )}
             <Button
               ref={questionTriggerRef}
               type="button"
               variant="outline"
               aria-haspopup="dialog"
               aria-expanded={questionOpen}
+              disabled={props.questionPostingMuted}
               onClick={openQuestionDialog}
             >
               <MessageSquareText size={17} aria-hidden="true" /> Задать вопрос
@@ -357,15 +372,26 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
                     </p>
                     {props.questionError && (
                       <p className="student-question-error" role="alert">
-                        Не удалось отправить вопрос. Черновик сохранён. Проверьте связь и нажмите
-                        «Отправить» ещё раз.
+                        {props.questionErrorMessage ||
+                          "Не удалось отправить вопрос. Черновик сохранён."}
+                      </p>
+                    )}
+                    {props.questionPostingMuted && (
+                      <p className="student-question-error" role="status">
+                        Преподаватель запретил отправку вопросов до конца занятия. Черновик
+                        сохранён.
                       </p>
                     )}
                   </div>
                   <footer className="student-question-dialog__footer">
                     <Button
                       type="submit"
-                      disabled={!props.isLive || props.isQuestionPending || !props.question.trim()}
+                      disabled={
+                        !props.isLive ||
+                        props.questionPostingMuted ||
+                        props.isQuestionPending ||
+                        !props.question.trim()
+                      }
                     >
                       <MessageSquareText size={16} aria-hidden="true" />
                       {props.isQuestionPending
@@ -437,9 +463,12 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
               ))}
             </ul>
           </section>
-        ) : props.answers.length === 0 ? (
+        ) : props.answers.length === 0 && hiddenQuestionsCount === 0 ? (
           <p className="muted">Отправленные вопросы и ответы преподавателя появятся здесь.</p>
         ) : null}
+        {hiddenQuestionsCount > 0 && (
+          <p className="muted">Скрытые преподавателем вопросы: {hiddenQuestionsCount}</p>
+        )}
       </details>
     </>
   );

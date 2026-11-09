@@ -31,6 +31,7 @@ import ru.university.assistant.live.api.StudentEngagement;
 import ru.university.assistant.live.api.StudentJoinRequest;
 import ru.university.assistant.live.api.StudentJoinResponse;
 import ru.university.assistant.live.api.StudentNameRequest;
+import ru.university.assistant.live.api.ModerateQuestionAuthorRequest;
 import ru.university.assistant.live.api.StudentQuestionRequest;
 import ru.university.assistant.live.api.StudentSessionSnapshot;
 import ru.university.assistant.live.api.StudentSignalRequest;
@@ -45,6 +46,7 @@ import ru.university.assistant.interaction.api.PollVote;
 import ru.university.assistant.interaction.api.QuickPollApi;
 import ru.university.assistant.interaction.api.SubmitActivityResponseRequest;
 import ru.university.assistant.qa.api.QuestionApi;
+import ru.university.assistant.qa.api.QuestionAuthorModeration;
 import ru.university.assistant.qa.api.QuestionPage;
 import ru.university.assistant.qa.api.QuestionStatus;
 import ru.university.assistant.qa.api.ResolvedQuestion;
@@ -185,6 +187,7 @@ public class StudentWebSessionService {
                     requireActive(session.id(), guest.personId());
                     registerPerson(session, user, guest.groupId());
                     sessions.claimGuestParticipation(session.id(), guest.personId(), user.id(), guest.displayName());
+                    questions.transferAuthorMute(session.id(), guest.personId(), user.id());
                     if (!guest.displayName().startsWith("Гость ")) {
                         persons.updateStudentDisplayName(user.id(), guest.displayName());
                     }
@@ -309,6 +312,8 @@ public class StudentWebSessionService {
 
     @Transactional
     public StudentQuestion ask(String joinCode, StudentQuestionRequest request, AuthenticatedUser user, String key) {
+        // The same session lock orders posting, moderation, guest claims and session completion.
+        sessions.lock(sessionByCode(joinCode).id());
         ParticipantSession current = participantSession(joinCode, request.participantToken(), user);
         ensureInteractive(current.session());
         return commands.execute(current.participant().personId(),
@@ -372,6 +377,7 @@ public class StudentWebSessionService {
             UUID questionId,
             UpdateStudentQuestionRequest request) {
         courseAccess.requireManage(user, courseId);
+        sessions.lock(sessionId);
         LiveSession session = sessions.findByCourse(courseId, sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
         if (session.status() != SessionStatus.LIVE && session.status() != SessionStatus.PAUSED) {
@@ -390,6 +396,26 @@ public class StudentWebSessionService {
                     session.joinCode(), resolution.authorPersonId(), resolution.studentAnswer()));
         }
         return resolution.question();
+    }
+
+    @Transactional
+    public QuestionAuthorModeration moderateQuestionAuthor(
+            AuthenticatedUser user, UUID courseId, UUID sessionId, UUID questionId,
+            ModerateQuestionAuthorRequest request) {
+        courseAccess.requireManage(user, courseId);
+        sessions.lock(sessionId);
+        LiveSession session = sessions.findByCourse(courseId, sessionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        if (session.status() != SessionStatus.LIVE && session.status() != SessionStatus.PAUSED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is not running");
+        }
+        if (!request.muted() && request.hideQuestions()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot clear questions while unmuting");
+        }
+        QuestionAuthorModeration result = questions.moderateAuthor(
+                sessionId, questionId, user.id(), request.muted(), request.hideQuestions());
+        publisher.publish("qa.question_updated", session);
+        return result;
     }
 
     public UUID participantPersonId(String joinCode, String participantToken) {

@@ -201,6 +201,19 @@ export async function updateStudentQuestion(
   return response.json() as Promise<StudentQuestion>;
 }
 
+export async function moderateQuestionAuthor(
+  courseId: string,
+  sessionId: string,
+  questionId: string,
+  request: components["schemas"]["ModerateQuestionAuthorRequest"]
+): Promise<components["schemas"]["QuestionAuthorModeration"]> {
+  const response = await apiFetch(
+    `/courses/${courseId}/sessions/${sessionId}/questions/${questionId}/author-moderation`,
+    { method: "PUT", body: JSON.stringify(request) }
+  );
+  return response.json();
+}
+
 export async function askStudentQuestion(
   joinCode: string,
   participantToken: string,

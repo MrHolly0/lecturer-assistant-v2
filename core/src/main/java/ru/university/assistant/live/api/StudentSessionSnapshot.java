@@ -29,7 +29,20 @@ public record StudentSessionSnapshot(
         long version,
         boolean showJoinCode,
         List<ru.university.assistant.qa.api.StudentQuestion> myQuestions,
-        String myTextAnswer) {
+        String myTextAnswer,
+        boolean questionPostingMuted) {
+    public StudentSessionSnapshot(
+            UUID sessionId, UUID courseId, String courseTitle, String lectureTitle, List<SessionGroup> groups,
+            SessionStatus status, String joinCode, int currentSlideIdx, int slideCount, StudentSlide currentSlide,
+            Map<String, Object> annotations, SignalAggregate signalAggregate, ActivePollView activePoll,
+            Integer myVote, List<StudentQuestionAnswer> questionAnswers, boolean kicked, boolean nameRequested,
+            long version, boolean showJoinCode,
+            List<ru.university.assistant.qa.api.StudentQuestion> myQuestions, String myTextAnswer) {
+        this(sessionId, courseId, courseTitle, lectureTitle, groups, status, joinCode, currentSlideIdx, slideCount,
+                currentSlide, annotations, signalAggregate, activePoll, myVote, questionAnswers, kicked,
+                nameRequested, version, showJoinCode, myQuestions, myTextAnswer, false);
+    }
+
     public StudentSessionSnapshot(
             UUID sessionId,
             UUID courseId,

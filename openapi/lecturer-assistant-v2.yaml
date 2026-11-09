@@ -2059,6 +2059,44 @@ paths:
           description: Session or question not found in this course and session.
         "409":
           description: Session is not running, or the question was resolved differently.
+  /courses/{courseId}/sessions/{sessionId}/questions/{questionId}/author-moderation:
+    put:
+      operationId: moderateLiveQuestionAuthor
+      summary: Mute or unmute a question author for this session, without exposing their identity.
+      description: >
+        Requires course management permission and a LIVE or PAUSED session. Rejoining does not
+        remove the mute. hideQuestions additionally dismisses all this author's questions in
+        this session, including published answers; originals are retained in a restricted audit log.
+        Unmuting does not restore hidden questions. Repeating the desired state has no extra effect.
+      tags: [live]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/SessionId"
+        - name: questionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerateQuestionAuthorRequest"
+      responses:
+        "200":
+          description: Moderation applied; contains no author identifiers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionAuthorModeration"
+        "400":
+          description: Missing mute state or hideQuestions requested while unmuting.
+        "403":
+          description: The caller cannot manage this course.
+        "404":
+          description: Session or question not found in this course and session.
+        "409":
+          description: Session is not running.
   /courses/{courseId}/sessions/{sessionId}/summary:
     get:
       operationId: getLectureSummary
@@ -6131,6 +6169,18 @@ components:
           type: string
         textExtract:
           type: string
+    ModerateQuestionAuthorRequest:
+      type: object
+      required: [muted]
+      properties:
+        muted: { type: boolean }
+        hideQuestions: { type: boolean, default: false }
+    QuestionAuthorModeration:
+      type: object
+      required: [muted, hiddenQuestions]
+      properties:
+        muted: { type: boolean }
+        hiddenQuestions: { type: integer, minimum: 0 }
     StudentSessionSnapshot:
       type: object
       required:
@@ -6152,6 +6202,10 @@ components:
         - showJoinCode
         - myQuestions
       properties:
+        questionPostingMuted:
+          type: boolean
+          default: false
+          description: Own question posting is muted for this running session. Always false for public readers.
         myTextAnswer:
           type: string
           nullable: true

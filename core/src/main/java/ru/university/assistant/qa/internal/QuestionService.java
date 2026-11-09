@@ -10,6 +10,7 @@ import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.analytics.api.DomainEvent;
 import ru.university.assistant.analytics.api.EventBus;
 import ru.university.assistant.qa.api.QuestionApi;
+import ru.university.assistant.qa.api.QuestionAuthorModeration;
 import ru.university.assistant.qa.api.QuestionAnswerAudience;
 import ru.university.assistant.qa.api.QuestionAnswerVisibility;
 import ru.university.assistant.qa.api.QuestionPage;
@@ -30,10 +31,43 @@ class QuestionService implements QuestionApi {
     }
 
     @Override
+    public java.util.Set<UUID> mutedAuthors(UUID sessionId, java.util.Set<UUID> personIds) {
+        return repository.mutedAuthors(sessionId, personIds);
+    }
+
+    @Override
+    @Transactional
+    public void transferAuthorMute(UUID sessionId, UUID guestId, UUID personId) {
+        repository.transferAuthorMute(sessionId, guestId, personId);
+    }
+
+    @Override
+    @Transactional
+    public QuestionAuthorModeration moderateAuthor(
+            UUID sessionId, UUID questionId, UUID actorPersonId, boolean muted, boolean hideQuestions) {
+        UUID author = repository.authorPersonId(sessionId, questionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found"));
+        boolean changed = repository.setAuthorMuted(sessionId, author, muted);
+        var hidden = hideQuestions ? repository.hideAuthorQuestions(sessionId, author)
+                : new QuestionRepository.HiddenQuestions(0, "[]");
+        if (changed || hidden.count() > 0) {
+            repository.logModeration(sessionId, questionId, actorPersonId, muted, hidden);
+            events.publish(new DomainEvent("qa.question", questionId, "qa.author_moderated", actorPersonId,
+                    Map.of("sessionId", sessionId, "questionId", questionId),
+                    Map.of("muted", muted, "hiddenQuestions", hidden.count())));
+        }
+        return new QuestionAuthorModeration(muted, hidden.count());
+    }
+
+    @Override
     @Transactional
     public StudentQuestion ask(
             UUID sessionId, UUID personId, String displayName, String channelType, String text,
             boolean anonymous, Integer slideIdx) {
+        if (!repository.mutedAuthors(sessionId, java.util.Set.of(personId)).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Преподаватель запретил отправку вопросов до конца занятия.");
+        }
         StudentQuestion question = repository.create(UuidV7.generate(), sessionId, personId,
                 displayName, channelType, text.trim(), anonymous, slideIdx);
         events.publish(new DomainEvent(

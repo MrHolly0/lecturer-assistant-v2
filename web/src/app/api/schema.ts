@@ -1437,6 +1437,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/sessions/{sessionId}/questions/{questionId}/author-moderation": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Mute or unmute a question author for this session, without exposing their identity.
+     * @description Requires course management permission and a LIVE or PAUSED session. Rejoining does not remove the mute. hideQuestions additionally dismisses all this author's questions in this session, including published answers; originals are retained in a restricted audit log. Unmuting does not restore hidden questions. Repeating the desired state has no extra effect.
+     */
+    put: operations["moderateLiveQuestionAuthor"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/sessions/{sessionId}/summary": {
     parameters: {
       query?: never;
@@ -3831,7 +3851,21 @@ export interface components {
       imageUrl: string;
       textExtract?: string;
     };
+    ModerateQuestionAuthorRequest: {
+      muted: boolean;
+      /** @default false */
+      hideQuestions: boolean;
+    };
+    QuestionAuthorModeration: {
+      muted: boolean;
+      hiddenQuestions: number;
+    };
     StudentSessionSnapshot: {
+      /**
+       * @description Own question posting is muted for this running session. Always false for public readers.
+       * @default false
+       */
+      questionPostingMuted: boolean;
       /** @description Own saved free-text answer; omitted for public snapshots and SSE. */
       myTextAnswer?: string | null;
       /** Format: uuid */
@@ -7069,6 +7103,62 @@ export interface operations {
         content?: never;
       };
       /** @description Session is not running, or the question was resolved differently. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  moderateLiveQuestionAuthor: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        sessionId: components["parameters"]["SessionId"];
+        questionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ModerateQuestionAuthorRequest"];
+      };
+    };
+    responses: {
+      /** @description Moderation applied; contains no author identifiers. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QuestionAuthorModeration"];
+        };
+      };
+      /** @description Missing mute state or hideQuestions requested while unmuting. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The caller cannot manage this course. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or question not found in this course and session. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session is not running. */
       409: {
         headers: {
           [name: string]: unknown;

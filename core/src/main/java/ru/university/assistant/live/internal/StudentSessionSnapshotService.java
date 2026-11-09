@@ -63,7 +63,9 @@ class StudentSessionSnapshotService {
         SnapshotData data = load(session);
         LiveSessionRepository.ParticipationState state = viewerPersonId == null ? null
                 : sessions.participationState(session.id(), viewerPersonId).orElse(null);
-        return personalize(data, viewerPersonId, includeMyVote, state,
+        boolean muted = viewerPersonId != null
+                && !questions.mutedAuthors(session.id(), Set.of(viewerPersonId)).isEmpty();
+        return personalize(data, viewerPersonId, includeMyVote, state, muted,
                 viewerPersonId == null ? List.of()
                         : questions.personalQuestions(session.id(), Set.of(viewerPersonId))
                                 .getOrDefault(viewerPersonId, List.of()));
@@ -74,8 +76,10 @@ class StudentSessionSnapshotService {
         Map<UUID, LiveSessionRepository.ParticipationState> states =
                 sessions.participationStates(session.id(), viewerPersonIds);
         var personal = questions.personalQuestions(session.id(), viewerPersonIds);
+        Set<UUID> muted = questions.mutedAuthors(session.id(), viewerPersonIds);
         return viewerPersonIds.stream().collect(Collectors.toMap(
-                Function.identity(), viewer -> personalize(data, viewer, false, states.get(viewer),
+                Function.identity(), viewer -> personalize(
+                        data, viewer, false, states.get(viewer), muted.contains(viewer),
                         personal.getOrDefault(viewer, List.of()))));
     }
 
@@ -126,7 +130,7 @@ class StudentSessionSnapshotService {
 
     private StudentSessionSnapshot personalize(
             SnapshotData data, UUID viewerPersonId, boolean includeMyVote,
-            LiveSessionRepository.ParticipationState state,
+            LiveSessionRepository.ParticipationState state, boolean muted,
             List<ru.university.assistant.qa.api.StudentQuestion> personalQuestions) {
         StudentSessionSnapshot shared = data.shared();
         boolean kicked = state != null && state.kicked();
@@ -153,7 +157,9 @@ class StudentSessionSnapshotService {
                 state != null && state.active() && state.nameRequested(),
                 shared.version(), shared.showJoinCode(), kicked ? List.of() : personalQuestions,
                 !kicked && includeMyVote && viewerPersonId != null && shared.activePoll() != null
-                        ? quickPolls.myTextAnswer(shared.activePoll().pollId(), viewerPersonId) : null);
+                        ? quickPolls.myTextAnswer(shared.activePoll().pollId(), viewerPersonId) : null,
+                !kicked && muted && (shared.status() == ru.university.assistant.live.api.SessionStatus.LIVE
+                        || shared.status() == ru.university.assistant.live.api.SessionStatus.PAUSED));
     }
 
     private List<StudentQuestionAnswer> personalizedAnswers(SnapshotData data, UUID viewerPersonId) {

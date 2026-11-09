@@ -30,6 +30,7 @@ import { closePublicProjection } from "../app/projection/browserProjection";
 import { formatSessionTime, useSessionTimers } from "../app/live/useSessionTimers";
 import { LectureRemoteTools, type LectureRemoteSection } from "./LectureRemoteTools";
 import { ConfirmActionButton } from "./ConfirmActionButton";
+import { QuestionModerationMenu } from "./QuestionModerationMenu";
 import { useSlideNoteDrafts } from "../app/live/useSlideNoteDrafts";
 import {
   prepareLectureRemoteWindow,
@@ -319,13 +320,24 @@ export function FloatingLectureRemote({
                   className={`floating-remote-question${selected === item.id ? " is-selected" : ""}`}
                   key={item.id}
                 >
-                  <small>
-                    {item.anonymous ? "Анонимный вопрос" : item.displayName || "Вопрос студента"} ·{" "}
-                    {new Date(item.createdAt).toLocaleTimeString("ru-RU", {
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    })}
-                  </small>
+                  <div className="floating-remote-question-meta">
+                    <small>
+                      {item.anonymous ? "Анонимный вопрос" : item.displayName || "Вопрос студента"}{" "}
+                      ·{" "}
+                      {new Date(item.createdAt).toLocaleTimeString("ru-RU", {
+                        hour: "2-digit",
+                        minute: "2-digit"
+                      })}
+                    </small>
+                    <QuestionModerationMenu
+                      courseId={courseId}
+                      sessionId={session.id}
+                      questionId={item.id}
+                      disabled={disabled || update.isPending}
+                      container={external?.document.body}
+                      onClear={() => setSelected(null)}
+                    />
+                  </div>
                   <button
                     className="floating-remote-question-title"
                     aria-expanded={selected === item.id}

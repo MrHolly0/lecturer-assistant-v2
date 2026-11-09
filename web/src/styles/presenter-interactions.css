@@ -60,7 +60,14 @@
   font-size: 12px;
 }
 
-.teacher-remote-question-item > .ui-button {
+.teacher-remote-question-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.teacher-remote-question-actions > .ui-button:first-child {
   width: auto;
   min-height: 44px;
   flex: 0 0 auto;
@@ -148,8 +155,12 @@ div[data-slot="dialog-content"].teacher-question-publish-dialog {
     flex-direction: column;
   }
 
-  .teacher-remote-question-item > .ui-button {
+  .teacher-remote-question-actions {
     width: 100%;
+  }
+
+  .teacher-remote-question-actions > .ui-button:first-child {
+    flex: 1;
   }
 
   .teacher-remote-question-list > li > .teacher-question-composer,

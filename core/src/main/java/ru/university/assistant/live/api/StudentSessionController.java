@@ -25,6 +25,7 @@ import ru.university.assistant.interaction.api.SubmitActivityResponseRequest;
 import ru.university.assistant.live.internal.StudentSseBroadcaster;
 import ru.university.assistant.live.internal.StudentWebSessionService;
 import ru.university.assistant.qa.api.QuestionPage;
+import ru.university.assistant.qa.api.QuestionAuthorModeration;
 import ru.university.assistant.qa.api.QuestionStatus;
 import ru.university.assistant.qa.api.StudentQuestion;
 
@@ -76,6 +77,16 @@ class StudentSessionController {
             @PathVariable UUID questionId,
             @Valid @RequestBody UpdateStudentQuestionRequest request) {
         return studentSessions.updateQuestion(user, courseId, sessionId, questionId, request);
+    }
+
+    @PutMapping("/api/v1/courses/{courseId}/sessions/{sessionId}/questions/{questionId}/author-moderation")
+    public QuestionAuthorModeration moderateQuestionAuthor(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID sessionId,
+            @PathVariable UUID questionId,
+            @Valid @RequestBody ModerateQuestionAuthorRequest request) {
+        return studentSessions.moderateQuestionAuthor(user, courseId, sessionId, questionId, request);
     }
 
     @GetMapping("/api/v1/student/sessions/{joinCode}")

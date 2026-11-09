@@ -4,6 +4,13 @@ import java.util.List;
 import java.util.UUID;
 
 public interface QuestionApi {
+    QuestionAuthorModeration moderateAuthor(
+            UUID sessionId, UUID questionId, UUID actorPersonId, boolean muted, boolean hideQuestions);
+
+    java.util.Set<UUID> mutedAuthors(UUID sessionId, java.util.Set<UUID> personIds);
+
+    void transferAuthorMute(UUID sessionId, UUID guestId, UUID personId);
+
     StudentQuestion ask(
             UUID sessionId, UUID personId, String displayName, String channelType, String text,
             boolean anonymous, Integer slideIdx);

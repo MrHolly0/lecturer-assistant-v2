@@ -11,6 +11,7 @@ import {
 import { pluralizeRu } from "../shared/lib/plural";
 import { questionSlideLabel } from "../shared/lib/questionSlide";
 import { Button } from "../shared/ui/button";
+import { QuestionModerationMenu } from "./QuestionModerationMenu";
 import { Textarea } from "../shared/ui/textarea";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../shared/ui/sheet";
 import {
@@ -296,32 +297,41 @@ export function TeacherRemoteQuestions({
                       </small>
                     </span>
                   </div>
-                  <Button
-                    ref={(node) => {
-                      if (node) actionButtonsRef.current.set(question.id, node);
-                      else actionButtonsRef.current.delete(question.id);
-                    }}
-                    type="button"
-                    variant="outline"
-                    aria-expanded={expanded}
-                    aria-controls={
-                      expanded
-                        ? isOpen
-                          ? `teacher-question-composer-${question.id}`
-                          : `presenter-question-record-${question.id}`
-                        : undefined
-                    }
-                    onClick={() => {
-                      if (expanded) {
-                        setSelectedId(null);
-                        return;
+                  <div className="teacher-remote-question-actions">
+                    <Button
+                      ref={(node) => {
+                        if (node) actionButtonsRef.current.set(question.id, node);
+                        else actionButtonsRef.current.delete(question.id);
+                      }}
+                      type="button"
+                      variant="outline"
+                      aria-expanded={expanded}
+                      aria-controls={
+                        expanded
+                          ? isOpen
+                            ? `teacher-question-composer-${question.id}`
+                            : `presenter-question-record-${question.id}`
+                          : undefined
                       }
-                      if (isOpen && compact) sheetReturnFocusIdRef.current = question.id;
-                      setSelectedId(question.id);
-                    }}
-                  >
-                    {actionLabel}
-                  </Button>
+                      onClick={() => {
+                        if (expanded) {
+                          setSelectedId(null);
+                          return;
+                        }
+                        if (isOpen && compact) sheetReturnFocusIdRef.current = question.id;
+                        setSelectedId(question.id);
+                      }}
+                    >
+                      {actionLabel}
+                    </Button>
+                    <QuestionModerationMenu
+                      courseId={courseId}
+                      sessionId={sessionId}
+                      questionId={question.id}
+                      disabled={busy}
+                      onClear={() => setSelectedId(null)}
+                    />
+                  </div>
                 </div>
                 {!compact && expanded && isOpen && composer}
                 {expanded && !isOpen && <QuestionRecordDetails question={question} />}

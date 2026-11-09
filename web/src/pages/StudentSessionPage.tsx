@@ -760,6 +760,15 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
               });
             }}
             questionError={questionMut.isError}
+            questionErrorMessage={
+              questionMut.isError
+                ? userErrorMessage(
+                    questionMut.error,
+                    "Не удалось отправить вопрос. Черновик сохранён."
+                  )
+                : undefined
+            }
+            questionPostingMuted={current.questionPostingMuted}
             anonymous={questionAnonymous}
             onAnonymousChange={setQuestionAnonymous}
           />

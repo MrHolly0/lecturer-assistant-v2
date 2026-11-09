@@ -22,6 +22,62 @@ class QuestionRepository {
         this.jdbc = jdbc;
     }
 
+    java.util.Set<UUID> mutedAuthors(UUID sessionId, java.util.Set<UUID> persons) {
+        if (persons.isEmpty()) return java.util.Set.of();
+        return new java.util.HashSet<>(jdbc.sql("""
+                select person_id from qa.author_mutes where session_id = :session and person_id in (:persons)
+                """).param("session", sessionId).param("persons", persons).query(UUID.class).list());
+    }
+
+    boolean setAuthorMuted(UUID sessionId, UUID personId, boolean muted) {
+        String sql = muted ? """
+                insert into qa.author_mutes(session_id, person_id) values (:session, :person)
+                on conflict (session_id, person_id) do nothing
+                """ : "delete from qa.author_mutes where session_id = :session and person_id = :person";
+        return jdbc.sql(sql).param("session", sessionId).param("person", personId).update() > 0;
+    }
+
+    void transferAuthorMute(UUID sessionId, UUID guestId, UUID personId) {
+        jdbc.sql("""
+                insert into qa.author_mutes(session_id, person_id, muted_at)
+                select session_id, :person, muted_at from qa.author_mutes
+                where session_id = :session and person_id = :guest
+                on conflict (session_id, person_id) do nothing
+                """).param("session", sessionId).param("person", personId).param("guest", guestId).update();
+        jdbc.sql("delete from qa.author_mutes where session_id = :session and person_id = :guest")
+                .param("session", sessionId).param("guest", guestId).update();
+    }
+
+    HiddenQuestions hideAuthorQuestions(UUID sessionId, UUID personId) {
+        return jdbc.sql("""
+                with previous as materialized (
+                    select * from qa.questions
+                    where session_id = :session and person_id = :person and status <> 'DISMISSED'
+                    for update
+                ), hidden as (
+                    update qa.questions set status = 'DISMISSED', answer_text = null,
+                        answer_visibility = null, answered_at = now()
+                    where id in (select id from previous)
+                    returning id
+                )
+                select (select count(*)::int from hidden) as count,
+                    coalesce(jsonb_agg(to_jsonb(previous)), '[]'::jsonb)::text as snapshots from previous
+                """).param("session", sessionId).param("person", personId)
+                .query((rs, row) -> new HiddenQuestions(rs.getInt("count"), rs.getString("snapshots"))).single();
+    }
+
+    void logModeration(UUID sessionId, UUID questionId, UUID actor, boolean muted, HiddenQuestions hidden) {
+        jdbc.sql("""
+                insert into qa.author_moderation_log
+                    (id, session_id, question_id, actor_person_id, muted, hidden_questions)
+                values (:id, :session, :question, :actor, :muted, cast(:snapshots as jsonb))
+                """).param("id", ru.university.assistant.shared.api.UuidV7.generate())
+                .param("session", sessionId).param("question", questionId).param("actor", actor)
+                .param("muted", muted).param("snapshots", hidden.snapshots()).update();
+    }
+
+    record HiddenQuestions(int count, String snapshots) {}
+
     StudentQuestion create(
             UUID id, UUID sessionId, UUID personId, String displayName,
             String channelType, String text, boolean anonymous, Integer slideIdx) {
