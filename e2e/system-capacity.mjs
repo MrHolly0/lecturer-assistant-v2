@@ -5,6 +5,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { runtimeDiagnostics } from '../services/common/diagnostics.mjs';
+import { boundedHttpClient, networkErrorCode } from './http-client.mjs';
 
 const base = new URL(process.env.BASE_URL || 'http://caddy');
 const privateV4 = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
@@ -41,7 +42,8 @@ const summary = { runId, base: base.origin, startedAt: new Date().toISOString(),
   mediaIncluded: false, sseRequestEncoding: sseEncoding || 'default', plan, stages: [], setup: {}, passed: false };
 if (process.env.CAPACITY_TRANSPORT_GATEWAY === 'true')
   summary.path = 'client -> nginx edge -> realtime gateway -> authority/core -> PostgreSQL; outbox/RabbitMQ invalidations';
-const stats = { requests: 0, retries: 0, statuses: {}, networkFailures: 0 };
+const stats = { requests: 0, retries: 0, statuses: {}, networkFailures: 0, networkFailureCodes: {} };
+const apiClient = boundedHttpClient(base, ioConcurrency);
 const diagnostics = runtimeDiagnostics();
 let stageProgress;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -70,17 +72,19 @@ async function request(method, path, options = {}) {
     const started = performance.now();
     let response;
     try {
-      response = await fetch(new URL(path, base), { method, headers, body,
+      response = await apiClient.fetch(new URL(path, base), { method, headers, body,
         signal: AbortSignal.timeout(requestTimeout), redirect: 'error' });
       stats.requests++;
       stats.statuses[response.status] = (stats.statuses[response.status] || 0) + 1;
-    } catch {
+    } catch (error) {
       stats.networkFailures++;
+      const code = networkErrorCode(error);
+      stats.networkFailureCodes[code] = (stats.networkFailureCodes[code] ?? 0) + 1;
       // A failed unkeyed create may already have committed. Never repeat it blindly.
       if (attempt < 3 && (method === 'GET' || options.key || options.idempotent)) {
         stats.retries++; await sleep(Math.random() * Math.min(5000, 500 * 2 ** attempt)); continue;
       }
-      throw new Error('Request transport failure');
+      throw new Error('Request transport failure: ' + code);
     }
     const safeRetry = method === 'GET' || options.key || options.idempotent || response.status === 429;
     if (attempt < 6 && safeRetry && [429, 502, 503, 504].includes(response.status)) {
@@ -254,7 +258,7 @@ async function stage(configuration) {
           await sleep(Math.max(retryAfter(response?.headers.get('Retry-After')),
             Math.random() * Math.min(5000, 500 * 2 ** attempt))); continue;
         }
-        issue('sse-open', error); return;
+        issue('sse-open', new Error(error.message + ': ' + networkErrorCode(error))); return;
       }
     }
     client.reader = (async () => {
@@ -440,7 +444,7 @@ try {
 } catch (error) { summary.setupFailure = error instanceof HttpFailure ? `HTTP ${error.status}` : error.message; }
 finally {
   clearInterval(progress); summary.finishedAt = new Date().toISOString(); summary.http = stats;
-  summary.generator = diagnostics.snapshot(); diagnostics.close();
+  summary.generator = diagnostics.snapshot(); diagnostics.close(); apiClient.close();
   await writeFile(resolve(output, 'summary.json'), JSON.stringify(summary, null, 2));
 }
 log({ finished: true, passed: summary.passed, completedStages: summary.stages.length, expectedStages: plan.length });

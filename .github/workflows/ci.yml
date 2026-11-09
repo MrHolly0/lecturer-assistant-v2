@@ -73,6 +73,9 @@ jobs:
           npm ci
           npm test
 
+      - name: Verify capacity client socket isolation
+        run: node --test e2e/http-client.test.mjs
+
       - name: Verify HA rendering
         run: python3 -m unittest discover -s deploy/scalable/ha -p '*_test.py'
 
