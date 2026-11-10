@@ -3,8 +3,12 @@
 import argparse
 import json
 import re
+import importlib.util
 from pathlib import Path
 from urllib.parse import urlparse
+_scaling_spec = importlib.util.spec_from_file_location('lecturer_autoscaling', Path(__file__).with_name('autoscaling.py'))
+autoscaling = importlib.util.module_from_spec(_scaling_spec)
+_scaling_spec.loader.exec_module(autoscaling)
 
 
 def render(config):
@@ -167,6 +171,7 @@ def render(config):
         container = deployment['spec']['template']['spec']['containers'][0]
         container['readinessProbe']['httpGet']['path'] = '/actuator/health/readiness'
         container['livenessProbe']['httpGet']['path'] = '/actuator/health/liveness'
+    items.extend(autoscaling.render(config, items))
     for item in items:
         if item['kind'] != 'Namespace':
             item['metadata']['namespace'] = namespace
@@ -176,5 +181,9 @@ def render(config):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=Path)
+    parser.add_argument('--prometheus-config', action='store_true', help='Print the namespaced scrape configuration instead')
     args = parser.parse_args()
-    print(json.dumps(render(json.loads(args.config.read_text())), indent=2))
+    config = json.loads(args.config.read_text())
+    manifests = render(config)
+    print(json.dumps(autoscaling.prometheus_config(config.get('namespace', 'lecturer'))
+                     if args.prometheus_config else manifests, indent=2))

@@ -15,11 +15,12 @@ export class RealtimeHub {
       maxFrameBytes, maxBufferBytes, permissionRecoveryMs, now });
     this.clients = new Set(); this.rooms = new Map(); this.sessions = new Map();
     this.inFlight = 0; this.pendingGrants = 0; this.cursor = 0; this.closed = false;
+    this.accepting = true; this.draining = false;
     this.studentCount = 0; this.pendingStudents = 0;
     this.stats = { snapshots: 0, coalesced: 0, slowConsumers: 0, revoked: 0, rpcErrors: 0,
       invalidations: 0, matchedInvalidations: 0, expiredLeases: 0, denied: 0, staleGrants: 0,
       rpcMaxMs: 0, rpcTotalMs: 0, rpcCalls: 0,
-      tickMaxGapMs: 0, suspended: 0, resumed: 0, recoveryTimeouts: 0 };
+      tickMaxGapMs: 0, suspended: 0, resumed: 0, recoveryTimeouts: 0, drained: 0 };
     this.lastTick = this.now();
     this.rpc = async (...args) => {
       const started = this.now();
@@ -33,7 +34,7 @@ export class RealtimeHub {
   }
 
   admit() {
-    if (this.closed || this.pendingGrants >= this.grantConcurrency
+    if (!this.accepting || this.closed || this.pendingGrants >= this.grantConcurrency
         || this.clients.size + this.pendingGrants >= this.maxConnections)
       throw Object.assign(new Error('Gateway at capacity'), { status: 503 });
   }
@@ -57,6 +58,7 @@ export class RealtimeHub {
         ? { snapshot: await this.rpc('/internal/v1/realtime/public-snapshot', { joinCode: code }) }
         : await this.rpc('/internal/v1/realtime/student-grant', { joinCode: code, participantToken: token });
       if (response.destroyed || this.closed) return;
+      if (!this.accepting) throw Object.assign(new Error('Gateway draining'), { status: 503 });
       const expiresAt = isPublic ? Infinity : lease(grant, this.now());
       if (expiresAt <= this.now()) throw Object.assign(new Error('Expired grant'), { status: 503 });
       const room = this.room(code, grant.snapshot.sessionId);
@@ -85,8 +87,14 @@ export class RealtimeHub {
   async addPresenter(sessionId, accessToken, socket) {
     this.admit(); this.pendingGrants++;
     try {
-      const grant = await this.rpc('/internal/v1/realtime/presenter-grant', { sessionId, accessToken });
+      let grant;
+      try { grant = await this.rpc('/internal/v1/realtime/presenter-grant', { sessionId, accessToken }); }
+      catch (error) {
+        if ([401, 403, 404].includes(error.status)) throw error;
+        throw Object.assign(new Error('Authority temporarily unavailable'), { status: 503 });
+      }
       if (socket.readyState !== 1 || this.closed) return;
+      if (!this.accepting) throw Object.assign(new Error('Gateway draining'), { status: 503 });
       const expiresAt = lease(grant, this.now());
       if (expiresAt <= this.now()) throw Object.assign(new Error('Expired grant'), { status: 503 });
       const room = this.room(grant.session.joinCode, sessionId);
@@ -114,11 +122,20 @@ export class RealtimeHub {
     }
   }
 
-  closeClient(client, revoked = false) {
+  closeClient(client, revoked = false, retryCode = 1012) {
     if (revoked) this.stats.revoked++;
     this.remove(client);
     if (client.kind === 'sse') client.response.end();
-    else client.socket.close(1008, revoked ? 'Permission expired' : 'Reconnect');
+    else client.socket.close(revoked ? 1008 : retryCode, revoked ? 'Permission expired' : 'Reconnect');
+  }
+
+  startDrain(windowMs = 20000, random = Math.random) {
+    if (!Number.isFinite(windowMs) || windowMs < 0 || windowMs > 30000)
+      throw new Error('Invalid drain budget');
+    if (this.draining) return;
+    this.accepting = false; this.draining = true;
+    const now = this.now();
+    for (const client of this.clients) client.drainAt = now + random() * windowMs;
   }
 
   suspend(client) {
@@ -134,7 +151,7 @@ export class RealtimeHub {
 
   renew(client, grant) {
     if (client.suspended && this.now() >= client.recoveryDeadline) {
-      this.stats.recoveryTimeouts++; this.closeClient(client, true); return false;
+      this.stats.recoveryTimeouts++; this.closeClient(client, false, 1013); return false;
     }
     const expiresAt = lease(grant, this.now());
     if (expiresAt <= this.now()) {
@@ -209,10 +226,13 @@ export class RealtimeHub {
     this.stats.tickMaxGapMs = Math.max(this.stats.tickMaxGapMs, now - this.lastTick);
     this.lastTick = now;
     for (const client of this.clients) {
+      if (this.draining && client.drainAt <= now) {
+        this.stats.drained++; this.closeClient(client); continue;
+      }
       if (client.expiresAt <= now) {
         this.suspend(client);
         if (now >= client.recoveryDeadline) {
-          this.stats.recoveryTimeouts++; this.closeClient(client, true);
+          this.stats.recoveryTimeouts++; this.closeClient(client, false, 1013);
         }
         continue;
       }
@@ -305,7 +325,7 @@ export class RealtimeHub {
   }
 
   close() {
-    this.closed = true;
+    this.closed = true; this.accepting = false;
     for (const client of [...this.clients]) this.closeClient(client);
   }
 }

@@ -66,6 +66,66 @@ class DeploymentTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.render(config)
 
+    def test_autoscaling_budget_and_fail_safe_metric(self):
+        config = self.config()
+        config['autoscaling'] = {'enabled': True, 'prometheusAddress': 'http://prometheus:9090'}
+        data = module.render(config)['items']
+        scalers = {i['metadata']['name']: i for i in data if i['kind'] == 'ScaledObject'}
+        self.assertEqual(set(scalers), {'realtime', 'content-worker', 'analytics'})
+        gateway = scalers['realtime']['spec']
+        self.assertEqual((gateway['minReplicaCount'], gateway['maxReplicaCount']), (3, 6))
+        self.assertEqual(gateway['fallback']['replicas'], 6)
+        trigger = gateway['triggers'][0]['metadata']
+        self.assertEqual(trigger['ignoreNullValues'], 'false')
+        self.assertIn('min(up{', trigger['query'])
+        self.assertEqual(gateway['advanced']['horizontalPodAutoscalerConfig']['behavior']
+                         ['scaleDown']['policies'][0]['value'], 1)
+        hpas = {i['metadata']['name']: i for i in data if i['kind'] == 'HorizontalPodAutoscaler'}
+        self.assertEqual(set(hpas), {'core', 'converter'})
+        self.assertEqual(hpas['core']['spec']['maxReplicas'], 6)
+        for item in data:
+            if item['kind'] == 'Deployment' and item['metadata']['name'] in ['core', 'realtime', 'converter', 'content-worker', 'analytics']:
+                self.assertNotIn('replicas', item['spec'])
+        auth = [i for i in data if i['kind'] == 'TriggerAuthentication']
+        self.assertEqual(len(auth), 2)
+        self.assertTrue(all('connection' == i['spec']['secretTargetRef'][0]['key'] for i in auth))
+        self.assertNotIn('password', str(auth).lower())
+
+    def test_rejects_overcommitted_database_and_invalid_bounds(self):
+        for overrides in [{'coreMax': 10}, {'databaseConnections': 140}, {'realtimeMax': 2},
+                          {'contentMax': True}, {'analyticsMax': 17}, {'analyticsDatabaseConnections': 30},
+                          {'prometheusAddress': 'http://user:password@prometheus:9090'}]:
+            with self.subTest(overrides=overrides):
+                config = self.config()
+                config['autoscaling'] = {'enabled': True, 'prometheusAddress': 'http://prometheus:9090', **overrides}
+                with self.assertRaises(ValueError):
+                    module.render(config)
+
+    def test_scraper_includes_draining_pods_until_their_connections_close(self):
+        config = module.autoscaling.prometheus_config('lecturer')
+        scrape = config['scrape_configs'][0]
+        self.assertEqual(scrape['kubernetes_sd_configs'][0]['namespaces']['names'], ['lecturer'])
+        self.assertNotIn('pod_ready', str(scrape))
+        self.assertIn('8091', str(scrape))
+
+    def test_local_quotas_stay_within_installation_budget_at_maximum_and_surge(self):
+        config = self.config()
+        for maximum in [2, 6, 16]:
+            config['autoscaling'] = {'enabled': True, 'prometheusAddress': 'http://prometheus:9090',
+                                     'coreMax': maximum, 'databaseConnections': 400}
+            data = module.render(config)['items']
+            core = next(i for i in data if i['kind'] == 'Deployment' and i['metadata']['name'] == 'core')
+            env = {i['name']: i['value'] for i in core['spec']['template']['spec']['containers'][0]['env'] if 'value' in i}
+            properties = (Path(__file__).parents[3] / 'core/src/main/resources/application.yml').read_text()
+            for variable, ceiling in module.autoscaling.RATE_BUDGETS.values():
+                self.assertIn('${' + variable + ':', properties)
+                self.assertGreater(int(env[variable]), 0)
+                self.assertLessEqual(int(env[variable]) * (maximum + 1), ceiling)
+        for budgets in [{'writes': 0}, {'writes': True}, {'write': 100}, []]:
+            config['autoscaling']['rateBudgets'] = budgets
+            with self.assertRaises(ValueError):
+                module.render(config)
+
 
 if __name__ == '__main__':
     unittest.main()

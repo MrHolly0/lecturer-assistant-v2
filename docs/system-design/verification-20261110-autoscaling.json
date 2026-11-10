@@ -1,0 +1,104 @@
+{
+  "checks": [
+    "private-answer-isolated-after-scale-up",
+    "downscale-reconnects-preserve-participants-and-delivery",
+    "telemetry-failure-bounded-fallback"
+  ],
+  "phases": [
+    {
+      "phase": "up",
+      "desired": 4,
+      "ready": 4,
+      "pods": {
+        "realtime-78dbb7bd57-8lmwn": 50,
+        "realtime-78dbb7bd57-qbtxc": 46,
+        "realtime-78dbb7bd57-szcnr": 15,
+        "realtime-78dbb7bd57-v6qkf": 9
+      },
+      "students": 120
+    },
+    {
+      "phase": "down",
+      "before": {
+        "desired": 4,
+        "ready": 4,
+        "pods": {
+          "realtime-78dbb7bd57-8lmwn": 12,
+          "realtime-78dbb7bd57-qbtxc": 13,
+          "realtime-78dbb7bd57-szcnr": 4,
+          "realtime-78dbb7bd57-v6qkf": 1
+        }
+      },
+      "desired": 2,
+      "ready": 2,
+      "pods": {
+        "realtime-78dbb7bd57-8lmwn": 15,
+        "realtime-78dbb7bd57-qbtxc": 15
+      },
+      "retained": 30,
+      "reconnects": 5
+    }
+  ],
+  "passed": true,
+  "sessionEnded": true,
+  "at": "2026-11-10T10:00:35.491Z",
+  "scope": "Functional KEDA/HPA gateway scale-up/down on one shared Mac Docker VM; not 10k/video/independent-host HA acceptance",
+  "environment": {
+    "dockerCpu": 8,
+    "dockerMemoryBytes": 8321994752,
+    "linuxNodes": 2,
+    "independentPhysicalHosts": 1,
+    "k3d": "5.9.0",
+    "kubernetes": "1.35.5+k3s1",
+    "kubectl": "1.34.1",
+    "keda": "2.21.0",
+    "prometheus": "3.16.0",
+    "gatewayImage": "sha256:73170a2a4c46a5445a423a69fc0d16bde8bd0bc2d8e3f09ef24229b0ee10e09a",
+    "parentCommit": "49ccfa28bf99566ad33b8add97214e4e87a2c279",
+    "workingTreeContainsAutoscalingChanges": true,
+    "testGeneratorNode": "25.9.0",
+    "serviceUnitRuntime": "24.22.2 in built container"
+  },
+  "labPolicy": {
+    "min": 2,
+    "max": 4,
+    "connectionsPerReplica": 20,
+    "downStabilizationSeconds": 30,
+    "drainMs": 6000,
+    "manualGatewayScaling": false,
+    "firstWave": 80,
+    "secondWave": 40
+  },
+  "productionPolicy": {
+    "gatewayMin": 3,
+    "gatewayMax": 6,
+    "connectionsPerReplica": 2500,
+    "downStabilizationSeconds": 300,
+    "drainMs": 20000,
+    "defaultsAreNotProductionSizingQualification": true
+  },
+  "additionalChecks": {
+    "serviceUnitPassed": 24,
+    "postgresTestSkipped": 1,
+    "rendererTestsPassed": 7,
+    "actualPostgresQueueQueriesAndWriteDenialPassed": 2,
+    "allWorkerScalingLoadCyclesTested": false,
+    "fixedReplicaQuotaBudgetWithSurgeChecked": true
+  },
+  "previousAttempt": {
+    "passed": false,
+    "reason": "Test requested 4 replicas with 65 readers; 3 replicas is valid within standard HPA tolerance. Corrected test wave to 80. Synthetic session ended normally.",
+    "productFailure": false
+  },
+  "earlierPassedCycle": {
+    "students": 120,
+    "scale": [
+      2,
+      4,
+      2
+    ],
+    "retained": 30,
+    "reconnects": 6,
+    "at": "2026-11-10T09:46:05.307Z"
+  }
+}

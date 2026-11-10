@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "prometheusAddress": "http://prometheus.monitoring.svc.cluster.local:9090",
+  "coreMax": 6,
+  "realtimeMax": 6,
+  "contentMax": 4,
+  "converterMax": 4,
+  "analyticsMax": 4,
+  "databaseConnections": 180,
+  "reservedConnections": 30,
+  "analyticsDatabaseConnections": 60,
+  "analyticsReservedConnections": 20
+}

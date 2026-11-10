@@ -3,13 +3,13 @@ const SESSION = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export function attachStomp(socket, sessionId, hub) {
   if (!SESSION.test(sessionId)) { socket.close(1008); return; }
   let client, buffer = '', pendingBytes = 0, serial = Promise.resolve(), connecting = false;
-  const forceClose = () => {
-    socket.close(1008, 'Invalid subscription');
+  const forceClose = (code = 1008) => {
+    socket.close(code, code === 1013 ? 'Retry later' : 'Invalid subscription');
     const timer = setTimeout(() => { if (socket.readyState !== 3) socket.terminate(); }, 1000); timer.unref();
   };
   const handshake = setTimeout(() => { if (!client) forceClose(); }, 5000);
   handshake.unref();
-  const reject = () => { forceClose(); hub.remove(client); };
+  const reject = error => { forceClose(error?.status === 503 ? 1013 : 1008); hub.remove(client); };
   socket.on('close', () => { clearTimeout(handshake); hub.remove(client); });
   socket.on('error', () => { clearTimeout(handshake); hub.remove(client); });
   socket.on('message', bytes => {

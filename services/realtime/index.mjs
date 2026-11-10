@@ -16,12 +16,15 @@ const origins = new Set((process.env.CORS_ALLOWED_ORIGINS ?? 'http://localhost:1
 const originAllowed = request => !request.headers.origin || origins.has(request.headers.origin);
 const shutdown = new AbortController();
 let authorityReady = false, probeBusy = false, brokerConnected = false, broker, rawSockets = 0;
+const upgradedSockets = new Set();
+const drainWindowMs = integer(process.env.DRAIN_WINDOW_MS, 20000, 0, 30000);
 const diagnostics = runtimeDiagnostics();
-const health = healthHandler(() => authorityReady && brokerConnected && !hub.closed, () => ({
+const health = healthHandler(() => authorityReady && brokerConnected && hub.accepting && !hub.closed, () => ({
   ...diagnostics.snapshot(),
   realtime_connections: hub.clients.size, realtime_rooms: hub.rooms.size,
   realtime_rpc_in_flight: hub.inFlight, realtime_snapshots_total: hub.stats.snapshots,
   realtime_pending_grants: hub.pendingGrants,
+  realtime_draining: Number(hub.draining), realtime_drained_connections_total: hub.stats.drained,
   realtime_slow_consumers_total: hub.stats.slowConsumers, realtime_revocations_total: hub.stats.revoked,
   realtime_rpc_errors_total: hub.stats.rpcErrors, realtime_broker_connected: Number(brokerConnected),
   realtime_expired_leases_total: hub.stats.expiredLeases, realtime_denied_total: hub.stats.denied,
@@ -57,12 +60,15 @@ server.requestTimeout = 10000; server.headersTimeout = 10000;
 const sockets = new WebSocketServer({ noServer: true, maxPayload: 65536, clientTracking: false });
 server.on('upgrade', (request, socket, head) => {
   const match = request.url.match(/^\/ws\/session\/([0-9a-f-]{36})$/i);
-  if (!match || !originAllowed(request)
-      || hub.studentCount + hub.pendingStudents + rawSockets >= hub.maxConnections) {
+  if (!match || !originAllowed(request)) {
     socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return;
   }
+  if (!hub.accepting || hub.studentCount + hub.pendingStudents + rawSockets >= hub.maxConnections) {
+    socket.end('HTTP/1.1 503 Service Unavailable\r\nRetry-After: 2\r\nConnection: close\r\n\r\n'); return;
+  }
   sockets.handleUpgrade(request, socket, head, ws => {
-    rawSockets++; ws.once('close', () => rawSockets--);
+    rawSockets++; upgradedSockets.add(ws);
+    ws.once('close', () => { rawSockets--; upgradedSockets.delete(ws); });
     attachStomp(ws, match[1], hub);
   });
 });
@@ -75,10 +81,24 @@ const probe = setInterval(async () => {
   catch { authorityReady = false; }
   finally { probeBusy = false; }
 }, 2000);
-const stop = () => {
+let drainingTimer, forceTimer;
+const finish = () => {
+  if (shutdown.signal.aborted) return;
   shutdown.abort(); clearInterval(tick); clearInterval(probe); diagnostics.close(); hub.close();
+  clearInterval(drainingTimer); clearTimeout(forceTimer);
+  for (const socket of upgradedSockets) socket.terminate();
   sockets.close(); server.close(); server.closeIdleConnections();
+  server.closeAllConnections();
   void broker?.connection.close().catch(() => {});
+};
+const stop = () => {
+  if (hub.draining) return;
+  // Keep authorization, broker invalidations and metrics alive until existing clients migrate.
+  hub.startDrain(drainWindowMs); server.closeIdleConnections();
+  drainingTimer = setInterval(() => {
+    if (!hub.clients.size && !hub.pendingGrants && !rawSockets) finish();
+  }, 100);
+  forceTimer = setTimeout(finish, drainWindowMs + 5000);
 };
 process.on('SIGTERM', stop); process.on('SIGINT', stop);
 

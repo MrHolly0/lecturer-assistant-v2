@@ -191,6 +191,41 @@ test('authority outage backs off per room instead of retrying every scheduler ti
   f.hub.close();
 });
 
+test('draining rejects new grants and migrates existing connections gradually with fresh authorization', async () => {
+  const f = fixture(), outputs = [];
+  for (let i = 0; i < 20; i++) {
+    const output = new Output(); outputs.push(output);
+    await f.hub.addStudent('ABCDEF', `person-${i}`, output);
+  }
+  const socket = new Socket(); await f.hub.addPresenter(sessionId, 'fixture', socket);
+  let sample = 0;
+  f.hub.startDrain(2000, () => sample++ / 21);
+  await assert.rejects(f.hub.addStudent('ABCDEF', 'new', new Output()), { status: 503 });
+  assert.equal(f.hub.clients.size, 21);
+  f.change(); f.hub.invalidate({ schemaVersion: 1, sessionId, type: 'changed' });
+  f.advance(500); f.hub.tick(); await settle();
+  assert.ok(f.hub.clients.size > 0 && f.hub.clients.size < 21);
+  assert.match(outputs.at(-1).frames.at(-1), /"version":2/);
+  f.advance(2000); f.hub.tick(); await settle();
+  assert.equal(f.hub.clients.size, 0);
+  assert.equal(f.hub.stats.drained, 21);
+  assert.equal(f.hub.stats.revoked, 0);
+  assert.equal(socket.code, 1012);
+});
+
+test('a grant requested before drain cannot admit a connection after drain begins', async () => {
+  let release;
+  const hub = new RealtimeHub(async () => new Promise(resolve => { release = resolve; }));
+  const output = new Output(), pending = hub.addStudent('ABCDEF', '', output, true);
+  hub.startDrain(1000);
+  release({ sessionId, status: 'LIVE', version: 1 });
+  await assert.rejects(pending, { status: 503 });
+  assert.equal(hub.clients.size, 0);
+  assert.equal(output.frames.length, 0);
+  assert.equal(hub.pendingGrants, 0);
+  hub.close();
+});
+
 test('slow SSE retains only latest frame and oversized snapshots send invalidations', async () => {
   const f = fixture({ maxFrameBytes: 512 }), output = new Output(); output.blocked = true;
   const client = await f.hub.addStudent('ABCDEF', 'person', output);
@@ -247,6 +282,18 @@ test('STOMP wildcard subscription is rejected without delivering lecture data', 
   await settle();
   assert.equal(socket.code, 1008);
   assert.equal(socket.frames.filter(f => f.startsWith('MESSAGE')).length, 0);
+});
+
+test('STOMP retries an unavailable authority but preserves explicit access denial', async () => {
+  for (const [status, expected] of [[undefined, 1013], [503, 1013], [403, 1008]]) {
+    const f = fixture(), socket = new Socket();
+    f.hub.rpc = async () => { throw Object.assign(new Error('Unavailable'), { status }); };
+    attachStomp(socket, sessionId, f.hub);
+    socket.emit('message', Buffer.from('CONNECT\nAuthorization:Bearer fixture\n\n\0'));
+    await settle();
+    assert.equal(socket.code, expected);
+    assert.equal(f.hub.clients.size, 0);
+  }
 });
 
 test('publisher requires broker confirm and durable routing but tolerates missing transient subscribers', async () => {
