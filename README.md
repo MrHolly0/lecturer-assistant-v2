@@ -61,7 +61,7 @@ flowchart LR
 
 Для сервера в облаке есть отдельная короткая инструкция и один управляющий скрипт: [deploy/cloud/README.md](deploy/cloud/README.md) (`sh deploy/cloud/lecturer.sh init`, затем `up`).
 
-Полная распределённая версия в настоящем кластере Kubernetes (k3s на виртуальных Linux-машинах на Mac): [deploy/k8s/README.md](deploy/k8s/README.md).
+Распределённая версия в кластере Kubernetes (k3s): лёгкий профиль на Mac через Lima или полный — на арендованных Linux-серверах с HTTPS и автомасштабированием: [deploy/k8s/README.md](deploy/k8s/README.md).
 
 ## Запуск одной командой
 

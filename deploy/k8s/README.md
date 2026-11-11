@@ -1,69 +1,93 @@
-# Kubernetes на Mac: k3s в виртуальных машинах
+# Kubernetes: Mac или свои Linux-серверы
 
-Полная распределённая версия Lecturer Assistant в настоящем кластере Kubernetes.
-Узлы — обычные Ubuntu-машины с k3s под systemd, как арендованные Linux-серверы.
-Здесь они запущены как виртуальные машины Lima на одном Mac. Всем управляет
-один скрипт: `deploy/k8s/lecturer-k8s.sh`.
+Распределённая версия Lecturer Assistant в настоящем кластере Kubernetes (k3s).
+Узлы — обычные Ubuntu-машины с k3s под systemd. Всем управляет один скрипт
+`deploy/k8s/lecturer-k8s.sh`; площадку выбирает `init`.
 
-Простой вариант на одном сервере через docker compose описан в [deploy/cloud](../cloud/README.md).
+| | **mac** — Lima на Mac | **linux** — арендованные серверы |
+|---|---|---|
+| Узлы | виртуальная машина Ubuntu на этом Mac | ваши серверы Ubuntu 22.04/24.04, доступ по SSH с sudo |
+| Профиль | `light`: одна копия каждого сервиса, без автомасштабирования | `full`: 2–3 копии, автомасштабирование, БД и RabbitMQ по 3 экземпляра |
+| Вход | `127.0.0.1:18088` на Mac, наружу через туннель (Tuna) | домен, HTTPS (Traefik + Let's Encrypt), HTTP → HTTPS |
+| Сборка образов | отдельная VM, включается на время сборки | на первом сервере (отдельный containerd + BuildKit) |
+| Видео (SFU) | только внутри Mac | публичный IP последнего сервера |
 
-## Как устроено
+Простой вариант без Kubernetes, на одном сервере через docker compose: [deploy/cloud](../cloud/README.md).
+
+## Что внутри кластера
 
 ```
-Mac (macOS)
-├── Tuna ──> 127.0.0.1:18088 ───────────────┐
-│                                           ▼
-├── VM lecturer-k8s-1  (k3s server)    edge (nginx) ─┬─ /api, /health   → core ×2..3 (Spring Boot)
-├── VM lecturer-k8s-2  (k3s agent)                   ├─ SSE, /ws        → realtime ×3..4 (Node.js)
-├── VM lecturer-k8s-3  (k3s agent, SFU)              ├─ /rtc            → media-control → SFU (LiveKit)
-│                                                    ├─ /webhook/       → max-adapter
-│                                                    └─ остальное       → web (React)
-└── VM lecturer-k8s-builder  (сборка образов, включается только на время build)
+edge (nginx) ─┬─ /api, /health   → core (Spring Boot)
+              ├─ SSE, /ws        → realtime (Node.js)
+              ├─ /rtc            → media-control → SFU (LiveKit)
+              ├─ /webhook/       → max-adapter
+              └─ остальное       → web (React)
 
-Внутри кластера:
-  PostgreSQL ×3 (CloudNativePG, синхронная реплика) — данные приложения
-  PostgreSQL ×3 (CloudNativePG) — аналитика
-  RabbitMQ ×3 (quorum) — события между сервисами
-  content-worker, converter (LibreOffice) — импорт презентаций; файлы на общем NFS-томе
-  event-publisher, analytics — outbox и отчёты
-  KEDA + Prometheus + HPA — автомасштабирование realtime, core, converter, workers
-  cert-manager — сертификаты вебхуков оператора RabbitMQ
-  registry — внутренний реестр образов; манифесты ссылаются на образы только по digest
+PostgreSQL ×2 (CloudNativePG) — данные приложения и аналитика
+RabbitMQ (оператор) — события между сервисами
+content-worker, converter (LibreOffice) — импорт презентаций; файлы на общем NFS-томе
+event-publisher, analytics — outbox и отчёты
+cert-manager, registry (образы только по digest); в full ещё KEDA + Prometheus + HPA
 ```
 
-Приложение рендерит тот же проверенный генератор манифестов, что описан в
-[deploy/scalable](../scalable/README.md) (`ha/render.py`), без изменений.
-`render-site.py` добавляет к нему то, что нужно конкретной площадке: размеры БД,
-NFS-том, Redis для LiveKit, Prometheus, MAX-адаптер и внешний вход.
+Приложение рендерит проверенный генератор [deploy/scalable/ha/render.py](../scalable/ha/render.py);
+`render-site.py` добавляет площадку: профиль ресурсов, NFS-том, Redis для LiveKit,
+MAX-адаптер, внешний вход. Все версии зафиксированы в [versions.env](versions.env).
 
-## Что нужно
+## Ресурсы
 
-- Mac на Apple Silicon с macOS 13+. Для трёх узлов — **32 ГБ RAM**
-  (3 узла × 4 CPU / 7 ГБ + сборщик 4 CPU / 5 ГБ на время сборки), 200+ ГБ свободного диска.
-- [Lima](https://lima-vm.io) ≥ 2.0: `brew install lima`. Python 3 и openssl уже есть в macOS.
-  kubectl на Mac не обязателен: скрипт вызывает kubectl внутри узла.
-- Для внешнего доступа — туннель (Tuna) на `127.0.0.1:18088`, как и раньше.
+### mac (профиль light)
+
+| VM | vCPU | Память | Когда работает |
+|---|---|---|---|
+| lecturer-k8s-1 | 4 | 6 ГБ | всегда |
+| lecturer-k8s-builder | 4 | 4 ГБ | только во время `build` (~10 минут) |
+
+Измерено: вся система занимает **около 2,5–2,8 ГБ памяти и 0,6 CPU** в простое.
+Хватает Mac на Apple Silicon с 16 ГБ; диск — 60 ГБ под узел и 60 ГБ под сборщик.
+
+### linux (профиль full)
+
+Резерв планировщика при минимальном числе копий — **около 31 ГБ памяти и 20 CPU**
+(приложение ~15 ГБ / 9 CPU, PostgreSQL и RabbitMQ по три экземпляра ~16 ГБ / 12 CPU),
+плюс около 2 ГБ на операторы и k3s. Автомасштабирование до максимума добавляет ещё ~12 ГБ и ~4 CPU.
+
+| | Минимум | С запасом под автомасштабирование |
+|---|---|---|
+| Серверы | 3 × 8 vCPU / 16 ГБ | 4 × 8 vCPU / 16 ГБ (четвёртый — под видео) |
+| Диск | 200 ГБ каждому (PostgreSQL 100 + 50 ГБ, RabbitMQ 20 ГБ, образы), первому 250 ГБ | то же |
+| Сеть | общая частная сеть между серверами, публичный IP | то же |
+
+Профиль можно поменять в `site.env`: `PROFILE=light` на серверах экономит ресурсы,
+`PROFILE=full` на Mac требует трёх узлов и 32+ ГБ.
 
 ## Запуск
 
 ```sh
-sh deploy/k8s/lecturer-k8s.sh init   # адрес, имя и токен бота MAX; секреты генерируются сами
+sh deploy/k8s/lecturer-k8s.sh init   # площадка mac/linux, адрес, бот MAX; секреты генерируются сами
 sh deploy/k8s/lecturer-k8s.sh up     # узлы, платформа, сборка, развёртывание: 30–60 минут в первый раз
 sh deploy/k8s/lecturer-k8s.sh admin  # создать администратора
 sh deploy/k8s/lecturer-k8s.sh lock-setup
 ```
 
-`up` состоит из четырёх шагов, которые можно запускать и по отдельности:
+Для **mac** нужна Lima: `brew install lima`. Python 3 и openssl уже есть в macOS.
+
+Для **linux** перед `up`:
+- SSH по ключу без пароля к каждому серверу и `sudo` без пароля (обычная настройка облачных VM);
+- DNS: A-запись домена на публичные IP серверов;
+- файрвол — наружу только 22, 80, 443 и на последнем сервере 7881/tcp, 7882/udp (видео);
+  между серверами по частной сети — 6443, 8472/udp, 10250, 2049, 111, 5000;
+- `init` спросит адреса серверов (первый — главный), домен, почту для Let's Encrypt,
+  интерфейс частной сети и публичный IP сервера для видео.
+
+`up` состоит из четырёх шагов, их можно запускать и по отдельности:
 
 | Шаг | Что делает |
 |---|---|
-| `cluster` | создаёт VM, ставит k3s (server + agents), NFS для файлов, реестр в настройках узлов |
-| `platform` | реестр образов, cert-manager, операторы CloudNativePG и RabbitMQ, KEDA, Prometheus |
-| `build` | поднимает VM-сборщик, собирает 7 образов из текущего клона, кладёт в реестр, записывает digest |
-| `deploy` | секреты, БД и RabbitMQ, приложение, права счётчиков очередей, автомасштабирование |
-
-Все версии (k3s, операторы, образы) зафиксированы в [versions.env](versions.env).
-На Mac пробрасываются только два порта узла: 6443 (API Kubernetes) и 18088 (сайт), оба на `127.0.0.1`.
+| `cluster` | готовит узлы (VM или серверы), ставит k3s, NFS для файлов, зеркало реестра |
+| `platform` | реестр образов, cert-manager, операторы CloudNativePG и RabbitMQ; в full — KEDA и Prometheus |
+| `build` | собирает 7 образов из текущей рабочей копии, кладёт в реестр, записывает digest |
+| `deploy` | секреты, БД и RabbitMQ, приложение, внешний вход; в full — автомасштабирование |
 
 ## Обычная работа
 
@@ -72,65 +96,62 @@ sh deploy/k8s/lecturer-k8s.sh lock-setup
 | Что запущено и отвечает ли сайт | `sh deploy/k8s/lecturer-k8s.sh status` |
 | Журналы компонента | `sh deploy/k8s/lecturer-k8s.sh logs core` (realtime, edge, analytics, max-adapter…) |
 | Выкатить новую версию кода | `git pull && sh deploy/k8s/lecturer-k8s.sh build && sh deploy/k8s/lecturer-k8s.sh deploy` |
-| Резервная копия на Mac | `sh deploy/k8s/lecturer-k8s.sh backup` → `~/lecturer-k8s-backups/<время>/` |
+| Резервная копия на этот компьютер | `sh deploy/k8s/lecturer-k8s.sh backup` → `~/lecturer-k8s-backups/<время>/` |
 | Любая команда kubectl | `sh deploy/k8s/lecturer-k8s.sh kubectl -n lecturer get pods` |
-| Остановить всё (данные сохраняются) | `sh deploy/k8s/lecturer-k8s.sh stop` |
-| Запустить снова | `sh deploy/k8s/lecturer-k8s.sh start` |
-| Удалить кластер с данными | `sh deploy/k8s/lecturer-k8s.sh destroy` |
+| (mac) Остановить / запустить VM | `sh deploy/k8s/lecturer-k8s.sh stop` / `start` |
+| (mac) Удалить кластер с данными | `sh deploy/k8s/lecturer-k8s.sh destroy` |
 
-Выкатка обновления идёт как в продакшене: новые образы получают новый digest,
-Deployment'ы обновляются по одному поду (`maxUnavailable: 0`), PodDisruptionBudget не даёт
-погасить все копии сразу.
+Обновление идёт как в продакшене: новые образы получают новый digest, Deployment'ы
+меняют поды по одному. SFU обновляется только вручную (`OnDelete`), чтобы не оборвать
+идущую демонстрацию: после смены версии или `MEDIA_PUBLIC_IP` удалите под `sfu` в паузе
+между занятиями — `kubectl -n lecturer delete pod -l app.kubernetes.io/component=sfu`.
 
-Для kubectl, k9s или Lens прямо с Mac: `export KUBECONFIG=$PWD/deploy/k8s/.state/kubeconfig`.
+kubectl, k9s или Lens с этого компьютера: `export KUBECONFIG=$PWD/deploy/k8s/.state/kubeconfig`
+(на linux сначала `ssh -L 6443:127.0.0.1:6443 <первый сервер>`).
 
 ## Настройки
 
-`deploy/k8s/.state/site.env` создаётся командой `init`:
+`deploy/k8s/.state/site.env` создаёт `init`; секреты — в `deploy/k8s/.state/secrets.env`
+(права 600, не попадают в git и в образы).
 
-| Параметр | По умолчанию | Смысл |
-|---|---|---|
-| `PUBLIC_DOMAIN` | `lecturer-assistant.ru.tuna.am` | публичный адрес (CORS, ссылка мини-приложения, вебхук MAX) |
-| `NODE_COUNT` | 3 | число узлов; с 3 узлами БД и RabbitMQ работают как отказоустойчивые кластеры |
-| `NODE_CPUS` / `NODE_MEMORY_GIB` / `NODE_DISK_GIB` | 4 / 7 / 60 | размер каждого узла |
-| `EDGE_PORT` | 18088 | порт на Mac, куда смотрит туннель |
-| `MEMORY_REQUEST_RATIO` | 0.5 | какую долю лимита памяти резервирует планировщик |
-| `AUTOSCALING` | true | KEDA/HPA для realtime, core, converter, content-worker, analytics |
-| `MAX_REGISTER_WEBHOOK_ON_START` | true | адаптер регистрирует вебхук бота на `PUBLIC_DOMAIN` при старте |
+| Параметр | mac | linux | Смысл |
+|---|---|---|---|
+| `PLATFORM` | `lima` | `linux` | площадка |
+| `PROFILE` | `light` | `full` | профиль ресурсов |
+| `PUBLIC_MODE` | `tunnel` | `ingress` | вход: порт для туннеля или HTTPS по домену |
+| `PUBLIC_DOMAIN` | `lecturer-assistant.ru.tuna.am` | ваш домен | CORS, ссылка мини-приложения, вебхук MAX |
+| `SERVERS` | — | `root@IP1 root@IP2 root@IP3` | SSH-адреса, первый — главный |
+| `PRIVATE_IFACE` | — | пусто = интерфейс маршрута по умолчанию | сеть между узлами |
+| `MEDIA_PUBLIC_IP` | — | IP последнего сервера | адрес, который SFU сообщает браузерам |
+| `ACME_EMAIL` | — | почта | Let's Encrypt |
+| `NODE_COUNT`, `NODE_CPUS`, `NODE_MEMORY_GIB` | 1, 4, 6 | — | размер VM |
+| `AUTOSCALING` | false | true | KEDA/HPA (только в full) |
+| `MEMORY_REQUEST_RATIO` | из профиля (0.25) | из профиля (1.0) | доля лимита памяти, которую резервирует планировщик |
+| `MAX_REGISTER_WEBHOOK_ON_START` | true | true | адаптер регистрирует вебхук бота на `PUBLIC_DOMAIN` при старте |
 
-Секреты лежат в `deploy/k8s/.state/secrets.env` (права 600, не попадают в git и в образы).
+## Как проверено (11 ноября 2026, Mac M1 Pro 16 ГБ)
 
-## Как проверено
+- **mac / light**: `init` + `up` с настройками по умолчанию прошли без ручных шагов; 16 подов
+  на одном узле 4 vCPU / 6 ГБ; занято ~2,4–2,8 ГБ и 0,6 CPU.
+- **linux / light**: чистая VM Ubuntu 24.04, доступ только по SSH, как к облачному серверу.
+  `up` поставил k3s, nerdctl-full (с проверкой SHA256), собрал образы на сервере, реестр
+  слушает только частный адрес. HTTPS через Traefik: HTTP → 301 на HTTPS, `/health` 200,
+  `/internal` 404. Let's Encrypt не проверялся (тестовый домен никуда не указывает).
+- В обоих случаях `e2e/service-smoke.mjs` прошёл: импорт презентации через worker и converter
+  на NFS, доставка смены слайда за 170–250 мс по SSE и WebSocket через RabbitMQ, выдача
+  доступа к SFU, приватный ответ, отчёт отдельной аналитики; `backup` создаёт дампы
+  обеих БД и архив файлов с контрольными суммами.
+- **full** (3 копии БД с синхронной репликой, кворум RabbitMQ, KEDA/HPA) проверялся раньше на одном
+  узле с 10 vCPU: автомасштабирование читает очереди и соединения. На трёх настоящих серверах
+  профиль full ещё не запускался — это первая проверка после аренды.
 
-11 ноября 2026 на Mac (M1 Pro, 16 ГБ) прогнан весь путь `init → cluster → platform → build → deploy`
-на одном узле (для трёх не хватило памяти этой машины):
+## Ограничения
 
-- сборка 7 образов в VM-сборщике — около 10 минут, образы в реестре по digest;
-- PostgreSQL ×2 (CloudNativePG), RabbitMQ, все сервисы запущены; сайт, API и `/health`
-  отвечают через edge на `127.0.0.1:18088`, `/internal` и `/metrics` снаружи закрыты;
-- первый администратор создан, вход по паролю работает;
-- `e2e/service-smoke.mjs` прошёл: импорт презентации через worker и converter на NFS,
-  доставка смены слайда 206 мс по SSE и WebSocket через RabbitMQ, выдача доступа к SFU,
-  приватный ответ, отчёт отдельной аналитики;
-- KEDA читает очереди из PostgreSQL и число соединений из Prometheus, HPA — CPU core;
-- `backup` создаёт дампы обеих БД и архив файлов с контрольными суммами.
-
-Трёхузловой вариант (синхронная реплика PostgreSQL, кворум RabbitMQ, разнесение реплик по
-узлам) на этой машине не запускался — его первая проверка на Mac mini.
-
-## Ограничения этой площадки
-
-- **Один физический компьютер.** Три узла дают настоящую работу кластера, rolling update
-  и переживают падение одной VM, но не выключение самого Mac.
-- **Видео демонстрации экрана (SFU) доступно только внутри Mac.** WebRTC-медиа идёт по UDP/TCP
-  напрямую на узел, а туннель пропускает только HTTP. Для студентов из интернета нужен
-  сервер с публичным IP или TURN.
-- **NFS для файлов презентаций живёт на первом узле.** Его потеря останавливает загрузку и показ
-  слайдов до восстановления узла.
-- **Резервные копии** — команда `backup` (дамп БД и архив файлов). Непрерывное резервирование
-  CloudNativePG (WAL в объектное хранилище) не настроено.
-- **Один токен бота — одна установка.** Адаптер переносит вебхук бота на эту установку.
-
-Перенос на настоящие Linux-серверы: те же шаги `platform`, `build`, `deploy` поверх k3s,
-установленного на серверах. NFS заменяется отказоустойчивым хранилищем, Tuna —
-балансировщиком с TLS.
+- **mac**: один физический компьютер; видео (SFU) доступно только внутри Mac — туннель
+  пропускает только HTTP.
+- **NFS для файлов презентаций** живёт на первом узле. Его потеря останавливает загрузку
+  и показ слайдов до восстановления узла. Для настоящей отказоустойчивости нужно
+  общее хранилище провайдера (NFS/CephFS) с `NFS_SERVER` в `site.env`.
+- **Резервные копии** — команда `backup`. Непрерывное резервирование CloudNativePG
+  (WAL в объектное хранилище) не настроено.
+- **Один токен бота — одна установка**: адаптер переносит вебхук бота на эту установку.
