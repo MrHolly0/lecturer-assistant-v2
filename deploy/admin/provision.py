@@ -41,11 +41,15 @@ def main() -> int:
         print("Проверьте имя, email и совпадение паролей.", file=sys.stderr)
         return 1
 
-    port = setting("CORE_PORT", "8080")
-    if not port.isdecimal() or not 1 <= int(port) <= 65535:
-        print("Некорректный CORE_PORT.", file=sys.stderr)
-        return 1
-    url = f"http://127.0.0.1:{port}/api/v1/auth/bootstrap-admin"
+    # CORE_BASE_URL задаёт deploy/cloud/lecturer.sh, когда скрипт идёт в core по сети compose.
+    base_url = os.environ.get("CORE_BASE_URL", "").rstrip("/")
+    if not base_url:
+        port = setting("CORE_PORT", "8080")
+        if not port.isdecimal() or not 1 <= int(port) <= 65535:
+            print("Некорректный CORE_PORT.", file=sys.stderr)
+            return 1
+        base_url = f"http://127.0.0.1:{port}"
+    url = f"{base_url}/api/v1/auth/bootstrap-admin"
     payload = json.dumps({"displayName": name, "email": email, "password": password}).encode("utf-8")
     request = Request(
         url,

@@ -57,6 +57,10 @@ flowchart LR
 
 Ядро организовано как модульный монолит. Дополнительные материалы: [исходный проект архитектуры (исторический)](docs/ARCHITECTURE_V2.md), [ADR](docs/adr/), [модель прав](docs/permissions.md), [OpenAPI](openapi/lecturer-assistant-v2.yaml).
 
+## Развёртывание в облаке
+
+Для сервера в облаке есть отдельная короткая инструкция и один управляющий скрипт: [deploy/cloud/README.md](deploy/cloud/README.md) (`sh deploy/cloud/lecturer.sh init`, затем `up`).
+
 ## Запуск одной командой
 
 Нужны Docker Engine и Docker Compose ≥ 2.24.4 (оверлеи используют `!reset` и `!override`). Из корня репозитория скопируйте `cp .env.example .env`. Для новой установки перед тестовым наполнением задайте `ADMIN_SETUP_TOKEN` (случайная строка не короче 32 символов, например `openssl rand -hex 32`) и три пароля `SEED_PASSWORD_*` (не короче 8 символов). Все локальные компоненты запускаются одной командой:

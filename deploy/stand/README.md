@@ -1,5 +1,7 @@
 # Стенд: развёртывание
 
+> Для нового облачного сервера используйте [deploy/cloud](../cloud/README.md): там то же самое одной командой. Этот документ остаётся справочником по резервным копиям, restore drill и прежнему стенду.
+
 Пока нет VPS — временный стенд за туннелем Tuna (https://lecturer-assistant.ru.tuna.am): [TUNNEL.md](TUNNEL.md). Ниже — VPS.
 
 Начальный сервер: Linux, 4 vCPU, 8 ГБ RAM, Docker Engine с плагином Compose ≥ 2.24.4, открыты 80 и 443
