@@ -35,3 +35,6 @@ output/
 e2e/reports/*-release-smoke/
 __pycache__/
 /deploy/scalable/livekit.local.yaml
+
+# Kubernetes-установка: настройки, секреты, kubeconfig и digest образов.
+deploy/k8s/.state/

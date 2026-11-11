@@ -35,6 +35,10 @@ class DeploymentTest(unittest.TestCase):
         self.assertNotIn('core-a', edge['edge.nginx.conf'])
         self.assertNotIn('realtime-a', edge['edge.nginx.conf'])
         self.assertIn('proxy_buffering off;', edge['edge.nginx.conf'])
+        # nginx resolves upstreams itself, without search domains.
+        self.assertIn('server core.lecturer.svc.cluster.local:8080 resolve', edge['edge.nginx.conf'])
+        self.assertIn('server web.lecturer.svc.cluster.local:8088 resolve', edge['edge.nginx.conf'])
+        self.assertNotRegex(edge['edge.nginx.conf'], r'server (core|realtime|web|media-control|max-adapter):')
         self.assertIn('kube-dns.kube-system.svc.cluster.local', edge['nginx-main.conf'])
         for name in ['core', 'content-worker']:
             container = deployments[name]['spec']['template']['spec']['containers'][0]

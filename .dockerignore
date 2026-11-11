@@ -38,3 +38,4 @@ out
 .env.*
 deploy/scalable/livekit.local.yaml
 !.env.example
+deploy/k8s/.state

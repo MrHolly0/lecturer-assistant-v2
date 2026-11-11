@@ -127,6 +127,9 @@ def render(config):
     edge = edge.replace('upstream application {', 'upstream application {\n    server core:8080 resolve;')
     edge = re.sub(r'    server realtime-[abc]:8091[^\n]+\n', '', edge)
     edge = edge.replace('upstream realtime {', 'upstream realtime {\n    server realtime:8091 resolve max_conns=12000;')
+    # nginx's own resolver ignores resolv.conf search domains: upstreams need fully qualified Service names.
+    edge = re.sub(r'server (core|realtime|media-control|web|max-adapter):',
+                  lambda m: f'server {m.group(1)}.{namespace}.svc.cluster.local:', edge)
     items.append({'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': 'edge'},
                   'data': {'edge.nginx.conf': edge, 'nginx-main.conf': nginx_main}})
     deploy('edge', 'web', 2, 8088, [], memory='512Mi', probe='/edge-health')
