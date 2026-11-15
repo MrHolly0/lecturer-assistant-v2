@@ -20,6 +20,7 @@ import "./styles/presenter-tools.css";
 import "./styles/student-experience.css";
 import "./styles/student-question-dialog.css";
 import "./styles/redesign-admin.css";
+import "./styles/installation-updates.css";
 import "./styles/redesign-auth.css";
 import "./styles/session-analytics.css";
 import "./styles/analytics-workspace.css";

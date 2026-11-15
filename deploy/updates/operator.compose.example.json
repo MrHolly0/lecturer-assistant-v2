@@ -1,0 +1,29 @@
+{
+  "kind": "compose",
+  "repo": "/opt/lecturer-assistant",
+  "apiUrl": "http://127.0.0.1:8080",
+  "operatorKey": "REPLACE_WITH_RANDOM_PRIVATE_CREDENTIAL",
+  "catalogUrl": "https://releases.example.edu/lecturer/catalog.json",
+  "publicKey": "/etc/lecturer-updates/releases.pub.pem",
+  "healthUrl": "https://lecturer.example.edu/health",
+  "stateDir": "/var/lib/lecturer-updates",
+  "project": "lecturer-assistant",
+  "composeFiles": [
+    "docker-compose.yml",
+    "docker-compose.prod.yml"
+  ],
+  "bindings": {
+    "core": [
+      "core"
+    ],
+    "web": [
+      "web"
+    ],
+    "converter": [
+      "converter"
+    ],
+    "max-adapter": [
+      "max-adapter"
+    ]
+  }
+}

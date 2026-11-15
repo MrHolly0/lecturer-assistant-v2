@@ -55,7 +55,8 @@ const navItems = [
     roles: ["ADMIN", "LECTURER", "ASSISTANT"],
     more: true
   },
-  { path: "/admin/users", icon: Shield, label: "Учётные записи", roles: ["ADMIN"], more: true }
+  { path: "/admin/users", icon: Shield, label: "Учётные записи", roles: ["ADMIN"], more: true },
+  { path: "/admin/installation", icon: Shield, label: "Обновления", roles: ["ADMIN"], more: true }
 ];
 const roleLabels: Record<string, string> = {
   ADMIN: "Администратор",

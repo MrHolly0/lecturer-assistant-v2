@@ -20,6 +20,7 @@ import { QuestionBankPage } from "../pages/QuestionBankPage";
 import { PresenterPage } from "../pages/PresenterPage";
 import { ProjectionPage } from "../pages/ProjectionPage";
 import { SessionJoinPage } from "../pages/SessionJoinPage";
+import { InstallationUpdatesPage } from "../pages/InstallationUpdatesPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { OrganizationPage } from "../pages/OrganizationPage";
 import { StudentHomePage } from "../pages/StudentHomePage";
@@ -450,7 +451,10 @@ const router = createHashRouter([
           },
           {
             element: <RequireRole roles={["ADMIN"]} />,
-            children: [{ path: "/admin/users", element: <AdminUsersPage /> }]
+            children: [
+              { path: "/admin/users", element: <AdminUsersPage /> },
+              { path: "/admin/installation", element: <InstallationUpdatesPage /> }
+            ]
           }
         ]
       },

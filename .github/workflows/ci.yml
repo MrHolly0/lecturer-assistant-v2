@@ -83,6 +83,9 @@ jobs:
         run: |
           python3 -m unittest discover -s deploy/k8s -p '*_test.py'
           python3 -m unittest discover -s deploy/cloud -p '*_test.py'
+          python3 -m unittest discover -s deploy/updates -p '*_test.py'
+          python3 deploy/updates/installation_operator.py --help
+          python3 deploy/updates/publish-catalog.py --help
           sh -n deploy/cloud/lecturer.sh
           sh -n deploy/k8s/lecturer-k8s.sh
 

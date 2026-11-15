@@ -28,7 +28,7 @@ STATE="$K8S/.state"
 SITE="$STATE/site.env"
 SECRETS="$STATE/secrets.env"
 IMAGES="$STATE/images.json"
-NS=lecturer
+NS="${LECTURER_K8S_NAMESPACE:-lecturer}"
 REGISTRY_NAME=registry.lecturer.local
 # shellcheck disable=SC1091
 . "$K8S/versions.env"

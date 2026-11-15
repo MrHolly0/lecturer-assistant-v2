@@ -8,6 +8,83 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /admin/installation:
+    get:
+      operationId: getInstallationStatus
+      summary: 'ADMIN: deployment operator connectivity, signed releases and durable update jobs.'
+      responses:
+        '200':
+          description: Installation status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationStatus'
+        '403':
+          description: Administrator required.
+  /admin/installation/jobs:
+    post:
+      operationId: requestInstallationUpdate
+      summary: 'ADMIN: enqueue one update from the verified catalog. Does not interrupt lessons.'
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 80
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - releaseId
+              properties:
+                releaseId:
+                  type: string
+      responses:
+        '200':
+          description: Existing or newly queued job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationJob'
+        '409':
+          description: Active/uncertain job exists, operator offline, stale key or incompatible database.
+  /admin/installation/jobs/{id}/cancel:
+    post:
+      operationId: cancelInstallationUpdate
+      summary: 'ADMIN: cancel before application changes start.'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Cancelled.
+        '409':
+          description: Update has already started.
+  /admin/installation/jobs/{id}/acknowledge:
+    post:
+      operationId: acknowledgeInstallationUpdate
+      summary: 'ADMIN: confirm manual review of an uncertain update. Does not restore data or change images.'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Manual review recorded; queue and admission released.
+        '409':
+          description: No uncertain update to acknowledge.
   /courses/{courseId}/sessions/{sessionId}/screen-share:
     post:
       operationId: startScreenShare
@@ -4084,6 +4161,135 @@ components:
         type: string
         enum: [telegram, vk, web, echo]
   schemas:
+    InstallationRelease:
+      type: object
+      required:
+        - id
+        - version
+        - notes
+        - commit
+        - databaseMin
+        - databaseMax
+        - backwardCompatible
+        - images
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+        notes:
+          type: string
+        commit:
+          type: string
+        databaseMin:
+          type: integer
+          format: int64
+        databaseMax:
+          type: integer
+          format: int64
+        backwardCompatible:
+          type: boolean
+        images:
+          type: object
+          additionalProperties:
+            type: string
+    InstallationJob:
+      type: object
+      required:
+        - id
+        - releaseId
+        - status
+        - stage
+        - summary
+        - fence
+        - owner
+        - leaseUntil
+        - maintenanceUntil
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        releaseId:
+          type: string
+        status:
+          type: string
+          enum:
+            - QUEUED
+            - RUNNING
+            - SUCCEEDED
+            - FAILED
+            - CANCELLED
+            - NEEDS_ATTENTION
+        stage:
+          type: string
+        summary:
+          type: string
+        fence:
+          type: integer
+          format: int64
+        owner:
+          type: string
+          format: uuid
+          nullable: true
+        leaseUntil:
+          type: string
+          format: date-time
+          nullable: true
+        maintenanceUntil:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    InstallationStatus:
+      type: object
+      required:
+        - enabled
+        - databaseVersion
+        - operatorSeenAt
+        - operatorKind
+        - catalogSyncedAt
+        - catalogError
+        - releases
+        - jobs
+        - activeLessons
+      properties:
+        enabled:
+          type: boolean
+        databaseVersion:
+          type: integer
+          format: int64
+        operatorSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        operatorKind:
+          type: string
+          nullable: true
+        catalogSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        catalogError:
+          type: string
+          nullable: true
+        releases:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstallationRelease'
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstallationJob'
+        activeLessons:
+          type: integer
+          format: int64
     ShareStart:
       type: object
       required:
