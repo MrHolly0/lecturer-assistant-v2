@@ -59,7 +59,8 @@ public class InstallationController {
         updates.acknowledge(actor, id);
     }
 
-    @PostMapping("/internal/v1/installation/catalog")
+    @PostMapping({"/internal/v1/installation/catalog",
+            "/api/v1/installation-operator/catalog"})
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void catalog(@RequestHeader(name = "X-Installation-Key", required = false) String key,
             @Valid @RequestBody CatalogRequest request) {
@@ -67,21 +68,24 @@ public class InstallationController {
         updates.sync(request.kind(), new SignedCatalog(request.payload(), request.signature()));
     }
 
-    @PostMapping("/internal/v1/installation/claim")
+    @PostMapping({"/internal/v1/installation/claim",
+            "/api/v1/installation-operator/claim"})
     public Assignment claim(@RequestHeader(name = "X-Installation-Key", required = false) String key,
             @Valid @RequestBody ClaimRequest request) {
         authenticate(key);
         return updates.claim(request.owner());
     }
 
-    @PostMapping("/internal/v1/installation/jobs/{id}/prepare")
+    @PostMapping({"/internal/v1/installation/jobs/{id}/prepare",
+            "/api/v1/installation-operator/jobs/{id}/prepare"})
     public Job prepare(@RequestHeader(name = "X-Installation-Key", required = false) String key,
             @PathVariable UUID id, @Valid @RequestBody LeaseRequest request) {
         authenticate(key);
         return updates.prepare(id, request.owner(), request.fence());
     }
 
-    @PostMapping("/internal/v1/installation/jobs/{id}/heartbeat")
+    @PostMapping({"/internal/v1/installation/jobs/{id}/heartbeat",
+            "/api/v1/installation-operator/jobs/{id}/heartbeat"})
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void heartbeat(@RequestHeader(name = "X-Installation-Key", required = false) String key,
             @PathVariable UUID id, @Valid @RequestBody LeaseRequest request) {
@@ -89,7 +93,8 @@ public class InstallationController {
         updates.heartbeat(id, request.owner(), request.fence());
     }
 
-    @PostMapping("/internal/v1/installation/jobs/{id}/progress")
+    @PostMapping({"/internal/v1/installation/jobs/{id}/progress",
+            "/api/v1/installation-operator/jobs/{id}/progress"})
     public Job progress(@RequestHeader(name = "X-Installation-Key", required = false) String key,
             @PathVariable UUID id, @Valid @RequestBody ProgressRequest request) {
         authenticate(key);

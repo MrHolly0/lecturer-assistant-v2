@@ -162,4 +162,16 @@ class InstallationUpdatesIntegrationTest extends LiveFlowTestBase {
                 .content(groups), 201);
     }
 
+    @Test
+    void externalOperatorUsesPublicApiPrefixWithItsOwnCredential() throws Exception {
+        String body = objectMapper.writeValueAsString(envelope);
+        mockMvc.perform(post("/api/v1/installation-operator/catalog").contentType(MediaType.APPLICATION_JSON)
+                .content(body)).andExpect(status().isUnauthorized());
+        json(post("/api/v1/installation-operator/catalog").header("X-Installation-Key", OPERATOR)
+                .contentType(MediaType.APPLICATION_JSON).content(body), 204);
+        json(post("/api/v1/installation-operator/claim").header("X-Installation-Key", OPERATOR)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("owner", owner))), 200);
+    }
+
 }

@@ -8,6 +8,164 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /installation-operator/catalog:
+    post:
+      security:
+        - installationOperatorKey: []
+      tags:
+        - installation-operator
+      operationId: operatorSyncCatalog
+      summary: Synchronize a signed catalog. Requires the separate operator credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/InstallationSignedCatalog'
+                - type: object
+                  required:
+                    - kind
+                  properties:
+                    kind:
+                      type: string
+                      enum:
+                        - compose
+                        - kubernetes
+      responses:
+        '204':
+          description: Catalog verified and stored.
+        '400':
+          description: Invalid catalog signature, expiry or structure.
+        '401':
+          description: Invalid operator key.
+  /installation-operator/claim:
+    post:
+      security:
+        - installationOperatorKey: []
+      tags:
+        - installation-operator
+      operationId: operatorClaimUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - owner
+              properties:
+                owner:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Assignment, or an empty body when no job is available.
+          content:
+            application/json:
+              schema:
+                nullable: true
+                allOf:
+                  - $ref: '#/components/schemas/InstallationAssignment'
+  /installation-operator/jobs/{id}/prepare:
+    post:
+      security:
+        - installationOperatorKey: []
+      tags:
+        - installation-operator
+      operationId: operatorPrepareUpdate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstallationLease'
+      responses:
+        '200':
+          description: WAITING or BACKING_UP with the admission barrier acquired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationJob'
+        '409':
+          description: Stale lease or incompatible stage.
+  /installation-operator/jobs/{id}/heartbeat:
+    post:
+      security:
+        - installationOperatorKey: []
+      tags:
+        - installation-operator
+      operationId: operatorRenewLease
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstallationLease'
+      responses:
+        '204':
+          description: Lease renewed.
+        '409':
+          description: Stale lease.
+  /installation-operator/jobs/{id}/progress:
+    post:
+      security:
+        - installationOperatorKey: []
+      tags:
+        - installation-operator
+      operationId: operatorReportProgress
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/InstallationLease'
+                - type: object
+                  required:
+                    - stage
+                  properties:
+                    stage:
+                      type: string
+                      enum:
+                        - APPLYING
+                        - VERIFYING
+                        - SUCCEEDED
+                        - FAILED
+                        - NEEDS_ATTENTION
+                    summary:
+                      type: string
+                      maxLength: 500
+      responses:
+        '200':
+          description: Recorded or idempotently repeated stage.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationJob'
+        '409':
+          description: Invalid stage transition or stale lease.
   /auth/messenger:
     post:
       operationId: loginWithMessenger
@@ -4194,6 +4352,10 @@ paths:
 
 components:
   securitySchemes:
+    installationOperatorKey:
+      type: apiKey
+      in: header
+      name: X-Installation-Key
     projectionView:
       type: apiKey
       in: header
@@ -4338,6 +4500,41 @@ components:
         type: string
         enum: [telegram, vk, web, echo]
   schemas:
+    InstallationSignedCatalog:
+      type: object
+      required:
+        - payload
+        - signature
+      properties:
+        payload:
+          type: string
+          maxLength: 262144
+        signature:
+          type: string
+          maxLength: 256
+    InstallationLease:
+      type: object
+      required:
+        - owner
+        - fence
+      properties:
+        owner:
+          type: string
+          format: uuid
+        fence:
+          type: integer
+          format: int64
+          minimum: 1
+    InstallationAssignment:
+      type: object
+      required:
+        - job
+        - catalog
+      properties:
+        job:
+          $ref: '#/components/schemas/InstallationJob'
+        catalog:
+          $ref: '#/components/schemas/InstallationSignedCatalog'
     GroupFormatPolicy:
       type: object
       required:

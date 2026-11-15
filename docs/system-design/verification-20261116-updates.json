@@ -1,6 +1,6 @@
 {
   "result": "PASS",
-  "project": "lecturer-update-drill-fa4f2ccdd3",
+  "project": "lecturer-update-drill-82ac71b261",
   "jobStatus": "SUCCEEDED",
   "databaseBefore": 53,
   "databaseAfter": 54,
@@ -8,6 +8,7 @@
   "blobPreserved": true,
   "backupRestored": true,
   "runningImageDigestsVerified": true,
+  "publicProxyOperatorPrefix": true,
   "syntheticMigrationOnly": true,
   "limits": "Single-Mac isolated Compose acceptance, not a production rollout or Kubernetes upgrade drill.",
   "verifiedAt": "2026-11-16",
@@ -19,10 +20,11 @@
     "kubernetesInstallerTests": 17,
     "haRendererTests": 7,
     "cloudInstallerTests": 1,
-    "browser": "Fixture API, Chromium 1440/390: request, wait, uncertain result, layout"
+    "browser": "Fixture API, Chromium 1440/390: request, wait, uncertain result, layout",
+    "focusedOperatorEndpointTests": 5
   },
   "sourceFilesSha256": {
-    "deploy/updates/installation_operator.py": "e61803b163842acf712fe554fd14154416e4c46ee614c71ce3a4a28399b4016b",
+    "deploy/updates/installation_operator.py": "d7c8c058686d86fe6f37f11d233ff10073ab369cc8ac55de7d32761c89112ae2",
     "core/src/main/java/ru/university/assistant/installation/internal/InstallationUpdates.java": "b37d51ddf3debfde63ce655745b4381db1bfd7a475af1ffad298a038fbf2d9c9"
   }
 }

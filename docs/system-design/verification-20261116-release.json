@@ -3,7 +3,7 @@
   "branch": "feature/release-candidate",
   "includesInfrastructureCommit": "f0c7991",
   "includesArchitectureCommit": "c1b6cfb",
-  "coreTests": 411,
+  "coreTests": 412,
   "webTests": 141,
   "telegramVkAuthenticationIncluded": false,
   "groupFormatDefault": "disabled until configured by institution administrator",
@@ -19,5 +19,6 @@
   "limits": [
     "Kubernetes managed rollout not exercised on a real cluster",
     "No new 10000-video or physical HA qualification"
-  ]
+  ],
+  "publicOperatorApiCredentialTest": true
 }

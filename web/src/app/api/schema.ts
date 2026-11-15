@@ -4,6 +4,87 @@
  */
 
 export interface paths {
+  "/installation-operator/catalog": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Synchronize a signed catalog. Requires the separate operator credential. */
+    post: operations["operatorSyncCatalog"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/installation-operator/claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["operatorClaimUpdate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/installation-operator/jobs/{id}/prepare": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["operatorPrepareUpdate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/installation-operator/jobs/{id}/heartbeat": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["operatorRenewLease"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/installation-operator/jobs/{id}/progress": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["operatorReportProgress"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/auth/messenger": {
     parameters: {
       query?: never;
@@ -2984,6 +3065,20 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    InstallationSignedCatalog: {
+      payload: string;
+      signature: string;
+    };
+    InstallationLease: {
+      /** Format: uuid */
+      owner: string;
+      /** Format: int64 */
+      fence: number;
+    };
+    InstallationAssignment: {
+      job: components["schemas"]["InstallationJob"];
+      catalog: components["schemas"]["InstallationSignedCatalog"];
+    };
     GroupFormatPolicy: {
       /** Format: int64 */
       revision: number;
@@ -4481,6 +4576,173 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  operatorSyncCatalog: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InstallationSignedCatalog"] & {
+          /** @enum {string} */
+          kind: "compose" | "kubernetes";
+        };
+      };
+    };
+    responses: {
+      /** @description Catalog verified and stored. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid catalog signature, expiry or structure. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid operator key. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  operatorClaimUpdate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** Format: uuid */
+          owner: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Assignment, or an empty body when no job is available. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InstallationAssignment"] | null;
+        };
+      };
+    };
+  };
+  operatorPrepareUpdate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InstallationLease"];
+      };
+    };
+    responses: {
+      /** @description WAITING or BACKING_UP with the admission barrier acquired. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InstallationJob"];
+        };
+      };
+      /** @description Stale lease or incompatible stage. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  operatorRenewLease: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InstallationLease"];
+      };
+    };
+    responses: {
+      /** @description Lease renewed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Stale lease. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  operatorReportProgress: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InstallationLease"] & {
+          /** @enum {string} */
+          stage: "APPLYING" | "VERIFYING" | "SUCCEEDED" | "FAILED" | "NEEDS_ATTENTION";
+          summary?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Recorded or idempotently repeated stage. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InstallationJob"];
+        };
+      };
+      /** @description Invalid stage transition or stale lease. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   loginWithMessenger: {
     parameters: {
       query?: never;

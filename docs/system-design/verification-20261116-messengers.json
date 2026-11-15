@@ -1,8 +1,8 @@
 {
   "date": "2026-11-16",
   "branch": "feature/messenger-experiment",
-  "stableCandidate": "0153e77",
-  "coreTests": 416,
+  "stableCandidate": "b9e94fc",
+  "coreTests": 417,
   "webTests": 146,
   "telegramVkDefault": "disabled",
   "signedLaunchFixtures": [
