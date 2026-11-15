@@ -131,7 +131,7 @@ class Api:
         until = time.monotonic() + deadline
         attempt = 0
         while True:
-            request = urllib.request.Request(self.url + '/internal/v1/installation' + path,
+            request = urllib.request.Request(self.url + '/api/v1/installation-operator' + path,
                 data=json.dumps(value).encode(), headers={'Content-Type': 'application/json',
                     'X-Installation-Key': self.key}, method='POST')
             try:
