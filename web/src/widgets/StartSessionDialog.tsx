@@ -265,7 +265,7 @@ export function StartSessionDialog({
           )}
           <div className="start-session-selection" aria-live="polite">
             <strong>Выбрано: {selectedCount}</strong>
-            {cleanGroupName && <p className="muted">При продолжении: {cleanGroupName}</p>}
+            {mode === "new" && cleanGroupName && <p className="muted">При продолжении: {cleanGroupName}</p>}
             <div className="start-session-selection__items">
               {groups
                 .filter((group) => groupIds.includes(group.id))

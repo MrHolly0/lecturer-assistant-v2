@@ -69,16 +69,10 @@ export const StudyGroupInput = forwardRef<
       const current = await policy.refetch();
       if (version !== generation.current) return null;
       if (current.data?.enabled) {
-        const nextParts = structured
-          ? parts
-          : {
-              ...Object.fromEntries(
-                current.data.fields
-                  .filter((f) => f.defaultValue)
-                  .map((f) => [f.id, f.defaultValue!])
-              ),
-              ...result.parts
-            };
+        const sourceParts = structured ? parts : result.parts;
+        const nextParts = Object.fromEntries(current.data.fields
+          .map(field => [field.id, sourceParts[field.id] || field.defaultValue || ""])
+          .filter(([, value]) => value));
         setParts(nextParts);
         setStructured(true);
         const missing = current.data.fields.findIndex((f) => !nextParts[f.id]);
