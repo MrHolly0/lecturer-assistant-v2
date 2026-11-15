@@ -184,7 +184,7 @@ export async function logout(): Promise<void> {
   try {
     await apiFetch("/auth/logout", {
       method: "POST",
-      headers: auth.refreshMode === "max" ? { "X-Auth-Channel": "max" } : undefined
+      headers: auth.refreshMode ? { "X-Auth-Channel": auth.refreshMode } : undefined
     });
   } catch {
     // best-effort

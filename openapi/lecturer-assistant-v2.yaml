@@ -8,6 +8,175 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /group-format:
+    get:
+      operationId: getGroupFormat
+      summary: Get the institution study group naming policy.
+      responses:
+        "200":
+          description: Current policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupFormatPolicy"
+  /group-format/preview:
+    post:
+      operationId: previewGroupFormat
+      summary: Normalize short text or validate explicit group parts without creating a group.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                parts:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        "200":
+          description: Normalized name or recognized parts for the fallback form.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupFormatPreview"
+  /admin/group-format:
+    put:
+      operationId: saveGroupFormat
+      summary: Save group policy with revision checking. ADMIN only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupFormatPolicy"
+      responses:
+        "200":
+          description: Saved policy with incremented revision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupFormatPolicy"
+        "409":
+          description: Another administrator changed the policy.
+  /admin/group-format/reconcile:
+    post:
+      operationId: reconcileGroupFormats
+      summary: Explicitly recognize up to 1000 existing groups without rewriting names or history. ADMIN only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision]
+              properties:
+                revision:
+                  type: integer
+                  format: int64
+      responses:
+        "200":
+          description: Reconciliation counts; repeat when hasMore is true.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matched, unrecognized, hasMore]
+                properties:
+                  matched:
+                    type: integer
+                  unrecognized:
+                    type: integer
+                  hasMore:
+                    type: boolean
+  /auth/messenger:
+    post:
+      operationId: loginWithMessenger
+      summary: Experimental Telegram or VK mini-app login with signed launch validation.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, initData]
+              properties:
+                channel:
+                  type: string
+                  enum: [telegram, vk]
+                initData:
+                  type: string
+                  maxLength: 8192
+                linkCode:
+                  type: string
+                  maxLength: 64
+                existingOnly:
+                  type: boolean
+      responses:
+        "200":
+          description: Authenticated profile and an isolated channel refresh cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Launch signature or lifetime is invalid.
+        "404":
+          description: Experiment disabled.
+        "422":
+          description: existingOnly identity is not linked.
+        "409":
+          description: Identity is linked to another account.
+  /me/student-cabinet:
+    get:
+      operationId: getStudentCabinet
+      summary: Own ongoing group lessons and paginated attendance history.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000000
+            default: 0
+      responses:
+        "200":
+          description: Sessions available to this account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentCabinet"
+  /student/sessions/{joinCode}/leave:
+    post:
+      operationId: leaveStudentSession
+      summary: Idempotent voluntary departure. Explicit join allows returning to the same participation.
+      security: []
+      parameters:
+        - name: joinCode
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Participant-Token
+          in: header
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Left own participation, identified by bearer or participant token.
+        "403":
+          description: Caller does not own the participation.
   /courses/{courseId}/sessions/{sessionId}/screen-share:
     post:
       operationId: startScreenShare
@@ -4084,6 +4253,129 @@ components:
         type: string
         enum: [telegram, vk, web, echo]
   schemas:
+    GroupFormatPolicy:
+      type: object
+      required: [revision, enabled, fields]
+      properties:
+        revision:
+          type: integer
+          format: int64
+        enabled:
+          type: boolean
+        fields:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            required: [id, label, kind, prefix, width, yearBase, choices]
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              kind:
+                type: string
+                enum: [CHOICE, YEAR, NUMBER]
+              prefix:
+                type: string
+              width:
+                type: integer
+              yearBase:
+                type: integer
+              defaultValue:
+                type: string
+                nullable: true
+              choices:
+                type: array
+                items:
+                  type: object
+                  required: [code, label, aliases]
+                  properties:
+                    code:
+                      type: string
+                    label:
+                      type: string
+                    aliases:
+                      type: array
+                      items:
+                        type: string
+    GroupFormatPreview:
+      type: object
+      required: [valid, parts]
+      properties:
+        valid:
+          type: boolean
+        name:
+          type: string
+          nullable: true
+        identityKey:
+          type: string
+          nullable: true
+        parts:
+          type: object
+          additionalProperties:
+            type: string
+        message:
+          type: string
+          nullable: true
+    StudentCabinet:
+      type: object
+      required: [ongoing, moreOngoing, history, historyTotal, historyLimit, historyOffset]
+      properties:
+        ongoing:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentCabinetSession"
+        moreOngoing:
+          type: boolean
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentCabinetSession"
+        historyTotal:
+          type: integer
+          format: int64
+        historyLimit:
+          type: integer
+        historyOffset:
+          type: integer
+    StudentCabinetSession:
+      type: object
+      required: [sessionId, title, courseTitle, status, joined]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        courseTitle:
+          type: string
+        status:
+          type: string
+        joined:
+          type: boolean
+        groups:
+          type: string
+          nullable: true
+        joinCode:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        joinedAt:
+          type: string
+          format: date-time
+          nullable: true
+        leftAt:
+          type: string
+          format: date-time
+          nullable: true
     ShareStart:
       type: object
       required:
@@ -5138,7 +5430,11 @@ components:
       properties:
         name:
           type: string
-          minLength: 2
+          minLength: 1
+        parts:
+          type: object
+          additionalProperties:
+            type: string
     StudyGroup:
       type: object
       required: [id, courseId, name]
@@ -5572,6 +5868,10 @@ components:
               type: string
               minLength: 1
               maxLength: 120
+            parts:
+              type: object
+              additionalProperties:
+                type: string
     StartSessionRequest:
       type: object
       required: [groups]

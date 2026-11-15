@@ -4,6 +4,125 @@
  */
 
 export interface paths {
+  "/group-format": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get the institution study group naming policy. */
+    get: operations["getGroupFormat"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/group-format/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Normalize short text or validate explicit group parts without creating a group. */
+    post: operations["previewGroupFormat"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/group-format": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Save group policy with revision checking. ADMIN only. */
+    put: operations["saveGroupFormat"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/group-format/reconcile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Explicitly recognize up to 1000 existing groups without rewriting names or history. ADMIN only. */
+    post: operations["reconcileGroupFormats"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/auth/messenger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Experimental Telegram or VK mini-app login with signed launch validation. */
+    post: operations["loginWithMessenger"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/student-cabinet": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Own ongoing group lessons and paginated attendance history. */
+    get: operations["getStudentCabinet"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/leave": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Idempotent voluntary departure. Explicit join allows returning to the same participation. */
+    post: operations["leaveStudentSession"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/sessions/{sessionId}/screen-share": {
     parameters: {
       query?: never;
@@ -2797,6 +2916,62 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    GroupFormatPolicy: {
+      /** Format: int64 */
+      revision: number;
+      enabled: boolean;
+      fields: {
+        id: string;
+        label: string;
+        /** @enum {string} */
+        kind: "CHOICE" | "YEAR" | "NUMBER";
+        prefix: string;
+        width: number;
+        yearBase: number;
+        defaultValue?: string | null;
+        choices: {
+          code: string;
+          label: string;
+          aliases: string[];
+        }[];
+      }[];
+    };
+    GroupFormatPreview: {
+      valid: boolean;
+      name?: string | null;
+      identityKey?: string | null;
+      parts: {
+        [key: string]: string;
+      };
+      message?: string | null;
+    };
+    StudentCabinet: {
+      ongoing: components["schemas"]["StudentCabinetSession"][];
+      moreOngoing: boolean;
+      history: components["schemas"]["StudentCabinetSession"][];
+      /** Format: int64 */
+      historyTotal: number;
+      historyLimit: number;
+      historyOffset: number;
+    };
+    StudentCabinetSession: {
+      /** Format: uuid */
+      sessionId: string;
+      title: string;
+      courseTitle: string;
+      status: string;
+      joined: boolean;
+      groups?: string | null;
+      joinCode?: string | null;
+      /** Format: date-time */
+      startedAt?: string | null;
+      /** Format: date-time */
+      endedAt?: string | null;
+      /** Format: date-time */
+      joinedAt?: string | null;
+      /** Format: date-time */
+      leftAt?: string | null;
+    };
     ShareStart: {
       sourceName: string;
     };
@@ -3322,6 +3497,9 @@ export interface components {
     };
     CreateStudyGroupRequest: {
       name: string;
+      parts?: {
+        [key: string]: string;
+      };
     };
     StudyGroup: {
       /** Format: uuid */
@@ -3546,6 +3724,9 @@ export interface components {
         }
       | {
           groupName: string;
+          parts?: {
+            [key: string]: string;
+          };
         };
     StartSessionRequest: {
       groups: components["schemas"]["StartSessionGroupSelection"][];
@@ -4182,6 +4363,227 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  getGroupFormat: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current policy. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GroupFormatPolicy"];
+        };
+      };
+    };
+  };
+  previewGroupFormat: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          name?: string;
+          parts?: {
+            [key: string]: string;
+          };
+        };
+      };
+    };
+    responses: {
+      /** @description Normalized name or recognized parts for the fallback form. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GroupFormatPreview"];
+        };
+      };
+    };
+  };
+  saveGroupFormat: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["GroupFormatPolicy"];
+      };
+    };
+    responses: {
+      /** @description Saved policy with incremented revision. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GroupFormatPolicy"];
+        };
+      };
+      /** @description Another administrator changed the policy. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  reconcileGroupFormats: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** Format: int64 */
+          revision: number;
+        };
+      };
+    };
+    responses: {
+      /** @description Reconciliation counts; repeat when hasMore is true. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            matched: number;
+            unrecognized: number;
+            hasMore: boolean;
+          };
+        };
+      };
+    };
+  };
+  loginWithMessenger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** @enum {string} */
+          channel: "telegram" | "vk";
+          initData: string;
+          linkCode?: string;
+          existingOnly?: boolean;
+        };
+      };
+    };
+    responses: {
+      /** @description Authenticated profile and an isolated channel refresh cookie. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthResponse"];
+        };
+      };
+      /** @description Launch signature or lifetime is invalid. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Experiment disabled. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Identity is linked to another account. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description existingOnly identity is not linked. */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getStudentCabinet: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Sessions available to this account. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentCabinet"];
+        };
+      };
+    };
+  };
+  leaveStudentSession: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Left own participation, identified by bearer or participant token. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller does not own the participation. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   startScreenShare: {
     parameters: {
       query?: never;

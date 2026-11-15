@@ -2,7 +2,7 @@ const KEY = "la_auth";
 
 export interface StoredAuth {
   accessToken: string;
-  refreshMode?: "max";
+  refreshMode?: "max" | "telegram" | "vk";
   accountId?: string;
 }
 

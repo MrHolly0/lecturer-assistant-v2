@@ -118,6 +118,22 @@ public class StudentWebSessionService {
         return sessions.findActiveJoinCodeForParticipant(user.id());
     }
 
+    @Transactional
+    public void leave(String joinCode, AuthenticatedUser user, String token) {
+        LiveSession session = sessionByCode(joinCode);
+        sessions.lock(session.id());
+        UUID person = viewerId(session, user, token);
+        if (person == null || (user != null && !user.id().equals(person))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Можно выйти только из своего участия");
+        }
+        if (sessions.participationState(session.id(), person).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Участие не найдено");
+        }
+        if (!List.of(SessionStatus.SCHEDULED, SessionStatus.LIVE, SessionStatus.PAUSED)
+                .contains(session.status())) return;
+        if (sessions.leaveVoluntarily(session.id(), person)) publisher.publish("participant.left", session);
+    }
+
     /** Снапшот с личными полями студента. Идентификация необязательна: без неё это общий снапшот. */
     public StudentSessionSnapshot snapshot(String joinCode, AuthenticatedUser user, String participantToken) {
         LiveSession session = sessionByCode(joinCode);
@@ -178,6 +194,24 @@ public class StudentWebSessionService {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid participant token; join again");
             }
             if (existing != null) {
+                if (user != null && existing.identityLevel() == IdentityLevel.PROFILE
+                        && !user.id().equals(existing.personId())) {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Participant belongs to another account");
+                }
+                if (sessions.voluntarilyLeft(session.id(), existing.personId())) {
+                    sessions.returnVoluntarily(session.id(), existing.personId());
+                    requireActive(session.id(), existing.personId());
+                    if (user == null || existing.identityLevel() == IdentityLevel.PROFILE) {
+                        sessions.deleteParticipantTokens(session.id(), existing.personId());
+                        String next = randomToken();
+                        WebParticipant renewed = sessions.createWebToken(UuidV7.generate(), session.id(),
+                                existing.personId(), StudentTokenHasher.sha256(next), existing.displayName(),
+                                existing.identityLevel());
+                        publisher.publish("participant.returned", session);
+                        return new StudentJoinResponse(next, renewed.id(), renewed.identityLevel(),
+                                snapshots.create(session, renewed.personId(), true));
+                    }
+                }
                 if (user != null && existing.identityLevel() == IdentityLevel.EPHEMERAL) {
                     SessionParticipant guest = sessions.lockGuestParticipation(session.id(), existing.personId())
                             .orElseThrow(() -> {
@@ -208,6 +242,7 @@ public class StudentWebSessionService {
             }
         }
         if (user != null) {
+            if (sessions.voluntarilyLeft(session.id(), user.id())) sessions.returnVoluntarily(session.id(), user.id());
             boolean rejoined = sessions.clearKickForRejoin(session.id(), user.id());
             registerPerson(session, user, request == null ? null : request.groupId());
             if (rejoined) {
@@ -504,6 +539,9 @@ public class StudentWebSessionService {
         if (participantToken == null || participantToken.isBlank()) {
             if (user == null) {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Participant token or login is required");
+            }
+            if (sessions.voluntarilyLeft(session.id(), user.id())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Вы вышли из занятия. Сначала вернитесь");
             }
             registerPerson(session, user, null);
             WebParticipant participant =

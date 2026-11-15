@@ -919,6 +919,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAllowMaxAuthWithoutCode(false);
     }
     setUserState(null);
+    window.dispatchEvent(new Event("auth:signed-out"));
   }
 
   function setContextUser(nextUser: UserProfile | null) {

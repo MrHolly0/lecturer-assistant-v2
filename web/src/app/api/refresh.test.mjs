@@ -113,7 +113,11 @@ test("MAX refresh uses its isolated cookie channel and retains the mode after ro
   assert.equal(calls.length, 1);
   assert.equal(calls[0].headers["X-Auth-Channel"], "max");
   assert.equal(calls[0].credentials, "include");
-  assert.deepEqual(getStoredAuth(), { accessToken: "renewed-max-token", refreshMode: "max", accountId: "person-1" });
+  assert.deepEqual(getStoredAuth(), {
+    accessToken: "renewed-max-token",
+    refreshMode: "max",
+    accountId: "person-1"
+  });
 });
 
 test("cold MAX refresh selects its channel even before an access token exists", async () => {
@@ -228,3 +232,20 @@ test("a refresh queued on Web Locks does not contact the server after sign-out",
   assert.equal(fetchCount, 0);
   assert.equal(getStoredAuth(), null);
 });
+
+for (const channel of ["telegram", "vk"]) {
+  test(`${channel} refresh selects its cookie channel and preserves identity context`, async () => {
+    let headers;
+    setStoredAuth({ accessToken: "old", refreshMode: channel, accountId: "person" });
+    globalThis.fetch = async (_url, init) => {
+      headers = init.headers;
+      return new Response(JSON.stringify({ accessToken: "new", user: { id: "person" } }), {
+        status: 200
+      });
+    };
+    const result = await refreshAuthSession();
+    assert.equal(result.accessToken, "new");
+    assert.equal(headers["X-Auth-Channel"], channel);
+    assert.equal(getStoredAuth().refreshMode, channel);
+  });
+}

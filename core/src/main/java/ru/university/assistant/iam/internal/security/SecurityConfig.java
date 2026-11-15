@@ -57,6 +57,7 @@ class SecurityConfig {
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/max",
+                                "/api/v1/auth/messenger",
                                 "/api/v1/auth/max/link-preview",
                                 "/api/v1/auth/max/link-confirm",
                                 "/api/v1/auth/refresh",

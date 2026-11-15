@@ -30,7 +30,7 @@ export class RefreshIdentityMismatchError extends Error {
 let refreshGeneration = 0;
 let refreshInFlight: {
   expectedUserId: string | null;
-  mode: "browser" | "max";
+  mode: "browser" | "max" | "telegram" | "vk";
   promise: Promise<RefreshedAuth | null>;
 } | null = null;
 
@@ -49,7 +49,7 @@ export function captureAuthTransition(): () => void {
 }
 
 export function refreshAuthSession(
-  options: { expectedUserId?: string; mode?: "browser" | "max" } = {}
+  options: { expectedUserId?: string; mode?: "browser" | "max" | "telegram" | "vk" } = {}
 ): Promise<RefreshedAuth | null> {
   const expectedUserId = options.expectedUserId ?? getStoredAuth()?.accountId ?? null;
   const mode = options.mode ?? getStoredAuth()?.refreshMode ?? "browser";
@@ -70,7 +70,7 @@ export function refreshAuthSession(
   const refresh = async () => {
     if (navigator.locks) {
       return navigator.locks.request(
-        mode === "max" ? "lecturer-assistant:refresh:max" : "lecturer-assistant:refresh",
+        mode === "browser" ? "lecturer-assistant:refresh" : `lecturer-assistant:refresh:${mode}`,
         () => {
           if (generation !== refreshGeneration) throw new RefreshSupersededError();
           return performRefresh(generation, expectedUserId, mode);
@@ -89,7 +89,7 @@ export function refreshAuthSession(
 async function performRefresh(
   generation: number,
   expectedUserId: string | null,
-  mode: "browser" | "max"
+  mode: "browser" | "max" | "telegram" | "vk"
 ): Promise<RefreshedAuth | null> {
   if (generation !== refreshGeneration) throw new RefreshSupersededError();
   let response: Response;
@@ -100,7 +100,7 @@ async function performRefresh(
       signal: AbortSignal.timeout(12_000),
       headers: {
         Accept: "application/json",
-        ...(mode === "max" ? { "X-Auth-Channel": "max" } : {})
+        ...(mode !== "browser" ? { "X-Auth-Channel": mode } : {})
       }
     });
   } catch {
@@ -138,7 +138,7 @@ async function performRefresh(
   try {
     setStoredAuth({
       accessToken: data.accessToken,
-      ...(mode === "max" ? { refreshMode: "max" as const, accountId: String(data.user.id) } : {})
+      ...(mode !== "browser" ? { refreshMode: mode, accountId: String(data.user.id) } : {})
     });
   } catch {
     throw new RefreshUnavailableError("Could not persist the refreshed access token");

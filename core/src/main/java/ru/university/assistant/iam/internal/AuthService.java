@@ -44,7 +44,7 @@ import ru.university.assistant.shared.api.UuidV7;
 public class AuthService implements EphemeralPersonApi {
     private static final String MAX_CHANNEL = "max";
     // No password credential exists for these accounts. Never hash a disposable random password on join.
-    private static final String NO_PASSWORD = "!password-login-disabled";
+    static final String NO_PASSWORD = "!password-login-disabled";
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final PersonRepository persons;

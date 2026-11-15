@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.university.assistant.iam.internal.AuthService;
 import ru.university.assistant.iam.internal.MaxLinkService;
 import ru.university.assistant.iam.internal.AuthTokens;
+import ru.university.assistant.iam.internal.MessengerAuthService;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -31,17 +32,19 @@ public class AuthController {
 
     private final AuthService authService;
     private final MaxLinkService maxLinks;
+    private final MessengerAuthService messengers;
     private final Duration refreshTtl;
     private final boolean refreshCookieSecure;
     private final String adminSetupToken;
 
     AuthController(
-            AuthService authService, MaxLinkService maxLinks,
+            AuthService authService, MaxLinkService maxLinks, MessengerAuthService messengers,
             @Value("${app.security.refresh-token-days}") long refreshTokenDays,
             @Value("${app.security.refresh-cookie-secure:true}") boolean refreshCookieSecure,
             @Value("${app.security.admin-setup-token:}") String adminSetupToken) {
         this.authService = authService;
         this.maxLinks = maxLinks;
+        this.messengers = messengers;
         this.refreshTtl = Duration.ofDays(refreshTokenDays);
         this.refreshCookieSecure = refreshCookieSecure;
         this.adminSetupToken = adminSetupToken;
@@ -94,17 +97,25 @@ public class AuthController {
                 .body(tokens.toMaxResponse());
     }
 
+    @PostMapping("/messenger")
+    public ResponseEntity<AuthResponse> loginWithMessenger(@Valid @RequestBody MessengerAuthRequest request) {
+        AuthTokens tokens = messengers.login(request);
+        return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE,
+                channelCookie(request.channel(), tokens.refreshToken(), refreshTtl).toString())
+                .body(tokens.toResponse());
+    }
+
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(
             @CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken,
             @CookieValue(name = MAX_REFRESH_COOKIE, required = false) String maxRefreshToken,
+            @CookieValue(name = "la_telegram_refresh", required = false) String telegramRefreshToken,
+            @CookieValue(name = "la_vk_refresh", required = false) String vkRefreshToken,
             @RequestHeader(name = "X-Auth-Channel", defaultValue = "browser") String channel) {
-        boolean max = isMaxChannel(channel);
-        AuthTokens tokens = authService.refresh(requireRefreshToken(max ? maxRefreshToken : refreshToken));
+        AuthTokens tokens = authService.refresh(requireRefreshToken(selectToken(channel,
+                refreshToken, maxRefreshToken, telegramRefreshToken, vkRefreshToken)));
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, (max
-                        ? maxRefreshCookie(tokens.refreshToken(), refreshTtl)
-                        : refreshCookie(tokens.refreshToken())).toString())
+                .header(HttpHeaders.SET_COOKIE, channelCookie(channel, tokens.refreshToken(), refreshTtl).toString())
                 .body(tokens.toResponse());
     }
 
@@ -112,15 +123,15 @@ public class AuthController {
     public ResponseEntity<Void> logout(
             @CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken,
             @CookieValue(name = MAX_REFRESH_COOKIE, required = false) String maxRefreshToken,
+            @CookieValue(name = "la_telegram_refresh", required = false) String telegramRefreshToken,
+            @CookieValue(name = "la_vk_refresh", required = false) String vkRefreshToken,
             @RequestHeader(name = "X-Auth-Channel", defaultValue = "browser") String channel) {
-        boolean max = isMaxChannel(channel);
-        String token = max ? maxRefreshToken : refreshToken;
+        String token = selectToken(channel, refreshToken, maxRefreshToken, telegramRefreshToken, vkRefreshToken);
         if (token != null && !token.isBlank()) {
             authService.logout(token);
         }
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, (max
-                        ? maxRefreshCookie("", Duration.ZERO) : expiredRefreshCookie()).toString())
+                .header(HttpHeaders.SET_COOKIE, channelCookie(channel, "", Duration.ZERO).toString())
                 .build();
     }
 
@@ -159,11 +170,22 @@ public class AuthController {
                 .build();
     }
 
-    private boolean isMaxChannel(String channel) {
-        if (!"browser".equals(channel) && !"max".equals(channel)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown authentication channel");
-        }
-        return "max".equals(channel);
+    private String selectToken(String channel, String browser, String max, String telegram, String vk) {
+        return switch (channel) {
+            case "browser" -> browser;
+            case "max" -> max;
+            case "telegram" -> telegram;
+            case "vk" -> vk;
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown authentication channel");
+        };
+    }
+
+    private ResponseCookie channelCookie(String channel, String value, Duration ttl) {
+        if (channel.equals("browser")) return value.isEmpty() ? expiredRefreshCookie() : refreshCookie(value);
+        selectToken(channel, "", "", "", "");
+        return ResponseCookie.from("la_" + channel + "_refresh", value)
+                .httpOnly(true).secure(true).sameSite("None").partitioned(true)
+                .path("/api/v1/auth").maxAge(ttl).build();
     }
 
     /** The MAX iframe needs its own HttpOnly cookie, isolated from the browser cabinet. */

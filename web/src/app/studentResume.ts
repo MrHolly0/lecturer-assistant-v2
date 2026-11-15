@@ -91,3 +91,27 @@ export function storeTabStudentToken(
     // Persistent receipt and MAX identity can still restore the lecture.
   }
 }
+
+export function voluntarilyLeftStudentSession(
+  joinCode: string,
+  userId: string | null = null
+): boolean {
+  try {
+    return sessionStorage.getItem(`${tabTokenKey(joinCode, userId)}:left`) === "true";
+  } catch {
+    return false;
+  }
+}
+export function markStudentSessionLeft(
+  joinCode: string,
+  left: boolean,
+  userId: string | null = null
+): void {
+  try {
+    const key = `${tabTokenKey(joinCode, userId)}:left`;
+    if (left) sessionStorage.setItem(key, "true");
+    else sessionStorage.removeItem(key);
+  } catch {
+    /* Joining and leaving still work without WebView storage. */
+  }
+}

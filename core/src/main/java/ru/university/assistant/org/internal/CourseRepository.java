@@ -220,6 +220,16 @@ class CourseRepository {
                 .list();
     }
 
+    void lockGroupCreation(UUID courseId) {
+        jdbc.sql("select id from org.courses where id=:id for update").param("id", courseId).query(UUID.class).single();
+    }
+
+    java.util.Optional<StudyGroup> findGroupByCohort(UUID courseId, String key) {
+        return jdbc.sql("select id, course_id, name from org.study_groups where course_id=:course and cohort_key=:key "
+                + "order by created_at limit 1").param("course", courseId).param("key", key)
+                .query(this::mapGroup).optional();
+    }
+
     StudyGroup createGroup(UUID id, UUID courseId, String name) {
         return jdbc.sql(
                         """

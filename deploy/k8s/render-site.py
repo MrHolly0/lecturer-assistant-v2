@@ -533,6 +533,9 @@ def secret_items(site, values, stage, state_dir):
         runtime.update(AMQP_URL=amqp, ANALYTICS_DATABASE_URL=analytics)
         if values.get('MAX_BOT_TOKEN'):
             runtime['MAX_BOT_TOKEN'] = values['MAX_BOT_TOKEN']
+        for key in ['EXPERIMENTAL_MESSENGER_LOGIN', 'TELEGRAM_BOT_TOKEN', 'VK_APP_ID', 'VK_APP_SECRET']:
+            if values.get(key):
+                runtime[key] = values[key]
         items.append(secret('lecturer-runtime', ns, runtime))
     return items
 
