@@ -89,23 +89,29 @@ def run_drill(jar, output):
             digests[name]=registry+'/'+repository+'@'+digest
         config={'kind':'compose','repo':str(work),'stateDir':str(work/'state'),'publicKey':str(public),
                 'apiUrl':f'http://127.0.0.1:{app_port}','operatorKey':credential,
-                'healthUrl':f'http://127.0.0.1:{app_port}/actuator/health','project':project,
+                'healthUrl':f'http://127.0.0.1:{app_port}/health','project':project,
                 'composeFiles':['docker-compose.yml','docker-compose.prod.yml'],
                 'bindings':{'core':['core'],'web':['web']},'minFreeBytes':0}
         env={'DB_URL':'jdbc:postgresql://postgres:5432/lecturer','DB_USERNAME':'lecturer','DB_PASSWORD':password,
              'JWT_SECRET':jwt,'ADMIN_SETUP_TOKEN':setup,'INSTALLATION_UPDATES_ENABLED':'true',
              'INSTALLATION_OPERATOR_KEY':credential,'INSTALLATION_RELEASE_PUBLIC_KEY':base64.b64encode(public_der).decode(),
              'JAVA_TOOL_OPTIONS':'-Xmx320m -XX:ActiveProcessorCount=2','BLOB_ROOT':'/data/blobs'}
+        (work/'edge.conf').write_text('server { listen 80; resolver 127.0.0.11 valid=1s ipv6=off; set $application core:8080;\nlocation /api/ { proxy_pass http://$application; }\nlocation = /health { proxy_pass http://$application/actuator/health; }\nlocation /internal/ { return 404; }\nlocation / { return 404; }\n}\n')
         services={
           'postgres':{'image':'postgres:16-alpine','environment':{'POSTGRES_USER':'lecturer','POSTGRES_PASSWORD':password,'POSTGRES_DB':'lecturer'},
             'volumes':['database:/var/lib/postgresql/data',str(work/'backups')+':/backups:ro'],
             'healthcheck':{'test':['CMD','pg_isready','-U','lecturer'],'interval':'2s','timeout':'2s','retries':30}},
           'core':{'image':digests['bootstrap'],'environment':env,'mem_limit':'512m',
-            'ports':[f'127.0.0.1:{app_port}:8080'],'volumes':[str(work/'blobs')+':/data/blobs'],
+            'volumes':[str(work/'blobs')+':/data/blobs'],
             'depends_on':{'postgres':{'condition':'service_healthy'}},
             'healthcheck':{'test':['CMD','curl','-fsS','http://127.0.0.1:8080/actuator/health'],
                            'interval':'2s','timeout':'2s','retries':60,'start_period':'10s'}},
           'web':{'image':digests['web']},
+          'edge':{'image':'nginx:1.27-alpine','ports':[f'127.0.0.1:{app_port}:80'],
+            'volumes':[str(work/'edge.conf')+':/etc/nginx/conf.d/default.conf:ro'],
+            'depends_on':{'core':{'condition':'service_healthy'}},
+            'healthcheck':{'test':['CMD','wget','-q','-O','-','http://127.0.0.1/health'],
+                           'interval':'2s','timeout':'2s','retries':30}},
           'db-backup':{'image':'postgres:16-alpine','entrypoint':['sh','-c','while true; do sleep 3600; done'],
              'environment':{'PGHOST':'postgres','PGDATABASE':'lecturer','PGUSER':'lecturer','PGPASSWORD':password,
                  'BACKUP_DESTINATION':'/backups','BACKUP_SOURCE_PROJECT':project,'BLOB_SOURCE':'/blob-source',
@@ -153,7 +159,7 @@ def run_drill(jar, output):
         assert restored=='1'
         report={'result':'PASS','project':project,'jobStatus':'SUCCEEDED','databaseBefore':53,'databaseAfter':54,
                 'existingCoursePreserved':True,'blobPreserved':True,'backupRestored':True,
-                'runningImageDigestsVerified':True,'syntheticMigrationOnly':True,
+                'runningImageDigestsVerified':True,'publicProxyOperatorPrefix':True,'syntheticMigrationOnly':True,
                 'limits':'Single-Mac isolated Compose acceptance, not a production rollout or Kubernetes upgrade drill.'}
         Path(output).write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report))

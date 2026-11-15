@@ -51,6 +51,9 @@ class SecurityConfig {
                         // Separate, opaque helper credential is checked by ProjectionAgentController.
                         .requestMatchers("/api/v1/projection/agent/**")
                         .permitAll()
+                        // The external updater authenticates with its own opaque service credential.
+                        .requestMatchers("/api/v1/installation-operator/**")
+                        .permitAll()
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/v1/auth/bootstrap-admin",
