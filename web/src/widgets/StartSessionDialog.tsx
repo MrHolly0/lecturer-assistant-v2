@@ -12,6 +12,7 @@ import { useMaxBridge } from "../app/max/context";
 import { isMobileMax, teacherRemotePath } from "../app/max/navigation";
 import { Button } from "../shared/ui/button";
 import { resolveSessionGroups } from "../shared/lib/sessionGroups";
+import { Label } from "../shared/ui/label";
 import { Checkbox } from "../shared/ui/checkbox";
 import {
   Dialog,
@@ -22,8 +23,8 @@ import {
   DialogHeader,
   DialogTitle
 } from "../shared/ui/dialog";
-import { Input } from "../shared/ui/input";
-import { Label } from "../shared/ui/label";
+import { StudyGroupInput, type StudyGroupInputHandle } from "./StudyGroupInput";
+import type { GroupInput } from "../app/api/group-format";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../shared/ui/tabs";
 
 interface StartSessionDialogProps {
@@ -49,7 +50,10 @@ export function StartSessionDialog({
   const [mode, setMode] = useState<GroupMode>("existing");
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState("");
-  const [newGroupNames, setNewGroupNames] = useState<string[]>([]);
+  const [newGroups, setNewGroups] = useState<GroupInput[]>([]);
+  const groupInput = useRef<StudyGroupInputHandle>(null);
+  const [checkingGroup, setCheckingGroup] = useState(false);
+  const newGroupNames = newGroups.map((group) => group.name);
   const courseQuery = useQuery({
     queryKey: ["courses", courseId],
     queryFn: () => getCourse(courseId),
@@ -68,7 +72,7 @@ export function StartSessionDialog({
     setMode(groups.length === 0 ? "new" : "existing");
     setGroupIds(groups.length === 1 ? [groups[0].id] : []);
     setGroupName("");
-    setNewGroupNames([]);
+    setNewGroups([]);
   }, [courseId, courseQuery.isLoading, groups, open]);
 
   const startMutation = useMutation({
@@ -94,28 +98,59 @@ export function StartSessionDialog({
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось запустить занятие."))
   });
   const cleanGroupName = groupName.trim().replace(/\s+/g, " ");
-  const selectedGroups = resolveSessionGroups(groupIds, newGroupNames, groupName, groups);
+  const selectedGroups = resolveSessionGroups(
+    groupIds,
+    newGroupNames,
+    mode === "new" ? groupName : "",
+    groups
+  );
   const selectedCount = selectedGroups.length;
   const canSubmit =
     Boolean(lecture) && !courseQuery.isLoading && !courseQuery.isError && selectedCount > 0;
 
-  const addGroupName = () => {
-    if (!cleanGroupName) return;
-    const duplicate = newGroupNames.some(
-      (name) => name.localeCompare(cleanGroupName, "ru", { sensitivity: "accent" }) === 0
-    );
-    if (duplicate) {
-      toast.info("Эта группа уже добавлена.");
-      return;
+  const validateDraft = async () => {
+    if (mode !== "new" || !cleanGroupName) return null;
+    return groupInput.current?.validate() ?? null;
+  };
+  const addGroupName = async () => {
+    setCheckingGroup(true);
+    try {
+      const group = await validateDraft();
+      if (!group) return;
+      if (!newGroups.some((item) => item.name === group.name))
+        setNewGroups((items) => [...items, group]);
+      else toast.info("Эта группа уже добавлена.");
+      setGroupName("");
+    } finally {
+      setCheckingGroup(false);
     }
-    setNewGroupNames((names) => [...names, cleanGroupName]);
-    setGroupName("");
   };
 
-  const submit = () => {
-    startMutation.mutate({
-      groups: selectedGroups
-    });
+  const submit = async () => {
+    setCheckingGroup(true);
+    try {
+      const draft = mode === "new" && cleanGroupName ? await validateDraft() : null;
+      if (mode === "new" && cleanGroupName && !draft) return;
+      const validated = [...newGroups, ...(draft ? [draft] : [])];
+      const selections = resolveSessionGroups(
+        groupIds,
+        validated.map((group) => group.name),
+        "",
+        groups
+      );
+      startMutation.mutate({
+        groups: selections.map((selection) =>
+          "groupName" in selection
+            ? {
+                ...selection,
+                parts: validated.find((group) => group.name === selection.groupName)?.parts
+              }
+            : selection
+        )
+      });
+    } finally {
+      setCheckingGroup(false);
+    }
   };
 
   return (
@@ -196,28 +231,18 @@ export function StartSessionDialog({
                 <p className="muted">Можно провести один общий эфир сразу для нескольких групп.</p>
               </TabsContent>
               <TabsContent value="new" className="start-session-field">
-                <Label htmlFor="start-session-new-group">Название новой группы</Label>
                 <div className="start-session-new-group">
-                  <Input
-                    id="start-session-new-group"
-                    className="start-session-control"
+                  <StudyGroupInput
+                    ref={groupInput}
                     value={groupName}
-                    maxLength={120}
-                    placeholder="Например, ИКБО-01-23"
-                    autoComplete="off"
-                    onChange={(event) => setGroupName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        addGroupName();
-                      }
-                    }}
+                    onChange={setGroupName}
+                    disabled={startMutation.isPending || checkingGroup}
                   />
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={!cleanGroupName}
-                    onClick={addGroupName}
+                    disabled={!cleanGroupName || checkingGroup}
+                    onClick={() => void addGroupName()}
                   >
                     <Plus size={16} aria-hidden="true" /> Добавить ещё
                   </Button>
@@ -240,7 +265,9 @@ export function StartSessionDialog({
           )}
           <div className="start-session-selection" aria-live="polite">
             <strong>Выбрано: {selectedCount}</strong>
-            {cleanGroupName && <p className="muted">При продолжении: {cleanGroupName}</p>}
+            {mode === "new" && cleanGroupName && (
+              <p className="muted">При продолжении: {cleanGroupName}</p>
+            )}
             <div className="start-session-selection__items">
               {groups
                 .filter((group) => groupIds.includes(group.id))
@@ -263,7 +290,7 @@ export function StartSessionDialog({
                     type="button"
                     aria-label={`Убрать новую группу ${name}`}
                     onClick={() =>
-                      setNewGroupNames((names) => names.filter((item) => item !== name))
+                      setNewGroups((items) => items.filter((item) => item.name !== name))
                     }
                   >
                     <X size={14} aria-hidden="true" />
@@ -283,7 +310,11 @@ export function StartSessionDialog({
               Отмена
             </Button>
           </DialogClose>
-          <Button type="button" disabled={!canSubmit || startMutation.isPending} onClick={submit}>
+          <Button
+            type="button"
+            disabled={!canSubmit || startMutation.isPending || checkingGroup}
+            onClick={() => void submit()}
+          >
             <Play size={16} aria-hidden="true" />
             {startMutation.isPending ? "Открываем подключение…" : "Открыть подключение"}
           </Button>

@@ -4,6 +4,7 @@ import { Button } from "../shared/ui/button";
 interface StudentJoinPanelProps {
   displayName: string;
   userName?: string;
+  canResume?: boolean;
   isPending: boolean;
   isError: boolean;
   disabled?: boolean;
@@ -14,6 +15,7 @@ interface StudentJoinPanelProps {
 export function StudentJoinPanel({
   displayName,
   userName,
+  canResume = false,
   isPending,
   isError,
   disabled = false,
@@ -27,7 +29,15 @@ export function StudentJoinPanel({
 
   return (
     <section className="student-action-panel">
-      {userName ? (
+      {canResume ? (
+        <div className="student-profile-join">
+          <h2>Вернуться на занятие</h2>
+          <p className="muted">Продолжите с прежним участием и именем.</p>
+          <Button disabled={isPending} onClick={onJoin}>
+            {isPending ? "Возвращаем…" : "Вернуться"}
+          </Button>
+        </div>
+      ) : userName ? (
         <div className="student-profile-join" aria-live="polite">
           <h2>Подключаем к лекции</h2>
           {isError ? (

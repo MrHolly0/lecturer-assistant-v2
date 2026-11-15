@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { CircleStop, MessageCircle } from "lucide-react";
+import { CircleStop, MessageCircle, LogOut } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { leaveStudentSession } from "../app/api/student-cabinet";
 import { toast } from "sonner";
 import {
   clearStudentResume,
+  markStudentSessionLeft,
+  voluntarilyLeftStudentSession,
   readStudentResume,
   readTabStudentToken,
   storeStudentResume,
@@ -58,6 +62,8 @@ const STATUS_LABELS: Record<StudentSessionSnapshot["status"], string> = {
 };
 
 export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
+  const navigate = useNavigate();
+  const [leaving, setLeaving] = useState(false);
   const slideImageRef = useRef<HTMLImageElement>(null);
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -65,10 +71,14 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   const scopeForToken = (token: string) =>
     JSON.stringify([normalizedCode, user?.id ?? "guest", token]);
   const resumeToken = useRef(
-    readStudentResume(normalizedCode, user?.id ?? null)?.participantToken ?? ""
+    readTabStudentToken(normalizedCode, user?.id ?? null) ??
+      readStudentResume(normalizedCode, user?.id ?? null)?.participantToken ??
+      ""
   );
   const [participantToken, setParticipantToken] = useState(() =>
-    user ? "" : readTabStudentToken(normalizedCode) ?? resumeToken.current
+    user || voluntarilyLeftStudentSession(normalizedCode)
+      ? ""
+      : readTabStudentToken(normalizedCode) ?? resumeToken.current
   );
   const autoJoinRequested = useRef(false);
   const reconnectRef = useRef<() => void>(() => undefined);
@@ -96,7 +106,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       return { text: "", slideIdx: null as number | null };
     }
   });
-  const [snapshotSyncing, setSnapshotSyncing] = useState(false);
+  const [networkSyncing, setSnapshotSyncing] = useState(false);
+  const snapshotSyncing = networkSyncing || leaving;
   const [lastSignal, setLastSignal] = useState<SignalValue | null>(null);
   const [requestedSlideIdx, setRequestedSlideIdx] = useState<number | null>(null);
   const [questions, setQuestions] = useState<StudentQuestion[]>(() => {
@@ -155,7 +166,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       commitSnapshot(fresh, requestScope, requestGeneration);
       return requestEntry.gate.current ?? fresh;
     },
-    enabled: Boolean(normalizedCode)
+    enabled: Boolean(normalizedCode) && !leaving
   });
   const { refetch } = sessionQuery;
   const current =
@@ -175,10 +186,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
         normalizedCode,
         user ? undefined : displayName.trim(),
         selectedGroupId || undefined,
-        user ? resumeToken.current || undefined : undefined
+        resumeToken.current || undefined
       ),
     onSuccess: (response) => {
       if (scopeRef.current !== scope) return;
+      markStudentSessionLeft(normalizedCode, false, user?.id ?? null);
       storeTabStudentToken(normalizedCode, response.participantToken, user?.id ?? null);
       resumeToken.current = response.participantToken;
       storeStudentResume({
@@ -203,10 +215,14 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       toast.success("Вы подключены к занятию.");
     },
     onError: (error) => {
-      if (user && resumeToken.current && error instanceof ApiError && error.status === 403) {
+      if (
+        resumeToken.current &&
+        error instanceof ApiError &&
+        (error.status === 401 || (user && error.status === 403))
+      ) {
         resumeToken.current = "";
         clearStudentResume(normalizedCode, user?.id ?? null);
-        joinMut.mutate();
+        if (user) joinMut.mutate();
         return;
       }
       const issue = joinIssueFromError(error);
@@ -404,8 +420,21 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
     };
   }, [current?.nameRequested, isJoined, isTerminalSession, scope]);
 
+  const leaveMutation = useMutation({
+    mutationFn: () => leaveStudentSession(normalizedCode, participantToken),
+    onSuccess: () => {
+      markStudentSessionLeft(normalizedCode, true, user?.id ?? null);
+      void queryClient.invalidateQueries({ queryKey: ["student-cabinet"] });
+      navigate(user ? "/home" : "/student/join", { replace: true });
+    },
+    onError: (error) => {
+      setLeaving(false);
+      toast.error(userErrorMessage(error, "Не удалось выйти. Попробуйте ещё раз."));
+    }
+  });
+
   useEffect(() => {
-    if (!participantToken || !normalizedCode) return undefined;
+    if (!participantToken || !normalizedCode || leaving) return undefined;
     const delivery = trackStudentDelivery((sessionId, completed, signal) =>
       acknowledgeStudentDelivery(
         normalizedCode,
@@ -447,7 +476,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       connection.disconnect();
       delivery.stop();
     };
-  }, [normalizedCode, participantToken, refetch, scope, user?.id]);
+  }, [normalizedCode, participantToken, refetch, scope, user?.id, leaving]);
 
   const slideLabel = current ? `${current.currentSlideIdx} из ${current.slideCount}` : "";
   const feedbackUnavailableMessage =
@@ -540,6 +569,25 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           <strong>Занятие</strong>
         </div>
         <div className="student-session-topbar__actions">
+          {isJoined && !isTerminalSession ? (
+            <Button
+              variant="outline"
+              disabled={leaving}
+              onClick={() => {
+                setLeaving(true);
+                void queryClient
+                  .cancelQueries({ queryKey: ["student-session", normalizedCode] })
+                  .then(() => leaveMutation.mutate());
+              }}
+            >
+              <LogOut aria-hidden="true" />
+              {leaving ? "Выходим…" : "Покинуть занятие"}
+            </Button>
+          ) : (
+            <LinkButton to={user ? "/home" : "/student/join"} variant="outline">
+              К занятиям
+            </LinkButton>
+          )}
           <ThemeToggle compact />
         </div>
       </header>
@@ -689,6 +737,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             <StudentJoinPanel
               displayName={displayName}
               userName={user?.displayName}
+              canResume={!user && Boolean(resumeToken.current)}
               isPending={joinMut.isPending}
               isError={joinMut.isError}
               disabled={!user && (current.groups?.length ?? 0) > 1 && !selectedGroupId}

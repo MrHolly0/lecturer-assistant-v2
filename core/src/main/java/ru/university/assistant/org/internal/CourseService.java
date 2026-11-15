@@ -44,14 +44,16 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     private final AccountStateApi accounts;
     private final Validator validator;
     private final CommandIdempotency commands;
+    private final GroupFormatService groupFormat;
 
     CourseService(CourseRepository courses, InvitationApi invitations, AccountStateApi accounts, Validator validator,
-            CommandIdempotency commands) {
+            CommandIdempotency commands, GroupFormatService groupFormat) {
         this.courses = courses;
         this.accounts = accounts;
         this.invitations = invitations;
         this.validator = validator;
         this.commands = commands;
+        this.groupFormat = groupFormat;
     }
 
     @Transactional
@@ -212,7 +214,14 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
     @Transactional
     public StudyGroup createGroup(AuthenticatedUser user, UUID courseId, CreateStudyGroupRequest request) {
         requireManage(user, courseId);
-        return courses.createGroup(UuidV7.generate(), courseId, request.name().trim());
+        var normalized = groupFormat.normalize(request.name(), request.parts());
+        courses.lockGroupCreation(courseId);
+        var group = normalized.identityKey() == null
+                ? courses.createGroup(UuidV7.generate(), courseId, normalized.name())
+                : courses.findGroupByCohort(courseId, normalized.identityKey())
+                        .orElseGet(() -> courses.getOrCreateGroup(UuidV7.generate(), courseId, normalized.name()));
+        groupFormat.attach(group.id(), normalized);
+        return group;
     }
 
     @Transactional
@@ -312,7 +321,8 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
 
     @Override
     @Transactional
-    public StudyGroup resolveSessionGroup(UUID courseId, UUID groupId, String groupName) {
+    public StudyGroup resolveSessionGroup(UUID courseId, UUID groupId, String groupName,
+            java.util.Map<String, String> parts) {
         String normalizedName = normalizeGroupName(groupName);
         if ((groupId == null) == (normalizedName == null)) {
             throw new ResponseStatusException(
@@ -322,7 +332,14 @@ public class CourseService implements CourseMembershipApi, CourseAccessApi {
             return courses.findGroup(courseId, groupId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
         }
-        return courses.getOrCreateGroup(UuidV7.generate(), courseId, normalizedName);
+        var formatted = groupFormat.normalize(normalizedName, parts);
+        courses.lockGroupCreation(courseId);
+        var group = formatted.identityKey() == null
+                ? courses.getOrCreateGroup(UuidV7.generate(), courseId, formatted.name())
+                : courses.findGroupByCohort(courseId, formatted.identityKey())
+                        .orElseGet(() -> courses.getOrCreateGroup(UuidV7.generate(), courseId, formatted.name()));
+        groupFormat.attach(group.id(), formatted);
+        return group;
     }
 
     @Override

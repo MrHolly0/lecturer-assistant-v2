@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { StudyGroupInput, type StudyGroupInputHandle } from "../widgets/StudyGroupInput";
+import type { GroupInput } from "../app/api/group-format";
 import { PendingOperationKey } from "../app/api/operation-key";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -53,6 +55,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
     setSearchParams(value === "members" ? { view: "people" } : { view: "people", section: value });
   };
   const [groupName, setGroupName] = useState("");
+  const groupInput = useRef<StudyGroupInputHandle>(null);
   const groupKey = useRef(new PendingOperationKey());
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [participantDialogOpen, setParticipantDialogOpen] = useState(false);
@@ -79,8 +82,7 @@ export function CoursePage({ courseId }: { courseId: string }) {
   }, [activeTab, canManage, course, setSearchParams]);
 
   const createGroupMut = useMutation({
-    mutationFn: () => {
-      const request = { name: groupName };
+    mutationFn: (request: GroupInput) => {
       return groupKey.current.run({ courseId, request }, (key) =>
         createStudyGroup(courseId, request, key)
       );
@@ -324,19 +326,17 @@ export function CoursePage({ courseId }: { courseId: string }) {
                     className="course-group-create-form"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      createGroupMut.mutate();
+                      void groupInput.current?.validate().then((request) => {
+                        if (request) createGroupMut.mutate(request);
+                      });
                     }}
                   >
-                    <label className="field">
-                      <span>Название группы</span>
-                      <input
-                        value={groupName}
-                        onChange={(event) => setGroupName(event.target.value)}
-                        placeholder="Например, ИВТ-21"
-                        required
-                        minLength={2}
-                      />
-                    </label>
+                    <StudyGroupInput
+                      ref={groupInput}
+                      value={groupName}
+                      onChange={setGroupName}
+                      disabled={createGroupMut.isPending}
+                    />
                     <div className="course-group-create-form__actions">
                       <Button
                         type="button"

@@ -33,11 +33,27 @@ import ru.university.assistant.qa.api.StudentQuestion;
 class StudentSessionController {
     private final StudentWebSessionService studentSessions;
     private final StudentSseBroadcaster broadcaster;
+    private final ru.university.assistant.live.internal.StudentCabinetService cabinet;
 
     StudentSessionController(StudentWebSessionService studentSessions,
-            org.springframework.beans.factory.ObjectProvider<StudentSseBroadcaster> broadcaster) {
+            org.springframework.beans.factory.ObjectProvider<StudentSseBroadcaster> broadcaster,
+            ru.university.assistant.live.internal.StudentCabinetService cabinet) {
         this.studentSessions = studentSessions;
         this.broadcaster = broadcaster.getIfAvailable();
+        this.cabinet = cabinet;
+    }
+
+    @GetMapping("/api/v1/me/student-cabinet")
+    public StudentCabinet cabinet(@AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(defaultValue = "20") int limit, @RequestParam(defaultValue = "0") int offset) {
+        return cabinet.cabinet(user, limit, offset);
+    }
+
+    @PostMapping("/api/v1/student/sessions/{joinCode}/leave")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void leave(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String joinCode,
+            @RequestHeader(value = "X-Participant-Token", required = false) String token) {
+        studentSessions.leave(joinCode, user, token);
     }
 
     @GetMapping("/api/v1/me/student-active-session")

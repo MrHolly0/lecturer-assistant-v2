@@ -116,7 +116,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
         LinkedHashMap<UUID, StudyGroup> unique = new LinkedHashMap<>();
         for (StartSessionGroup selection : request.groups()) {
             StudyGroup group = memberships.resolveSessionGroup(
-                    courseId, selection.groupId(), selection.groupName());
+                    courseId, selection.groupId(), selection.groupName(), selection.parts());
             if (unique.putIfAbsent(group.id(), group) != null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Study groups must be unique");
             }

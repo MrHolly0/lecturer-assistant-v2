@@ -1,3 +1,4 @@
+import { InstallationUpdatesPage } from "../pages/InstallationUpdatesPage";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -20,7 +21,7 @@ import { QuestionBankPage } from "../pages/QuestionBankPage";
 import { PresenterPage } from "../pages/PresenterPage";
 import { ProjectionPage } from "../pages/ProjectionPage";
 import { SessionJoinPage } from "../pages/SessionJoinPage";
-import { InstallationUpdatesPage } from "../pages/InstallationUpdatesPage";
+import { GroupFormatPage } from "../pages/GroupFormatPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { OrganizationPage } from "../pages/OrganizationPage";
 import { StudentHomePage } from "../pages/StudentHomePage";
@@ -37,8 +38,6 @@ import { useMaxBridge } from "./max/context";
 import { readMaxLinkCode } from "./max/deepLink";
 import { canRedirectToTeacherRemote, isMobileMax, teacherRemotePath } from "./max/navigation";
 import { getLiveSession, getMyActiveSession } from "./api/live-api";
-import { getMyStudentActiveSession } from "./api/student-api";
-import { readStudentResume } from "./studentResume";
 import { MaxLinkCodeScreen } from "../widgets/MaxLinkCodeScreen";
 import { MaxCredentialsScreen } from "../widgets/MaxCredentialsScreen";
 import { MaxLinkReviewScreen } from "../widgets/MaxLinkReviewScreen";
@@ -83,7 +82,6 @@ function MaxNavigationRoot() {
   const [startParamHandled, setStartParamHandled] = useState(false);
   const mobileMax = isMobileMax(maxEnvironment);
   const teacherInMax = Boolean(user && user.role !== "STUDENT" && mobileMax);
-  const studentInMax = Boolean(isMax && user?.role === "STUDENT");
   const activeSession = useQuery({
     queryKey: ["active-session"],
     queryFn: getMyActiveSession,
@@ -95,13 +93,6 @@ function MaxNavigationRoot() {
   const remotePath = activeSession.data
     ? teacherRemotePath(activeSession.data.courseId, activeSession.data.sessionId)
     : null;
-  const studentActiveSession = useQuery({
-    queryKey: ["student-active-session"],
-    queryFn: getMyStudentActiveSession,
-    enabled: studentInMax,
-    retry: 1
-  });
-  const storedStudentSession = readStudentResume(undefined, user?.id ?? null);
   const startTarget =
     user?.role === "STUDENT" && startParam && maxStartParamPattern.test(startParam)
       ? `/s/${encodeURIComponent(startParam.toUpperCase())}`
@@ -179,18 +170,7 @@ function MaxNavigationRoot() {
   if (isMax && !startParamHandled && startTarget && location.pathname !== startTarget) {
     return <Navigate to={startTarget} replace />;
   }
-  // Only MAX entry resumes a lecture automatically. Browser entry waits for account auth.
-  if (
-    studentInMax &&
-    !startTarget &&
-    (location.pathname === "/" || location.pathname === "/login" || location.pathname === "/home")
-  ) {
-    if (studentActiveSession.isLoading) return <LoadingScreen message="Ищем вашу лекцию…" />;
-    const joinCode = studentActiveSession.data?.joinCode ?? storedStudentSession?.joinCode;
-    if (joinCode) {
-      return <Navigate to={`/s/${encodeURIComponent(joinCode)}`} replace />;
-    }
-  }
+  // A plain student entry opens the cabinet; only an explicit lesson deep link redirects.
   if (teacherInMax && activeSession.isLoading && canRedirectToTeacherRemote(location.pathname)) {
     return <LoadingScreen message="Ищем активную лекцию…" />;
   }
@@ -453,6 +433,7 @@ const router = createHashRouter([
             element: <RequireRole roles={["ADMIN"]} />,
             children: [
               { path: "/admin/users", element: <AdminUsersPage /> },
+              { path: "/admin/group-format", element: <GroupFormatPage /> },
               { path: "/admin/installation", element: <InstallationUpdatesPage /> }
             ]
           }

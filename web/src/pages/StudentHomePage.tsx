@@ -10,6 +10,7 @@ import { listCourses } from "../app/api/courses-api";
 import { AppHeader } from "../widgets/Layout";
 import { MaxEntryScreen } from "../widgets/MaxEntryScreen";
 import { Button, LinkButton } from "../shared/ui/button";
+import { StudentCabinetSessions } from "../widgets/StudentCabinetSessions";
 
 export function StudentHomePage({ joinOnly = false }: { joinOnly?: boolean }) {
   const navigate = useNavigate();
@@ -46,7 +47,7 @@ export function StudentHomePage({ joinOnly = false }: { joinOnly?: boolean }) {
             <span className="muted">
               {joinOnly || !user
                 ? "Введите код занятия с экрана преподавателя. Вход в аккаунт не нужен."
-                : "Подключение к лекции и ваши курсы"}
+                : "Занятия ваших групп, вход по коду и история"}
             </span>
           </div>
           {joinOnly && !user && (
@@ -87,6 +88,8 @@ export function StudentHomePage({ joinOnly = false }: { joinOnly?: boolean }) {
             После подключения вы сможете задавать вопросы и отвечать на проверки.
           </p>
         </div>
+
+        {user && !joinOnly && <StudentCabinetSessions />}
 
         {user && !joinOnly && (
           <section className="student-home-courses">
