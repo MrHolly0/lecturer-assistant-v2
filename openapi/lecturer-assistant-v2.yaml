@@ -8,6 +8,375 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /installation-operator/catalog:
+    post:
+      security:
+        - installationOperatorKey: []
+      tags:
+        - installation-operator
+      operationId: operatorSyncCatalog
+      summary: Synchronize a signed catalog. Requires the separate operator credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/InstallationSignedCatalog'
+                - type: object
+                  required:
+                    - kind
+                  properties:
+                    kind:
+                      type: string
+                      enum:
+                        - compose
+                        - kubernetes
+      responses:
+        '204':
+          description: Catalog verified and stored.
+        '400':
+          description: Invalid catalog signature, expiry or structure.
+        '401':
+          description: Invalid operator key.
+  /installation-operator/claim:
+    post:
+      security:
+        - installationOperatorKey: []
+      tags:
+        - installation-operator
+      operationId: operatorClaimUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - owner
+              properties:
+                owner:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Assignment, or an empty body when no job is available.
+          content:
+            application/json:
+              schema:
+                nullable: true
+                allOf:
+                  - $ref: '#/components/schemas/InstallationAssignment'
+  /installation-operator/jobs/{id}/prepare:
+    post:
+      security:
+        - installationOperatorKey: []
+      tags:
+        - installation-operator
+      operationId: operatorPrepareUpdate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstallationLease'
+      responses:
+        '200':
+          description: WAITING or BACKING_UP with the admission barrier acquired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationJob'
+        '409':
+          description: Stale lease or incompatible stage.
+  /installation-operator/jobs/{id}/heartbeat:
+    post:
+      security:
+        - installationOperatorKey: []
+      tags:
+        - installation-operator
+      operationId: operatorRenewLease
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstallationLease'
+      responses:
+        '204':
+          description: Lease renewed.
+        '409':
+          description: Stale lease.
+  /installation-operator/jobs/{id}/progress:
+    post:
+      security:
+        - installationOperatorKey: []
+      tags:
+        - installation-operator
+      operationId: operatorReportProgress
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/InstallationLease'
+                - type: object
+                  required:
+                    - stage
+                  properties:
+                    stage:
+                      type: string
+                      enum:
+                        - APPLYING
+                        - VERIFYING
+                        - SUCCEEDED
+                        - FAILED
+                        - NEEDS_ATTENTION
+                    summary:
+                      type: string
+                      maxLength: 500
+      responses:
+        '200':
+          description: Recorded or idempotently repeated stage.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationJob'
+        '409':
+          description: Invalid stage transition or stale lease.
+  /group-format:
+    get:
+      operationId: getGroupFormat
+      summary: Get the institution study group naming policy.
+      responses:
+        '200':
+          description: Current policy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupFormatPolicy'
+  /group-format/preview:
+    post:
+      operationId: previewGroupFormat
+      summary: Normalize short text or validate explicit group parts without creating a group.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                parts:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: Normalized name or recognized parts for the fallback form.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupFormatPreview'
+  /admin/group-format:
+    put:
+      operationId: saveGroupFormat
+      summary: Save group policy with revision checking. ADMIN only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupFormatPolicy'
+      responses:
+        '200':
+          description: Saved policy with incremented revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupFormatPolicy'
+        '409':
+          description: Another administrator changed the policy.
+  /admin/group-format/reconcile:
+    post:
+      operationId: reconcileGroupFormats
+      summary: Explicitly recognize up to 1000 existing groups without rewriting names or history. ADMIN only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - revision
+              properties:
+                revision:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: Reconciliation counts; repeat when hasMore is true.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - matched
+                  - unrecognized
+                  - hasMore
+                properties:
+                  matched:
+                    type: integer
+                  unrecognized:
+                    type: integer
+                  hasMore:
+                    type: boolean
+  /me/student-cabinet:
+    get:
+      operationId: getStudentCabinet
+      summary: Own ongoing group lessons and paginated attendance history.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000000
+            default: 0
+      responses:
+        '200':
+          description: Sessions available to this account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentCabinet'
+  /student/sessions/{joinCode}/leave:
+    post:
+      operationId: leaveStudentSession
+      summary: Idempotent voluntary departure. Explicit join allows returning to the same participation.
+      security: []
+      parameters:
+        - name: joinCode
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Participant-Token
+          in: header
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Left own participation, identified by bearer or participant token.
+        '403':
+          description: Caller does not own the participation.
+  /admin/installation:
+    get:
+      operationId: getInstallationStatus
+      summary: 'ADMIN: deployment operator connectivity, signed releases and durable update jobs.'
+      responses:
+        '200':
+          description: Installation status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationStatus'
+        '403':
+          description: Administrator required.
+  /admin/installation/jobs:
+    post:
+      operationId: requestInstallationUpdate
+      summary: 'ADMIN: enqueue one update from the verified catalog. Does not interrupt lessons.'
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 80
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - releaseId
+              properties:
+                releaseId:
+                  type: string
+      responses:
+        '200':
+          description: Existing or newly queued job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationJob'
+        '409':
+          description: Active/uncertain job exists, operator offline, stale key or incompatible database.
+  /admin/installation/jobs/{id}/cancel:
+    post:
+      operationId: cancelInstallationUpdate
+      summary: 'ADMIN: cancel before application changes start.'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Cancelled.
+        '409':
+          description: Update has already started.
+  /admin/installation/jobs/{id}/acknowledge:
+    post:
+      operationId: acknowledgeInstallationUpdate
+      summary: 'ADMIN: confirm manual review of an uncertain update. Does not restore data or change images.'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Manual review recorded; queue and admission released.
+        '409':
+          description: No uncertain update to acknowledge.
   /courses/{courseId}/sessions/{sessionId}/screen-share:
     post:
       operationId: startScreenShare
@@ -3940,6 +4309,10 @@ paths:
 
 components:
   securitySchemes:
+    installationOperatorKey:
+      type: apiKey
+      in: header
+      name: X-Installation-Key
     projectionView:
       type: apiKey
       in: header
@@ -4084,6 +4457,322 @@ components:
         type: string
         enum: [telegram, vk, web, echo]
   schemas:
+    InstallationSignedCatalog:
+      type: object
+      required:
+        - payload
+        - signature
+      properties:
+        payload:
+          type: string
+          maxLength: 262144
+        signature:
+          type: string
+          maxLength: 256
+    InstallationLease:
+      type: object
+      required:
+        - owner
+        - fence
+      properties:
+        owner:
+          type: string
+          format: uuid
+        fence:
+          type: integer
+          format: int64
+          minimum: 1
+    InstallationAssignment:
+      type: object
+      required:
+        - job
+        - catalog
+      properties:
+        job:
+          $ref: '#/components/schemas/InstallationJob'
+        catalog:
+          $ref: '#/components/schemas/InstallationSignedCatalog'
+    GroupFormatPolicy:
+      type: object
+      required:
+        - revision
+        - enabled
+        - fields
+      properties:
+        revision:
+          type: integer
+          format: int64
+        enabled:
+          type: boolean
+        fields:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            required:
+              - id
+              - label
+              - kind
+              - prefix
+              - width
+              - yearBase
+              - choices
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              kind:
+                type: string
+                enum:
+                  - CHOICE
+                  - YEAR
+                  - NUMBER
+              prefix:
+                type: string
+              width:
+                type: integer
+              yearBase:
+                type: integer
+              defaultValue:
+                type: string
+                nullable: true
+              choices:
+                type: array
+                items:
+                  type: object
+                  required:
+                    - code
+                    - label
+                    - aliases
+                  properties:
+                    code:
+                      type: string
+                    label:
+                      type: string
+                    aliases:
+                      type: array
+                      items:
+                        type: string
+    GroupFormatPreview:
+      type: object
+      required:
+        - valid
+        - parts
+      properties:
+        valid:
+          type: boolean
+        name:
+          type: string
+          nullable: true
+        identityKey:
+          type: string
+          nullable: true
+        parts:
+          type: object
+          additionalProperties:
+            type: string
+        message:
+          type: string
+          nullable: true
+    StudentCabinet:
+      type: object
+      required:
+        - ongoing
+        - moreOngoing
+        - history
+        - historyTotal
+        - historyLimit
+        - historyOffset
+      properties:
+        ongoing:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentCabinetSession'
+        moreOngoing:
+          type: boolean
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentCabinetSession'
+        historyTotal:
+          type: integer
+          format: int64
+        historyLimit:
+          type: integer
+        historyOffset:
+          type: integer
+    StudentCabinetSession:
+      type: object
+      required:
+        - sessionId
+        - title
+        - courseTitle
+        - status
+        - joined
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        courseTitle:
+          type: string
+        status:
+          type: string
+        joined:
+          type: boolean
+        groups:
+          type: string
+          nullable: true
+        joinCode:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        joinedAt:
+          type: string
+          format: date-time
+          nullable: true
+        leftAt:
+          type: string
+          format: date-time
+          nullable: true
+    InstallationRelease:
+      type: object
+      required:
+        - id
+        - version
+        - notes
+        - commit
+        - databaseMin
+        - databaseMax
+        - backwardCompatible
+        - images
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+        notes:
+          type: string
+        commit:
+          type: string
+        databaseMin:
+          type: integer
+          format: int64
+        databaseMax:
+          type: integer
+          format: int64
+        backwardCompatible:
+          type: boolean
+        images:
+          type: object
+          additionalProperties:
+            type: string
+    InstallationJob:
+      type: object
+      required:
+        - id
+        - releaseId
+        - status
+        - stage
+        - summary
+        - fence
+        - owner
+        - leaseUntil
+        - maintenanceUntil
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        releaseId:
+          type: string
+        status:
+          type: string
+          enum:
+            - QUEUED
+            - RUNNING
+            - SUCCEEDED
+            - FAILED
+            - CANCELLED
+            - NEEDS_ATTENTION
+        stage:
+          type: string
+        summary:
+          type: string
+        fence:
+          type: integer
+          format: int64
+        owner:
+          type: string
+          format: uuid
+          nullable: true
+        leaseUntil:
+          type: string
+          format: date-time
+          nullable: true
+        maintenanceUntil:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    InstallationStatus:
+      type: object
+      required:
+        - enabled
+        - databaseVersion
+        - operatorSeenAt
+        - operatorKind
+        - catalogSyncedAt
+        - catalogError
+        - releases
+        - jobs
+        - activeLessons
+      properties:
+        enabled:
+          type: boolean
+        databaseVersion:
+          type: integer
+          format: int64
+        operatorSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        operatorKind:
+          type: string
+          nullable: true
+        catalogSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        catalogError:
+          type: string
+          nullable: true
+        releases:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstallationRelease'
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstallationJob'
+        activeLessons:
+          type: integer
+          format: int64
     ShareStart:
       type: object
       required:
@@ -5134,11 +5823,16 @@ components:
           format: uuid
     CreateStudyGroupRequest:
       type: object
-      required: [name]
+      required:
+        - name
       properties:
         name:
           type: string
-          minLength: 2
+          minLength: 1
+        parts:
+          type: object
+          additionalProperties:
+            type: string
     StudyGroup:
       type: object
       required: [id, courseId, name]
@@ -5559,19 +6253,25 @@ components:
       oneOf:
         - type: object
           additionalProperties: false
-          required: [groupId]
+          required:
+            - groupId
           properties:
             groupId:
               type: string
               format: uuid
         - type: object
           additionalProperties: false
-          required: [groupName]
+          required:
+            - groupName
           properties:
             groupName:
               type: string
               minLength: 1
               maxLength: 120
+            parts:
+              type: object
+              additionalProperties:
+                type: string
     StartSessionRequest:
       type: object
       required: [groups]

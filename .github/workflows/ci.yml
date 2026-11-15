@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: ["master", "v2/**", "release/**", "feature/**"]
+    branches: ["main", "master", "v2/**", "release/**", "feature/**", "fix/**"]
   workflow_dispatch:
   pull_request:
-    branches: ["master"]
+    branches: ["main", "master", "release/hackathon-max"]
 
 jobs:
   verify:
@@ -78,6 +78,16 @@ jobs:
 
       - name: Verify HA rendering
         run: python3 -m unittest discover -s deploy/scalable/ha -p '*_test.py'
+
+      - name: Verify installation rendering and scripts
+        run: |
+          python3 -m unittest discover -s deploy/k8s -p '*_test.py'
+          python3 -m unittest discover -s deploy/cloud -p '*_test.py'
+          python3 -m unittest discover -s deploy/updates -p '*_test.py'
+          python3 deploy/updates/installation_operator.py --help
+          python3 deploy/updates/publish-catalog.py --help
+          sh -n deploy/cloud/lecturer.sh
+          sh -n deploy/k8s/lecturer-k8s.sh
 
       - name: Validate scalable lab configuration
         run: |

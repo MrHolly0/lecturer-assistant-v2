@@ -104,6 +104,8 @@ abstract class LiveFlowTestBase {
                         restart identity cascade
                         """)
                 .update();
+        jdbc.sql("update org.group_format_policy set enabled=false, fields='[]'::jsonb, revision=revision+1")
+                .update();
         adminToken = json(post("/api/v1/auth/bootstrap-admin")
                         .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)

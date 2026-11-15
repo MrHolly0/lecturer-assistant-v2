@@ -1,0 +1,75 @@
+{
+  "kind": "kubernetes",
+  "repo": "/opt/lecturer-assistant",
+  "apiUrl": "https://lecturer.example.edu",
+  "operatorKey": "REPLACE_WITH_RANDOM_PRIVATE_CREDENTIAL",
+  "catalogUrl": "https://releases.example.edu/lecturer/catalog.json",
+  "publicKey": "/etc/lecturer-updates/releases.pub.pem",
+  "healthUrl": "https://lecturer.example.edu/health",
+  "stateDir": "/var/lib/lecturer-updates",
+  "namespace": "lecturer",
+  "bindings": {
+    "core": [
+      {
+        "resource": "deployment/core",
+        "container": "core"
+      },
+      {
+        "resource": "deployment/content-worker",
+        "container": "content-worker"
+      }
+    ],
+    "web": [
+      {
+        "resource": "deployment/web",
+        "container": "web"
+      },
+      {
+        "resource": "deployment/edge",
+        "container": "edge"
+      }
+    ],
+    "services": [
+      {
+        "resource": "deployment/realtime",
+        "container": "realtime"
+      },
+      {
+        "resource": "deployment/analytics",
+        "container": "analytics"
+      },
+      {
+        "resource": "deployment/media-control",
+        "container": "media-control"
+      },
+      {
+        "resource": "deployment/event-publisher",
+        "container": "event-publisher"
+      }
+    ],
+    "sfu": [
+      {
+        "resource": "daemonset/sfu",
+        "container": "sfu"
+      }
+    ],
+    "authority": [
+      {
+        "resource": "deployment/authority",
+        "container": "authority"
+      }
+    ],
+    "converter": [
+      {
+        "resource": "deployment/converter",
+        "container": "converter"
+      }
+    ],
+    "max-adapter": [
+      {
+        "resource": "deployment/max-adapter",
+        "container": "max-adapter"
+      }
+    ]
+  }
+}

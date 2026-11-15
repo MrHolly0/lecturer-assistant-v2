@@ -475,6 +475,8 @@ class LiveSessionRepository {
                 .param("guestId", guestId).param("personId", personId).update();
         jdbc.sql("update qa.questions set person_id = :personId where person_id = :guestId")
                 .param("guestId", guestId).param("personId", personId).update();
+        jdbc.sql("update live.student_visit_events set person_id=:personId where person_id=:guestId")
+                .param("guestId", guestId).param("personId", personId).update();
         jdbc.sql("update analytics.events set actor_person_id = :personId where actor_person_id = :guestId")
                 .param("guestId", guestId).param("personId", personId).update();
         jdbc.sql("delete from live.web_participant_tokens where session_id = :sessionId and person_id = :guestId")
@@ -494,7 +496,7 @@ class LiveSessionRepository {
                             (session_id, person_id, channel_type, display_name, group_id, group_name_snapshot)
                         values (:sessionId, :personId, 'web', :displayName, :groupId, :groupName)
                         on conflict (session_id, person_id, channel_type)
-                        do update set left_at = null
+                        do update set left_at = null, voluntarily_left=false
                         returning (xmax = 0) as inserted, kicked
                         """)
                 .param("sessionId", sessionId)
@@ -519,6 +521,40 @@ class LiveSessionRepository {
     }
 
     record JoinOutcome(boolean inserted, boolean kicked) {}
+
+    boolean voluntarilyLeft(UUID sessionId, UUID personId) {
+        return jdbc.sql("select coalesce(bool_or(voluntarily_left),false) from live.session_participants "
+                + "where session_id=:session and person_id=:person and channel_type='web'")
+                .param("session", sessionId).param("person", personId).query(Boolean.class).single();
+    }
+
+    boolean leaveVoluntarily(UUID sessionId, UUID personId) {
+        int updated = jdbc.sql("""
+                update live.session_participants set voluntarily_left=true, left_at=coalesce(left_at,now())
+                where session_id=:session and person_id=:person and channel_type='web' and not voluntarily_left
+                """).param("session", sessionId).param("person", personId).update();
+        if (updated > 0) visitEvent(sessionId, personId, "LEFT");
+        return updated > 0;
+    }
+
+    void returnVoluntarily(UUID sessionId, UUID personId) {
+        int updated = jdbc.sql("""
+                update live.session_participants set voluntarily_left=false, left_at=null
+                where session_id=:session and person_id=:person and channel_type='web'
+                    and voluntarily_left and not kicked
+                """).param("session", sessionId).param("person", personId).update();
+        if (updated > 0) visitEvent(sessionId, personId, "RETURNED");
+    }
+
+    private void visitEvent(UUID sessionId, UUID personId, String type) {
+        jdbc.sql("insert into live.student_visit_events(session_id,person_id,event_type) values (:s,:p,:t)")
+                .param("s", sessionId).param("p", personId).param("t", type).update();
+    }
+
+    void deleteParticipantTokens(UUID sessionId, UUID personId) {
+        jdbc.sql("delete from live.web_participant_tokens where session_id=:s and person_id=:p")
+                .param("s", sessionId).param("p", personId).update();
+    }
 
     boolean clearKickForRejoin(UUID sessionId, UUID personId) {
         return jdbc.sql("""

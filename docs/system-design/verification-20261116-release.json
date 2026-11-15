@@ -1,0 +1,24 @@
+{
+  "date": "2026-11-16",
+  "branch": "feature/release-candidate",
+  "includesInfrastructureCommit": "f0c7991",
+  "includesArchitectureCommit": "c1b6cfb",
+  "coreTests": 412,
+  "webTests": 141,
+  "telegramVkAuthenticationIncluded": false,
+  "groupFormatDefault": "disabled until configured by institution administrator",
+  "managedUpdatesDefault": "disabled until external operator and trusted catalog are provisioned",
+  "browserFixtureChecks": [
+    "short valid group input",
+    "prefilled structured fallback",
+    "start dialog switch to existing group",
+    "two ongoing sessions in cabinet",
+    "guest leave and explicit token-preserving return"
+  ],
+  "productionStandStarted": false,
+  "limits": [
+    "Kubernetes managed rollout not exercised on a real cluster",
+    "No new 10000-video or physical HA qualification"
+  ],
+  "publicOperatorApiCredentialTest": true
+}

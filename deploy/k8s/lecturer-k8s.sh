@@ -28,7 +28,7 @@ STATE="$K8S/.state"
 SITE="$STATE/site.env"
 SECRETS="$STATE/secrets.env"
 IMAGES="$STATE/images.json"
-NS=lecturer
+NS="${LECTURER_K8S_NAMESPACE:-lecturer}"
 REGISTRY_NAME=registry.lecturer.local
 # shellcheck disable=SC1091
 . "$K8S/versions.env"
@@ -143,7 +143,7 @@ cmd_init() {
     ask_site SERVERS "SSH-адреса серверов через пробел, первый — главный (например root@10.0.0.1 root@10.0.0.2 root@10.0.0.3)"
     ask_site PUBLIC_DOMAIN "Домен сайта (A-запись указывает на серверы)"
     ask_site ACME_EMAIL "Почта для Let's Encrypt"
-    ask_site PRIVATE_IFACE "Сетевой интерфейс частной сети серверов (пусто — интерфейс маршрута по умолчанию)" ""
+    ask_site PRIVATE_IFACE "Интерфейс частной сети/VPN (пусто — маршрут по умолчанию, только если адрес частный)" ""
     last_host="$(echo "$(site SERVERS)" | tr -s ' ' '\n' | tail -1 | sed 's/.*@//')"
     echo "$last_host" | grep -Eq '^[0-9]+(\.[0-9]+){3}$' || last_host=""
     ask_site MEDIA_PUBLIC_IP "Публичный IPv4 последнего сервера — на нём видео (SFU); пусто — видео только внутри сети" "$last_host"
@@ -244,6 +244,10 @@ cmd_cluster() {
   iface="$(node_iface 1)"
   server_ip="$(node_ip 1 "$iface")"
   [ -n "$server_ip" ] || die "не найден адрес главного узла на интерфейсе $iface"
+  if [ "$PLATFORM" = linux ]; then
+    NODE_PRIVATE_IP="$server_ip" render private-ip >/dev/null \
+      || die "нужна частная сеть/VPN: укажите PRIVATE_IFACE; реестр и NFS нельзя публиковать в интернет"
+  fi
   server_node="$(on_node 1 hostname | tr '[:upper:]' '[:lower:]')"
   if [ "$PLATFORM" = linux ]; then registry="$server_ip:5000"; else registry="lima-$(vm_name 1).internal:30500"; fi
   set_value "$SITE" SERVER_IP "$server_ip"
@@ -276,6 +280,9 @@ cmd_cluster() {
   for n in $(node_indexes); do
     [ "$n" = 1 ] && continue
     ip="$(node_ip "$n" "$(node_iface "$n")")"
+    if [ "$PLATFORM" = linux ]; then
+      NODE_PRIVATE_IP="$ip" render private-ip >/dev/null || die "узел $n: нужен частный адрес"
+    fi
     step "k3s agent: узел $n ($ip)"
     on_node "$n" sh -c "test -x /usr/local/bin/k3s || curl -sfL https://get.k3s.io | sudo INSTALL_K3S_VERSION='$K3S_VERSION' K3S_URL='https://$server_ip:6443' K3S_TOKEN='$token' INSTALL_K3S_EXEC='agent --node-ip $ip --flannel-iface $(node_iface "$n")' sh - >/dev/null"
   done
@@ -441,7 +448,8 @@ site_url() {
 
 check_site() {
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$(site_url)/health" || true)"
-  if [ "$code" = 200 ]; then say "OK   $(site_url)/health"; else say "FAIL $(site_url)/health: $code"; fi
+  if [ "$code" = 200 ]; then say "OK   $(site_url)/health";
+  else say "FAIL $(site_url)/health: $code"; return 1; fi
 }
 
 cmd_deploy() {
@@ -502,18 +510,8 @@ cmd_status() {
   say ""; check_site
 }
 
-cmd_backup() {
-  require_init
-  umask 077
-  dir="${BACKUP_DIR:-$HOME/lecturer-k8s-backups}/$(date -u +%Y%m%dT%H%M%SZ)"
-  mkdir -p "$dir"; chmod 700 "$dir"
-  step "Резервная копия в $dir"
-  kc -n "$NS" exec "$(primary_pod app-db)" -c postgres -- pg_dump -Fc -d lecturer > "$dir/lecturer.dump"
-  kc -n "$NS" exec "$(primary_pod analytics-db)" -c postgres -- pg_dump -Fc -d analytics > "$dir/analytics.dump"
-  on_node 1 sudo tar -czf - -C /srv/nfs lecturer-blobs > "$dir/lecturer-blobs.tar.gz"
-  (cd "$dir" && shasum -a 256 ./* > SHA256SUMS)
-  ls -lh "$dir"
-}
+# shellcheck disable=SC1091
+. "$K8S/backup.sh"
 
 cmd_admin() {
   require_init

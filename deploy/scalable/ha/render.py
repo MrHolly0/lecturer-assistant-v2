@@ -81,6 +81,9 @@ def render(config):
                     'JAVA_TOOL_OPTIONS': '-XX:MaxRAMPercentage=60 -XX:ActiveProcessorCount=2 -Xss512k'}, keys) + db_env('app-db')
     core_env.append({'name': 'MAX_BOT_TOKEN', 'valueFrom': {'secretKeyRef': {
         'name': 'lecturer-runtime', 'key': 'MAX_BOT_TOKEN', 'optional': True}}})
+    for key in ['INSTALLATION_UPDATES_ENABLED', 'INSTALLATION_OPERATOR_KEY', 'INSTALLATION_RELEASE_PUBLIC_KEY']:
+        core_env.append({'name': key, 'valueFrom': {'secretKeyRef': {
+            'name': 'lecturer-runtime', 'key': key, 'optional': True}}})
     deploy('core', 'core', 2, 8080, core_env, memory='1Gi', mount=True, probe='/actuator/health')
     deploy('content-worker', 'core', 2, 8080, env({'APP_ROLE': 'content-worker', 'CONTENT_WORKER_ENABLED': 'true',
            'DB_URL': 'jdbc:postgresql://app-db-rw:5432/lecturer', 'SPRING_FLYWAY_ENABLED': 'false',

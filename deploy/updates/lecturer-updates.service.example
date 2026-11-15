@@ -1,0 +1,18 @@
+[Unit]
+Description=Lecturer Assistant installation updates
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lecturer-updates
+WorkingDirectory=/opt/lecturer-assistant
+ExecStart=/usr/bin/python3 /opt/lecturer-assistant/deploy/updates/installation_operator.py --config /etc/lecturer-updates/operator.json
+Restart=on-failure
+RestartSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

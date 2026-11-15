@@ -28,9 +28,11 @@ import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.StudyGroup;
 import ru.university.assistant.shared.api.CodeGenerator;
 import ru.university.assistant.shared.api.UuidV7;
+import ru.university.assistant.shared.api.InstallationGate;
 
 @Service
 public class LiveSessionService implements LiveSessionAccessApi {
+    private final InstallationGate installationGate;
     private final CourseAccessApi courseAccess;
     private final CourseMembershipApi memberships;
     private final LiveSessionRepository sessions;
@@ -46,7 +48,8 @@ public class LiveSessionService implements LiveSessionAccessApi {
             EventBus events,
             LiveSessionPublisher publisher,
             ChannelFanoutApi channelFanout,
-            SessionPollLifecycleApi sessionPollLifecycle) {
+            SessionPollLifecycleApi sessionPollLifecycle, InstallationGate installationGate) {
+        this.installationGate = installationGate;
         this.courseAccess = courseAccess;
         this.memberships = memberships;
         this.sessions = sessions;
@@ -60,6 +63,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
     public LiveSession schedule(
             AuthenticatedUser user, UUID courseId, UUID lectureId, StartSessionRequest request) {
         courseAccess.requireManage(user, courseId);
+        installationGate.requireSessionAdmission();
         List<StudyGroup> groups = resolveGroups(courseId, request);
         UUID deckId = sessions.lectureDeckId(courseId, lectureId).orElse(null);
         if (deckId == null) {
@@ -78,6 +82,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
     @Transactional
     public LiveSession begin(AuthenticatedUser user, UUID courseId, UUID sessionId) {
         courseAccess.requireManage(user, courseId);
+        installationGate.requireSessionAdmission();
         LiveSession current = session(courseId, sessionId);
         if (current.status() == SessionStatus.LIVE || current.status() == SessionStatus.PAUSED) {
             if (current.startedAt() == null) {
@@ -111,7 +116,7 @@ public class LiveSessionService implements LiveSessionAccessApi {
         LinkedHashMap<UUID, StudyGroup> unique = new LinkedHashMap<>();
         for (StartSessionGroup selection : request.groups()) {
             StudyGroup group = memberships.resolveSessionGroup(
-                    courseId, selection.groupId(), selection.groupName());
+                    courseId, selection.groupId(), selection.groupName(), selection.parts());
             if (unique.putIfAbsent(group.id(), group) != null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Study groups must be unique");
             }

@@ -4,6 +4,257 @@
  */
 
 export interface paths {
+  "/installation-operator/catalog": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Synchronize a signed catalog. Requires the separate operator credential. */
+    post: operations["operatorSyncCatalog"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/installation-operator/claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["operatorClaimUpdate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/installation-operator/jobs/{id}/prepare": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["operatorPrepareUpdate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/installation-operator/jobs/{id}/heartbeat": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["operatorRenewLease"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/installation-operator/jobs/{id}/progress": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["operatorReportProgress"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/group-format": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get the institution study group naming policy. */
+    get: operations["getGroupFormat"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/group-format/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Normalize short text or validate explicit group parts without creating a group. */
+    post: operations["previewGroupFormat"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/group-format": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Save group policy with revision checking. ADMIN only. */
+    put: operations["saveGroupFormat"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/group-format/reconcile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Explicitly recognize up to 1000 existing groups without rewriting names or history. ADMIN only. */
+    post: operations["reconcileGroupFormats"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/student-cabinet": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Own ongoing group lessons and paginated attendance history. */
+    get: operations["getStudentCabinet"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/leave": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Idempotent voluntary departure. Explicit join allows returning to the same participation. */
+    post: operations["leaveStudentSession"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/installation": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** ADMIN: deployment operator connectivity, signed releases and durable update jobs. */
+    get: operations["getInstallationStatus"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/installation/jobs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** ADMIN: enqueue one update from the verified catalog. Does not interrupt lessons. */
+    post: operations["requestInstallationUpdate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/installation/jobs/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** ADMIN: cancel before application changes start. */
+    post: operations["cancelInstallationUpdate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/installation/jobs/{id}/acknowledge": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** ADMIN: confirm manual review of an uncertain update. Does not restore data or change images. */
+    post: operations["acknowledgeInstallationUpdate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/sessions/{sessionId}/screen-share": {
     parameters: {
       query?: never;
@@ -2797,6 +3048,126 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    InstallationSignedCatalog: {
+      payload: string;
+      signature: string;
+    };
+    InstallationLease: {
+      /** Format: uuid */
+      owner: string;
+      /** Format: int64 */
+      fence: number;
+    };
+    InstallationAssignment: {
+      job: components["schemas"]["InstallationJob"];
+      catalog: components["schemas"]["InstallationSignedCatalog"];
+    };
+    GroupFormatPolicy: {
+      /** Format: int64 */
+      revision: number;
+      enabled: boolean;
+      fields: {
+        id: string;
+        label: string;
+        /** @enum {string} */
+        kind: "CHOICE" | "YEAR" | "NUMBER";
+        prefix: string;
+        width: number;
+        yearBase: number;
+        defaultValue?: string | null;
+        choices: {
+          code: string;
+          label: string;
+          aliases: string[];
+        }[];
+      }[];
+    };
+    GroupFormatPreview: {
+      valid: boolean;
+      name?: string | null;
+      identityKey?: string | null;
+      parts: {
+        [key: string]: string;
+      };
+      message?: string | null;
+    };
+    StudentCabinet: {
+      ongoing: components["schemas"]["StudentCabinetSession"][];
+      moreOngoing: boolean;
+      history: components["schemas"]["StudentCabinetSession"][];
+      /** Format: int64 */
+      historyTotal: number;
+      historyLimit: number;
+      historyOffset: number;
+    };
+    StudentCabinetSession: {
+      /** Format: uuid */
+      sessionId: string;
+      title: string;
+      courseTitle: string;
+      status: string;
+      joined: boolean;
+      groups?: string | null;
+      joinCode?: string | null;
+      /** Format: date-time */
+      startedAt?: string | null;
+      /** Format: date-time */
+      endedAt?: string | null;
+      /** Format: date-time */
+      joinedAt?: string | null;
+      /** Format: date-time */
+      leftAt?: string | null;
+    };
+    InstallationRelease: {
+      id: string;
+      version: string;
+      notes: string;
+      commit: string;
+      /** Format: int64 */
+      databaseMin: number;
+      /** Format: int64 */
+      databaseMax: number;
+      backwardCompatible: boolean;
+      images: {
+        [key: string]: string;
+      };
+    };
+    InstallationJob: {
+      /** Format: uuid */
+      id: string;
+      releaseId: string;
+      /** @enum {string} */
+      status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "NEEDS_ATTENTION";
+      stage: string;
+      summary: string;
+      /** Format: int64 */
+      fence: number;
+      /** Format: uuid */
+      owner: string | null;
+      /** Format: date-time */
+      leaseUntil: string | null;
+      /** Format: date-time */
+      maintenanceUntil: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    InstallationStatus: {
+      enabled: boolean;
+      /** Format: int64 */
+      databaseVersion: number;
+      /** Format: date-time */
+      operatorSeenAt: string | null;
+      operatorKind: string | null;
+      /** Format: date-time */
+      catalogSyncedAt: string | null;
+      catalogError: string | null;
+      releases: components["schemas"]["InstallationRelease"][];
+      jobs: components["schemas"]["InstallationJob"][];
+      /** Format: int64 */
+      activeLessons: number;
+    };
     ShareStart: {
       sourceName: string;
     };
@@ -3322,6 +3693,9 @@ export interface components {
     };
     CreateStudyGroupRequest: {
       name: string;
+      parts?: {
+        [key: string]: string;
+      };
     };
     StudyGroup: {
       /** Format: uuid */
@@ -3546,6 +3920,9 @@ export interface components {
         }
       | {
           groupName: string;
+          parts?: {
+            [key: string]: string;
+          };
         };
     StartSessionRequest: {
       groups: components["schemas"]["StartSessionGroupSelection"][];
@@ -4182,6 +4559,452 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  operatorSyncCatalog: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InstallationSignedCatalog"] & {
+          /** @enum {string} */
+          kind: "compose" | "kubernetes";
+        };
+      };
+    };
+    responses: {
+      /** @description Catalog verified and stored. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid catalog signature, expiry or structure. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid operator key. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  operatorClaimUpdate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** Format: uuid */
+          owner: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Assignment, or an empty body when no job is available. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InstallationAssignment"] | null;
+        };
+      };
+    };
+  };
+  operatorPrepareUpdate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InstallationLease"];
+      };
+    };
+    responses: {
+      /** @description WAITING or BACKING_UP with the admission barrier acquired. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InstallationJob"];
+        };
+      };
+      /** @description Stale lease or incompatible stage. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  operatorRenewLease: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InstallationLease"];
+      };
+    };
+    responses: {
+      /** @description Lease renewed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Stale lease. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  operatorReportProgress: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InstallationLease"] & {
+          /** @enum {string} */
+          stage: "APPLYING" | "VERIFYING" | "SUCCEEDED" | "FAILED" | "NEEDS_ATTENTION";
+          summary?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Recorded or idempotently repeated stage. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InstallationJob"];
+        };
+      };
+      /** @description Invalid stage transition or stale lease. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getGroupFormat: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current policy. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GroupFormatPolicy"];
+        };
+      };
+    };
+  };
+  previewGroupFormat: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          name?: string;
+          parts?: {
+            [key: string]: string;
+          };
+        };
+      };
+    };
+    responses: {
+      /** @description Normalized name or recognized parts for the fallback form. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GroupFormatPreview"];
+        };
+      };
+    };
+  };
+  saveGroupFormat: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["GroupFormatPolicy"];
+      };
+    };
+    responses: {
+      /** @description Saved policy with incremented revision. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GroupFormatPolicy"];
+        };
+      };
+      /** @description Another administrator changed the policy. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  reconcileGroupFormats: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** Format: int64 */
+          revision: number;
+        };
+      };
+    };
+    responses: {
+      /** @description Reconciliation counts; repeat when hasMore is true. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            matched: number;
+            unrecognized: number;
+            hasMore: boolean;
+          };
+        };
+      };
+    };
+  };
+  getStudentCabinet: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Sessions available to this account. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentCabinet"];
+        };
+      };
+    };
+  };
+  leaveStudentSession: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Left own participation, identified by bearer or participant token. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Caller does not own the participation. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getInstallationStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Installation status. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InstallationStatus"];
+        };
+      };
+      /** @description Administrator required. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  requestInstallationUpdate: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          releaseId: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Existing or newly queued job. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InstallationJob"];
+        };
+      };
+      /** @description Active/uncertain job exists, operator offline, stale key or incompatible database. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  cancelInstallationUpdate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cancelled. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Update has already started. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  acknowledgeInstallationUpdate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Manual review recorded; queue and admission released. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No uncertain update to acknowledge. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   startScreenShare: {
     parameters: {
       query?: never;
