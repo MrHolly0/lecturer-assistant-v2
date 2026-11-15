@@ -37,6 +37,13 @@ def by_kind(items, kind):
 
 
 class SiteRenderTest(unittest.TestCase):
+    def test_linux_registry_rejects_public_loopback_and_unspecified_addresses(self):
+        for address in ['', '0.0.0.0', '127.0.0.1', '169.254.1.2', '203.0.113.25', '8.8.8.8', '::1']:
+            with self.subTest(address=address), self.assertRaises(ValueError):
+                site_module.platform_items(linux_site(SERVER_IP=address))
+        for address in ['10.2.0.3', '172.20.1.2', '192.168.12.3']:
+            self.assertEqual(site_module.private_address(address), address)
+
     def test_app_uses_reviewed_renderer_and_adds_site_pieces(self):
         items = site_module.app_items(make_site(), IMAGES)
         deployments = by_kind(items, 'Deployment')

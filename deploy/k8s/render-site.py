@@ -17,6 +17,7 @@ caller pipes it straight into kubectl.
 """
 import argparse
 import importlib.util
+import ipaddress
 import json
 import os
 import re
@@ -188,6 +189,8 @@ def namespace_items(site):
 # --- platform: registry and Prometheus ----------------------------------------------------
 
 def platform_items(site):
+    if site.platform == 'linux':
+        private_address(site.server_ip)
     registry_labels = {'app': 'registry'}
     container = secure_container({
         'name': 'registry', 'image': site.versions['REGISTRY_IMAGE'],
@@ -223,6 +226,18 @@ def platform_items(site):
     if site.autoscaling:
         items += monitoring_items(site)
     return items
+
+
+def private_address(value):
+    """Unauthenticated infrastructure listeners must never bind the public/default IP."""
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError as error:
+        raise ValueError('Linux node requires an explicit private IPv4 address') from error
+    networks = [ipaddress.ip_network(cidr) for cidr in ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']]
+    if address.version != 4 or not any(address in network for network in networks):
+        raise ValueError('Linux infrastructure needs an RFC1918 private network; set PRIVATE_IFACE or use a VPN')
+    return str(address)
 
 
 def monitoring_items(site):
@@ -524,13 +539,16 @@ def secret_items(site, values, stage, state_dir):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('what', choices=['namespace', 'platform', 'data', 'app', 'autoscaling', 'secrets', 'show'])
+    parser.add_argument('what', choices=['namespace', 'platform', 'data', 'app', 'autoscaling', 'secrets', 'show', 'private-ip'])
     parser.add_argument('--site', required=True, type=Path)
     parser.add_argument('--images', type=Path)
     parser.add_argument('--secrets', type=Path)
     parser.add_argument('--stage', choices=['base', 'runtime'], default='base')
     args = parser.parse_args(argv)
     site = Site(read_env(args.site), read_env(HERE / 'versions.env'))
+    if args.what == 'private-ip':
+        print(private_address(os.environ.get('NODE_PRIVATE_IP', '')))
+        return
     if args.what == 'show':
         # Resolved settings for the shell script: platform, profile, public mode, autoscaling.
         print(f'{site.platform} {site.profile_name} {site.public_mode} {str(site.autoscaling).lower()}')

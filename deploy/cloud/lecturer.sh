@@ -133,6 +133,7 @@ cmd_up() {
     else
       say "Сайт снаружи пока не отвечает. Проверьте DNS и порты 80/443, затем: sh deploy/cloud/lecturer.sh status"
     fi
+    return 1
   fi
 
   cat <<EOF
