@@ -1,3 +1,6 @@
+import { MessengerAuthGate } from "./messengers/MessengerAuthGate";
+import { MessengerSettingsPage } from "../pages/MessengerSettingsPage";
+import { InstallationUpdatesPage } from "../pages/InstallationUpdatesPage";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -10,7 +13,6 @@ import {
   useParams,
   useSearchParams
 } from "react-router-dom";
-import { MessengerAuthGate } from "./messengers/MessengerAuthGate";
 import { AuthProvider, useAuth } from "./AuthContext";
 import { LoginPage } from "../pages/LoginPage";
 import { RegisterPage } from "../pages/RegisterPage";
@@ -21,7 +23,6 @@ import { QuestionBankPage } from "../pages/QuestionBankPage";
 import { PresenterPage } from "../pages/PresenterPage";
 import { ProjectionPage } from "../pages/ProjectionPage";
 import { SessionJoinPage } from "../pages/SessionJoinPage";
-import { MessengerSettingsPage } from "../pages/MessengerSettingsPage";
 import { GroupFormatPage } from "../pages/GroupFormatPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { OrganizationPage } from "../pages/OrganizationPage";
@@ -435,7 +436,8 @@ const router = createHashRouter([
             element: <RequireRole roles={["ADMIN"]} />,
             children: [
               { path: "/admin/users", element: <AdminUsersPage /> },
-              { path: "/admin/group-format", element: <GroupFormatPage /> }
+              { path: "/admin/group-format", element: <GroupFormatPage /> },
+              { path: "/admin/installation", element: <InstallationUpdatesPage /> }
             ]
           }
         ]

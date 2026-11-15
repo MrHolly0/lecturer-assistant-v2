@@ -8,17 +8,60 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /auth/messenger:
+    post:
+      operationId: loginWithMessenger
+      summary: Experimental Telegram or VK mini-app login with signed launch validation.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - channel
+                - initData
+              properties:
+                channel:
+                  type: string
+                  enum:
+                    - telegram
+                    - vk
+                initData:
+                  type: string
+                  maxLength: 8192
+                linkCode:
+                  type: string
+                  maxLength: 64
+                existingOnly:
+                  type: boolean
+      responses:
+        '200':
+          description: Authenticated profile and an isolated channel refresh cookie.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Launch signature or lifetime is invalid.
+        '404':
+          description: Experiment disabled.
+        '409':
+          description: Identity is linked to another account.
+        '422':
+          description: existingOnly identity is not linked.
   /group-format:
     get:
       operationId: getGroupFormat
       summary: Get the institution study group naming policy.
       responses:
-        "200":
+        '200':
           description: Current policy.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GroupFormatPolicy"
+                $ref: '#/components/schemas/GroupFormatPolicy'
   /group-format/preview:
     post:
       operationId: previewGroupFormat
@@ -37,12 +80,12 @@ paths:
                   additionalProperties:
                     type: string
       responses:
-        "200":
+        '200':
           description: Normalized name or recognized parts for the fallback form.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GroupFormatPreview"
+                $ref: '#/components/schemas/GroupFormatPreview'
   /admin/group-format:
     put:
       operationId: saveGroupFormat
@@ -52,15 +95,15 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GroupFormatPolicy"
+              $ref: '#/components/schemas/GroupFormatPolicy'
       responses:
-        "200":
+        '200':
           description: Saved policy with incremented revision.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GroupFormatPolicy"
-        "409":
+                $ref: '#/components/schemas/GroupFormatPolicy'
+        '409':
           description: Another administrator changed the policy.
   /admin/group-format/reconcile:
     post:
@@ -72,19 +115,23 @@ paths:
           application/json:
             schema:
               type: object
-              required: [revision]
+              required:
+                - revision
               properties:
                 revision:
                   type: integer
                   format: int64
       responses:
-        "200":
+        '200':
           description: Reconciliation counts; repeat when hasMore is true.
           content:
             application/json:
               schema:
                 type: object
-                required: [matched, unrecognized, hasMore]
+                required:
+                  - matched
+                  - unrecognized
+                  - hasMore
                 properties:
                   matched:
                     type: integer
@@ -92,45 +139,6 @@ paths:
                     type: integer
                   hasMore:
                     type: boolean
-  /auth/messenger:
-    post:
-      operationId: loginWithMessenger
-      summary: Experimental Telegram or VK mini-app login with signed launch validation.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [channel, initData]
-              properties:
-                channel:
-                  type: string
-                  enum: [telegram, vk]
-                initData:
-                  type: string
-                  maxLength: 8192
-                linkCode:
-                  type: string
-                  maxLength: 64
-                existingOnly:
-                  type: boolean
-      responses:
-        "200":
-          description: Authenticated profile and an isolated channel refresh cookie.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthResponse"
-        "401":
-          description: Launch signature or lifetime is invalid.
-        "404":
-          description: Experiment disabled.
-        "422":
-          description: existingOnly identity is not linked.
-        "409":
-          description: Identity is linked to another account.
   /me/student-cabinet:
     get:
       operationId: getStudentCabinet
@@ -151,12 +159,12 @@ paths:
             maximum: 1000000
             default: 0
       responses:
-        "200":
+        '200':
           description: Sessions available to this account.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StudentCabinet"
+                $ref: '#/components/schemas/StudentCabinet'
   /student/sessions/{joinCode}/leave:
     post:
       operationId: leaveStudentSession
@@ -173,10 +181,87 @@ paths:
           schema:
             type: string
       responses:
-        "204":
+        '204':
           description: Left own participation, identified by bearer or participant token.
-        "403":
+        '403':
           description: Caller does not own the participation.
+  /admin/installation:
+    get:
+      operationId: getInstallationStatus
+      summary: 'ADMIN: deployment operator connectivity, signed releases and durable update jobs.'
+      responses:
+        '200':
+          description: Installation status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationStatus'
+        '403':
+          description: Administrator required.
+  /admin/installation/jobs:
+    post:
+      operationId: requestInstallationUpdate
+      summary: 'ADMIN: enqueue one update from the verified catalog. Does not interrupt lessons.'
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 80
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - releaseId
+              properties:
+                releaseId:
+                  type: string
+      responses:
+        '200':
+          description: Existing or newly queued job.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationJob'
+        '409':
+          description: Active/uncertain job exists, operator offline, stale key or incompatible database.
+  /admin/installation/jobs/{id}/cancel:
+    post:
+      operationId: cancelInstallationUpdate
+      summary: 'ADMIN: cancel before application changes start.'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Cancelled.
+        '409':
+          description: Update has already started.
+  /admin/installation/jobs/{id}/acknowledge:
+    post:
+      operationId: acknowledgeInstallationUpdate
+      summary: 'ADMIN: confirm manual review of an uncertain update. Does not restore data or change images.'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Manual review recorded; queue and admission released.
+        '409':
+          description: No uncertain update to acknowledge.
   /courses/{courseId}/sessions/{sessionId}/screen-share:
     post:
       operationId: startScreenShare
@@ -4255,7 +4340,10 @@ components:
   schemas:
     GroupFormatPolicy:
       type: object
-      required: [revision, enabled, fields]
+      required:
+        - revision
+        - enabled
+        - fields
       properties:
         revision:
           type: integer
@@ -4267,7 +4355,14 @@ components:
           maxItems: 8
           items:
             type: object
-            required: [id, label, kind, prefix, width, yearBase, choices]
+            required:
+              - id
+              - label
+              - kind
+              - prefix
+              - width
+              - yearBase
+              - choices
             properties:
               id:
                 type: string
@@ -4275,7 +4370,10 @@ components:
                 type: string
               kind:
                 type: string
-                enum: [CHOICE, YEAR, NUMBER]
+                enum:
+                  - CHOICE
+                  - YEAR
+                  - NUMBER
               prefix:
                 type: string
               width:
@@ -4289,7 +4387,10 @@ components:
                 type: array
                 items:
                   type: object
-                  required: [code, label, aliases]
+                  required:
+                    - code
+                    - label
+                    - aliases
                   properties:
                     code:
                       type: string
@@ -4301,7 +4402,9 @@ components:
                         type: string
     GroupFormatPreview:
       type: object
-      required: [valid, parts]
+      required:
+        - valid
+        - parts
       properties:
         valid:
           type: boolean
@@ -4320,18 +4423,24 @@ components:
           nullable: true
     StudentCabinet:
       type: object
-      required: [ongoing, moreOngoing, history, historyTotal, historyLimit, historyOffset]
+      required:
+        - ongoing
+        - moreOngoing
+        - history
+        - historyTotal
+        - historyLimit
+        - historyOffset
       properties:
         ongoing:
           type: array
           items:
-            $ref: "#/components/schemas/StudentCabinetSession"
+            $ref: '#/components/schemas/StudentCabinetSession'
         moreOngoing:
           type: boolean
         history:
           type: array
           items:
-            $ref: "#/components/schemas/StudentCabinetSession"
+            $ref: '#/components/schemas/StudentCabinetSession'
         historyTotal:
           type: integer
           format: int64
@@ -4341,7 +4450,12 @@ components:
           type: integer
     StudentCabinetSession:
       type: object
-      required: [sessionId, title, courseTitle, status, joined]
+      required:
+        - sessionId
+        - title
+        - courseTitle
+        - status
+        - joined
       properties:
         sessionId:
           type: string
@@ -4376,6 +4490,135 @@ components:
           type: string
           format: date-time
           nullable: true
+    InstallationRelease:
+      type: object
+      required:
+        - id
+        - version
+        - notes
+        - commit
+        - databaseMin
+        - databaseMax
+        - backwardCompatible
+        - images
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+        notes:
+          type: string
+        commit:
+          type: string
+        databaseMin:
+          type: integer
+          format: int64
+        databaseMax:
+          type: integer
+          format: int64
+        backwardCompatible:
+          type: boolean
+        images:
+          type: object
+          additionalProperties:
+            type: string
+    InstallationJob:
+      type: object
+      required:
+        - id
+        - releaseId
+        - status
+        - stage
+        - summary
+        - fence
+        - owner
+        - leaseUntil
+        - maintenanceUntil
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        releaseId:
+          type: string
+        status:
+          type: string
+          enum:
+            - QUEUED
+            - RUNNING
+            - SUCCEEDED
+            - FAILED
+            - CANCELLED
+            - NEEDS_ATTENTION
+        stage:
+          type: string
+        summary:
+          type: string
+        fence:
+          type: integer
+          format: int64
+        owner:
+          type: string
+          format: uuid
+          nullable: true
+        leaseUntil:
+          type: string
+          format: date-time
+          nullable: true
+        maintenanceUntil:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    InstallationStatus:
+      type: object
+      required:
+        - enabled
+        - databaseVersion
+        - operatorSeenAt
+        - operatorKind
+        - catalogSyncedAt
+        - catalogError
+        - releases
+        - jobs
+        - activeLessons
+      properties:
+        enabled:
+          type: boolean
+        databaseVersion:
+          type: integer
+          format: int64
+        operatorSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        operatorKind:
+          type: string
+          nullable: true
+        catalogSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        catalogError:
+          type: string
+          nullable: true
+        releases:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstallationRelease'
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstallationJob'
+        activeLessons:
+          type: integer
+          format: int64
     ShareStart:
       type: object
       required:
@@ -5426,7 +5669,8 @@ components:
           format: uuid
     CreateStudyGroupRequest:
       type: object
-      required: [name]
+      required:
+        - name
       properties:
         name:
           type: string
@@ -5855,14 +6099,16 @@ components:
       oneOf:
         - type: object
           additionalProperties: false
-          required: [groupId]
+          required:
+            - groupId
           properties:
             groupId:
               type: string
               format: uuid
         - type: object
           additionalProperties: false
-          required: [groupName]
+          required:
+            - groupName
           properties:
             groupName:
               type: string

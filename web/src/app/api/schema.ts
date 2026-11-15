@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+  "/auth/messenger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Experimental Telegram or VK mini-app login with signed launch validation. */
+    post: operations["loginWithMessenger"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/group-format": {
     parameters: {
       query?: never;
@@ -72,23 +89,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/auth/messenger": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Experimental Telegram or VK mini-app login with signed launch validation. */
-    post: operations["loginWithMessenger"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/me/student-cabinet": {
     parameters: {
       query?: never;
@@ -117,6 +117,74 @@ export interface paths {
     put?: never;
     /** Idempotent voluntary departure. Explicit join allows returning to the same participation. */
     post: operations["leaveStudentSession"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/installation": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** ADMIN: deployment operator connectivity, signed releases and durable update jobs. */
+    get: operations["getInstallationStatus"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/installation/jobs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** ADMIN: enqueue one update from the verified catalog. Does not interrupt lessons. */
+    post: operations["requestInstallationUpdate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/installation/jobs/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** ADMIN: cancel before application changes start. */
+    post: operations["cancelInstallationUpdate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/installation/jobs/{id}/acknowledge": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** ADMIN: confirm manual review of an uncertain update. Does not restore data or change images. */
+    post: operations["acknowledgeInstallationUpdate"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2972,6 +3040,56 @@ export interface components {
       /** Format: date-time */
       leftAt?: string | null;
     };
+    InstallationRelease: {
+      id: string;
+      version: string;
+      notes: string;
+      commit: string;
+      /** Format: int64 */
+      databaseMin: number;
+      /** Format: int64 */
+      databaseMax: number;
+      backwardCompatible: boolean;
+      images: {
+        [key: string]: string;
+      };
+    };
+    InstallationJob: {
+      /** Format: uuid */
+      id: string;
+      releaseId: string;
+      /** @enum {string} */
+      status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "NEEDS_ATTENTION";
+      stage: string;
+      summary: string;
+      /** Format: int64 */
+      fence: number;
+      /** Format: uuid */
+      owner: string | null;
+      /** Format: date-time */
+      leaseUntil: string | null;
+      /** Format: date-time */
+      maintenanceUntil: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    InstallationStatus: {
+      enabled: boolean;
+      /** Format: int64 */
+      databaseVersion: number;
+      /** Format: date-time */
+      operatorSeenAt: string | null;
+      operatorKind: string | null;
+      /** Format: date-time */
+      catalogSyncedAt: string | null;
+      catalogError: string | null;
+      releases: components["schemas"]["InstallationRelease"][];
+      jobs: components["schemas"]["InstallationJob"][];
+      /** Format: int64 */
+      activeLessons: number;
+    };
     ShareStart: {
       sourceName: string;
     };
@@ -4363,6 +4481,64 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  loginWithMessenger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** @enum {string} */
+          channel: "telegram" | "vk";
+          initData: string;
+          linkCode?: string;
+          existingOnly?: boolean;
+        };
+      };
+    };
+    responses: {
+      /** @description Authenticated profile and an isolated channel refresh cookie. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthResponse"];
+        };
+      };
+      /** @description Launch signature or lifetime is invalid. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Experiment disabled. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Identity is linked to another account. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description existingOnly identity is not linked. */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   getGroupFormat: {
     parameters: {
       query?: never;
@@ -4474,64 +4650,6 @@ export interface operations {
       };
     };
   };
-  loginWithMessenger: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": {
-          /** @enum {string} */
-          channel: "telegram" | "vk";
-          initData: string;
-          linkCode?: string;
-          existingOnly?: boolean;
-        };
-      };
-    };
-    responses: {
-      /** @description Authenticated profile and an isolated channel refresh cookie. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AuthResponse"];
-        };
-      };
-      /** @description Launch signature or lifetime is invalid. */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Experiment disabled. */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Identity is linked to another account. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description existingOnly identity is not linked. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
   getStudentCabinet: {
     parameters: {
       query?: {
@@ -4577,6 +4695,122 @@ export interface operations {
       };
       /** @description Caller does not own the participation. */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getInstallationStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Installation status. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InstallationStatus"];
+        };
+      };
+      /** @description Administrator required. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  requestInstallationUpdate: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          releaseId: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Existing or newly queued job. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InstallationJob"];
+        };
+      };
+      /** @description Active/uncertain job exists, operator offline, stale key or incompatible database. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  cancelInstallationUpdate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cancelled. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Update has already started. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  acknowledgeInstallationUpdate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Manual review recorded; queue and admission released. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No uncertain update to acknowledge. */
+      409: {
         headers: {
           [name: string]: unknown;
         };

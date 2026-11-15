@@ -13,6 +13,10 @@ export class ApiError extends Error {
 
 const KNOWN_MESSAGES: Array<[RegExp, string]> = [
   [
+    /^invalid messenger launch data$/i,
+    "Данные входа мессенджера устарели или не прошли проверку. Закройте мини-приложение и откройте его заново."
+  ],
+  [
     /^invalid max initdata$/i,
     "Данные входа MAX устарели или не прошли проверку. Закройте мини-приложение и откройте его заново."
   ],

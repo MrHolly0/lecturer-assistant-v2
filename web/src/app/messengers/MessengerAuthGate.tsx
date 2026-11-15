@@ -20,8 +20,10 @@ export function MessengerAuthGate({ children }: { children: ReactNode }) {
   const [code, setCode] = useState("");
   const started = useRef(false);
   const activeRequest = useRef(0);
+  const explicitlySignedOut = useRef(false);
   const authenticate = async (existingOnly: boolean, linkCode?: string) => {
     if (!messengerLaunch) return;
+    explicitlySignedOut.current = false;
     const request = ++activeRequest.current;
     invalidatePendingAuthRefresh();
     clearStoredAuth();
@@ -61,6 +63,8 @@ export function MessengerAuthGate({ children }: { children: ReactNode }) {
       }
     }
   };
+  const currentAuthentication = useRef(authenticate);
+  currentAuthentication.current = authenticate;
   useEffect(() => {
     if (!messengerLaunch || loading || started.current) return;
     started.current = true;
@@ -70,13 +74,27 @@ export function MessengerAuthGate({ children }: { children: ReactNode }) {
   }, [loading]);
   useEffect(() => {
     if (!messengerLaunch) return;
+    const channel = messengerLaunch.channel;
     const signedOut = () => {
+      explicitlySignedOut.current = true;
       activeRequest.current++;
       setState("entry");
       setError("");
     };
+    const expired = (event: Event) => {
+      const mode = (event as CustomEvent<{ refreshMode?: string }>).detail?.refreshMode;
+      if (mode !== channel) return;
+      // AuthProvider must finish clearing the rejected session before a new signed login starts.
+      queueMicrotask(() => {
+        if (!explicitlySignedOut.current) void currentAuthentication.current(true);
+      });
+    };
     window.addEventListener("auth:signed-out", signedOut);
-    return () => window.removeEventListener("auth:signed-out", signedOut);
+    window.addEventListener("auth:expired", expired);
+    return () => {
+      window.removeEventListener("auth:signed-out", signedOut);
+      window.removeEventListener("auth:expired", expired);
+    };
   }, []);
   if (!messengerLaunch || state === "ready") return <>{children}</>;
   return (

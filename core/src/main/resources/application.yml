@@ -56,6 +56,10 @@ server:
     include-message: always
 
 app:
+  installation:
+    enabled: ${INSTALLATION_UPDATES_ENABLED:false}
+    operator-key: ${INSTALLATION_OPERATOR_KEY:}
+    release-public-key: ${INSTALLATION_RELEASE_PUBLIC_KEY:}
   media:
     provider: ${MEDIA_PROVIDER:legacy}
     service-url: ${MEDIA_SERVICE_URL:http://media-control:8093}

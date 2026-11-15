@@ -70,9 +70,11 @@ export const StudyGroupInput = forwardRef<
       if (version !== generation.current) return null;
       if (current.data?.enabled) {
         const sourceParts = structured ? parts : result.parts;
-        const nextParts = Object.fromEntries(current.data.fields
-          .map(field => [field.id, sourceParts[field.id] || field.defaultValue || ""])
-          .filter(([, value]) => value));
+        const nextParts = Object.fromEntries(
+          current.data.fields
+            .map((field) => [field.id, sourceParts[field.id] || field.defaultValue || ""])
+            .filter(([, value]) => value)
+        );
         setParts(nextParts);
         setStructured(true);
         const missing = current.data.fields.findIndex((f) => !nextParts[f.id]);

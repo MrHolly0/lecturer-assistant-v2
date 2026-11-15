@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-16",
+  "branch": "feature/messenger-experiment",
+  "stableCandidate": "0153e77",
+  "coreTests": 416,
+  "webTests": 146,
+  "telegramVkDefault": "disabled",
+  "signedLaunchFixtures": [
+    "Telegram HMAC, time bounds and duplicate rejection",
+    "VK app ID, HMAC and timestamp validation",
+    "separate refresh cookies",
+    "explicit link to existing profile and conflict rejection"
+  ],
+  "browserFixtureChecks": [
+    "Telegram channel login",
+    "recovery after rejected session",
+    "student cabinet with two sessions",
+    "guest leave and token-preserving return",
+    "group short input and structured fallback"
+  ],
+  "realTelegramVkClientsVerified": false,
+  "productionStandStarted": false,
+  "limits": [
+    "Registered Telegram and VK applications and real WebView cookies still need a pilot",
+    "No VK chat bot or VK profile API",
+    "Telegram mini-app does not require the legacy long-poll adapter"
+  ]
+}

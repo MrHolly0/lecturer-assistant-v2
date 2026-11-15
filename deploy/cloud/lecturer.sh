@@ -18,7 +18,7 @@
 set -eu
 
 cd "$(dirname "$0")/../.."
-PROJECT=lecturer-assistant
+PROJECT="${LECTURER_COMPOSE_PROJECT:-lecturer-assistant}"
 ENV_FILE=.env
 
 say() { printf '%s\n' "$*"; }
@@ -52,6 +52,11 @@ mode() { m="$(env_value PUBLIC_MODE)"; echo "${m:-domain}"; }
 domain() { env_value SITE_DOMAIN; }
 
 compose() {
+  # Managed updates persist image digests separately from source checkout and secrets.
+  managed_images=deploy/updates/.state/managed-images.json
+  if [ -f "$managed_images" ]; then
+    set -- -f "$managed_images" "$@"
+  fi
   if [ "$(mode)" = tunnel ]; then
     docker compose -p "$PROJECT" -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tunnel.yml "$@"
   else
@@ -115,7 +120,12 @@ cmd_up() {
   APP_VERSION="$APP_GIT_SHA"
   export APP_GIT_SHA APP_VERSION
 
-  compose up -d --build --wait
+  if [ -f deploy/updates/.state/managed-images.json ]; then
+    compose pull
+    compose up -d --no-build --wait
+  else
+    compose up -d --build --wait
+  fi
 
   # Ежечасная проверка сайта снаружи; журнал — deploy/cloud/check.log.
   if command -v crontab >/dev/null; then

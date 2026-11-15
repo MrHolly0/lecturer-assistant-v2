@@ -81,7 +81,8 @@ def render(config):
                     'JAVA_TOOL_OPTIONS': '-XX:MaxRAMPercentage=60 -XX:ActiveProcessorCount=2 -Xss512k'}, keys) + db_env('app-db')
     core_env.append({'name': 'MAX_BOT_TOKEN', 'valueFrom': {'secretKeyRef': {
         'name': 'lecturer-runtime', 'key': 'MAX_BOT_TOKEN', 'optional': True}}})
-    for key in ['EXPERIMENTAL_MESSENGER_LOGIN', 'TELEGRAM_BOT_TOKEN', 'VK_APP_ID', 'VK_APP_SECRET']:
+    for key in ['INSTALLATION_UPDATES_ENABLED', 'INSTALLATION_OPERATOR_KEY', 'INSTALLATION_RELEASE_PUBLIC_KEY',
+                    'EXPERIMENTAL_MESSENGER_LOGIN', 'MESSENGER_LAUNCH_MAX_AGE', 'TELEGRAM_BOT_TOKEN', 'VK_APP_ID', 'VK_APP_SECRET']:
         core_env.append({'name': key, 'valueFrom': {'secretKeyRef': {
             'name': 'lecturer-runtime', 'key': key, 'optional': True}}})
     deploy('core', 'core', 2, 8080, core_env, memory='1Gi', mount=True, probe='/actuator/health')

@@ -55,3 +55,7 @@ launch query из журналов и аналитики.
 Первичные протоколы:
 - https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
 - https://github.com/VKCOM/vk-apps-launch-params
+
+Эксперимент включает стабильный кандидат выпуска с центром обновлений, кабинетом
+и форматом групп. Повторный подписанный вход после отклонённой сессии отделён от
+явного выхода пользователя; устаревшие launch-данные предлагают переоткрыть Mini App.
