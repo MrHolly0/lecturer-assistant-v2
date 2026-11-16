@@ -13,6 +13,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
@@ -26,12 +27,18 @@ KUBE = STATE/'kubeconfig.yaml'
 
 def atomic(path, value):
     path = Path(path)
-    temporary = path.with_name('.'+path.name+'.tmp')
-    with temporary.open('w') as stream:
-        os.chmod(temporary, 0o600)
-        stream.write(value)
-        stream.flush(); os.fsync(stream.fileno())
-    temporary.replace(path)
+    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix='.'+path.name+'-')
+    try:
+        with os.fdopen(descriptor, 'w') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(value)
+            stream.flush(); os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try: os.fsync(directory)
+        finally: os.close(directory)
+    finally:
+        if os.path.exists(temporary): os.unlink(temporary)
 
 
 def read(name):

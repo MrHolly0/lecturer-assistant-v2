@@ -1,4 +1,5 @@
 import importlib.util
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -48,6 +49,16 @@ class RecoveryTests(unittest.TestCase):
         with patch.object(c,'kc',return_value=json.dumps({'metadata':{'uid':'cluster-1'}}).encode()),patch.object(c,'base') as base:
             with self.assertRaisesRegex(RuntimeError,'configuration changed'):c.bootstrap()
             base.assert_not_called()
+
+    def test_status_and_backup_can_replace_kubeconfig_concurrently(self):
+        path=self.state/'kubeconfig.json'
+        def write(number):c.atomic(path,json.dumps({'writer':number,'value':'x'*1024}))
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(write,range(80)))
+        value=json.loads(path.read_text())
+        self.assertEqual('x'*1024,value['value'])
+        self.assertEqual(0o600,path.stat().st_mode&0o777)
+        self.assertFalse(list(self.state.glob('.kubeconfig*')))
 
 
 if __name__=='__main__':unittest.main()
