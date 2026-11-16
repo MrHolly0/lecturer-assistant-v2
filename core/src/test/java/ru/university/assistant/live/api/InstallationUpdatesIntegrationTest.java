@@ -15,8 +15,10 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -30,6 +32,7 @@ import org.springframework.test.context.DynamicPropertySource;
 class InstallationUpdatesIntegrationTest extends LiveFlowTestBase {
     private static final String OPERATOR = "installation-isolated-test-key-with-enough-length";
     private static final KeyPair KEY = keyPair();
+    @Autowired private Flyway flyway;
     private final UUID owner = UUID.randomUUID();
     private Map<String, Object> envelope;
 
@@ -232,7 +235,9 @@ class InstallationUpdatesIntegrationTest extends LiveFlowTestBase {
                                 .header("Authorization", "Bearer " + adminToken),
                         200);
         assertEquals(1, state.path("releases").size());
-        assertEquals(56L, state.path("databaseVersion").asLong());
+        assertEquals(
+                Long.parseLong(flyway.info().current().getVersion().getVersion()),
+                state.path("databaseVersion").asLong());
         JsonNode queued = request("cancel-before-apply", 200);
         json(
                 post("/api/v1/admin/installation/jobs/{id}/cancel", queued.path("id").asText())
@@ -250,7 +255,7 @@ class InstallationUpdatesIntegrationTest extends LiveFlowTestBase {
         stage(job, "progress", "APPLYING", 200);
         jdbc.sql(
                         "update installation.jobs set lease_until=now()-interval '1"
-                        + " second',maintenance_until=now()-interval '1 second'")
+                                + " second',maintenance_until=now()-interval '1 second'")
                 .update();
         String groups = "{\"groups\":[{\"groupId\":\"" + groupId + "\"}]}";
         mockMvc.perform(
