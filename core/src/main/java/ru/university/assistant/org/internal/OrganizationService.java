@@ -190,10 +190,8 @@ public class OrganizationService implements StaffMembershipApi {
     @Transactional
     public void addInvitedStaff(UUID personId, UUID invitationId) {
         repository.lockStructure();
-        UUID unitId = invitations.organizationUnit(invitationId).orElse(null);
-        if (unitId != null) {
-            repository.assign(personId, unitId, UnitRole.MEMBER);
-        }
+        invitations.staffAssignment(invitationId).ifPresent(assignment ->
+                repository.assign(personId, assignment.unitId(), assignment.unitRole()));
     }
 
     @Override

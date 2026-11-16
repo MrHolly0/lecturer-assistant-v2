@@ -182,6 +182,67 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
     }
 
     @Test
+    void invitationCreatesLocalAdministratorWithOnlyTheirBranchAccess() throws Exception {
+        String parent = create(adminToken, "Учреждение", "UNIT", null, 201).get("id").asText();
+        String unit = create(adminToken, "ФИТКБ", "UNIT", parent, 201).get("id").asText();
+        String child = create(adminToken, "СУИТС", "UNIT", unit, 201).get("id").asText();
+        String sibling = create(adminToken, "Другой факультет", "UNIT", parent, 201).get("id").asText();
+        for (String role : List.of("LECTURER", "ASSISTANT")) {
+            JsonNode invitation = json(post("/api/v1/admin/invitations")
+                    .header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", role)
+                            .put("organizationUnitId", unit).put("organizationUnitRole", "MANAGER").toString()), 201);
+            assertEquals("MANAGER", invitation.get("organizationUnitRole").asText());
+            String token = register(invitation.get("code").asText(), role.toLowerCase() + "-manager@example.test");
+            JsonNode member = findMember(members(adminToken, unit, 200), personIdOf(token));
+            assertEquals("MANAGER", member.get("unitRole").asText());
+            assertEquals(role, member.get("role").asText());
+            JsonNode view = json(get("/api/v1/organization").header("Authorization", "Bearer " + token), 200);
+            assertFalse(view.get("administrator").asBoolean());
+            assertTrue(findUnit(view.get("units"), unit).get("canManage").asBoolean());
+            assertTrue(findUnit(view.get("units"), child).get("canManage").asBoolean());
+            assertFalse(findUnit(view.get("units"), parent).get("canManage").asBoolean());
+            assertFalse(findUnit(view.get("units"), sibling).get("canManage").asBoolean());
+            create(token, role + " team", "UNIT", child, 201);
+            members(token, parent, 403);
+            members(token, sibling, 403);
+            create(token, "Outside scope", "UNIT", sibling, 403);
+            json(get("/api/v1/admin/users").header("Authorization", "Bearer " + token), 403);
+            json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", "LECTURER")
+                            .put("organizationUnitId", unit).put("organizationUnitRole", "MANAGER").toString()), 403);
+        }
+    }
+
+    @Test
+    void managerInvitationRequiresExistingGroupAndStaffRole() throws Exception {
+        String unit = create(adminToken, "Группа администраторов", "UNIT", null, 201).get("id").asText();
+        for (String role : List.of("LECTURER", "ASSISTANT", "ADMIN", "STUDENT")) {
+            json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", role)
+                            .put("organizationUnitRole", "MANAGER").toString()), 400);
+        }
+        for (String role : List.of("ADMIN", "STUDENT")) {
+            json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", role).put("organizationUnitId", unit)
+                            .put("organizationUnitRole", "MANAGER").toString()), 400);
+        }
+        json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.createObjectNode().put("role", "LECTURER")
+                        .put("organizationUnitId", UUID.randomUUID().toString())
+                        .put("organizationUnitRole", "MANAGER").toString()), 404);
+        json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.createObjectNode().put("role", "LECTURER").put("organizationUnitId", unit)
+                        .put("organizationUnitRole", "ADMIN").toString()), 400);
+        assertEquals(0, count("iam.invitations where organization_unit_role = 'MANAGER'"));
+    }
+
+    @Test
     void groupInvitationAssignsMemberAndDeletedTargetBecomesRoot() throws Exception {
         String unit = create(adminToken, "Команда для приглашения", "UNIT", null, 201).get("id").asText();
         JsonNode invite = json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
@@ -192,6 +253,7 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
                         .toString()),
                 201);
         assertEquals(unit, invite.get("organizationUnitId").asText());
+        assertEquals("MEMBER", invite.get("organizationUnitRole").asText());
         String invitedToken = register(invite.get("code").asText(), "invited-group@example.test");
         JsonNode invitedMember = members(adminToken, unit, 200).get(0);
         assertEquals(personIdOf(invitedToken), invitedMember.get("id").asText());
@@ -201,12 +263,16 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
         String afterDeleteInvite = json(post("/api/v1/admin/invitations")
                 .header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.createObjectNode().put("role", "ASSISTANT")
-                        .put("organizationUnitId", deletedTarget).toString()), 201).get("code").asText();
+                        .put("organizationUnitId", deletedTarget).put("organizationUnitRole", "MANAGER")
+                        .toString()), 201).get("code").asText();
         json(delete("/api/v1/organization/units/{id}", deletedTarget)
                 .header("Authorization", "Bearer " + adminToken), 204);
         String rootToken = register(afterDeleteInvite, "invited-root@example.test");
         JsonNode rootMember = findMember(members(adminToken, null, 200), personIdOf(rootToken));
         assertTrue(rootMember.get("unitId").isNull());
+        assertEquals("ASSISTANT", rootMember.get("role").asText());
+        assertTrue(json(get("/api/v1/organization").header("Authorization", "Bearer " + rootToken), 200)
+                .get("units").findValues("canManage").stream().noneMatch(JsonNode::asBoolean));
         assertEquals(0, count("org.staff_memberships where person_id = '" + personIdOf(rootToken) + "'"));
     }
 
@@ -288,7 +354,8 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
         String code = json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.createObjectNode().put("role", "LECTURER")
-                        .put("organizationUnitId", unit).toString()), 201).get("code").asText();
+                        .put("organizationUnitId", unit).put("organizationUnitRole", "MANAGER")
+                        .toString()), 201).get("code").asText();
         String firstBody = registrationBody(code, "Race one", "race-one@example.test");
         String secondBody = registrationBody(code, "Race two", "race-two@example.test");
         CountDownLatch ready = new CountDownLatch(2);
@@ -305,6 +372,7 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
         }
         assertEquals(1, count("iam.persons where email in ('race-one@example.test', 'race-two@example.test')"));
         assertEquals(1, count("org.staff_memberships where unit_id = '" + unit + "'"));
+        assertEquals("MANAGER", members(adminToken, unit, 200).get(0).get("unitRole").asText());
         assertEquals(1, count("iam.invitations where code = '" + code + "' and used_at is not null"));
     }
 

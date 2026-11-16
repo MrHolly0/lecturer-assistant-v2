@@ -3631,6 +3631,11 @@ export interface components {
       ttlHours: number;
       /** Format: uuid */
       organizationUnitId?: string | null;
+      /**
+       * @description По умолчанию MEMBER. Доступ в группе сотрудников. MANAGER — администратор группы; при создании требует organizationUnitId и роль LECTURER или ASSISTANT.
+       * @enum {string}
+       */
+      organizationUnitRole?: "MEMBER" | "MANAGER";
     };
     CreateCourseInvitationRequest: {
       /** @enum {string} */
@@ -3654,6 +3659,11 @@ export interface components {
       organizationUnitId?: string | null;
       /** Format: date-time */
       expiresAt: string;
+      /**
+       * @description По умолчанию MEMBER. Доступ в группе сотрудников. MANAGER — администратор группы; при создании требует organizationUnitId и роль LECTURER или ASSISTANT.
+       * @enum {string}
+       */
+      organizationUnitRole?: "MEMBER" | "MANAGER";
     };
     IdentityLinkCode: {
       code: string;

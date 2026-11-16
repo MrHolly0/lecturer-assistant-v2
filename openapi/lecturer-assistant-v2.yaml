@@ -5694,6 +5694,10 @@ components:
           type: string
           format: uuid
           nullable: true
+        organizationUnitRole:
+          type: string
+          enum: [MEMBER, MANAGER]
+          description: По умолчанию MEMBER. Доступ в группе сотрудников. MANAGER — администратор группы; при создании требует organizationUnitId и роль LECTURER или ASSISTANT.
     CreateCourseInvitationRequest:
       type: object
       required: [role]
@@ -5733,6 +5737,10 @@ components:
         expiresAt:
           type: string
           format: date-time
+        organizationUnitRole:
+          type: string
+          enum: [MEMBER, MANAGER]
+          description: По умолчанию MEMBER. Доступ в группе сотрудников. MANAGER — администратор группы; при создании требует organizationUnitId и роль LECTURER или ASSISTANT.
     IdentityLinkCode:
       type: object
       required: [code, expiresAt]

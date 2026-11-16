@@ -835,6 +835,12 @@ export function OrganizationPage() {
                           <div className="org-member-content">
                             <div className="org-member-main">
                               <strong>{person.displayName}</strong>
+                              {person.unitRole === "MANAGER" && (
+                                <span className="org-member-manager-badge">
+                                  <ShieldCheck size={14} aria-hidden="true" />
+                                  Администратор группы
+                                </span>
+                              )}
                               <span>{person.email}</span>
                             </div>
                             <div className="org-member-meta">
@@ -881,14 +887,13 @@ export function OrganizationPage() {
                                     variant="outline"
                                     className="org-access-action"
                                     aria-haspopup="dialog"
-                                    aria-label={`Изменить доступ ${person.displayName}: ${person.unitRole === "MANAGER" ? "Руководитель" : "Сотрудник"}`}
+                                    aria-label={`Изменить доступ ${person.displayName}: ${person.unitRole === "MANAGER" ? "Администратор группы" : "Сотрудник"}`}
                                     onClick={() =>
                                       setMemberDialog({ action: "access", member: person })
                                     }
                                   >
                                     <ShieldCheck size={16} aria-hidden="true" />
-                                    Доступ:{" "}
-                                    {person.unitRole === "MANAGER" ? "Руководитель" : "Сотрудник"}
+                                    Изменить доступ
                                   </Button>
                                 )}
                                 {person.unitId && (
@@ -1024,8 +1029,8 @@ export function OrganizationPage() {
                   const memberVerb = pluralizeRu(memberCount, "перейдёт", "перейдут", "перейдут");
                   return `${nestedGroups > 0 ? `Вместе с ней ${nestedGroupVerb} ${nestedGroupLabel}. ` : ""}${memberCount} ${pluralizeRu(memberCount, "сотрудник", "сотрудника", "сотрудников")} ${memberVerb} в список «Без группы». `;
                 })()}
-              Аккаунты сотрудников, курсы, материалы и история сохранятся. Доступ руководителей
-              удалённой ветки будет снят.
+              Аккаунты сотрудников, курсы, материалы и история сохранятся. Доступ администраторов
+              групп удалённой ветки будет снят.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1051,7 +1056,7 @@ export function OrganizationPage() {
             <AlertDialogTitle>Переместить сотрудника в список «Без группы»?</AlertDialogTitle>
             <AlertDialogDescription>
               {removing?.displayName} останется в системе. Курсы и материалы сохранятся, доступ
-              руководителя группы будет снят.
+              администратора группы группы будет снят.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -26,6 +26,16 @@ class MigrationUpgradeTest {
                         'upgrade@example.test', 'unused', 'LECTURER', 'ACTIVE')
                     """);
             sql.execute("""
+                    insert into org.units(id, name, kind)
+                    values ('00000000-0000-0000-0000-000000000004', 'Existing faculty', 'FACULTY')
+                    """);
+            sql.execute("""
+                    insert into iam.invitations(id, code, role, organization_unit_id, created_by, expires_at)
+                    values ('00000000-0000-0000-0000-000000000005', 'LEGACYTEST', 'LECTURER',
+                        '00000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000001',
+                        now() + interval '1 day')
+                    """);
+            sql.execute("""
                     insert into analytics.events(id, aggregate_type, aggregate_id, verb, actor_person_id,
                         context, payload)
                     values ('00000000-0000-0000-0000-000000000002', 'upgrade',
@@ -53,6 +63,12 @@ class MigrationUpgradeTest {
             try (var rows = sql.executeQuery("select auth_version from iam.persons")) {
                 rows.next();
                 assertEquals(0, rows.getLong(1));
+            }
+            try (var rows = sql.executeQuery(
+                    "select organization_unit_role, organization_unit_id from iam.invitations")) {
+                rows.next();
+                assertEquals("MEMBER", rows.getString(1));
+                assertEquals("00000000-0000-0000-0000-000000000004", rows.getString(2));
             }
         }
     }
