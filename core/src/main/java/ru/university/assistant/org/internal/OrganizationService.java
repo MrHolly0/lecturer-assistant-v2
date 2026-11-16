@@ -186,14 +186,30 @@ public class OrganizationService implements StaffMembershipApi {
         }
     }
 
+    @Transactional
+    public ru.university.assistant.iam.api.InvitationResponse invite(
+            AuthenticatedUser user, UUID unitId,
+            ru.university.assistant.org.api.OrganizationModels.InviteStaffRequest request) {
+        requireStaff(user);
+        repository.lockStructure();
+        unit(unitId);
+        requireManage(user, unitId);
+        if (request.role() != PersonRole.LECTURER && request.role() != PersonRole.ASSISTANT) {
+            throw badRequest("В группу можно пригласить преподавателя или ассистента");
+        }
+        if (request.unitRole() == UnitRole.MANAGER && !administrator(user)) {
+            throw forbidden();
+        }
+        return invitations.createInvitation(request.role(), null, null, unitId, request.unitRole(),
+                user.id(), request.ttlHours());
+    }
+
     @Override
     @Transactional
     public void addInvitedStaff(UUID personId, UUID invitationId) {
         repository.lockStructure();
-        UUID unitId = invitations.organizationUnit(invitationId).orElse(null);
-        if (unitId != null) {
-            repository.assign(personId, unitId, UnitRole.MEMBER);
-        }
+        invitations.staffAssignment(invitationId).ifPresent(assignment ->
+                repository.assign(personId, assignment.unitId(), assignment.unitRole()));
     }
 
     @Override

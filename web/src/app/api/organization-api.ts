@@ -57,3 +57,14 @@ export async function moveOrganizationMembers(body: MoveOrganizationMembersReque
     body: JSON.stringify(body)
   });
 }
+
+export async function createOrganizationInvitation(
+  unitId: string,
+  body: components["schemas"]["InviteOrganizationStaffRequest"]
+): Promise<components["schemas"]["Invitation"]> {
+  const response = await apiFetch(`/organization/units/${unitId}/invitations`, {
+    method: "POST",
+    body: JSON.stringify(body)
+  });
+  return response.json() as Promise<components["schemas"]["Invitation"]>;
+}

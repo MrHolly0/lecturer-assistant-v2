@@ -38,6 +38,7 @@ import ru.university.assistant.iam.internal.security.JwtService;
 import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.CourseRole;
 import ru.university.assistant.org.api.StaffMembershipApi;
+import ru.university.assistant.org.api.OrganizationModels.UnitRole;
 import ru.university.assistant.shared.api.UuidV7;
 
 @Service
@@ -426,12 +427,19 @@ public class AuthService implements EphemeralPersonApi {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Student invitations are course-scoped");
         }
+        if (request.organizationUnitRole() == UnitRole.MANAGER
+                && (request.organizationUnitId() == null
+                        || (request.role() != PersonRole.LECTURER && request.role() != PersonRole.ASSISTANT))) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Администратору группы нужны группа и роль преподавателя или ассистента");
+        }
         staffMemberships.validateInvitationTarget(request.organizationUnitId());
         return invitationApi.createInvitation(
                 request.role(),
                 null,
                 null,
                 request.organizationUnitId(),
+                request.organizationUnitRole(),
                 createdBy.id(),
                 request.ttlHours());
     }

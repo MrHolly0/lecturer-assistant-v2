@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 import ru.university.assistant.iam.api.InvitationResponse;
 import ru.university.assistant.iam.api.PersonRole;
+import ru.university.assistant.org.api.OrganizationModels.UnitRole;
 
 record InvitationRecord(
         UUID id,
@@ -12,8 +13,10 @@ record InvitationRecord(
         UUID courseId,
         UUID groupId,
         UUID organizationUnitId,
+        UnitRole organizationUnitRole,
         Instant expiresAt) {
     InvitationResponse toResponse() {
-        return new InvitationResponse(id, code, role, courseId, groupId, expiresAt, organizationUnitId);
+        return new InvitationResponse(id, code, role, courseId, groupId, expiresAt,
+                organizationUnitId, organizationUnitRole);
     }
 }

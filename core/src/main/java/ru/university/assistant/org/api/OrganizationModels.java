@@ -48,4 +48,11 @@ public final class OrganizationModels {
             java.util.List<@NotNull UUID> personIds, UUID unitId) {}
 
     public record AssignStaffRequest(UUID unitId, @NotNull UnitRole unitRole) {}
+
+    public record InviteStaffRequest(
+            @NotNull PersonRole role, @jakarta.validation.constraints.Min(1) Integer ttlHours, UnitRole unitRole) {
+        public InviteStaffRequest {
+            unitRole = unitRole == null ? UnitRole.MEMBER : unitRole;
+        }
+    }
 }

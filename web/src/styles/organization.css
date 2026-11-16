@@ -294,6 +294,20 @@
 .organization-page .org-member-meta {
   justify-content: flex-end;
 }
+.organization-page .org-member-main > .org-member-manager-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--foreground);
+  background: var(--accent);
+  font-weight: 600;
+}
+.organization-page .org-member-manager-badge svg {
+  flex-shrink: 0;
+}
 .organization-page .org-member-meta .org-member-location {
   border: 0;
   padding: 0;
