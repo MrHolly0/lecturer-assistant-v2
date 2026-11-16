@@ -40,5 +40,12 @@ def collect(kc,sql,namespace='lecturer'):
         name,value=row.split('|');gauge(name,value)
     output=kc('-n',namespace,'exec','deployment/core','--','df','-Pk','/data/blobs').decode().splitlines()[-1].split()
     gauge('blob_disk_free_bytes',int(output[3])*1024)
+    if any(p.get('metadata',{}).get('namespace')==namespace and
+           p.get('metadata',{}).get('labels',{}).get('app.kubernetes.io/component')=='max-adapter' for p in pods):
+        # The local command emits aggregate counters only; payload inspection has no HTTP route.
+        for row in kc('-n',namespace,'exec','deployment/max-adapter','--','node','/app/inbox-admin.mjs','metrics').decode().splitlines():
+            name,value=row.split()
+            if not re.fullmatch(r'lecturer_max_inbox_[a-z_]+',name):raise ValueError('Unexpected inbox metric')
+            lines.append(f'{name} {float(value)}')
     gauge('operations_collected_seconds',time.time())
     return '\n'.join(lines)+'\n'

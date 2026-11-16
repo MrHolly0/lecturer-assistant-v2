@@ -59,6 +59,15 @@ class OperatorTests(unittest.TestCase):
         release['backwardCompatible'] = False
         with self.assertRaises(operator.UpdateError): operator.validate_release(self.envelope([release]), self.public)
 
+    def test_topology_generation_is_required_even_with_the_same_database_schema(self):
+        release = copy.deepcopy(self.release)
+        release.update(backwardCompatible=False, requiredTopology='single-vm-v2')
+        envelope = self.envelope([release])
+        for topology in ['', 'single-vm-v1']:
+            with self.assertRaises(operator.UpdateError): operator.validate_release(envelope, self.public, topology=topology)
+        self.assertEqual('test-1', operator.validate_release(envelope, self.public, 'test-1', topology='single-vm-v2')['id'])
+        with self.assertRaises(operator.UpdateError): operator.validate_release(self.envelope(), self.public, topology='single-vm-v2')
+
     def test_json_duplicate_keys_are_rejected(self):
         with self.assertRaises(operator.UpdateError): operator.decode('{"owner":1,"owner":2}')
 

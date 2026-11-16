@@ -294,6 +294,20 @@
 .organization-page .org-member-meta {
   justify-content: flex-end;
 }
+.organization-page .org-member-main > .org-member-manager-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--foreground);
+  background: var(--accent);
+  font-weight: 600;
+}
+.organization-page .org-member-manager-badge svg {
+  flex-shrink: 0;
+}
 .organization-page .org-member-meta .org-member-location {
   border: 0;
   padding: 0;
@@ -522,10 +536,13 @@
   border-bottom: 0;
 }
 .org-picker-option:hover,
-.org-person-option:hover,
+.org-person-option:not(:disabled):hover,
 .org-picker-option.is-selected,
 .org-person-option.is-selected {
   background: var(--accent);
+}
+.org-person-option:disabled {
+  cursor: default;
 }
 .org-picker-option > span,
 .org-person-option__text {

@@ -12,7 +12,7 @@ const originals = Object.fromEntries(
 const originalNow = Date.now;
 const originalRandom = Math.random;
 let time, timers, nextTimer, sockets, requests, states, messages, disconnect;
-function advance(ms) {
+async function advance(ms) {
   const until = time + ms;
   for (;;) {
     const next = [...timers].filter(([, t]) => t.at <= until).sort((a, b) => a[1].at - b[1].at)[0];
@@ -22,8 +22,10 @@ function advance(ms) {
     if (task.interval) task.at += task.interval;
     else timers.delete(id);
     task.fn();
+    await settle();
   }
   time = until;
+  await settle();
 }
 function timer(fn, delay, interval = 0) {
   const id = nextTimer++;
@@ -38,9 +40,10 @@ class Socket extends EventTarget {
   readyState = 0;
   sent = [];
   closes = 0;
-  constructor(url) {
+  constructor(url, protocols) {
     super();
     this.url = url;
+    this.protocols = protocols;
     sockets.push(this);
   }
   open() {
@@ -67,19 +70,20 @@ class Socket extends EventTarget {
   }
 }
 const settle = () => new Promise((done) => setImmediate(done));
-function start() {
+async function start() {
   disconnect = connectLiveSession(
     "fixture-session",
     (m) => messages.push(m),
     (s) => states.push(s)
   );
+  await settle();
   return sockets[0];
 }
-function focus() {
+async function focus() {
   window.dispatchEvent(new Event("focus"));
   window.dispatchEvent(new Event("pageshow"));
   document.dispatchEvent(new Event("visibilitychange"));
-  advance(0);
+  await advance(0);
 }
 beforeEach(() => {
   invalidatePendingAuthRefresh();
@@ -116,6 +120,8 @@ beforeEach(() => {
       }
     },
     fetch: async (url) => {
+      if (url.endsWith("/realtime-ticket"))
+        return new Response(JSON.stringify({ transport: "ticket", ticket: "fixture-only" }));
       requests.push(url);
       return new Response(
         JSON.stringify({ accessToken: "refreshed", user: { id: "fixture", role: "TEACHER" } }),
@@ -139,14 +145,16 @@ afterEach(() => {
   }
 });
 
-test("focus, pageshow and visibility preserve a healthy socket and subscription", () => {
-  const socket = start();
+test("focus, pageshow and visibility preserve a healthy socket and subscription", async () => {
+  const socket = await start();
   socket.connected();
   assert.match(socket.sent[0], /heart-beat:10000,10000/);
+  assert.deepEqual(socket.protocols, ["lecturer.v1", "ticket.fixture-only"]);
+  assert.equal(socket.url.includes("fixture-only"), false);
   for (let i = 0; i < 20; i++) {
-    advance(500);
+    await advance(500);
     socket.receive("\n");
-    focus();
+    await focus();
   }
   assert.equal(sockets.length, 1);
   assert.equal(socket.closes, 0);
@@ -154,46 +162,46 @@ test("focus, pageshow and visibility preserve a healthy socket and subscription"
   assert.equal(states.at(-1), "connected");
   assert.equal(requests.length, 0);
 });
-test("a slow STOMP handshake retries transport without rotating authentication", () => {
-  const socket = start();
+test("a slow STOMP handshake retries transport without rotating authentication", async () => {
+  const socket = await start();
   socket.open();
-  advance(9999);
-  focus();
+  await advance(9999);
+  await focus();
   assert.equal(socket.closes, 0);
-  advance(1);
+  await advance(1);
   assert.equal(socket.closes, 1);
   assert.equal(requests.length, 0);
-  advance(500);
+  await advance(500);
   assert.equal(sockets.length, 2);
   sockets[1].connected();
   assert.equal(states.at(-1), "connected");
   assert.equal(getStoredAuth().accessToken, "original");
 });
-test("negotiated heartbeats keep an idle connection alive and detect a stalled one", () => {
-  const socket = start();
+test("negotiated heartbeats keep an idle connection alive and detect a stalled one", async () => {
+  const socket = await start();
   socket.connected();
   for (let i = 0; i < 6; i++) {
-    advance(9000);
+    await advance(9000);
     socket.receive("\n");
   }
   assert.equal(socket.closes, 0);
   assert.ok(socket.sent.includes("\n"));
-  advance(50000);
+  await advance(50000);
   assert.equal(socket.closes, 1);
   assert.ok(sockets.length >= 2);
   assert.equal(requests.length, 0);
 });
-test("resume reconnects a suspended stale socket, while late old frames cannot affect the replacement", () => {
-  const socket = start();
+test("resume reconnects a suspended stale socket, while late old frames cannot affect the replacement", async () => {
+  const socket = await start();
   socket.connected();
   // Browser timers are suspended while the computer is asleep.
   time += 60000;
   timers.clear();
-  focus();
-  advance(0);
+  await focus();
+  await advance(0);
   assert.equal(socket.closes, 1);
   assert.equal(sockets.length, 1);
-  advance(500);
+  await advance(500);
   assert.equal(sockets.length, 2);
   sockets[1].connected();
   const count = states.length;
@@ -203,80 +211,102 @@ test("resume reconnects a suspended stale socket, while late old frames cannot a
   assert.deepEqual(messages, []);
 });
 test("policy rejection refreshes once, then backs off if the replacement is rejected too", async () => {
-  const socket = start();
+  const socket = await start();
   socket.connected();
   socket.close(1008);
   await settle();
   assert.equal(requests.length, 1);
-  advance(0);
+  await advance(0);
   assert.equal(sockets.length, 2);
   sockets[1].connected();
   sockets[1].close(1008);
   await settle();
   assert.equal(requests.length, 1);
-  advance(500);
+  await advance(500);
   assert.equal(sockets.length, 3);
 });
 test("a network error during policy refresh preserves credentials and schedules another connection", async () => {
   globalThis.fetch = async (url) => {
+    if (url.endsWith("/realtime-ticket"))
+      return new Response(JSON.stringify({ transport: "ticket", ticket: "fixture-only" }));
     requests.push(url);
     throw new TypeError("offline");
   };
-  const socket = start();
+  const socket = await start();
   socket.connected();
   socket.close(1008);
   await settle();
   assert.equal(getStoredAuth().accessToken, "original");
-  advance(500);
+  await advance(500);
   assert.equal(sockets.length, 2);
   assert.equal(requests.length, 1);
 });
-test("offline status is reported and cleanup stops every reconnect and heartbeat", () => {
-  const socket = start();
+test("offline status is reported and cleanup stops every reconnect and heartbeat", async () => {
+  const socket = await start();
   socket.connected();
   navigator.onLine = false;
   window.dispatchEvent(new Event("offline"));
   assert.equal(states.at(-1), "offline");
   navigator.onLine = true;
   window.dispatchEvent(new Event("online"));
-  advance(500);
+  await advance(500);
   sockets.at(-1).connected();
   disconnect();
   disconnect = undefined;
   assert.equal(timers.size, 0);
   const count = sockets.length;
-  focus();
-  advance(60000);
+  await focus();
+  await advance(60000);
   assert.equal(sockets.length, count);
   assert.equal(requests.length, 0);
 });
 
-test("a stalled TCP/TLS handshake has a deadline before the socket opens", () => {
-  const socket = start();
-  advance(9999);
+test("a stalled TCP/TLS handshake has a deadline before the socket opens", async () => {
+  const socket = await start();
+  await advance(9999);
   assert.equal(socket.closes, 0);
-  advance(1);
+  await advance(1);
   assert.equal(socket.closes, 1);
-  advance(375);
+  await advance(375);
   assert.equal(sockets.length, 2);
   assert.equal(requests.length, 0);
 });
-test("flapping sockets and repeated foreground events retain exponential jitter", () => {
-  const first = start();
+test("flapping sockets and repeated foreground events retain exponential jitter", async () => {
+  const first = await start();
   first.connected();
   first.close();
-  for (let i = 0; i < 5; i++) focus();
-  advance(374);
+  for (let i = 0; i < 5; i++) await focus();
+  await advance(374);
   assert.equal(sockets.length, 1);
-  advance(1);
+  await advance(1);
   sockets[1].connected();
   sockets[1].close();
   for (let i = 0; i < 5; i++) {
     window.dispatchEvent(new Event("online"));
-    focus();
+    await focus();
   }
-  advance(749);
+  await advance(749);
   assert.equal(sockets.length, 2);
-  advance(1);
+  await advance(1);
   assert.equal(sockets.length, 3);
+});
+
+test("disconnect during ticket acquisition cannot open a late websocket", async () => {
+  let release;
+  globalThis.fetch = async () =>
+    new Promise((resolve) => {
+      release = resolve;
+    });
+  disconnect = connectLiveSession(
+    "fixture-session",
+    () => {},
+    () => {}
+  );
+  await settle();
+  disconnect();
+  release(Response.json({ transport: "ticket", ticket: "late" }));
+  await settle();
+  await advance(60000);
+  assert.equal(sockets.length, 0);
+  assert.equal(timers.size, 0);
 });

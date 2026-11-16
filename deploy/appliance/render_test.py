@@ -9,6 +9,20 @@ r = importlib.util.module_from_spec(spec); spec.loader.exec_module(r)
 
 
 class ApplianceTests(unittest.TestCase):
+    def test_trusted_proxy_chain_overwrites_untrusted_headers_and_rejects_universal_trust(self):
+        config = {'publicOrigin': 'https://fixture.example', 'tlsMode': 'proxy'}
+        output = r.front_proxy(config, {'TRUSTED_PROXY_KEY': 'a' * 64})
+        self.assertNotIn('trusted_proxies static', output)
+        self.assertIn('header_up X-Lecturer-Client-IP {client_ip}', output)
+        self.assertIn('header_up X-Forwarded-For {client_ip}', output)
+        config['trustedProxyCidrs'] = ['192.0.2.10/32', '2001:db8::/64']
+        output = r.front_proxy(config, {'TRUSTED_PROXY_KEY': 'a' * 64})
+        self.assertIn('trusted_proxies_strict', output)
+        for invalid in [['0.0.0.0/0'], ['::/0'], ['0.0.0.0/1', '128.0.0.0/1'],
+                        ['::/1', '8000::/1'], ['bad\nproxy'], [True], '192.0.2.0/24']:
+            config['trustedProxyCidrs'] = invalid
+            with self.assertRaises(ValueError): r.front_proxy(config, {'TRUSTED_PROXY_KEY': 'a' * 64})
+
     def setUp(self):
         self.config = json.loads(Path(__file__).with_name('site.example.json').read_text())
         self.images = {key: f'registry.example.edu/{key}@sha256:'+'a'*64 for key in r.IMAGE_KEYS}

@@ -6,6 +6,8 @@ import { rpcClient, requiredKey, integer, backoff, sleep, logFailure, healthHand
 import { RealtimeHub } from './hub.mjs';
 import { attachStomp } from './stomp.mjs';
 import { runtimeDiagnostics } from '../common/diagnostics.mjs';
+import { UpgradeAdmission } from './upgrade-admission.mjs';
+import { clientAddress } from '../common/client-address.mjs';
 
 const rpc = rpcClient(process.env.CORE_URL ?? 'http://core:8080', requiredKey('SERVICE_REALTIME_KEY'));
 const hub = new RealtimeHub(rpc, { maxConnections: integer(process.env.MAX_CONNECTIONS, 6000),
@@ -15,6 +17,7 @@ const hub = new RealtimeHub(rpc, { maxConnections: integer(process.env.MAX_CONNE
 const origins = new Set((process.env.CORS_ALLOWED_ORIGINS ?? 'http://localhost:18089').split(',').map(x => x.trim()));
 const originAllowed = request => !request.headers.origin || origins.has(request.headers.origin);
 const shutdown = new AbortController();
+const upgrades = new UpgradeAdmission(requiredKey('SERVICE_REALTIME_KEY'));
 let authorityReady = false, probeBusy = false, brokerConnected = false, broker, rawSockets = 0;
 const upgradedSockets = new Set();
 const drainWindowMs = integer(process.env.DRAIN_WINDOW_MS, 20000, 0, 30000);
@@ -24,6 +27,7 @@ const health = healthHandler(() => authorityReady && brokerConnected && hub.acce
   realtime_connections: hub.clients.size - hub.publicCount, realtime_public_connections: hub.publicCount, realtime_rooms: hub.rooms.size,
   realtime_rpc_in_flight: hub.inFlight, realtime_snapshots_total: hub.stats.snapshots,
   realtime_pending_grants: hub.pendingGrants,
+  realtime_upgrade_pending: upgrades.pending, realtime_upgrade_connected: upgrades.connected,
   realtime_draining: Number(hub.draining), realtime_drained_connections_total: hub.stats.drained,
   realtime_slow_consumers_total: hub.stats.slowConsumers, realtime_revocations_total: hub.stats.revoked,
   realtime_rpc_errors_total: hub.stats.rpcErrors, realtime_broker_connected: Number(brokerConnected),
@@ -58,20 +62,33 @@ const server = createServer(async (request, response) => {
   }
 });
 server.requestTimeout = 10000; server.headersTimeout = 10000;
-const sockets = new WebSocketServer({ noServer: true, maxPayload: 65536, clientTracking: false });
+const sockets = new WebSocketServer({ noServer: true, maxPayload: 65536, clientTracking: false,
+  handleProtocols: protocols => protocols.has('lecturer.v1') ? 'lecturer.v1' : false });
 server.on('upgrade', (request, socket, head) => {
   const match = request.url.match(/^\/ws\/session\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
   if (!match || !originAllowed(request)) {
     socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return;
   }
-  if (!hub.accepting || rawSockets >= 256 || hub.studentCount + hub.pendingStudents + rawSockets >= hub.maxConnections) {
+  if (!hub.accepting) {
     socket.end('HTTP/1.1 503 Service Unavailable\r\nRetry-After: 2\r\nConnection: close\r\n\r\n'); return;
   }
-  sockets.handleUpgrade(request, socket, head, ws => {
-    rawSockets++; upgradedSockets.add(ws);
-    ws.once('close', () => { rawSockets--; upgradedSockets.delete(ws); });
-    attachStomp(ws, match[1], hub);
-  });
+  let reservation;
+  try { reservation = upgrades.reserve(match[1], request.headers['sec-websocket-protocol']); }
+  catch (error) {
+    const status = error.status === 401 ? upgrades.rejected(clientAddress(request)) : error.status;
+    socket.end(`HTTP/1.1 ${status ?? 401} Rejected\r\nConnection: close\r\nRetry-After: 2\r\n\r\n`); return;
+  }
+  socket.once('close', reservation.release);
+  socket.once('error', reservation.release);
+  try {
+    sockets.handleUpgrade(request, socket, head, ws => {
+      upgradedSockets.add(ws);
+      let promoted = false;
+      ws.once('close', () => { if (promoted) rawSockets--; reservation.release(); upgradedSockets.delete(ws); });
+      attachStomp(ws, match[1], hub, { personId: reservation.personId,
+        authorized: () => { reservation.promote(); rawSockets++; promoted = true; } });
+    });
+  } catch { reservation.release(); socket.destroy(); }
 });
 server.listen(integer(process.env.PORT, 8091, 1, 65535), '0.0.0.0');
 const tick = setInterval(() => hub.tick(), 250);

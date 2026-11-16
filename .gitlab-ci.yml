@@ -1,0 +1,182 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"'
+
+stages: [verify, build, deploy]
+
+default:
+  tags: [lecturer-ci]
+  interruptible: true
+
+.dind:
+  services:
+    - name: docker:27.5.1-dind
+      alias: docker
+      command: ["--tls=false"]
+      variables:
+        HEALTHCHECK_TCP_PORT: "2375"
+  variables:
+    FF_NETWORK_PER_BUILD: "true"
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+
+verify:core:
+  extends: .dind
+  stage: verify
+  image: maven:3.9.9-eclipse-temurin-21
+  variables:
+    TESTCONTAINERS_HOST_OVERRIDE: docker
+  cache:
+    key:
+      files: [pom.xml, core/pom.xml]
+    paths: [.m2/repository/]
+  script:
+    - mvn -B -Dmaven.repo.local="$CI_PROJECT_DIR/.m2/repository" verify
+  artifacts:
+    when: always
+    reports:
+      junit: core/target/surefire-reports/TEST-*.xml
+
+verify:web:
+  stage: verify
+  image: node:22-bookworm
+  cache:
+    key:
+      files: [web/package-lock.json]
+    paths: [.npm-cache/web/]
+  script:
+    - cd web
+    - npm ci --cache "$CI_PROJECT_DIR/.npm-cache/web" --prefer-offline
+    - npm run gen:api
+    - git diff --exit-code -- src/app/api/schema.ts
+    - npm test
+    - npm run lint
+    - npm run format
+    - npm run build
+    - npm audit --audit-level=high
+
+verify:services:
+  stage: verify
+  image: node:24-bookworm
+  services:
+    - name: postgres:16-alpine
+      alias: analytics-db
+  variables:
+    POSTGRES_USER: analytics_test
+    POSTGRES_PASSWORD: isolated_ci_only
+    POSTGRES_DB: analytics_test
+    SERVICES_TEST_DATABASE_URL: postgres://analytics_test:isolated_ci_only@analytics-db:5432/analytics_test
+  cache:
+    key:
+      files: [services/package-lock.json]
+    paths: [.npm-cache/services/]
+  script:
+    - node --test adapters/max/*.test.mjs e2e/http-client.test.mjs
+    - node --check adapters/telegram/telegram-adapter.mjs
+    - node --check adapters/echo/echo-adapter.mjs
+    - cd services
+    - npm ci --cache "$CI_PROJECT_DIR/.npm-cache/services" --prefer-offline
+    - npm test
+    - npm audit --omit=dev --audit-level=high
+
+verify:installation:
+  stage: verify
+  image: python:3.12-bookworm
+  script:
+    - |
+      for directory in deploy/scalable/ha deploy/k8s deploy/cloud deploy/updates deploy/appliance deploy/converter; do
+        python3 -m unittest discover -s "$directory" -p '*_test.py' || exit 1
+      done
+    - |
+      for script in deploy/appliance/lecturer.sh deploy/cloud/lecturer.sh deploy/k8s/lecturer-k8s.sh deploy/stand/backup/*.sh deploy/gitlab/deploy-compose.sh; do
+        sh -n "$script" || exit 1
+      done
+    - python3 deploy/appliance/control.py --help
+    - python3 deploy/updates/installation_operator.py --help
+    - python3 deploy/updates/publish-catalog.py --help
+
+verify:compose:
+  stage: verify
+  image: docker:27.5.1-cli
+  variables:
+    CONVERTER_API_KEY: isolated_ci_converter_key_only
+    POSTGRES_PASSWORD: isolated_ci_only
+    JWT_SECRET: isolated_ci_only
+    SLIDE_IMAGE_URL_SECRET: isolated_ci_only
+    CHANNEL_INTERNAL_API_KEY: isolated_ci_only
+    MAX_BOT_TOKEN: isolated_ci_only
+    MAX_WEBHOOK_PATH: /webhook/ci
+    MAX_WEBHOOK_SECRET: isolated_ci_only
+    SITE_DOMAIN: lecturer.example.invalid
+    ACME_EMAIL: ci@example.invalid
+    BACKUP_DESTINATION: /tmp/lecturer-backups
+    APPLIANCE_STATE: /tmp/appliance-state
+    APPLIANCE_BACKUPS: /tmp/appliance-backups
+    CLUSTER_MEMORY: 13312m
+    CLUSTER_CPUS: "8"
+    CONTROLLER_IMAGE: lecturer-appliance-controller:ci
+  script:
+    - docker compose config --quiet
+    - docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
+    - docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tunnel.yml config --quiet
+    - docker compose -f deploy/appliance/compose.yml config --quiet
+    - apk add --no-cache python3
+    - python3 deploy/scalable/init-local.py
+    - docker compose --env-file deploy/scalable/.env -f deploy/scalable/compose.yml config --quiet
+
+build:images:
+  extends: .dind
+  stage: build
+  image: docker:27.5.1-cli
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "master"'
+  parallel:
+    matrix:
+      - COMPONENT: core
+        DOCKERFILE: core/Dockerfile
+      - COMPONENT: web
+        DOCKERFILE: web/Dockerfile
+      - COMPONENT: converter
+        DOCKERFILE: deploy/converter/Dockerfile
+      - COMPONENT: max-adapter
+        DOCKERFILE: adapters/max/Dockerfile
+      - COMPONENT: telegram-adapter
+        DOCKERFILE: adapters/telegram/Dockerfile
+        BUILD_CONTEXT: adapters/telegram
+      - COMPONENT: services
+        DOCKERFILE: services/Dockerfile
+      - COMPONENT: sfu
+        DOCKERFILE: services/Dockerfile.sfu
+      - COMPONENT: authority
+        DOCKERFILE: deploy/appliance/Dockerfile.authority
+      - COMPONENT: controller
+        DOCKERFILE: deploy/appliance/Dockerfile
+  script:
+    - apk add --no-cache jq
+    - printf '%s\n' "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - docker buildx create --use --driver docker-container
+    - mkdir -p artifacts/images
+    - |
+      image="$CI_REGISTRY_IMAGE/$COMPONENT"
+      docker buildx build --file "$CI_PROJECT_DIR/$DOCKERFILE" --platform "${BUILD_PLATFORMS:-linux/amd64}" \
+        --tag "$image:$CI_COMMIT_SHA" --metadata-file "artifacts/images/$COMPONENT.json" --push "${BUILD_CONTEXT:-.}"
+      digest=$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' "artifacts/images/$COMPONENT.json")
+      printf '%s@%s\n' "$image" "$digest" > "artifacts/images/$COMPONENT.ref"
+  artifacts:
+    paths:
+      - artifacts/images/$COMPONENT.ref
+    expire_in: 7 days
+
+deploy:production:
+  stage: deploy
+  tags: [lecturer-deploy]
+  needs: [build:images]
+  interruptible: false
+  resource_group: production
+  environment:
+    name: production
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "master" && $CI_COMMIT_REF_PROTECTED == "true" && $DEPLOY_ENABLED == "true"'
+  script:
+    - sh deploy/gitlab/deploy-compose.sh

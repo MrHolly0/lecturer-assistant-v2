@@ -22,9 +22,45 @@ site_renderer = load('appliance_site', ROOT/'deploy/k8s/render-site.py')
 ha = site_renderer.renderer
 IMAGE_KEYS = site_renderer.IMAGE_KEYS
 NS = 'lecturer'
+TOPOLOGY_GENERATION = 'single-vm-v2'
+
+
+def trusted_proxy_networks(config):
+    raw = config.get('trustedProxyCidrs', [])
+    if not isinstance(raw, list) or len(raw) > 32:
+        raise ValueError('trustedProxyCidrs must be an explicit list of at most 32 networks')
+    networks = []
+    for value in raw:
+        if not isinstance(value, str):
+            raise ValueError('Proxy networks must be CIDR strings')
+        network = ipaddress.ip_network(value, strict=True)
+        if network.prefixlen == 0:
+            raise ValueError('Trusting every proxy address is not allowed')
+        networks.append(str(network))
+    for version in [4, 6]:
+        combined = ipaddress.collapse_addresses(ipaddress.ip_network(n) for n in networks
+                                               if ipaddress.ip_network(n).version == version)
+        if any(network.prefixlen == 0 for network in combined):
+            raise ValueError('Proxy networks must not collectively trust every address')
+    return networks
+
+
+def front_proxy(config, values):
+    key = values['TRUSTED_PROXY_KEY']
+    if not re.fullmatch(r'[A-Za-z0-9_-]{32,128}', key):
+        raise ValueError('Invalid private ingress credential')
+    networks = trusted_proxy_networks(config)
+    trusted = ('{\n  servers {\n    trusted_proxies static ' + ' '.join(networks) +
+               '\n    trusted_proxies_strict\n  }\n}\n') if networks else ''
+    domain = urlparse(config['publicOrigin']).netloc if config.get('tlsMode', 'proxy') == 'automatic' else ':80'
+    return trusted + domain + ' {\n  reverse_proxy k3s:30080 {\n' + \
+        '    header_up X-Forwarded-For {client_ip}\n' + \
+        '    header_up X-Lecturer-Client-IP {client_ip}\n' + \
+        '    header_up X-Lecturer-Proxy-Key ' + key + '\n  }\n  encode zstd gzip\n}\n'
 
 
 def _validate(config, images):
+    trusted_proxy_networks(config)
     origin = urlparse(config['publicOrigin'])
     if origin.scheme != 'https' or not origin.hostname or origin.path not in ['', '/'] or origin.username \
             or origin.password or origin.query or origin.fragment:
@@ -226,7 +262,8 @@ def app(config, images):
                 pod.setdefault('volumes',[]).append({'name':'blobs','persistentVolumeClaim':{'claimName':'lecturer-blobs'}})
                 container.setdefault('volumeMounts',[]).append({'name':'blobs','mountPath':'/data/blobs','readOnly':True})
             if name == 'core':
-                envset(container, {'APP_CONTENT_IMAGE_SENDFILE':'true','MANAGEMENT_EXPOSURE':'health,info,prometheus'})
+                envset(container, {'APP_CONTENT_IMAGE_SENDFILE':'true','MANAGEMENT_EXPOSURE':'health,info,prometheus',
+                                   'INSTALLATION_TOPOLOGY_GENERATION':TOPOLOGY_GENERATION})
             if name in ['core', 'content-worker']:
                 envset(container, {'JAVA_TOOL_OPTIONS': '-XX:MaxRAMPercentage=60 -XX:ActiveProcessorCount=2 -Xss512k -XX:+ExitOnOutOfMemoryError'})
             if name in ['realtime','event-publisher','analytics']:
@@ -298,7 +335,10 @@ def monitoring(site_config=None):
            ('MemoryBudgetNearFull','lecturer_quota_memory_used_bytes / lecturer_quota_memory_hard_bytes > 0.9','5m'),
            ('DiskReserveLow','lecturer_blob_disk_free_bytes < 3221225472','2m'),('PostgresLockQueue','lecturer_postgres_lock_waiters > 10','2m'),
            ('ImportStalled','lecturer_content_job_oldest_seconds > 900','5m'),('DeadJobs','lecturer_integration_jobs_dead + lecturer_analytics_jobs_dead > 0','5m'),
-           ('UpdateNeedsAttention','lecturer_update_needs_attention > 0','1m'),('ScrapeFailed','up == 0','2m'),('HttpFallbackStorm','sum(rate(realtime_http_fallbacks_total[5m])) > 100','5m')]
+           ('UpdateNeedsAttention','lecturer_update_needs_attention > 0','1m'),('ScrapeFailed','up == 0','2m'),('HttpFallbackStorm','sum(rate(realtime_http_fallbacks_total[5m])) > 100','5m'),
+           ('MaxInboxDead','lecturer_max_inbox_dead_items > 0 or lecturer_max_inbox_dead_blocked > 0','2m'),
+           ('MaxInboxBacklog','lecturer_max_inbox_work_items / lecturer_max_inbox_work_limit_items > 0.8 or lecturer_max_inbox_work_bytes / lecturer_max_inbox_work_limit_bytes > 0.8','2m'),
+           ('MaxDedupWindowReduced','increase(lecturer_max_inbox_dedup_evictions_total[15m]) > 0','5m')]
     configMap['data']['alerts.json']=json.dumps({'groups':[{'name':'lecturer-operations','rules':[
       {'alert':name,'expr':expr,'for':period,'labels':{'severity':'warning'},'annotations':{'runbook_url':'docs/operations-alerts.md#'+name.lower()}} for name,expr,period in rules]}]})
     items += [{'apiVersion':'rbac.authorization.k8s.io/v1','kind':'ClusterRole','metadata':{'name':'lecturer-monitor-nodes'},

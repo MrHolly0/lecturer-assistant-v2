@@ -18,12 +18,25 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 class RateLimitFilter extends OncePerRequestFilter {
     private final SlidingWindowRateLimiter authMaxLimiter;
+    private final SlidingWindowRateLimiter installationLimiter;
+    private final String proxyKey;
 
+    @org.springframework.beans.factory.annotation.Autowired
     RateLimitFilter(
             @Value("${app.security.rate-limit.auth-max-per-minute}") int authMaxPerMinute,
-            Clock clock) {
+            Clock clock,
+            @Value("${TRUSTED_PROXY_KEY:}") String proxyKey,
+            @Value("${app.security.rate-limit.auth-installation-per-minute:24000}")
+                    int installationLimit) {
+        this.proxyKey = proxyKey;
+        this.installationLimiter =
+                new SlidingWindowRateLimiter(installationLimit, Duration.ofMinutes(1), clock);
         this.authMaxLimiter =
                 new SlidingWindowRateLimiter(authMaxPerMinute, Duration.ofMinutes(1), clock);
+    }
+
+    RateLimitFilter(int limit, Clock clock) {
+        this(limit, clock, "", 24000);
     }
 
     @Override
@@ -31,10 +44,16 @@ class RateLimitFilter extends OncePerRequestFilter {
             HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         SlidingWindowRateLimiter limiter = limiterFor(request);
-        if (limiter != null && !limiter.tryAcquire(clientKey(request))) {
+        if (limiter != null
+                && (!limiter.tryAcquire(clientKey(request))
+                        || !installationLimiter.tryAcquire("installation"))) {
             response.setStatus(429);
             response.setHeader(
-                    "Retry-After", Integer.toString(limiter.retryAfterSeconds(clientKey(request))));
+                    "Retry-After",
+                    Integer.toString(
+                            Math.max(
+                                    limiter.retryAfterSeconds(clientKey(request)),
+                                    installationLimiter.retryAfterSeconds("installation"))));
             response.setContentType("application/json;charset=UTF-8");
             response.getWriter().write("{\"error\":\"Too many requests\"}");
             return;
@@ -57,8 +76,7 @@ class RateLimitFilter extends OncePerRequestFilter {
         return null;
     }
 
-    // Forwarded headers are not an authentication boundary. Only the socket peer is trusted here.
     private String clientKey(HttpServletRequest request) {
-        return request.getRemoteAddr();
+        return TrustedClientAddress.resolve(request, proxyKey);
     }
 }

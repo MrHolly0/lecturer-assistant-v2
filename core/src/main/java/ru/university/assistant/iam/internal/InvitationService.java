@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.university.assistant.iam.api.InvitationApi;
 import ru.university.assistant.iam.api.InvitationResponse;
 import ru.university.assistant.iam.api.PersonRole;
+import ru.university.assistant.org.api.OrganizationModels.UnitRole;
 import ru.university.assistant.shared.api.CodeGenerator;
 import ru.university.assistant.shared.api.UuidV7;
 
@@ -33,6 +34,14 @@ public class InvitationService implements InvitationApi {
     @Transactional
     public InvitationResponse createInvitation(
             PersonRole role, UUID courseId, UUID groupId, UUID organizationUnitId, UUID createdBy, Integer ttlHours) {
+        return createInvitation(role, courseId, groupId, organizationUnitId, UnitRole.MEMBER, createdBy, ttlHours);
+    }
+
+    @Override
+    @Transactional
+    public InvitationResponse createInvitation(
+            PersonRole role, UUID courseId, UUID groupId, UUID organizationUnitId, UnitRole organizationUnitRole,
+            UUID createdBy, Integer ttlHours) {
         int ttl = ttlHours == null ? 168 : ttlHours;
         return invitations.create(
                 UuidV7.generate(),
@@ -41,13 +50,14 @@ public class InvitationService implements InvitationApi {
                 courseId,
                 groupId,
                 organizationUnitId,
+                organizationUnitRole,
                 createdBy,
                 clock.instant().plus(Duration.ofHours(ttl)))
                 .toResponse();
     }
 
     @Override
-    public Optional<UUID> organizationUnit(UUID invitationId) {
-        return invitations.organizationUnit(invitationId);
+    public Optional<StaffAssignment> staffAssignment(UUID invitationId) {
+        return invitations.staffAssignment(invitationId);
     }
 }

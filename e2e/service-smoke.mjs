@@ -86,7 +86,9 @@ const receiving = (async () => {
     }
   } catch (error) { if (!controller.signal.aborted) throw error; }
 })();
-const ws = new WebSocket(new URL(`/ws/session/${fixture.session.id}`, base.replace('http:', 'ws:')));
+const upgrade = await api('POST', `/sessions/${fixture.session.id}/realtime-ticket`, token);
+const ws = new WebSocket(new URL(`/ws/session/${fixture.session.id}`, base.replace('http:', 'ws:')),
+  upgrade.transport === 'ticket' ? ['lecturer.v1', 'ticket.' + upgrade.ticket] : undefined);
 const messages = [];
 ws.on('message', bytes => {
   const text = bytes.toString(); messages.push(text);

@@ -77,7 +77,7 @@ def render(config):
                           'spec': {'minAvailable': count - 1, 'selector': {'matchLabels': labels}}})
 
     keys = ['JWT_SECRET', 'SLIDE_IMAGE_URL_SECRET', 'CHANNEL_INTERNAL_API_KEY', 'SERVICE_EVENTS_KEY',
-            'SERVICE_REALTIME_KEY', 'SERVICE_ANALYTICS_KEY', 'SERVICE_MEDIA_KEY', 'ADMIN_SETUP_TOKEN', 'CONVERTER_API_KEY']
+            'SERVICE_REALTIME_KEY', 'SERVICE_ANALYTICS_KEY', 'SERVICE_MEDIA_KEY', 'ADMIN_SETUP_TOKEN', 'CONVERTER_API_KEY', 'TRUSTED_PROXY_KEY']
     core_env = env({'DB_URL': 'jdbc:postgresql://app-db-rw:5432/lecturer', 'DB_POOL_MAX_SIZE': 12,
                     'PERMISSION_DB_POOL_SIZE': 4,
                     'DB_POOL_MIN_IDLE': 1, 'BLOB_ROOT': '/data/blobs', 'INTEGRATION_ENABLED': 'true',
@@ -108,7 +108,7 @@ def render(config):
     deploy('realtime', 'services', 3, 8091,
            env({**common, 'PORT': 8091, 'MAX_CONNECTIONS': 6000, 'CORS_ALLOWED_ORIGINS': origin,
                 'NODE_OPTIONS': '--max-old-space-size=384'},
-               ['SERVICE_REALTIME_KEY', 'AMQP_URL']), ['node', 'realtime/index.mjs'], memory='768Mi')
+               ['SERVICE_REALTIME_KEY', 'AMQP_URL', 'TRUSTED_PROXY_KEY']), ['node', 'realtime/index.mjs'], memory='768Mi')
     deploy('event-publisher', 'services', 2, 8094, env({**common, 'PORT': 8094}, ['SERVICE_EVENTS_KEY', 'AMQP_URL']),
            ['node', 'event-publisher/index.mjs'], memory='384Mi')
     deploy('analytics', 'services', 2, 8092, env({**common, 'PORT': 8092},
@@ -144,10 +144,11 @@ def render(config):
     edge = re.sub(r'server (core|realtime|media-control|web|max-adapter):',
                   lambda m: f'server {m.group(1)}.{namespace}.svc.cluster.local:', edge)
     items.append({'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': 'edge'},
-                  'data': {'edge.nginx.conf': edge, 'nginx-main.conf': nginx_main}})
-    deploy('edge', 'web', 2, 8088, [], memory='512Mi', probe='/edge-health')
+                  'data': {'edge.nginx.conf': edge, 'nginx-main.conf': (root / 'edge-main.nginx.template').read_text().replace('127.0.0.11', resolver)}})
+    deploy('edge', 'web', 2, 8088, env({}, ['TRUSTED_PROXY_KEY']), memory='512Mi', probe='/edge-health')
     pod = next(i for i in items if i['kind'] == 'Deployment' and i['metadata']['name'] == 'edge')['spec']['template']['spec']
     pod['volumes'] = [{'name': 'config', 'configMap': {'name': 'edge'}}]
+    pod['containers'][0]['command'] = ['sh', '-ec', "envsubst '$TRUSTED_PROXY_KEY' < /etc/nginx/nginx.conf > /tmp/edge.conf; exec nginx -c /tmp/edge.conf -g 'daemon off;'"]
     pod['containers'][0]['securityContext'].update({'runAsUser': 101, 'runAsGroup': 101})
     pod['containers'][0]['volumeMounts'] = [
         {'name': 'config', 'mountPath': '/etc/nginx/conf.d/default.conf', 'subPath': 'edge.nginx.conf'},

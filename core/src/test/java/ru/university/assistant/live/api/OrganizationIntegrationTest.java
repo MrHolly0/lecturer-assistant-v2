@@ -85,6 +85,10 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
         assign(adminToken, personIdOf(colleague), team, "MEMBER", 204);
         String unassigned = createStaff("unassigned@example.test");
         assign(lecturerToken, personIdOf(unassigned), team, "MEMBER", 403);
+        JsonNode scopedDirectory = members(lecturerToken, null, 200);
+        assertTrue(containsMember(scopedDirectory, personIdOf(lecturerToken)));
+        assertTrue(containsMember(scopedDirectory, personIdOf(colleague)));
+        assertFalse(containsMember(scopedDirectory, personIdOf(unassigned)));
         assertEquals(2, members(lecturerToken, faculty, 200).size());
         assertEquals(1, members(lecturerToken, team, 200).size());
         JsonNode managerView = json(
@@ -104,6 +108,19 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
         assign(lecturerToken, personIdOf(colleague), faculty, "MEMBER", 204);
         assign(lecturerToken, personIdOf(colleague), null, "MEMBER", 204);
         assertEquals(1, members(lecturerToken, faculty, 200).size());
+    }
+
+    @Test
+    void systemAdministratorCanFindAndAssignTheirOwnAccount() throws Exception {
+        String team = create(adminToken, "Команда администратора", "UNIT", null, 201).get("id").asText();
+        String adminId = personIdOf(adminToken);
+        JsonNode self = findMember(members(adminToken, null, 200), adminId);
+        assertEquals("ADMIN", self.get("role").asText());
+        assertTrue(self.get("unitId").isNull());
+
+        assign(adminToken, adminId, team, "MEMBER", 204);
+
+        assertEquals(team, findMember(members(adminToken, null, 200), adminId).get("unitId").asText());
     }
 
     @Test
@@ -182,6 +199,120 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
     }
 
     @Test
+    void groupAdministratorInvitesAndMovesOrdinaryStaffWithinTheirBranch() throws Exception {
+        String root = create(adminToken, "Область администратора", "UNIT", null, 201).get("id").asText();
+        String child = create(adminToken, "Кафедра", "UNIT", root, 201).get("id").asText();
+        String other = create(adminToken, "Чужая область", "UNIT", null, 201).get("id").asText();
+        assign(adminToken, personIdOf(lecturerToken), root, "MANAGER", 204);
+        for (String role : List.of("LECTURER", "ASSISTANT")) {
+            JsonNode invite = json(post("/api/v1/organization/units/{id}/invitations", child)
+                    .header("Authorization", "Bearer " + lecturerToken).contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", role).toString()), 201);
+            assertEquals("MEMBER", invite.get("organizationUnitRole").asText());
+            String token = register(invite.get("code").asText(), "scoped-" + role + "@example.test");
+            String person = personIdOf(token);
+            assertEquals(child, findMember(members(lecturerToken, null, 200), person).get("unitId").asText());
+            assign(lecturerToken, person, root, "MEMBER", 204);
+            assign(lecturerToken, person, child, "MEMBER", 204);
+            assign(lecturerToken, person, other, "MEMBER", 403);
+            json(post("/api/v1/organization/units/{id}/invitations", child)
+                    .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"role\":\"LECTURER\"}"), 403);
+        }
+        json(post("/api/v1/organization/units/{id}/invitations", other)
+                .header("Authorization", "Bearer " + lecturerToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"LECTURER\"}"), 403);
+        json(post("/api/v1/organization/units/{id}/invitations", child)
+                .header("Authorization", "Bearer " + lecturerToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"LECTURER\",\"unitRole\":\"MANAGER\"}"), 403);
+        for (String role : List.of("ADMIN", "STUDENT")) {
+            json(post("/api/v1/organization/units/{id}/invitations", child)
+                    .header("Authorization", "Bearer " + lecturerToken).contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", role).toString()), 400);
+        }
+    }
+
+    @Test
+    void changingSystemRoleToAssistantPreservesGroupManagementAndInvitations() throws Exception {
+        String unit = create(adminToken, "Администратор-ассистент", "UNIT", null, 201).get("id").asText();
+        String person = personIdOf(lecturerToken);
+        assign(adminToken, person, unit, "MANAGER", 204);
+        json(put("/api/v1/admin/users/{id}/role", person)
+                .header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"ASSISTANT\"}"), 200);
+        JsonNode member = findMember(members(adminToken, unit, 200), person);
+        assertEquals("ASSISTANT", member.get("role").asText());
+        assertEquals("MANAGER", member.get("unitRole").asText());
+        String token = json(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"lecturer@example.test\",\"password\":\"password-123\"}"), 200)
+                .get("accessToken").asText();
+        json(post("/api/v1/organization/units/{id}/invitations", unit)
+                .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"LECTURER\"}"), 201);
+    }
+
+    @Test
+    void invitationCreatesLocalAdministratorWithOnlyTheirBranchAccess() throws Exception {
+        String parent = create(adminToken, "Учреждение", "UNIT", null, 201).get("id").asText();
+        String unit = create(adminToken, "ФИТКБ", "UNIT", parent, 201).get("id").asText();
+        String child = create(adminToken, "СУИТС", "UNIT", unit, 201).get("id").asText();
+        String sibling = create(adminToken, "Другой факультет", "UNIT", parent, 201).get("id").asText();
+        for (String role : List.of("LECTURER", "ASSISTANT")) {
+            JsonNode invitation = json(post("/api/v1/admin/invitations")
+                    .header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", role)
+                            .put("organizationUnitId", unit).put("organizationUnitRole", "MANAGER").toString()), 201);
+            assertEquals("MANAGER", invitation.get("organizationUnitRole").asText());
+            String token = register(invitation.get("code").asText(), role.toLowerCase() + "-manager@example.test");
+            JsonNode member = findMember(members(adminToken, unit, 200), personIdOf(token));
+            assertEquals("MANAGER", member.get("unitRole").asText());
+            assertEquals(role, member.get("role").asText());
+            JsonNode view = json(get("/api/v1/organization").header("Authorization", "Bearer " + token), 200);
+            assertFalse(view.get("administrator").asBoolean());
+            assertTrue(findUnit(view.get("units"), unit).get("canManage").asBoolean());
+            assertTrue(findUnit(view.get("units"), child).get("canManage").asBoolean());
+            assertFalse(findUnit(view.get("units"), parent).get("canManage").asBoolean());
+            assertFalse(findUnit(view.get("units"), sibling).get("canManage").asBoolean());
+            create(token, role + " team", "UNIT", child, 201);
+            members(token, parent, 403);
+            members(token, sibling, 403);
+            create(token, "Outside scope", "UNIT", sibling, 403);
+            json(get("/api/v1/admin/users").header("Authorization", "Bearer " + token), 403);
+            json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", "LECTURER")
+                            .put("organizationUnitId", unit).put("organizationUnitRole", "MANAGER").toString()), 403);
+        }
+    }
+
+    @Test
+    void managerInvitationRequiresExistingGroupAndStaffRole() throws Exception {
+        String unit = create(adminToken, "Группа администраторов", "UNIT", null, 201).get("id").asText();
+        for (String role : List.of("LECTURER", "ASSISTANT", "ADMIN", "STUDENT")) {
+            json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", role)
+                            .put("organizationUnitRole", "MANAGER").toString()), 400);
+        }
+        for (String role : List.of("ADMIN", "STUDENT")) {
+            json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", role).put("organizationUnitId", unit)
+                            .put("organizationUnitRole", "MANAGER").toString()), 400);
+        }
+        json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.createObjectNode().put("role", "LECTURER")
+                        .put("organizationUnitId", UUID.randomUUID().toString())
+                        .put("organizationUnitRole", "MANAGER").toString()), 404);
+        json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.createObjectNode().put("role", "LECTURER").put("organizationUnitId", unit)
+                        .put("organizationUnitRole", "ADMIN").toString()), 400);
+        assertEquals(0, count("iam.invitations where organization_unit_role = 'MANAGER'"));
+    }
+
+    @Test
     void groupInvitationAssignsMemberAndDeletedTargetBecomesRoot() throws Exception {
         String unit = create(adminToken, "Команда для приглашения", "UNIT", null, 201).get("id").asText();
         JsonNode invite = json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
@@ -192,6 +323,7 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
                         .toString()),
                 201);
         assertEquals(unit, invite.get("organizationUnitId").asText());
+        assertEquals("MEMBER", invite.get("organizationUnitRole").asText());
         String invitedToken = register(invite.get("code").asText(), "invited-group@example.test");
         JsonNode invitedMember = members(adminToken, unit, 200).get(0);
         assertEquals(personIdOf(invitedToken), invitedMember.get("id").asText());
@@ -201,12 +333,16 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
         String afterDeleteInvite = json(post("/api/v1/admin/invitations")
                 .header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.createObjectNode().put("role", "ASSISTANT")
-                        .put("organizationUnitId", deletedTarget).toString()), 201).get("code").asText();
+                        .put("organizationUnitId", deletedTarget).put("organizationUnitRole", "MANAGER")
+                        .toString()), 201).get("code").asText();
         json(delete("/api/v1/organization/units/{id}", deletedTarget)
                 .header("Authorization", "Bearer " + adminToken), 204);
         String rootToken = register(afterDeleteInvite, "invited-root@example.test");
         JsonNode rootMember = findMember(members(adminToken, null, 200), personIdOf(rootToken));
         assertTrue(rootMember.get("unitId").isNull());
+        assertEquals("ASSISTANT", rootMember.get("role").asText());
+        assertTrue(json(get("/api/v1/organization").header("Authorization", "Bearer " + rootToken), 200)
+                .get("units").findValues("canManage").stream().noneMatch(JsonNode::asBoolean));
         assertEquals(0, count("org.staff_memberships where person_id = '" + personIdOf(rootToken) + "'"));
     }
 
@@ -288,7 +424,8 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
         String code = json(post("/api/v1/admin/invitations").header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.createObjectNode().put("role", "LECTURER")
-                        .put("organizationUnitId", unit).toString()), 201).get("code").asText();
+                        .put("organizationUnitId", unit).put("organizationUnitRole", "MANAGER")
+                        .toString()), 201).get("code").asText();
         String firstBody = registrationBody(code, "Race one", "race-one@example.test");
         String secondBody = registrationBody(code, "Race two", "race-two@example.test");
         CountDownLatch ready = new CountDownLatch(2);
@@ -305,6 +442,7 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
         }
         assertEquals(1, count("iam.persons where email in ('race-one@example.test', 'race-two@example.test')"));
         assertEquals(1, count("org.staff_memberships where unit_id = '" + unit + "'"));
+        assertEquals("MANAGER", members(adminToken, unit, 200).get(0).get("unitRole").asText());
         assertEquals(1, count("iam.invitations where code = '" + code + "' and used_at is not null"));
     }
 

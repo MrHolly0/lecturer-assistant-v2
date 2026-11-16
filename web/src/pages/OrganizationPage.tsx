@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { canAccessStaffDirectory, firstAccessibleUnit } from "../shared/lib/organizationAccess";
+import {
+  canAccessStaffDirectory,
+  canEditOrganizationMember,
+  firstAccessibleUnit
+} from "../shared/lib/organizationAccess";
 import { Navigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -8,6 +12,9 @@ import {
   ChevronRight,
   MoreHorizontal,
   ListChecks,
+  FolderPlus,
+  UserPlus,
+  UserCog,
   Pencil,
   Plus,
   Search,
@@ -52,6 +59,7 @@ import { OrganizationUnitIcon } from "../widgets/OrganizationUnitIcon";
 import {
   OrganizationBulkMemberMoveDialog,
   OrganizationInvitationDialog,
+  OrganizationSystemRoleDialog,
   OrganizationMemberEditor,
   OrganizationUnitEditor,
   OrganizationUnitMoveDialog,
@@ -89,6 +97,7 @@ export function OrganizationPage() {
   const [movingUnit, setMovingUnit] = useState<OrganizationUnit | null>(null);
   const [memberDialog, setMemberDialog] = useState<MemberDialog | null>(null);
   const [inviting, setInviting] = useState(false);
+  const [systemRolePerson, setSystemRolePerson] = useState<OrganizationMember | null>(null);
   const [deleting, setDeleting] = useState<OrganizationUnit | null>(null);
   const [removing, setRemoving] = useState<OrganizationMember | null>(null);
   const unitMenuTrigger = useRef<HTMLButtonElement>(null);
@@ -131,9 +140,9 @@ export function OrganizationPage() {
     enabled: Boolean(organization.data && selected) && canViewSelected
   });
   const allPeople = useQuery({
-    queryKey: ["organization", "members", "all"],
+    queryKey: ["organization", "members", "all", user?.id, administrator],
     queryFn: () => getOrganizationMembers(),
-    enabled: Boolean(organization.data) && administrator
+    enabled: Boolean(organization.data) && (administrator || units.some((unit) => unit.canManage))
   });
 
   useEffect(() => {
@@ -288,7 +297,7 @@ export function OrganizationPage() {
   });
 
   function openAdd() {
-    if (administrator)
+    if (administrator || selected?.canManage)
       openFromMenu(addMenuTrigger.current, () => setMemberDialog({ action: "add", member: null }));
   }
 
@@ -339,7 +348,7 @@ export function OrganizationPage() {
           <p className="org-page-description">Общий список и группы сотрудников</p>
         </div>
         <div className="org-header-links">
-          {administrator && (
+          {(administrator || selected?.canManage) && (
             <Button onClick={() => setInviting(true)}>
               <Plus size={17} aria-hidden="true" />
               Пригласить сотрудника
@@ -575,14 +584,14 @@ export function OrganizationPage() {
                     )
                   }
                 >
-                  <Users size={16} />
+                  <FolderPlus size={16} />
                   Создать группу
                 </DropdownMenuItem>
                 {selected
-                  ? administrator && (
+                  ? (administrator || selected.canManage) && (
                       <DropdownMenuItem onSelect={openAdd}>
-                        <Users size={16} />
-                        Добавить из списка
+                        <UserPlus size={16} />
+                        Добавить сотрудника
                       </DropdownMenuItem>
                     )
                   : administrator && (
@@ -802,9 +811,9 @@ export function OrganizationPage() {
                   >
                     {paged.pageItems.map((person) => {
                       const group = units.find((unit) => unit.id === person.unitId);
-                      const canEditPerson = getPersonCanEdit(
+                      const canEditPerson = canEditOrganizationMember(
                         person,
-                        selected,
+                        Boolean(group?.canManage),
                         administrator,
                         user?.id
                       );
@@ -835,6 +844,12 @@ export function OrganizationPage() {
                           <div className="org-member-content">
                             <div className="org-member-main">
                               <strong>{person.displayName}</strong>
+                              {person.unitRole === "MANAGER" && (
+                                <span className="org-member-manager-badge">
+                                  <ShieldCheck size={14} aria-hidden="true" />
+                                  Администратор группы
+                                </span>
+                              )}
                               <span>{person.email}</span>
                             </div>
                             <div className="org-member-meta">
@@ -881,14 +896,13 @@ export function OrganizationPage() {
                                     variant="outline"
                                     className="org-access-action"
                                     aria-haspopup="dialog"
-                                    aria-label={`Изменить доступ ${person.displayName}: ${person.unitRole === "MANAGER" ? "Руководитель" : "Сотрудник"}`}
+                                    aria-label={`Изменить доступ ${person.displayName}: ${person.unitRole === "MANAGER" ? "Администратор группы" : "Сотрудник"}`}
                                     onClick={() =>
                                       setMemberDialog({ action: "access", member: person })
                                     }
                                   >
                                     <ShieldCheck size={16} aria-hidden="true" />
-                                    Доступ:{" "}
-                                    {person.unitRole === "MANAGER" ? "Руководитель" : "Сотрудник"}
+                                    Изменить доступ
                                   </Button>
                                 )}
                                 {person.unitId && (
@@ -905,6 +919,21 @@ export function OrganizationPage() {
                                       </IconButton>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
+                                      {administrator &&
+                                        (person.role === "LECTURER" ||
+                                          person.role === "ASSISTANT") && (
+                                          <DropdownMenuItem
+                                            onSelect={() =>
+                                              openFromMenu(
+                                                personMenuTriggers.current.get(person.id) ?? null,
+                                                () => setSystemRolePerson(person)
+                                              )
+                                            }
+                                          >
+                                            <UserCog size={16} />
+                                            Изменить системную роль
+                                          </DropdownMenuItem>
+                                        )}
                                       <DropdownMenuItem
                                         className="text-destructive"
                                         onSelect={() =>
@@ -970,6 +999,9 @@ export function OrganizationPage() {
           onCloseAutoFocus={restoreMenuFocus}
           member={memberDialog.member}
           people={allPeople.data ?? []}
+          peopleStatus={allPeople.status}
+          onRetryPeople={() => void allPeople.refetch()}
+          currentUserId={user?.id}
           units={units}
           targetUnitId={selected?.id ?? null}
           administrator={administrator}
@@ -992,8 +1024,23 @@ export function OrganizationPage() {
           }}
         />
       )}
+      {systemRolePerson && (
+        <OrganizationSystemRoleDialog
+          member={systemRolePerson}
+          onCloseAutoFocus={restoreMenuFocus}
+          onClose={() => setSystemRolePerson(null)}
+          onSaved={() => {
+            setSystemRolePerson(null);
+            refreshOrganization();
+          }}
+        />
+      )}
       {inviting && (
-        <OrganizationInvitationDialog unit={selected ?? null} onClose={() => setInviting(false)} />
+        <OrganizationInvitationDialog
+          unit={selected ?? null}
+          administrator={administrator}
+          onClose={() => setInviting(false)}
+        />
       )}
 
       <AlertDialog
@@ -1024,8 +1071,8 @@ export function OrganizationPage() {
                   const memberVerb = pluralizeRu(memberCount, "перейдёт", "перейдут", "перейдут");
                   return `${nestedGroups > 0 ? `Вместе с ней ${nestedGroupVerb} ${nestedGroupLabel}. ` : ""}${memberCount} ${pluralizeRu(memberCount, "сотрудник", "сотрудника", "сотрудников")} ${memberVerb} в список «Без группы». `;
                 })()}
-              Аккаунты сотрудников, курсы, материалы и история сохранятся. Доступ руководителей
-              удалённой ветки будет снят.
+              Аккаунты сотрудников, курсы, материалы и история сохранятся. Доступ администраторов
+              групп удалённой ветки будет снят.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1051,7 +1098,7 @@ export function OrganizationPage() {
             <AlertDialogTitle>Переместить сотрудника в список «Без группы»?</AlertDialogTitle>
             <AlertDialogDescription>
               {removing?.displayName} останется в системе. Курсы и материалы сохранятся, доступ
-              руководителя группы будет снят.
+              администратора группы будет снят.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1101,21 +1148,4 @@ function getDescendantIds(unitId: string | undefined, units: OrganizationUnit[])
     }
   }
   return ids;
-}
-
-function getPersonCanEdit(
-  person: OrganizationMember,
-  selected: OrganizationUnit | undefined,
-  administrator: boolean,
-  currentUserId: string | undefined
-) {
-  if (administrator) return true;
-  if (
-    !selected?.canManage ||
-    person.id === currentUserId ||
-    person.unitRole === "MANAGER" ||
-    person.role === "ADMIN"
-  )
-    return false;
-  return true;
 }
