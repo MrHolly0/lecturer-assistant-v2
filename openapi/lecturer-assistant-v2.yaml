@@ -3439,6 +3439,35 @@ paths:
           description: Organization unit or staff member not found
         '409':
           description: Duplicate sibling name
+  /organization/units/{unitId}/invitations:
+    post:
+      operationId: createOrganizationInvitation
+      summary: Invite an employee into a managed staff group.
+      tags: [organization]
+      parameters:
+        - name: unitId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteOrganizationStaffRequest"
+      responses:
+        "201":
+          description: Scoped invitation created; group managers can grant MEMBER access only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+        "400":
+          description: Invalid staff role.
+        "403":
+          description: Group outside managed scope or management access cannot be granted.
+        "404":
+          description: Staff group not found.
   /organization/units/{unitId}:
     put:
       tags:
@@ -5679,6 +5708,20 @@ components:
         status:
           type: string
           enum: [ACTIVE, DISABLED]
+    InviteOrganizationStaffRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [LECTURER, ASSISTANT]
+        ttlHours:
+          type: integer
+          minimum: 1
+        unitRole:
+          type: string
+          enum: [MEMBER, MANAGER]
+          description: Defaults to MEMBER. Only a system administrator can grant MANAGER.
     CreateInvitationRequest:
       type: object
       required: [role]

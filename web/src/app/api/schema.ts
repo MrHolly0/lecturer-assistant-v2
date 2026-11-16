@@ -2504,6 +2504,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/organization/units/{unitId}/invitations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Invite an employee into a managed staff group. */
+    post: operations["createOrganizationInvitation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/organization/units/{unitId}": {
     parameters: {
       query?: never;
@@ -3623,6 +3640,16 @@ export interface components {
     UpdateUserStatusRequest: {
       /** @enum {string} */
       status: "ACTIVE" | "DISABLED";
+    };
+    InviteOrganizationStaffRequest: {
+      /** @enum {string} */
+      role: "LECTURER" | "ASSISTANT";
+      ttlHours?: number;
+      /**
+       * @description Defaults to MEMBER. Only a system administrator can grant MANAGER.
+       * @enum {string}
+       */
+      unitRole?: "MEMBER" | "MANAGER";
     };
     CreateInvitationRequest: {
       /** @enum {string} */
@@ -9368,6 +9395,53 @@ export interface operations {
         content?: never;
       };
       /** @description Unknown staff account or group. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createOrganizationInvitation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        unitId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InviteOrganizationStaffRequest"];
+      };
+    };
+    responses: {
+      /** @description Scoped invitation created; group managers can grant MEMBER access only. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Invitation"];
+        };
+      };
+      /** @description Invalid staff role. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Group outside managed scope or management access cannot be granted. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Staff group not found. */
       404: {
         headers: {
           [name: string]: unknown;

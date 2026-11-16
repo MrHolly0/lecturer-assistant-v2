@@ -182,6 +182,59 @@ class OrganizationIntegrationTest extends LiveFlowTestBase {
     }
 
     @Test
+    void groupAdministratorInvitesAndMovesOrdinaryStaffWithinTheirBranch() throws Exception {
+        String root = create(adminToken, "Область администратора", "UNIT", null, 201).get("id").asText();
+        String child = create(adminToken, "Кафедра", "UNIT", root, 201).get("id").asText();
+        String other = create(adminToken, "Чужая область", "UNIT", null, 201).get("id").asText();
+        assign(adminToken, personIdOf(lecturerToken), root, "MANAGER", 204);
+        for (String role : List.of("LECTURER", "ASSISTANT")) {
+            JsonNode invite = json(post("/api/v1/organization/units/{id}/invitations", child)
+                    .header("Authorization", "Bearer " + lecturerToken).contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", role).toString()), 201);
+            assertEquals("MEMBER", invite.get("organizationUnitRole").asText());
+            String token = register(invite.get("code").asText(), "scoped-" + role + "@example.test");
+            String person = personIdOf(token);
+            assertEquals(child, findMember(members(lecturerToken, null, 200), person).get("unitId").asText());
+            assign(lecturerToken, person, root, "MEMBER", 204);
+            assign(lecturerToken, person, child, "MEMBER", 204);
+            assign(lecturerToken, person, other, "MEMBER", 403);
+            json(post("/api/v1/organization/units/{id}/invitations", child)
+                    .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"role\":\"LECTURER\"}"), 403);
+        }
+        json(post("/api/v1/organization/units/{id}/invitations", other)
+                .header("Authorization", "Bearer " + lecturerToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"LECTURER\"}"), 403);
+        json(post("/api/v1/organization/units/{id}/invitations", child)
+                .header("Authorization", "Bearer " + lecturerToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"LECTURER\",\"unitRole\":\"MANAGER\"}"), 403);
+        for (String role : List.of("ADMIN", "STUDENT")) {
+            json(post("/api/v1/organization/units/{id}/invitations", child)
+                    .header("Authorization", "Bearer " + lecturerToken).contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.createObjectNode().put("role", role).toString()), 400);
+        }
+    }
+
+    @Test
+    void changingSystemRoleToAssistantPreservesGroupManagementAndInvitations() throws Exception {
+        String unit = create(adminToken, "Администратор-ассистент", "UNIT", null, 201).get("id").asText();
+        String person = personIdOf(lecturerToken);
+        assign(adminToken, person, unit, "MANAGER", 204);
+        json(put("/api/v1/admin/users/{id}/role", person)
+                .header("Authorization", "Bearer " + adminToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"ASSISTANT\"}"), 200);
+        JsonNode member = findMember(members(adminToken, unit, 200), person);
+        assertEquals("ASSISTANT", member.get("role").asText());
+        assertEquals("MANAGER", member.get("unitRole").asText());
+        String token = json(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"lecturer@example.test\",\"password\":\"password-123\"}"), 200)
+                .get("accessToken").asText();
+        json(post("/api/v1/organization/units/{id}/invitations", unit)
+                .header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"LECTURER\"}"), 201);
+    }
+
+    @Test
     void invitationCreatesLocalAdministratorWithOnlyTheirBranchAccess() throws Exception {
         String parent = create(adminToken, "Учреждение", "UNIT", null, 201).get("id").asText();
         String unit = create(adminToken, "ФИТКБ", "UNIT", parent, 201).get("id").asText();

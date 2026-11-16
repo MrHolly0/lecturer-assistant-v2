@@ -8,6 +8,9 @@ import {
   ChevronRight,
   MoreHorizontal,
   ListChecks,
+  FolderPlus,
+  UserPlus,
+  UserCog,
   Pencil,
   Plus,
   Search,
@@ -52,6 +55,7 @@ import { OrganizationUnitIcon } from "../widgets/OrganizationUnitIcon";
 import {
   OrganizationBulkMemberMoveDialog,
   OrganizationInvitationDialog,
+  OrganizationSystemRoleDialog,
   OrganizationMemberEditor,
   OrganizationUnitEditor,
   OrganizationUnitMoveDialog,
@@ -89,6 +93,7 @@ export function OrganizationPage() {
   const [movingUnit, setMovingUnit] = useState<OrganizationUnit | null>(null);
   const [memberDialog, setMemberDialog] = useState<MemberDialog | null>(null);
   const [inviting, setInviting] = useState(false);
+  const [systemRolePerson, setSystemRolePerson] = useState<OrganizationMember | null>(null);
   const [deleting, setDeleting] = useState<OrganizationUnit | null>(null);
   const [removing, setRemoving] = useState<OrganizationMember | null>(null);
   const unitMenuTrigger = useRef<HTMLButtonElement>(null);
@@ -133,7 +138,7 @@ export function OrganizationPage() {
   const allPeople = useQuery({
     queryKey: ["organization", "members", "all"],
     queryFn: () => getOrganizationMembers(),
-    enabled: Boolean(organization.data) && administrator
+    enabled: Boolean(organization.data) && (administrator || units.some((unit) => unit.canManage))
   });
 
   useEffect(() => {
@@ -288,7 +293,7 @@ export function OrganizationPage() {
   });
 
   function openAdd() {
-    if (administrator)
+    if (administrator || selected?.canManage)
       openFromMenu(addMenuTrigger.current, () => setMemberDialog({ action: "add", member: null }));
   }
 
@@ -339,7 +344,7 @@ export function OrganizationPage() {
           <p className="org-page-description">Общий список и группы сотрудников</p>
         </div>
         <div className="org-header-links">
-          {administrator && (
+          {(administrator || selected?.canManage) && (
             <Button onClick={() => setInviting(true)}>
               <Plus size={17} aria-hidden="true" />
               Пригласить сотрудника
@@ -575,14 +580,14 @@ export function OrganizationPage() {
                     )
                   }
                 >
-                  <Users size={16} />
+                  <FolderPlus size={16} />
                   Создать группу
                 </DropdownMenuItem>
                 {selected
-                  ? administrator && (
+                  ? (administrator || selected.canManage) && (
                       <DropdownMenuItem onSelect={openAdd}>
-                        <Users size={16} />
-                        Добавить из списка
+                        <UserPlus size={16} />
+                        Добавить сотрудника
                       </DropdownMenuItem>
                     )
                   : administrator && (
@@ -910,6 +915,21 @@ export function OrganizationPage() {
                                       </IconButton>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
+                                      {administrator &&
+                                        (person.role === "LECTURER" ||
+                                          person.role === "ASSISTANT") && (
+                                          <DropdownMenuItem
+                                            onSelect={() =>
+                                              openFromMenu(
+                                                personMenuTriggers.current.get(person.id) ?? null,
+                                                () => setSystemRolePerson(person)
+                                              )
+                                            }
+                                          >
+                                            <UserCog size={16} />
+                                            Изменить системную роль
+                                          </DropdownMenuItem>
+                                        )}
                                       <DropdownMenuItem
                                         className="text-destructive"
                                         onSelect={() =>
@@ -974,7 +994,9 @@ export function OrganizationPage() {
           action={memberDialog.action}
           onCloseAutoFocus={restoreMenuFocus}
           member={memberDialog.member}
-          people={allPeople.data ?? []}
+          people={(allPeople.data ?? []).filter(
+            (person) => administrator || (person.role !== "ADMIN" && person.unitRole !== "MANAGER")
+          )}
           units={units}
           targetUnitId={selected?.id ?? null}
           administrator={administrator}
@@ -997,8 +1019,23 @@ export function OrganizationPage() {
           }}
         />
       )}
+      {systemRolePerson && (
+        <OrganizationSystemRoleDialog
+          member={systemRolePerson}
+          onCloseAutoFocus={restoreMenuFocus}
+          onClose={() => setSystemRolePerson(null)}
+          onSaved={() => {
+            setSystemRolePerson(null);
+            refreshOrganization();
+          }}
+        />
+      )}
       {inviting && (
-        <OrganizationInvitationDialog unit={selected ?? null} onClose={() => setInviting(false)} />
+        <OrganizationInvitationDialog
+          unit={selected ?? null}
+          administrator={administrator}
+          onClose={() => setInviting(false)}
+        />
       )}
 
       <AlertDialog

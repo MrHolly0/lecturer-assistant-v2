@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Check, Copy, Search } from "lucide-react";
 import {
   assignOrganizationMember,
+  createOrganizationInvitation,
   getOrganizationMembers,
   moveOrganizationMembers,
   saveOrganizationUnit,
@@ -13,7 +14,7 @@ import {
   type UnitIcon,
   type UnitRole
 } from "../app/api/organization-api";
-import { createAdminInvitation } from "../app/api/admin-api";
+import { createAdminInvitation, updateUserRole } from "../app/api/admin-api";
 import { PaginationBar } from "./ListControls";
 import { Button } from "../shared/ui/button";
 import { pluralizeRu } from "../shared/lib/plural";
@@ -937,25 +938,26 @@ export function OrganizationBulkMemberMoveDialog({
 
 export function OrganizationInvitationDialog({
   unit,
+  administrator,
   onClose
 }: {
   unit: OrganizationUnit | null;
+  administrator: boolean;
   onClose: () => void;
 }) {
   const [role, setRole] = useState<"LECTURER" | "ASSISTANT" | "MANAGER">("LECTURER");
+  const [teachingRole, setTeachingRole] = useState<"LECTURER" | "ASSISTANT">("LECTURER");
   const [created, setCreated] = useState<{ code: string; expiresAt: string } | null>(null);
   const mutation = useMutation({
-    mutationFn: () =>
-      createAdminInvitation({
-        role: role === "MANAGER" ? "LECTURER" : role,
-        ttlHours: 168,
-        ...(unit
-          ? {
-              organizationUnitId: unit.id,
-              organizationUnitRole: role === "MANAGER" ? "MANAGER" : "MEMBER"
-            }
-          : {})
-      }),
+    mutationFn: () => {
+      const request = { role: role === "MANAGER" ? teachingRole : role, ttlHours: 168 };
+      return unit
+        ? createOrganizationInvitation(unit.id, {
+            ...request,
+            unitRole: role === "MANAGER" ? "MANAGER" : "MEMBER"
+          })
+        : createAdminInvitation(request);
+    },
     onSuccess: (invitation) => setCreated(invitation),
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось создать приглашение"))
   });
@@ -1044,14 +1046,41 @@ export function OrganizationInvitationDialog({
               <SelectContent>
                 <SelectItem value="LECTURER">Преподаватель</SelectItem>
                 <SelectItem value="ASSISTANT">Ассистент</SelectItem>
-                {unit && <SelectItem value="MANAGER">Администратор группы</SelectItem>}
+                {unit && administrator && (
+                  <SelectItem value="MANAGER">Администратор группы</SelectItem>
+                )}
               </SelectContent>
             </Select>
           </label>
+          {role === "MANAGER" && (
+            <label className="field">
+              <span>Системная роль</span>
+              <Select
+                value={teachingRole}
+                onValueChange={(value) => setTeachingRole(value as "LECTURER" | "ASSISTANT")}
+              >
+                <SelectTrigger
+                  className="org-dialog-select"
+                  aria-label="Системная роль администратора группы"
+                  disabled={mutation.isPending}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="LECTURER">Преподаватель</SelectItem>
+                  <SelectItem value="ASSISTANT">Ассистент</SelectItem>
+                </SelectContent>
+              </Select>
+              <small>
+                Преподаватель может создавать курсы; ассистент работает с курсами, куда его
+                добавили.
+              </small>
+            </label>
+          )}
           <p className="org-dialog-context" id="org-invite-role-description" aria-live="polite">
             {unit
               ? role === "MANAGER"
-                ? `Сможет управлять группой «${unit.name}» и вложенными группами, а также вести свои курсы.`
+                ? `Сможет управлять группой «${unit.name}» и вложенными группами. Работа с курсами зависит от выбранной системной роли.`
                 : "В группе новый сотрудник получит доступ «Сотрудник»."
               : "Новый сотрудник появится в общем списке без группы."}
           </p>
@@ -1117,4 +1146,67 @@ function getAncestorUnitIds(parentId: string | null, units: OrganizationUnit[]) 
 function groupParentPath(unit: OrganizationUnit, units: OrganizationUnit[]) {
   const parent = units.find((candidate) => candidate.id === unit.parentId);
   return parent ? groupPath(parent, units) : "Группа верхнего уровня";
+}
+
+export function OrganizationSystemRoleDialog({
+  member,
+  onClose,
+  onSaved,
+  onCloseAutoFocus
+}: {
+  member: OrganizationMember;
+  onClose: () => void;
+  onSaved: () => void;
+  onCloseAutoFocus: (event: Event) => void;
+}) {
+  const [role, setRole] = useState<"LECTURER" | "ASSISTANT">(
+    member.role === "ASSISTANT" ? "ASSISTANT" : "LECTURER"
+  );
+  const mutation = useMutation({
+    mutationFn: () => updateUserRole(member.id, { role }),
+    onSuccess: () => {
+      toast.success("Системная роль обновлена");
+      onSaved();
+    },
+    onError: (error) => toast.error(userErrorMessage(error, "Не удалось изменить системную роль"))
+  });
+  return (
+    <DialogShell
+      title="Системная роль"
+      description={member.displayName}
+      onClose={() => !mutation.isPending && onClose()}
+      onCloseAutoFocus={onCloseAutoFocus}
+      className="org-dialog--compact"
+      footer={
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+            Отмена
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || role === member.role}
+          >
+            {mutation.isPending ? "Сохранение…" : "Сохранить"}
+          </Button>
+        </DialogFooter>
+      }
+    >
+      <label className="field">
+        <span>Роль в работе с курсами</span>
+        <Select value={role} onValueChange={(value) => setRole(value as "LECTURER" | "ASSISTANT")}>
+          <SelectTrigger aria-label="Системная роль сотрудника" disabled={mutation.isPending}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="LECTURER">Преподаватель</SelectItem>
+            <SelectItem value="ASSISTANT">Ассистент</SelectItem>
+          </SelectContent>
+        </Select>
+      </label>
+      <p className="org-dialog-context">
+        Преподаватель может создавать курсы; ассистент работает с курсами, куда его добавили.
+        {member.unitRole === "MANAGER" && " Права администратора группы сохранятся."}
+      </p>
+    </DialogShell>
+  );
 }
