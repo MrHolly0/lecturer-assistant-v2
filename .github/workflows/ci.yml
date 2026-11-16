@@ -121,5 +121,10 @@ jobs:
       - name: Build services image
         run: docker build -f services/Dockerfile -t lecturer-assistant-services:ci .
 
+      - name: Verify single-VM container package
+        run: |
+          docker build -f deploy/appliance/Dockerfile -t lecturer-appliance-controller:ci .
+          APPLIANCE_STATE="$RUNNER_TEMP/appliance-state" APPLIANCE_BACKUPS="$RUNNER_TEMP/appliance-backups" CONTROLLER_IMAGE=lecturer-appliance-controller:ci docker compose -f deploy/appliance/compose.yml config --quiet
+
       - name: Verify and build SFU image
         run: docker build -f services/Dockerfile.sfu -t lecturer-assistant-sfu:ci .

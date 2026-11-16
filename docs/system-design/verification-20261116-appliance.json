@@ -82,5 +82,15 @@
     "Video tickets checked; mass browser video traffic not qualified",
     "Release publication workflow prepared, not executed against a public channel",
     "Institution provides its own MAX bot, TLS domain, registry access and independent backups"
-  ]
+  ],
+  "preflight": {
+    "passed": true,
+    "signedImmutableImagesChecked": 7,
+    "maintenanceMutations": false
+  },
+  "rabbitPersistentRestart": {
+    "passed": true,
+    "cookieMode": "0600",
+    "podRecreated": true
+  }
 }
