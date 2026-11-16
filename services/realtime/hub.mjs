@@ -10,15 +10,20 @@ const lease = (grant, now) => Number.isFinite(grant.permissionDeadline)
 export class RealtimeHub {
   constructor(rpc, { maxConnections = 6000, maxRooms = 1024, concurrency = 16,
     grantConcurrency = 8, maxFrameBytes = 16384, maxBufferBytes = 32768,
-    permissionRecoveryMs = 30000, now = monotonicEpoch } = {}) {
+    permissionRecoveryMs = 30000, maxPublicConnections = Math.max(1, Math.floor(maxConnections / 10)),
+    maxPublicPerRoom = 100, maxPerParticipant = 3, presenterReserve = Math.min(256, Math.floor(maxConnections / 10)), now = monotonicEpoch } = {}) {
     Object.assign(this, { rpc, maxConnections, maxRooms, concurrency, grantConcurrency,
       maxFrameBytes, maxBufferBytes, permissionRecoveryMs, now });
     this.clients = new Set(); this.rooms = new Map(); this.sessions = new Map();
     this.inFlight = 0; this.pendingGrants = 0; this.cursor = 0; this.closed = false;
     this.accepting = true; this.draining = false;
     this.studentCount = 0; this.pendingStudents = 0;
+    this.maxPublicConnections = maxPublicConnections; this.maxPublicPerRoom = maxPublicPerRoom;
+    this.maxPerParticipant = maxPerParticipant; this.presenterReserve = presenterReserve;
+    this.pendingPublic = new Map(); this.pendingPublicCount = 0; this.publicCount = 0;
+    this.publicRooms = new Map(); this.participantConnections = new Map();
     this.stats = { snapshots: 0, coalesced: 0, slowConsumers: 0, revoked: 0, rpcErrors: 0,
-      invalidations: 0, matchedInvalidations: 0, expiredLeases: 0, denied: 0, staleGrants: 0,
+      fallbacks: 0, invalidations: 0, matchedInvalidations: 0, expiredLeases: 0, denied: 0, staleGrants: 0,
       rpcMaxMs: 0, rpcTotalMs: 0, rpcCalls: 0,
       tickMaxGapMs: 0, suspended: 0, resumed: 0, recoveryTimeouts: 0, drained: 0 };
     this.lastTick = this.now();
@@ -50,19 +55,29 @@ export class RealtimeHub {
     return room;
   }
 
-  async addStudent(code, token, response, isPublic = false) {
-    this.admit(); this.pendingGrants++; this.pendingStudents++;
+  async addStudent(code, token, response, isPublic = false, compact = false) {
+    this.admit();
+    if (this.studentCount + this.pendingStudents >= this.maxConnections - this.presenterReserve ||
+        (isPublic && (this.publicCount + this.pendingPublicCount >= this.maxPublicConnections ||
+          (this.publicRooms.get(code) ?? 0) +
+            (this.pendingPublic.get(code) ?? 0) >= this.maxPublicPerRoom)))
+      throw Object.assign(new Error('Audience admission full'), { status: 503 });
+    if (isPublic) { this.pendingPublicCount++; this.pendingPublic.set(code, (this.pendingPublic.get(code) ?? 0) + 1); }
+    this.pendingGrants++; this.pendingStudents++;
     let client;
     try {
       const grant = isPublic
-        ? { snapshot: await this.rpc('/internal/v1/realtime/public-snapshot', { joinCode: code }) }
-        : await this.rpc('/internal/v1/realtime/student-grant', { joinCode: code, participantToken: token });
+        ? { snapshot: await this.rpc('/internal/v1/realtime/public-snapshot', { joinCode: code, compact }) }
+        : await this.rpc('/internal/v1/realtime/student-grant', { joinCode: code, participantToken: token, compact });
       if (response.destroyed || this.closed) return;
       if (!this.accepting) throw Object.assign(new Error('Gateway draining'), { status: 503 });
       const expiresAt = isPublic ? Infinity : lease(grant, this.now());
       if (expiresAt <= this.now()) throw Object.assign(new Error('Expired grant'), { status: 503 });
+      const participantKey = isPublic ? null : `${grant.snapshot.sessionId}:${grant.personId ?? digest(token)}`;
+      if (participantKey && (this.participantConnections.get(participantKey) ?? 0) >= this.maxPerParticipant)
+        throw Object.assign(new Error('Participant connection limit'), { status: 429 });
       const room = this.room(code, grant.snapshot.sessionId);
-      client = { id: randomUUID(), kind: 'sse', response, room, isPublic,
+      client = { id: randomUUID(), kind: 'sse', response, room, isPublic, participantKey, compact,
         personId: grant.personId, authVersion: grant.authVersion,
         expiresAt,
         lastHeartbeat: this.now(), lastHash: '', pending: null, blocked: false };
@@ -79,9 +94,18 @@ export class RealtimeHub {
         if (frame && this.valid(client)) this.write(client, frame);
       });
       this.clients.add(client); room.clients.add(client); this.studentCount++;
+      if (isPublic) { this.publicCount++; this.publicRooms.set(code, (this.publicRooms.get(code) ?? 0) + 1); }
+      else this.participantConnections.set(participantKey, (this.participantConnections.get(participantKey) ?? 0) + 1);
       this.snapshot(client, grant.snapshot);
       return client;
-    } finally { this.pendingGrants--; this.pendingStudents--; }
+    } finally {
+      this.pendingGrants--; this.pendingStudents--;
+      if (isPublic) {
+        this.pendingPublicCount--;
+        const count = (this.pendingPublic.get(code) ?? 1) - 1;
+        if (count) this.pendingPublic.set(code, count); else this.pendingPublic.delete(code);
+      }
+    }
   }
 
   async addPresenter(sessionId, accessToken, socket) {
@@ -113,7 +137,14 @@ export class RealtimeHub {
   remove(client) {
     if (!client || !this.clients.delete(client)) return;
     if (client.suspended) this.stats.suspended--;
-    if (client.kind === 'sse') this.studentCount--;
+    if (client.kind === 'sse') {
+      this.studentCount--;
+      const counts = client.isPublic ? this.publicRooms : this.participantConnections;
+      const key = client.isPublic ? client.room.code : client.participantKey;
+      const count = (counts.get(key) ?? 1) - 1;
+      if (count) counts.set(key, count); else counts.delete(key);
+      if (client.isPublic) this.publicCount--;
+    }
     client.pending = null;
     client.room.clients.delete(client);
     if (!client.room.clients.size) {
@@ -182,18 +213,26 @@ export class RealtimeHub {
   snapshot(client, snapshot) {
     if (snapshot.gatewayInvalidation) { this.invalidateSnapshot(client, snapshot); return; }
     const text = JSON.stringify(snapshot), hash = digest(text);
+    this.encodedSnapshot(client,text,snapshot,hash);
+  }
+
+  encodedSnapshot(client,text,snapshot,hash) {
     if (client.lastHash === hash) return;
     client.lastHash = hash;
     const frame = Buffer.byteLength(text) <= this.maxFrameBytes
       ? `event: snapshot\ndata: ${text}\n\n`
       : `event: invalidate\ndata: ${JSON.stringify({ sessionId: snapshot.sessionId, version: snapshot.version })}\n\n`;
+    if(Buffer.byteLength(text)>this.maxFrameBytes)this.stats.fallbacks++;
     this.write(client, frame); this.stats.snapshots++;
     if (terminal(snapshot) && Buffer.byteLength(text) <= this.maxFrameBytes && !client.blocked)
       this.closeClient(client);
   }
 
   invalidateSnapshot(client, snapshot) {
-    client.lastHash = '';
+    const hash = digest(JSON.stringify(snapshot));
+    if (client.lastHash === hash) return;
+    client.lastHash = hash;
+    this.stats.fallbacks++;
     this.write(client, `event: invalidate\ndata: ${JSON.stringify({ sessionId: snapshot.sessionId,
       version: snapshot.version })}\n\n`);
   }
@@ -276,32 +315,41 @@ export class RealtimeHub {
     const eventType = room.eventType;
     room.dirty = false;
     const students = audience.filter(c => c.kind === 'sse' && !c.isPublic);
-    const subjects = [...new Map(students.map(c => [c.personId, {
-      personId: c.personId, authVersion: c.authVersion
-    }])).values()];
-    // Cap response memory as well as subject count: private overlays can be up to 8 KiB each.
-    for (let i = 0; i < subjects.length; i += 128) {
-      const chunk = subjects.slice(i, i + 128);
-      const response = await this.rpc('/internal/v1/realtime/student-batch', {
-        joinCode: room.code, subjects: chunk, includeSnapshots
-      });
-      const allowed = new Set(response.allowed), chunkIds = new Set(chunk.map(s => s.personId));
-      for (const client of students.filter(c => chunkIds.has(c.personId))) {
-        if (!this.clients.has(client)) continue;
-        if (!allowed.has(client.personId)) { this.stats.denied++; this.closeClient(client, true); continue; }
-        if (!this.renew(client, response)) continue;
-        if (includeSnapshots && response.shared) {
-          if (response.shared.gatewayInvalidation || response.oversized.includes(client.personId))
-            this.invalidateSnapshot(client, response.shared);
-          else if (response.overlays[client.personId])
-            this.snapshot(client, { ...response.shared, ...response.overlays[client.personId] });
+    for(const compact of [false,true]) {
+      const selected=students.filter(c=>Boolean(c.compact)===compact);
+      const subjects=[...new Map(selected.map(c=>[c.personId,{personId:c.personId,authVersion:c.authVersion}])).values()];
+      for(let i=0;i<subjects.length;i+=128) {
+        const chunk=subjects.slice(i,i+128);
+        const response=await this.rpc('/internal/v1/realtime/student-batch',{joinCode:room.code,subjects:chunk,includeSnapshots,compact});
+        const allowed=new Set(response.allowed),chunkIds=new Set(chunk.map(s=>s.personId));
+        const common=response.splitSnapshot ? JSON.stringify(response.shared) : null;
+        const encoded=new Map();
+        for(const client of selected.filter(c=>chunkIds.has(c.personId))) {
+          if(!this.clients.has(client))continue;
+          if(!allowed.has(client.personId)){this.stats.denied++;this.closeClient(client,true);continue;}
+          if(!this.renew(client,response))continue;
+          if(includeSnapshots && response.shared) {
+            const overlay=response.overlays[client.personId];
+            if(response.shared.gatewayInvalidation || response.oversized.includes(client.personId))
+              this.invalidateSnapshot(client,{...response.shared,...overlay});
+            else if(overlay && common) {
+              const privateText=JSON.stringify(overlay);
+              let payload=encoded.get(privateText);
+              if(!payload) {
+                const text=privateText==='{}' ? common : common.slice(0,-1)+','+privateText.slice(1);
+                payload={text,hash:digest(text)};encoded.set(privateText,payload);
+              }
+              this.encodedSnapshot(client,payload.text,response.shared,payload.hash);
+            } else if(overlay)this.snapshot(client,{...response.shared,...overlay});
+          }
         }
       }
-    }
-    const publicClients = audience.filter(c => c.kind === 'sse' && c.isPublic);
-    if (includeSnapshots && publicClients.length) {
-      const snapshot = await this.rpc('/internal/v1/realtime/public-snapshot', { joinCode: room.code });
-      for (const client of publicClients) this.snapshot(client, snapshot);
+      const publicClients=audience.filter(c=>c.kind==='sse' && c.isPublic && Boolean(c.compact)===compact);
+      if(includeSnapshots && publicClients.length) {
+        const snapshot=await this.rpc('/internal/v1/realtime/public-snapshot',{joinCode:room.code,compact});
+        if(snapshot.gatewayInvalidation)for(const client of publicClients)this.invalidateSnapshot(client,snapshot);
+        else {const text=JSON.stringify(snapshot),hash=digest(text);for(const client of publicClients)this.encodedSnapshot(client,text,snapshot,hash);}
+      }
     }
     const presenters = audience.filter(c => c.kind === 'ws');
     for (const client of presenters) {

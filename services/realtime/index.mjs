@@ -21,7 +21,7 @@ const drainWindowMs = integer(process.env.DRAIN_WINDOW_MS, 20000, 0, 30000);
 const diagnostics = runtimeDiagnostics();
 const health = healthHandler(() => authorityReady && brokerConnected && hub.accepting && !hub.closed, () => ({
   ...diagnostics.snapshot(),
-  realtime_connections: hub.clients.size, realtime_rooms: hub.rooms.size,
+  realtime_connections: hub.clients.size - hub.publicCount, realtime_public_connections: hub.publicCount, realtime_rooms: hub.rooms.size,
   realtime_rpc_in_flight: hub.inFlight, realtime_snapshots_total: hub.stats.snapshots,
   realtime_pending_grants: hub.pendingGrants,
   realtime_draining: Number(hub.draining), realtime_drained_connections_total: hub.stats.drained,
@@ -34,6 +34,7 @@ const health = healthHandler(() => authorityReady && brokerConnected && hub.acce
   realtime_recovery_timeouts_total: hub.stats.recoveryTimeouts,
   realtime_tick_max_gap_seconds: hub.stats.tickMaxGapMs / 1000,
   realtime_clock_offset_seconds: (Date.now() - hub.now()) / 1000,
+  realtime_http_fallbacks_total: hub.stats.fallbacks,
   realtime_invalidations_total: hub.stats.invalidations,
   realtime_matched_invalidations_total: hub.stats.matchedInvalidations
 }));
@@ -49,9 +50,9 @@ const server = createServer(async (request, response) => {
     if (hub.studentCount + hub.pendingStudents + rawSockets >= hub.maxConnections)
       throw Object.assign(new Error('Admission full'), { status: 503 });
     request.socket.setTimeout(0); response.on('error', () => {});
-    await hub.addStudent(match[1], token, response, Boolean(match[2]));
+    await hub.addStudent(match[1], token, response, Boolean(match[2]), url.searchParams.get("format")==="compact-v1");
   } catch (error) {
-    if (!response.headersSent) response.writeHead([401, 403, 404].includes(error.status) ? error.status : 503,
+    if (!response.headersSent) response.writeHead([401, 403, 404, 429].includes(error.status) ? error.status : 503,
       { 'Retry-After': '2', 'Cache-Control': 'no-store' }).end();
     else response.end();
   }
@@ -59,11 +60,11 @@ const server = createServer(async (request, response) => {
 server.requestTimeout = 10000; server.headersTimeout = 10000;
 const sockets = new WebSocketServer({ noServer: true, maxPayload: 65536, clientTracking: false });
 server.on('upgrade', (request, socket, head) => {
-  const match = request.url.match(/^\/ws\/session\/([0-9a-f-]{36})$/i);
+  const match = request.url.match(/^\/ws\/session\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
   if (!match || !originAllowed(request)) {
     socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); return;
   }
-  if (!hub.accepting || hub.studentCount + hub.pendingStudents + rawSockets >= hub.maxConnections) {
+  if (!hub.accepting || rawSockets >= 256 || hub.studentCount + hub.pendingStudents + rawSockets >= hub.maxConnections) {
     socket.end('HTTP/1.1 503 Service Unavailable\r\nRetry-After: 2\r\nConnection: close\r\n\r\n'); return;
   }
   sockets.handleUpgrade(request, socket, head, ws => {

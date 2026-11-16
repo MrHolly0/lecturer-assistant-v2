@@ -1201,6 +1201,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/decks/{deckId}/slides/{slideIndex}/text": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read extracted slide text separately from live updates. */
+    get: operations["getSlideText"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/decks/{deckId}/slides/{slideIndex}/notes": {
     parameters: {
       query?: never;
@@ -1737,9 +1754,26 @@ export interface paths {
     };
     /**
      * Read student session snapshot by join code.
-     * @description Personal fields (myVote and AUTHOR question answers) are filled when the request is identified by a Bearer JWT or by the X-Participant-Token header. Without identification only SESSION question answers are returned.
+     * @description Personal fields (myVote and AUTHOR question answers) are filled when the request is identified by a Bearer JWT or by the X-Participant-Token header. Without identification only SESSION question answers are returned. History is limited to the latest 20 entries per list; use question-history to load older pages.
      */
     get: operations["getStudentSession"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/question-history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read a bounded page of public answers and the viewer's own questions. */
+    get: operations["getStudentQuestionHistory"];
     put?: never;
     post?: never;
     delete?: never;
@@ -4365,6 +4399,11 @@ export interface components {
     };
     /** @enum {string} */
     QuestionAnswerVisibility: "AUTHOR" | "SESSION";
+    StudentQuestionHistory: {
+      myQuestions: components["schemas"]["StudentQuestion"][];
+      questionAnswers: components["schemas"]["StudentQuestionAnswer"][];
+      hasMore: boolean;
+    };
     /** @description Student-safe answer without the question author's identity. */
     StudentQuestionAnswer: {
       /** @description Slide of the original question, preserved when the teacher answers after navigation. */
@@ -6938,6 +6977,8 @@ export interface operations {
       query?: {
         /** @description Short-lived HMAC token scoped to the course and deck. */
         t?: string;
+        /** @description Immutable slide ID; a stale ordering is rejected instead of serving another slide. */
+        v?: string;
       };
       header?: never;
       path: {
@@ -6952,12 +6993,39 @@ export interface operations {
       /** @description Slide image. */
       200: {
         headers: {
-          /** @description Long-lived immutable cache header. */
+          /** @description Private cache with authorization and expiry revalidation. */
           "Cache-Control"?: string;
           [name: string]: unknown;
         };
         content: {
           "image/png": string;
+        };
+      };
+    };
+  };
+  getSlideText: {
+    parameters: {
+      query?: {
+        t?: string;
+        v?: string;
+      };
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        deckId: components["parameters"]["DeckId"];
+        slideIndex: components["parameters"]["SlideIndex"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Extracted text with the same authorization and immutable slide identity checks as the image. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/plain": string;
         };
       };
     };
@@ -8036,7 +8104,10 @@ export interface operations {
   };
   getStudentSession: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Legacy extracted slide text; current live clients use false and request text separately. */
+        includeText?: boolean;
+      };
       header?: {
         "X-Participant-Token"?: string;
       };
@@ -8054,6 +8125,32 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["StudentSessionSnapshot"];
+        };
+      };
+    };
+  };
+  getStudentQuestionHistory: {
+    parameters: {
+      query?: {
+        offset?: number;
+      };
+      header?: {
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Up to 20 entries per list. AUTHOR answers are visible only to their author. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentQuestionHistory"];
         };
       };
     };

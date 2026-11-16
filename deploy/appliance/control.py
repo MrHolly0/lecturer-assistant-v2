@@ -17,7 +17,7 @@ import tempfile
 import time
 import urllib.request
 
-from render import NS, IMAGE_KEYS, site_renderer, validate, app, data, secrets as secret_items, scaling, monitoring
+from render import NS, IMAGE_KEYS, site_renderer, validate, app, data, secrets as secret_items, scaling, monitoring, resource_budget
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE = Path(os.environ.get('APPLIANCE_STATE', '/state'))
@@ -106,7 +106,7 @@ def init():
         raise RuntimeError('Already initialized; refusing to replace installation credentials')
     keys = site_renderer.RUNTIME_KEYS + ['PG_SUPERUSER_PASSWORD', 'ANALYTICS_SUPERUSER_PASSWORD',
         'DB_PASSWORD', 'ANALYTICS_DB_PASSWORD', 'CONTENT_DB_PASSWORD', 'CONTENT_SCALER_PASSWORD',
-        'ANALYTICS_SCALER_PASSWORD', 'RABBITMQ_PASSWORD', 'REDIS_PASSWORD', 'INSTALLATION_OPERATOR_KEY']
+        'ANALYTICS_SCALER_PASSWORD', 'RABBITMQ_PASSWORD', 'REDIS_PASSWORD', 'INSTALLATION_OPERATOR_KEY', 'CONVERTER_API_KEY', 'RABBIT_PUBLISHER_PASSWORD','RABBIT_ANALYTICS_PASSWORD','RABBIT_REALTIME_PASSWORD']
     values = {key: secrets.token_hex(32) for key in keys}
     values['MAX_WEBHOOK_PATH'] = '/webhook/max/'+secrets.token_hex(20)
     token_file = STATE/'max-token'
@@ -123,6 +123,7 @@ def init():
     atomic(STATE/'registries.yaml', json.dumps(config.get('registries', {})))
     caddy = f'{domain} {{\n  reverse_proxy k3s:30080\n  encode zstd gzip\n}}\n'
     atomic(STATE/'Caddyfile', caddy)
+    atomic(STATE/'runtime.env', f'CLUSTER_MEMORY={config.get("clusterMemoryMi",13312)}m\nCLUSTER_CPUS={config.get("clusterCpus",8)}\n')
     print('Initialized. Credentials are private in the state directory; no administrator exists yet.')
 
 
@@ -170,10 +171,13 @@ def bootstrap():
     wait('deployment/analytics')
     sql('lecturer', (ROOT/'deploy/scalable/ha/scaling-content.sql').read_text())
     sql('analytics', (ROOT/'deploy/scalable/ha/scaling-analytics.sql').read_text())
-    apply(monitoring())
+    apply(monitoring(config))
     # Official, version-pinned controller; CRDs use server-side apply (large schemas).
     manifest = str(ROOT/'keda.yaml')
     kc('apply', '--server-side', '--field-manager=lecturer-bootstrap', '-f', manifest, timeout=300)
+    for name in ['keda-operator','keda-metrics-apiserver','keda-admission']:
+        kc('-n','keda','set','resources','deployment/'+name,'--containers=*',
+           '--requests=cpu=50m,memory=64Mi','--limits=cpu=500m,memory=256Mi')
     for name in ['keda-operator', 'keda-metrics-apiserver', 'keda-admission']:
         wait('deployment/'+name, namespace='keda')
     apply(scaling(config, images))
@@ -222,14 +226,26 @@ def stream_exec(args, path, restore=False):
         raise RuntimeError('Backup/restore stream failed: '+result.stderr.decode(errors='replace')[-1000:])
 
 
-def backup():
+def raw_backup(destination):
     os.umask(0o077)
-    BACKUPS.mkdir(mode=0o700, parents=True, exist_ok=True)
+    destination.mkdir(mode=0o700, parents=True, exist_ok=True)
     stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+secrets.token_hex(4)
-    temporary, final = BACKUPS/('.partial-'+stamp), BACKUPS/stamp
+    temporary, final = destination/('.partial-'+stamp), destination/stamp
     temporary.mkdir(mode=0o700)
     try:
         with blob_lock() as held:
+            materials=int(kc('-n',NS,'exec','deployment/core','--','du','-sb','/data/blobs').decode().split()[0])
+            databases=sum(int(sql(db,'select pg_database_size(current_database())')) for db in ['lecturer','analytics'])
+            required=int((materials+databases+128*1024**2)*1.3)+2*1024**3
+            if shutil.disk_usage(destination).free < required:
+                raise RuntimeError('Not enough free staging space for a backup and the disk reserve')
+            # Capture the inbox first: every DONE event must precede the later SQL snapshot.
+            # Pending/running events can replay after recovery; external sends are at least once.
+            if kc('-n',NS,'get','deployment/max-adapter','--ignore-not-found','-o','name').strip():
+                exists=kc('-n',NS,'exec','deployment/max-adapter','--','sh','-c',
+                          'if test -f /data/max-inbox/inbox.sqlite; then echo yes; fi').strip()
+                if exists:
+                    stream_exec(['deployment/max-adapter','--','node','/app/inbox-snapshot.mjs'],temporary/'max-inbox.sqlite')
             stream_exec(['app-db-0', '--', 'pg_dump', '-U', 'postgres', '-Fc', '-d', 'lecturer'], temporary/'lecturer.dump')
             stream_exec(['deployment/core', '--', 'tar', '-czf', '-', '-C', '/data', 'blobs'], temporary/'blobs.tar.gz')
             if not held(): raise RuntimeError('Backup lock lost; refusing inconsistent snapshot')
@@ -245,9 +261,15 @@ def backup():
         checksums = {p.name: checksum(p) for p in temporary.iterdir()}
         (temporary/'checksums.json').write_text(json.dumps(checksums))
         temporary.rename(final)
-        print('Backup committed: '+str(final), flush=True)
+        return final
     finally:
         if temporary.exists(): shutil.rmtree(temporary)
+
+
+def backup():
+    from backup_schedule import publish
+    final=publish(raw_backup,STATE,BACKUPS)
+    print('Encrypted backup committed: '+str(final),flush=True)
 
 
 def restore(source):
@@ -255,7 +277,7 @@ def restore(source):
     source = Path(source)
     sums = json.loads((source/'checksums.json').read_text())
     required = {'lecturer.dump', 'analytics.dump', 'blobs.tar.gz', 'site.json', 'images.json', 'secrets.json', 'database-version'}
-    if set(sums) != required:
+    if not required.issubset(sums) or set(sums)-required-{'max-inbox.sqlite'}:
         raise RuntimeError('Incomplete backup manifest')
     for name, digest in sums.items():
         if checksum(source/name) != digest:
@@ -290,16 +312,24 @@ def restore(source):
             INSERT INTO installation.audit(job_id,stage,summary)
               SELECT id,'RESTORED','Старое задание ограждено после восстановления' FROM fenced;
             UPDATE installation.state SET operator_seen_at=null;""")
+    has_inbox=(source/'max-inbox.sqlite').is_file()
+    if has_inbox:
+        apply([{'apiVersion':'v1','kind':'PersistentVolumeClaim','metadata':{'name':'max-inbox','namespace':NS},
+                'spec':{'accessModes':['ReadWriteOnce'],'resources':{'requests':{'storage':'1Gi'}}}}])
     # Mount the actual blob PVC in a short-lived utility pod, without starting the API.
     apply([{'apiVersion':'v1','kind':'Pod','metadata':{'name':'blob-restore','namespace':NS},'spec':{
         'restartPolicy':'Never', 'automountServiceAccountToken':False,
         'containers':[{'name':'restore','image':'postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139','command':['sleep','900'],
                        'resources':{'requests':{'cpu':'10m','memory':'32Mi'},'limits':{'cpu':'100m','memory':'128Mi'}},
-                       'volumeMounts':[{'name':'blobs','mountPath':'/data/blobs'}]}],
-        'volumes':[{'name':'blobs','persistentVolumeClaim':{'claimName':'lecturer-blobs'}}]}}])
+                       'volumeMounts':[{'name':'blobs','mountPath':'/data/blobs'}]+([{'name':'inbox','mountPath':'/data/max-inbox'}] if has_inbox else [])}],
+        'volumes':[{'name':'blobs','persistentVolumeClaim':{'claimName':'lecturer-blobs'}}]+([{'name':'inbox','persistentVolumeClaim':{'claimName':'max-inbox'}}] if has_inbox else [])}}])
     kc('-n', NS, 'wait', '--for=condition=Ready', 'pod/blob-restore', '--timeout=120s')
     try:
         stream_exec(['blob-restore', '--', 'tar', '-xzf', '-', '-C', '/data'], source/'blobs.tar.gz', restore=True)
+        if has_inbox:
+            stream_exec(['blob-restore','--','sh','-ec',
+                         'cat > /data/max-inbox/inbox.sqlite; chown 1000:1000 /data/max-inbox/inbox.sqlite; chmod 600 /data/max-inbox/inbox.sqlite'],
+                        source/'max-inbox.sqlite',restore=True)
     finally:
         kc('-n', NS, 'delete', 'pod/blob-restore', '--wait=true')
     print('Data restored; start the controller to resume the application.')
@@ -338,13 +368,25 @@ def reconcile():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['init','reconcile','backup','restore','status','admin'])
+    parser.add_argument('command', choices=['init','reconcile','backup','backup-loop','restore','status','admin'])
     parser.add_argument('--backup')
+    parser.add_argument('--recovery-key')
     args = parser.parse_args()
     if args.command == 'init': init(); return
     connect()
-    if args.command == 'backup': backup()
-    elif args.command == 'restore': restore(args.backup)
+    if args.command == 'backup-loop':
+        from backup_schedule import loop
+        from operational_metrics import collect
+        loop(raw_backup,STATE,BACKUPS,lambda:collect(kc,sql))
+    elif args.command == 'backup': backup()
+    elif args.command == 'restore':
+        if args.backup and args.backup.endswith('.cms'):
+            if not args.recovery_key: raise RuntimeError('Encrypted recovery requires an offline recovery key')
+            from backup_schedule import decrypt
+            with tempfile.TemporaryDirectory(prefix='recovery-',dir=STATE) as stage:
+                directory=decrypt(args.backup,Path(stage)/'data',args.recovery_key,STATE/'backup-recipient.pem')
+                restore(directory)
+        else: restore(args.backup)
     elif args.command == 'status':
         sys.stdout.buffer.write(kc('-n', NS, 'get', 'pods,hpa,scaledobjects,pvc'))
     elif args.command == 'admin':

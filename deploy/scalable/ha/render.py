@@ -56,6 +56,16 @@ def render(config):
         if mount:
             container['volumeMounts'] = [{'name': 'blobs', 'mountPath': '/data/blobs'}]
             spec['volumes'] = [{'name': 'blobs', 'persistentVolumeClaim': {'claimName': 'lecturer-blobs'}}]
+        if name in ['core', 'content-worker', 'converter']:
+            spec.setdefault('volumes', []).append({'name': 'conversion', 'persistentVolumeClaim': {'claimName': 'conversion-scratch'}})
+            container.setdefault('volumeMounts', []).append({'name': 'conversion', 'mountPath': '/data/conversion'})
+        if name == 'converter':
+            spec['volumes'] = [v for v in spec['volumes'] if v['name'] != 'blobs']
+            container['volumeMounts'] = [v for v in container['volumeMounts'] if v['name'] != 'blobs']
+            spec['volumes'].append({'name': 'temporary', 'emptyDir': {'medium': 'Memory', 'sizeLimit': '256Mi'}})
+            container['volumeMounts'].append({'name': 'temporary', 'mountPath': '/tmp'})
+            container['securityContext'].update(runAsUser=10001, runAsGroup=10001, runAsNonRoot=True, readOnlyRootFilesystem=True)
+            spec['securityContext'] = {'seccompProfile': {'type': 'RuntimeDefault'}}
         items.append({'apiVersion': 'apps/v1', 'kind': 'Deployment', 'metadata': {'name': name},
                       'spec': {'replicas': count, 'selector': {'matchLabels': labels},
                                'strategy': {'type': 'RollingUpdate', 'rollingUpdate': {'maxUnavailable': 0, 'maxSurge': 1}},
@@ -67,7 +77,7 @@ def render(config):
                           'spec': {'minAvailable': count - 1, 'selector': {'matchLabels': labels}}})
 
     keys = ['JWT_SECRET', 'SLIDE_IMAGE_URL_SECRET', 'CHANNEL_INTERNAL_API_KEY', 'SERVICE_EVENTS_KEY',
-            'SERVICE_REALTIME_KEY', 'SERVICE_ANALYTICS_KEY', 'SERVICE_MEDIA_KEY', 'ADMIN_SETUP_TOKEN']
+            'SERVICE_REALTIME_KEY', 'SERVICE_ANALYTICS_KEY', 'SERVICE_MEDIA_KEY', 'ADMIN_SETUP_TOKEN', 'CONVERTER_API_KEY']
     core_env = env({'DB_URL': 'jdbc:postgresql://app-db-rw:5432/lecturer', 'DB_POOL_MAX_SIZE': 12,
                     'PERMISSION_DB_POOL_SIZE': 4,
                     'DB_POOL_MIN_IDLE': 1, 'BLOB_ROOT': '/data/blobs', 'INTEGRATION_ENABLED': 'true',
@@ -90,9 +100,9 @@ def render(config):
            'MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED': 'true',
            'MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE': 'readinessState,db',
            'DB_POOL_MAX_SIZE': 4, 'DB_POOL_MIN_IDLE': 0, 'BLOB_ROOT': '/data/blobs',
-           'APP_CONTENT_CONVERTER_URL': 'http://converter:8000'}) + db_env('app-db', 'content-worker-db'),
+           'APP_CONTENT_CONVERTER_URL': 'http://converter:8000'}, ['CONVERTER_API_KEY']) + db_env('app-db', 'content-worker-db'),
            memory='768Mi', mount=True, probe='/actuator/health')
-    deploy('converter', 'converter', 2, 8000, env({'CONVERTER_MAX_CONVERSIONS': 2}),
+    deploy('converter', 'converter', 2, 8000, env({'CONVERTER_MAX_CONVERSIONS': 2}, ['CONVERTER_API_KEY']),
            memory='1536Mi', mount=True, probe='/health')
     common = {'CORE_URL': 'http://authority:80', 'NODE_OPTIONS': '--max-old-space-size=256'}
     deploy('realtime', 'services', 3, 8091,
@@ -177,6 +187,12 @@ def render(config):
         container = deployment['spec']['template']['spec']['containers'][0]
         container['readinessProbe']['httpGet']['path'] = '/actuator/health/readiness'
         container['livenessProbe']['httpGet']['path'] = '/actuator/health/liveness'
+    items.append({'apiVersion':'networking.k8s.io/v1','kind':'NetworkPolicy',
+        'metadata':{'name':'converter-isolation'},'spec':{
+          'podSelector':{'matchLabels':{'app.kubernetes.io/component':'converter'}},
+          'policyTypes':['Ingress','Egress'],'egress':[],
+          'ingress':[{'from':[{'podSelector':{'matchLabels':{'app.kubernetes.io/component':name}}}
+                     for name in ['core','content-worker']], 'ports':[{'protocol':'TCP','port':8000}]}]}})
     items.extend(autoscaling.render(config, items))
     for item in items:
         if item['kind'] != 'Namespace':

@@ -15,6 +15,40 @@ import org.springframework.http.MediaType;
 /** B-05: опросы (D-02, D-08, D-09, D-22). */
 class PollIntegrationTest extends LiveFlowTestBase {
 
+    @org.springframework.beans.factory.annotation.Autowired javax.sql.DataSource dataSource;
+
+    @Test
+    void voteCanCommitWhileOtherReadersHoldSharedSessionAndPollLocks() throws Exception {
+        String token =
+                join(null, "{\"displayName\":\"Parallel response\"}")
+                        .get("participantToken")
+                        .asText();
+        UUID poll = startPoll(sessionId);
+        var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try (var held = dataSource.getConnection()) {
+            held.setAutoCommit(false);
+            try (var statement =
+                    held.prepareStatement("select id from live.sessions where id=? for share")) {
+                statement.setObject(1, sessionId);
+                statement.execute();
+            }
+            try (var statement =
+                    held.prepareStatement(
+                            "select id from interaction.quick_polls where id=? for share")) {
+                statement.setObject(1, poll);
+                statement.execute();
+            }
+            var response = executor.submit(() -> respond(joinCode, poll, token, null, 1));
+            org.junit.jupiter.api.Assertions.assertNotNull(
+                    response.get(2, java.util.concurrent.TimeUnit.SECONDS));
+            held.rollback();
+        } finally {
+            executor.shutdownNow();
+        }
+        closePoll(sessionId, poll, 1);
+        assertEquals(1, snapshot(joinCode, token, null).get("myVote").asInt());
+    }
+
     @Test
     void closedPollStaysInStudentSnapshotWithAnswerAndDistribution() throws Exception {
         String token = join(null, "{\"displayName\":\"Аня\"}").get("participantToken").asText();
@@ -29,7 +63,8 @@ class PollIntegrationTest extends LiveFlowTestBase {
         assertEquals("[0,1,0]", poll.get("votes").toString());
         assertEquals(1, snapshot(joinCode, token, null).get("myVote").asInt());
         // и после нескольких «тиков» результат не пропадает
-        assertEquals("CLOSED", snapshot(joinCode, null, null).get("activePoll").get("status").asText());
+        assertEquals(
+                "CLOSED", snapshot(joinCode, null, null).get("activePoll").get("status").asText());
     }
 
     @Test
@@ -37,8 +72,11 @@ class PollIntegrationTest extends LiveFlowTestBase {
         UUID pollId = startPoll(sessionId);
         closePoll(sessionId, pollId, 0);
 
-        JsonNode active = json(get("/api/v1/courses/{c}/sessions/{s}/polls/active", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 200);
+        JsonNode active =
+                json(
+                        get("/api/v1/courses/{c}/sessions/{s}/polls/active", courseId, sessionId)
+                                .header("Authorization", "Bearer " + lecturerToken),
+                        200);
         assertEquals("CLOSED", active.get("poll").get("status").asText());
     }
 
@@ -61,42 +99,68 @@ class PollIntegrationTest extends LiveFlowTestBase {
     }
 
     @Test
-    void correctAnswerSelectionIsSharedBetweenTeachersButHiddenFromStudentsUntilClose() throws Exception {
+    void correctAnswerSelectionIsSharedBetweenTeachersButHiddenFromStudentsUntilClose()
+            throws Exception {
         UUID pollId = startPoll(sessionId);
         String path = "/api/v1/courses/{c}/sessions/{s}/polls/{p}/correct-option";
 
-        JsonNode selected = json(put(path, courseId, sessionId, pollId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"correctOptionIdx\":1}"), 200);
+        JsonNode selected =
+                json(
+                        put(path, courseId, sessionId, pollId)
+                                .header("Authorization", "Bearer " + lecturerToken)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"correctOptionIdx\":1}"),
+                        200);
         assertEquals(1, selected.at("/poll/correctOptionIdx").asInt());
 
-        JsonNode secondTeacherView = json(get("/api/v1/courses/{c}/sessions/{s}/polls/active", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 200);
+        JsonNode secondTeacherView =
+                json(
+                        get("/api/v1/courses/{c}/sessions/{s}/polls/active", courseId, sessionId)
+                                .header("Authorization", "Bearer " + lecturerToken),
+                        200);
         assertEquals(1, secondTeacherView.at("/poll/correctOptionIdx").asInt());
         assertTrue(snapshot(joinCode, null, null).at("/activePoll/correctOptionIdx").isNull());
 
-        json(put(path, courseId, sessionId, pollId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"correctOptionIdx\":null}"), 200);
-        assertTrue(json(get("/api/v1/courses/{c}/sessions/{s}/polls/active", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 200)
-                .at("/poll/correctOptionIdx").isNull());
+        json(
+                put(path, courseId, sessionId, pollId)
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"correctOptionIdx\":null}"),
+                200);
+        assertTrue(
+                json(
+                                get(
+                                                "/api/v1/courses/{c}/sessions/{s}/polls/active",
+                                                courseId,
+                                                sessionId)
+                                        .header("Authorization", "Bearer " + lecturerToken),
+                                200)
+                        .at("/poll/correctOptionIdx")
+                        .isNull());
 
-        json(put(path, courseId, sessionId, pollId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"correctOptionIdx\":2}"), 200);
-        json(post("/api/v1/courses/{c}/sessions/{s}/polls/{p}/close", courseId, sessionId, pollId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{}"), 200);
+        json(
+                put(path, courseId, sessionId, pollId)
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"correctOptionIdx\":2}"),
+                200);
+        json(
+                post(
+                                "/api/v1/courses/{c}/sessions/{s}/polls/{p}/close",
+                                courseId,
+                                sessionId,
+                                pollId)
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"),
+                200);
         assertEquals(2, snapshot(joinCode, null, null).at("/activePoll/correctOptionIdx").asInt());
-        json(put(path, courseId, sessionId, pollId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"correctOptionIdx\":0}"), 409);
+        json(
+                put(path, courseId, sessionId, pollId)
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"correctOptionIdx\":0}"),
+                409);
     }
 
     @Test
@@ -106,18 +170,24 @@ class PollIntegrationTest extends LiveFlowTestBase {
         String studentJwt = maxLogin(808);
         JsonNode other = startAnotherSession();
 
-        json(put(path, courseId, sessionId, pollId)
-                .header("Authorization", "Bearer " + studentJwt)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"correctOptionIdx\":0}"), 403);
-        json(put(path, courseId, sessionId, pollId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"correctOptionIdx\":3}"), 400);
-        json(put(path, courseId, other.get("id").asText(), pollId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"correctOptionIdx\":0}"), 404);
+        json(
+                put(path, courseId, sessionId, pollId)
+                        .header("Authorization", "Bearer " + studentJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"correctOptionIdx\":0}"),
+                403);
+        json(
+                put(path, courseId, sessionId, pollId)
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"correctOptionIdx\":3}"),
+                400);
+        json(
+                put(path, courseId, other.get("id").asText(), pollId)
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"correctOptionIdx\":0}"),
+                404);
     }
 
     @Test
@@ -132,7 +202,9 @@ class PollIntegrationTest extends LiveFlowTestBase {
         assertTrue(first.get("accepted").asBoolean());
         assertFalse(second.get("accepted").asBoolean());
         assertEquals(0, second.get("myVote").asInt());
-        assertEquals("[1,0,0]", snapshot(joinCode, token, null).get("activePoll").get("votes").toString());
+        assertEquals(
+                "[1,0,0]",
+                snapshot(joinCode, token, null).get("activePoll").get("votes").toString());
         assertEquals(1L, count("interaction.poll_responses"));
     }
 
@@ -154,13 +226,21 @@ class PollIntegrationTest extends LiveFlowTestBase {
         String token = join(null, "{\"displayName\":\"Аня\"}").get("participantToken").asText();
         UUID pollId = startPoll(sessionId);
         respond(joinCode, pollId, token, null, 1);
-        json(put("/api/v1/courses/{c}/sessions/{s}/polls/{p}/correct-option", courseId, sessionId, pollId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"correctOptionIdx\":2}"), 200);
+        json(
+                put(
+                                "/api/v1/courses/{c}/sessions/{s}/polls/{p}/correct-option",
+                                courseId,
+                                sessionId,
+                                pollId)
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"correctOptionIdx\":2}"),
+                200);
 
-        json(post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 200);
+        json(
+                post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
+                        .header("Authorization", "Bearer " + lecturerToken),
+                200);
 
         JsonNode snapshot = snapshot(joinCode, token, null);
         JsonNode poll = snapshot.get("activePoll");
@@ -170,8 +250,11 @@ class PollIntegrationTest extends LiveFlowTestBase {
         assertEquals("[0,1,0]", poll.get("votes").toString());
         assertEquals(1, snapshot.get("myVote").asInt());
 
-        JsonNode summary = json(get("/api/v1/courses/{c}/sessions/{s}/summary", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 200);
+        JsonNode summary =
+                json(
+                        get("/api/v1/courses/{c}/sessions/{s}/summary", courseId, sessionId)
+                                .header("Authorization", "Bearer " + lecturerToken),
+                        200);
         assertEquals("[0,1,0]", summary.at("/pollResults/0/votes").toString());
         assertEquals(1, summary.at("/pollResults/0/totalResponses").asInt());
 
@@ -179,8 +262,10 @@ class PollIntegrationTest extends LiveFlowTestBase {
         assertEquals(1L, count("interaction.poll_responses"));
         assertEquals(1L, count("analytics.events where verb = 'interaction.poll_closed'"));
 
-        json(post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 200);
+        json(
+                post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
+                        .header("Authorization", "Bearer " + lecturerToken),
+                200);
         assertEquals(1L, count("analytics.events where verb = 'interaction.poll_closed'"));
         assertEquals(1L, count("analytics.events where verb = 'session.ended'"));
     }
@@ -189,11 +274,17 @@ class PollIntegrationTest extends LiveFlowTestBase {
     void pausingSessionLeavesOpenPollOpen() throws Exception {
         UUID pollId = startPoll(sessionId);
 
-        json(post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 200);
+        json(
+                post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
+                        .header("Authorization", "Bearer " + lecturerToken),
+                200);
 
-        assertEquals("OPEN", jdbc.sql("select status from interaction.quick_polls where id = :id")
-                .param("id", pollId).query(String.class).single());
+        assertEquals(
+                "OPEN",
+                jdbc.sql("select status from interaction.quick_polls where id = :id")
+                        .param("id", pollId)
+                        .query(String.class)
+                        .single());
         assertEquals(0L, count("analytics.events where verb = 'interaction.poll_closed'"));
     }
 
@@ -210,32 +301,54 @@ class PollIntegrationTest extends LiveFlowTestBase {
 
     @Test
     void activityRunOfAnotherSessionIsNotFound() throws Exception {
-        String question = json(post("/api/v1/courses/{c}/questions", courseId)
-                        .header("Authorization", "Bearer " + lecturerToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"text\":\"2+2?\",\"questionType\":\"CHOICE\",\"options\":"
-                                + "[{\"text\":\"4\",\"correct\":true},{\"text\":\"5\",\"correct\":false}]}"), 201)
-                .get("id")
-                .asText();
-        String definition = json(post("/api/v1/courses/{c}/activities", courseId)
-                        .header("Authorization", "Bearer " + lecturerToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\":\"Check\",\"questionIds\":[\"" + question + "\"],\"strategy\":\"ALL\"}"),
-                        201)
-                .get("id")
-                .asText();
+        String question =
+                json(
+                                post("/api/v1/courses/{c}/questions", courseId)
+                                        .header("Authorization", "Bearer " + lecturerToken)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                "{\"text\":\"2+2?\",\"questionType\":\"CHOICE\",\"options\":"
+                                                        + "[{\"text\":\"4\",\"correct\":true},{\"text\":\"5\","
+                                                        + "\"correct\":false}]}"),
+                                201)
+                        .get("id")
+                        .asText();
+        String definition =
+                json(
+                                post("/api/v1/courses/{c}/activities", courseId)
+                                        .header("Authorization", "Bearer " + lecturerToken)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                "{\"title\":\"Check\",\"questionIds\":[\""
+                                                        + question
+                                                        + "\"],\"strategy\":\"ALL\"}"),
+                                201)
+                        .get("id")
+                        .asText();
         JsonNode other = startAnotherSession();
-        String run = json(post("/api/v1/courses/{c}/sessions/{s}/activities/{d}/runs",
-                                courseId, other.get("id").asText(), definition)
-                        .header("Authorization", "Bearer " + lecturerToken), 201)
-                .get("id")
-                .asText();
+        String run =
+                json(
+                                post(
+                                                "/api/v1/courses/{c}/sessions/{s}/activities/{d}/runs",
+                                                courseId,
+                                                other.get("id").asText(),
+                                                definition)
+                                        .header("Authorization", "Bearer " + lecturerToken),
+                                201)
+                        .get("id")
+                        .asText();
         String token = join(null, "{\"displayName\":\"Аня\"}").get("participantToken").asText();
 
-        json(post("/api/v1/student/sessions/{code}/activity-runs/{run}/respond", joinCode, run)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"participantToken\":\"" + token + "\",\"questionId\":\"" + question
-                        + "\",\"answer\":{\"optionIdx\":0}}"), 404);
+        json(
+                post("/api/v1/student/sessions/{code}/activity-runs/{run}/respond", joinCode, run)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                "{\"participantToken\":\""
+                                        + token
+                                        + "\",\"questionId\":\""
+                                        + question
+                                        + "\",\"answer\":{\"optionIdx\":0}}"),
+                404);
 
         assertEquals(0L, count("interaction.activity_responses"));
     }
@@ -254,41 +367,56 @@ class PollIntegrationTest extends LiveFlowTestBase {
 
     @Test
     void pollCannotStartWhileSessionIsPaused() throws Exception {
-        json(post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 200);
+        json(
+                post("/api/v1/courses/{c}/sessions/{s}/pause", courseId, sessionId)
+                        .header("Authorization", "Bearer " + lecturerToken),
+                200);
 
-        json(post("/api/v1/courses/{c}/sessions/{s}/polls", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"questionText\":\"Что верно?\",\"options\":[\"A\",\"B\"]}"), 409);
+        json(
+                post("/api/v1/courses/{c}/sessions/{s}/polls", courseId, sessionId)
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"questionText\":\"Что верно?\",\"options\":[\"A\",\"B\"]}"),
+                409);
 
         assertEquals(0L, count("interaction.quick_polls"));
     }
 
     @Test
     void manualAndBankPollCannotStartAfterSessionEnds() throws Exception {
-        UUID questionId = UUID.fromString(json(post("/api/v1/courses/{c}/questions", courseId)
+        UUID questionId =
+                UUID.fromString(
+                        json(
+                                        post("/api/v1/courses/{c}/questions", courseId)
+                                                .header("Authorization", "Bearer " + lecturerToken)
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        "{\"text\":\"2+2?\",\"questionType\":\"CHOICE\",\"options\":"
+                                                                + "[{\"text\":\"4\",\"correct\":true},{\"text\":\"5\","
+                                                                + "\"correct\":false}]}"),
+                                        201)
+                                .get("id")
+                                .asText());
+        json(
+                post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
+                        .header("Authorization", "Bearer " + lecturerToken),
+                200);
+
+        json(
+                post("/api/v1/courses/{c}/sessions/{s}/polls", courseId, sessionId)
                         .header("Authorization", "Bearer " + lecturerToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"text\":\"2+2?\",\"questionType\":\"CHOICE\",\"options\":"
-                                + "[{\"text\":\"4\",\"correct\":true},{\"text\":\"5\",\"correct\":false}]}"),
-                        201)
-                .get("id")
-                .asText());
-        json(post("/api/v1/courses/{c}/sessions/{s}/end", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken), 200);
-
-        json(post("/api/v1/courses/{c}/sessions/{s}/polls", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"questionText\":\"Что верно?\",\"options\":[\"A\",\"B\"]}"), 409);
+                        .content("{\"questionText\":\"Что верно?\",\"options\":[\"A\",\"B\"]}"),
+                409);
         jdbc.sql("update live.sessions set status = 'ARCHIVED' where id = :sessionId")
                 .param("sessionId", sessionId)
                 .update();
-        json(post("/api/v1/courses/{c}/sessions/{s}/polls/from-bank", courseId, sessionId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"questionId\":\"" + questionId + "\"}"), 409);
+        json(
+                post("/api/v1/courses/{c}/sessions/{s}/polls/from-bank", courseId, sessionId)
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"questionId\":\"" + questionId + "\"}"),
+                409);
 
         assertEquals(0L, count("interaction.quick_polls"));
     }
@@ -308,10 +436,12 @@ class PollIntegrationTest extends LiveFlowTestBase {
         UUID otherPoll = startPoll(otherSessionId);
         closePoll(otherSessionId, otherPoll, 0);
 
-        jdbc.sql("update interaction.quick_polls set closed_at = now() - interval '2 hours' where id = :id")
+        jdbc.sql(
+                        "update interaction.quick_polls set closed_at = now() - interval '2 hours' where id = :id")
                 .param("id", firstPoll)
                 .update();
-        jdbc.sql("update interaction.quick_polls set closed_at = now() - interval '1 hour' where id = :id")
+        jdbc.sql(
+                        "update interaction.quick_polls set closed_at = now() - interval '1 hour' where id = :id")
                 .param("id", secondPoll)
                 .update();
 
@@ -338,12 +468,16 @@ class PollIntegrationTest extends LiveFlowTestBase {
     @Test
     void closedPollHistoryRequiresManageMatchingCourseAndValidPagination() throws Exception {
         String studentJwt = maxLogin(909);
-        UUID otherCourseId = UUID.fromString(json(post("/api/v1/courses")
-                        .header("Authorization", "Bearer " + lecturerToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\":\"Other course\"}"), 201)
-                .get("id")
-                .asText());
+        UUID otherCourseId =
+                UUID.fromString(
+                        json(
+                                        post("/api/v1/courses")
+                                                .header("Authorization", "Bearer " + lecturerToken)
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"title\":\"Other course\"}"),
+                                        201)
+                                .get("id")
+                                .asText());
 
         closedPolls(courseId, sessionId, studentJwt, 20, 0, 403);
         closedPolls(otherCourseId, sessionId, lecturerToken, 20, 0, 404);
@@ -353,40 +487,53 @@ class PollIntegrationTest extends LiveFlowTestBase {
     }
 
     private UUID startPoll(UUID session) throws Exception {
-        JsonNode result = json(post("/api/v1/courses/{c}/sessions/{s}/polls", courseId, session)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"questionText\":\"Что верно?\",\"options\":[\"A\",\"B\",\"C\"]}"), 201);
+        JsonNode result =
+                json(
+                        post("/api/v1/courses/{c}/sessions/{s}/polls", courseId, session)
+                                .header("Authorization", "Bearer " + lecturerToken)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"questionText\":\"Что верно?\",\"options\":[\"A\",\"B\",\"C\"]}"),
+                        201);
         return UUID.fromString(result.get("poll").get("id").asText());
     }
 
-    private JsonNode closedPolls(UUID course, UUID session, String token, int limit, int offset, int expected)
+    private JsonNode closedPolls(
+            UUID course, UUID session, String token, int limit, int offset, int expected)
             throws Exception {
-        return json(get("/api/v1/courses/{c}/sessions/{s}/polls", course, session)
-                .queryParam("limit", String.valueOf(limit))
-                .queryParam("offset", String.valueOf(offset))
-                .header("Authorization", "Bearer " + token), expected);
+        return json(
+                get("/api/v1/courses/{c}/sessions/{s}/polls", course, session)
+                        .queryParam("limit", String.valueOf(limit))
+                        .queryParam("offset", String.valueOf(offset))
+                        .header("Authorization", "Bearer " + token),
+                expected);
     }
 
     private void closePoll(UUID session, UUID pollId, int correct) throws Exception {
-        json(post("/api/v1/courses/{c}/sessions/{s}/polls/{p}/close", courseId, session, pollId)
-                .header("Authorization", "Bearer " + lecturerToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"correctOptionIdx\":" + correct + "}"), 200);
+        json(
+                post("/api/v1/courses/{c}/sessions/{s}/polls/{p}/close", courseId, session, pollId)
+                        .header("Authorization", "Bearer " + lecturerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"correctOptionIdx\":" + correct + "}"),
+                200);
     }
 
-    private JsonNode respond(String code, UUID pollId, String token, String jwt, int option) throws Exception {
+    private JsonNode respond(String code, UUID pollId, String token, String jwt, int option)
+            throws Exception {
         return respondExpecting(code, pollId, token, jwt, option, 200);
     }
 
-    private JsonNode respondExpecting(String code, UUID pollId, String token, String jwt, int option, int expected)
+    private JsonNode respondExpecting(
+            String code, UUID pollId, String token, String jwt, int option, int expected)
             throws Exception {
-        String body = token == null
-                ? "{\"optionIdx\":" + option + "}"
-                : "{\"participantToken\":\"" + token + "\",\"optionIdx\":" + option + "}";
-        var request = post("/api/v1/student/sessions/{code}/polls/{poll}/respond", code, pollId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body);
+        String body =
+                token == null
+                        ? "{\"optionIdx\":" + option + "}"
+                        : "{\"participantToken\":\"" + token + "\",\"optionIdx\":" + option + "}";
+        var request =
+                post("/api/v1/student/sessions/{code}/polls/{poll}/respond", code, pollId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body);
         if (jwt != null) {
             request.header("Authorization", "Bearer " + jwt);
         }

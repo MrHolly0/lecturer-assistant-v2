@@ -46,8 +46,19 @@ export class MediaAccess {
   /** Complete sweep first, then renew supervisors. Partial checks never extend an SFU's lease. */
   async sweep(inventory) {
     if (!Array.isArray(inventory)) throw new Error('Local SFU inventory required');
-    const rooms = inventory;
-    if (rooms.length > 128) throw new Error('Media room admission exceeded');
+    const rooms = [];
+    let admitted = 0;
+    for (const room of inventory) {
+      if (!roomId(room.name) || !Array.isArray(room.participants)) throw new Error('Invalid local participant inventory');
+      // A legacy/rogue overflowing room is contained locally. Renew the installation
+      // only after deletion succeeds AND every remaining participant is authorized.
+      if (rooms.length >= 128 || room.participants.length > 1500 || admitted + room.participants.length > 20000) {
+        await this.rooms.deleteRoom(room.name);
+        continue;
+      }
+      admitted += room.participants.length;
+      rooms.push(room);
+    }
     const audiences = new Map();
     await parallel(rooms, 16, async room => {
       const participants = room.participants;

@@ -68,6 +68,7 @@ ensure_plain DB_PASSWORD "$(current POSTGRES_PASSWORD)"
 ensure_secret JWT_SECRET 48
 ensure_secret SLIDE_IMAGE_URL_SECRET 48
 ensure_secret CHANNEL_INTERNAL_API_KEY 32
+ensure_secret CONVERTER_API_KEY 32
 ensure_secret MAX_WEBHOOK_SECRET 32
 ensure_secret MAX_WEBHOOK_PATH 24 /webhook/
 ensure_secret SEED_PASSWORD_ADMIN 12

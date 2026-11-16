@@ -1,8 +1,9 @@
-# Адаптер MAX: Node 22 без внешних зависимостей (только стандартная библиотека),
+# Адаптер MAX: Node 24 без внешних зависимостей (только стандартная библиотека),
 # поэтому ни package.json, ни npm install не нужны. Контекст сборки — корень репозитория.
-FROM node:22-alpine
+ARG SERVICE_NODE_IMAGE=node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8
+FROM ${SERVICE_NODE_IMAGE}
 WORKDIR /app
-COPY adapters/max/lib.mjs adapters/max/document-media.mjs adapters/max/max-adapter.mjs ./
+COPY adapters/max/inbox-snapshot.mjs adapters/max/inbox.mjs adapters/max/lib.mjs adapters/max/document-media.mjs adapters/max/max-adapter.mjs ./
 
 # Сертификат platform-api2.max.ru выдан Russian Trusted Sub CA (Минцифры), корня которого
 # нет в хранилище Node: без него любой запрос к MAX API падает с
@@ -12,6 +13,7 @@ COPY adapters/max/lib.mjs adapters/max/document-media.mjs adapters/max/max-adapt
 COPY deploy/certs/russian_trusted_root_ca.pem /etc/ssl/max/russian_trusted_root_ca.pem
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/max/russian_trusted_root_ca.pem
 
+RUN mkdir -p /data/max-inbox && chown node:node /data/max-inbox
 USER node
 # Порт вебхука; наружу его публикует только Caddy на стенде.
 EXPOSE 8090

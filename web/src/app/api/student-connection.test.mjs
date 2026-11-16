@@ -77,8 +77,10 @@ function focus() {
 }
 
 test("gateway invalidations coalesce HTTP reads while preserving healthy stream", async () => {
-  const source = start(); source.open();
-  for (let i = 0; i < 100; i++) source.dispatchEvent(new MessageEvent("invalidate", { data: "{}" }));
+  const source = start();
+  source.open();
+  for (let i = 0; i < 100; i++)
+    source.dispatchEvent(new MessageEvent("invalidate", { data: "{}" }));
   await advance(300);
   assert.equal(requests.length, 1);
   assert.equal(states.at(-1), "CONNECTED");
@@ -162,8 +164,14 @@ test("focus bursts preserve a healthy or connecting SSE without extra HTTP reads
 
 test("named keepalive delivers contact on an unchanged slide without replacing UI snapshots", async () => {
   const deliveries = [];
-  const connection = connectStudentSession("FIXTURE", "token", (s) => snapshots.push(s),
-    () => undefined, undefined, (s) => deliveries.push(s));
+  const connection = connectStudentSession(
+    "FIXTURE",
+    "token",
+    (s) => snapshots.push(s),
+    () => undefined,
+    undefined,
+    (s) => deliveries.push(s)
+  );
   cleanup.push(connection);
   const source = sources.at(-1);
   source.open();
@@ -354,4 +362,47 @@ test("cancelled account or route scopes cannot start or complete a snapshot read
   );
   assert.equal(requests.length, 0);
   assert.equal(timers.size, 0);
+});
+
+test("compact ticks keep history cached and fetch only a changed scoped history reference", async () => {
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url, init, at: time });
+    return new Response(
+      JSON.stringify({
+        myQuestions: [],
+        questionAnswers:
+          requests.length === 1 ? [{ questionId: "answer", answerText: "Personal answer" }] : [],
+        hasMore: true
+      })
+    );
+  };
+  const source = start();
+  source.open();
+  const compact = {
+    sessionId: "session",
+    version: 1,
+    status: "LIVE",
+    deliveryMode: "compact",
+    historyRevision: "0.1"
+  };
+  source.snapshot(compact);
+  await settle();
+  await settle();
+  assert.equal(requests.length, 1);
+  assert.match(requests[0].url, /question-history/);
+  assert.equal(snapshots.at(-1).questionAnswers[0].answerText, "Personal answer");
+  for (let i = 0; i < 10; i++) source.snapshot({ ...compact, version: i + 2 });
+  await settle();
+  assert.equal(requests.length, 1);
+  assert.equal(snapshots.at(-1).questionAnswers.length, 1);
+  source.snapshot({ ...compact, version: 20, historyRevision: "0.2" });
+  assert.equal(
+    snapshots.at(-1).questionAnswers.length,
+    0,
+    "changed visibility drops cached answers immediately"
+  );
+  await settle();
+  await settle();
+  assert.equal(requests.length, 2);
+  assert.equal(snapshots.at(-1).questionAnswers.length, 0);
 });

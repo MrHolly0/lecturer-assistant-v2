@@ -1,0 +1,121 @@
+{
+  "auditedCommit": "22132c98cf9b1e01b1a80cd770fdea8667ed9743",
+  "date": "2026-11-16",
+  "environment": {
+    "host": "Darwin arm64",
+    "servicesRuntime": "Node 24 (container)",
+    "database": "PostgreSQL 16 disposable fixtures",
+    "scope": "component and integration validation; no live stand changes"
+  },
+  "checks": {
+    "core": {
+      "tests": 421,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "web": {
+      "passed": 142,
+      "lint": true,
+      "format": true,
+      "build": true,
+      "openapiGeneration": true
+    },
+    "services": {
+      "passed": 32,
+      "databaseTestSkipped": false
+    },
+    "maxAdapter": {
+      "passed": 32
+    },
+    "python": {
+      "appliance": 15,
+      "nativeKubernetes": 17,
+      "ha": 7,
+      "updates": 9,
+      "cloud": 1,
+      "converter": 6
+    },
+    "npmAudit": {
+      "webAll": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "servicesProduction": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      }
+    },
+    "prometheus": {
+      "configValid": true,
+      "validRules": 13
+    },
+    "nginx": {
+      "version": "1.30.6",
+      "direct": 404,
+      "unauthorized": 401,
+      "authorized": 200,
+      "fifthUpload": 429,
+      "listWhileBusy": 200
+    },
+    "converter": {
+      "unauthorizedStatus": 403,
+      "pdfSlides": 5,
+      "pptxSlides": 5,
+      "nonRoot": true,
+      "networkDisabled": true,
+      "readOnlyRoot": true
+    },
+    "rabbitmq": {
+      "roleDeliveryAllowed": true,
+      "crossRoleDenials": 3
+    },
+    "video": {
+      "before": {
+        "small": {
+          "width": 640,
+          "height": 360,
+          "frames": 101,
+          "elementWidth": 624
+        },
+        "large": {
+          "width": 1920,
+          "height": 1080,
+          "frames": 84,
+          "elementWidth": 1904
+        }
+      },
+      "resized": {
+        "width": 1920,
+        "height": 1080,
+        "frames": 104,
+        "elementWidth": 1904
+      },
+      "pageErrors": [],
+      "scope": "Two real Chromium decoders, actual publisher/viewer components; no scale qualification"
+    }
+  },
+  "memoryMi": {
+    "applicationMaximum": 9408,
+    "serialUpdateSurge": 768,
+    "quota": 10240,
+    "platformReserve": 3072,
+    "cluster": 13312
+  },
+  "notQualified": [
+    "10000 mixed users and video viewers",
+    "full appliance on target Linux VM",
+    "full new encrypted backup recovery of all components",
+    "institution off-VM backup destination",
+    "external alert delivery",
+    "all release image vulnerability scans"
+  ]
+}

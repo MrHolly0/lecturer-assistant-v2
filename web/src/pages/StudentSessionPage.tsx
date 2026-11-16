@@ -15,6 +15,7 @@ import {
 } from "../app/studentResume";
 import {
   acknowledgeStudentDelivery,
+  getStudentQuestionHistory,
   askStudentQuestion,
   connectStudentSession,
   getStudentSession,
@@ -701,6 +702,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             />
           )}
           <StudentFeedbackControls
+            historyKey={JSON.stringify([scope, current.historyRevision])}
+            historyHasMore={current.historyHasMore}
+            loadHistory={(offset) =>
+              getStudentQuestionHistory(normalizedCode, participantToken, offset)
+            }
             readOnly
             isLive={false}
             isSignalPending={false}
@@ -774,6 +780,11 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             />
           )}
           <StudentFeedbackControls
+            historyKey={JSON.stringify([scope, current.historyRevision])}
+            historyHasMore={current.historyHasMore}
+            loadHistory={(offset) =>
+              getStudentQuestionHistory(normalizedCode, participantToken, offset)
+            }
             isLive={commandsReady}
             restoreFocusOnClose={!current.nameRequested}
             unavailableMessage={feedbackUnavailableMessage}

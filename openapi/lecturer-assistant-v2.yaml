@@ -1730,12 +1730,16 @@ paths:
           description: Short-lived HMAC token scoped to the course and deck.
           schema:
             type: string
+        - name: v
+          in: query
+          description: Immutable slide ID; a stale ordering is rejected instead of serving another slide.
+          schema: {type: string, format: uuid}
       responses:
         "200":
           description: Slide image.
           headers:
             Cache-Control:
-              description: Long-lived immutable cache header.
+              description: Private cache with authorization and expiry revalidation.
               schema:
                 type: string
           content:
@@ -1743,6 +1747,23 @@ paths:
               schema:
                 type: string
                 format: binary
+  /courses/{courseId}/decks/{deckId}/slides/{slideIndex}/text:
+    get:
+      operationId: getSlideText
+      summary: Read extracted slide text separately from live updates.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/DeckId"
+        - $ref: "#/components/parameters/SlideIndex"
+        - {name: t, in: query, schema: {type: string}}
+        - {name: v, in: query, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Extracted text with the same authorization and immutable slide identity checks as the image.
+          content:
+            text/plain:
+              schema: {type: string}
   /courses/{courseId}/decks/{deckId}/slides/{slideIndex}/notes:
     put:
       operationId: saveSlideNote
@@ -2495,7 +2516,7 @@ paths:
       description: >
         Personal fields (myVote and AUTHOR question answers) are filled when the request is identified
         by a Bearer JWT or by the X-Participant-Token header. Without identification only SESSION
-        question answers are returned.
+        question answers are returned. History is limited to the latest 20 entries per list; use question-history to load older pages.
       tags: [student]
       security: []
       parameters:
@@ -2505,6 +2526,10 @@ paths:
           required: false
           schema:
             type: string
+        - name: includeText
+          in: query
+          description: Legacy extracted slide text; current live clients use false and request text separately.
+          schema: {type: boolean, default: true}
       responses:
         "200":
           description: Student session snapshot.
@@ -2512,6 +2537,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudentSessionSnapshot"
+  /student/sessions/{joinCode}/question-history:
+    get:
+      operationId: getStudentQuestionHistory
+      summary: Read a bounded page of public answers and the viewer's own questions.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+        - name: X-Participant-Token
+          in: header
+          schema: {type: string}
+        - name: offset
+          in: query
+          schema: {type: integer, minimum: 0, maximum: 100000, default: 0}
+      responses:
+        "200":
+          description: Up to 20 entries per list. AUTHOR answers are visible only to their author.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentQuestionHistory"
   /student/sessions/{joinCode}/join:
     post:
       operationId: joinStudentSession
@@ -7145,6 +7191,17 @@ components:
     QuestionAnswerVisibility:
       type: string
       enum: [AUTHOR, SESSION]
+    StudentQuestionHistory:
+      type: object
+      required: [myQuestions, questionAnswers, hasMore]
+      properties:
+        myQuestions:
+          type: array
+          items: {$ref: "#/components/schemas/StudentQuestion"}
+        questionAnswers:
+          type: array
+          items: {$ref: "#/components/schemas/StudentQuestionAnswer"}
+        hasMore: {type: boolean}
     StudentQuestionAnswer:
       type: object
       required: [questionId, questionText, answerText, answerVisibility, answeredAt]

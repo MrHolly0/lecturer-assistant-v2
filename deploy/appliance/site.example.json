@@ -13,5 +13,14 @@
     "databaseConnections": 120,
     "connectionsPerReplica": 2000
   },
-  "updates": null
+  "updates": null,
+  "clusterMemoryMi": 13312,
+  "platformMemoryMi": 3072,
+  "clusterCpus": 8,
+  "backups": {
+    "owner": "",
+    "offVmConfirmed": false,
+    "intervalSeconds": 86400,
+    "retentionDays": 14
+  }
 }

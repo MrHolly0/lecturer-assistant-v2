@@ -19,7 +19,7 @@ if any(not re.fullmatch(r'[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}', i) for i in im
 version=os.environ['RELEASE_VERSION']
 if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}',version):raise ValueError('Invalid version')
 minimum,maximum=int(os.environ['DATABASE_MIN']),int(os.environ['DATABASE_MAX'])
-if not 0<=minimum<=maximum:raise ValueError('Invalid schema interval')
+if not 56<=minimum<=maximum:raise ValueError('This release requires the reviewed topology and schema 56 or newer; older installations need a maintenance upgrade')
 commit=os.environ['GITHUB_SHA']
 if not re.fullmatch(r'[a-f0-9]{40}',commit):raise ValueError('Invalid commit')
 notes=os.environ['RELEASE_NOTES']

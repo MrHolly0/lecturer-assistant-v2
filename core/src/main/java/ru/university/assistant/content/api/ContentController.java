@@ -16,10 +16,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
-import ru.university.assistant.shared.api.CommandIdempotency;
-import ru.university.assistant.org.api.CourseAccessApi;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -29,6 +27,8 @@ import ru.university.assistant.content.internal.BlobResource;
 import ru.university.assistant.content.internal.ContentService;
 import ru.university.assistant.content.internal.DeckEditingService;
 import ru.university.assistant.iam.api.AuthenticatedUser;
+import ru.university.assistant.org.api.CourseAccessApi;
+import ru.university.assistant.shared.api.CommandIdempotency;
 
 @RestController
 @RequestMapping("/api/v1/courses/{courseId}")
@@ -38,8 +38,14 @@ public class ContentController {
     private final CommandIdempotency commands;
     private final CourseAccessApi access;
 
-    ContentController(ContentService contentService, DeckEditingService deckEditingService,
-            CommandIdempotency commands, CourseAccessApi access) {
+    @org.springframework.beans.factory.annotation.Value("${app.content.image-sendfile:false}")
+    private boolean imageSendfile;
+
+    ContentController(
+            ContentService contentService,
+            DeckEditingService deckEditingService,
+            CommandIdempotency commands,
+            CourseAccessApi access) {
         this.contentService = contentService;
         this.deckEditingService = deckEditingService;
         this.commands = commands;
@@ -47,7 +53,8 @@ public class ContentController {
     }
 
     @GetMapping("/decks")
-    public List<SlideDeck> decks(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID courseId) {
+    public List<SlideDeck> decks(
+            @AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID courseId) {
         return contentService.listDecks(user, courseId);
     }
 
@@ -67,10 +74,21 @@ public class ContentController {
             throw new org.springframework.web.server.ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Cannot read uploaded file", exception);
         }
-        String hash = commands.hash(java.util.Arrays.asList(title, file.getOriginalFilename(),
-                file.getContentType(), file.getSize(), fileHash));
-        return commands.execute(user.id(), "POST /courses/" + courseId + "/decks", key, hash,
-                ImportJob.class, () -> contentService.startDeckImport(user, courseId, title, file));
+        String hash =
+                commands.hash(
+                        java.util.Arrays.asList(
+                                title,
+                                file.getOriginalFilename(),
+                                file.getContentType(),
+                                file.getSize(),
+                                fileHash));
+        return commands.execute(
+                user.id(),
+                "POST /courses/" + courseId + "/decks",
+                key,
+                hash,
+                ImportJob.class,
+                () -> contentService.startDeckImport(user, courseId, title, file));
     }
 
     @GetMapping("/import-jobs/{jobId}")
@@ -89,8 +107,12 @@ public class ContentController {
             @PathVariable UUID jobId,
             @RequestHeader(value = "Idempotency-Key", required = false) String key) {
         access.requireManage(user, courseId);
-        return commands.execute(user.id(), "POST /courses/" + courseId + "/import-jobs/" + jobId + "/retry",
-                key, commands.hash(jobId), ImportJob.class,
+        return commands.execute(
+                user.id(),
+                "POST /courses/" + courseId + "/import-jobs/" + jobId + "/retry",
+                key,
+                commands.hash(jobId),
+                ImportJob.class,
                 () -> contentService.retryDeckImport(user, courseId, jobId));
     }
 
@@ -108,12 +130,34 @@ public class ContentController {
             @PathVariable UUID courseId,
             @PathVariable UUID deckId,
             @PathVariable int slideIndex,
-            @RequestParam(name = "t", required = false) String token) {
-        BlobResource image = contentService.getSlideImage(user, courseId, deckId, slideIndex, token);
+            @RequestParam(name = "t", required = false) String token,
+            @RequestParam(name = "v", required = false) UUID version) {
+        BlobResource image =
+                contentService.getSlideImage(user, courseId, deckId, slideIndex, token, version);
+        if (imageSendfile)
+            return ResponseEntity.ok()
+                    .header("X-Accel-Redirect", contentService.imageInternalPath(image))
+                    .header(HttpHeaders.CACHE_CONTROL, "private, no-cache")
+                    .header(HttpHeaders.CONTENT_TYPE, image.contentType())
+                    .build();
         return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(java.time.Duration.ofHours(1)).cachePrivate())
+                .cacheControl(CacheControl.noCache().cachePrivate())
                 .header(HttpHeaders.CONTENT_TYPE, image.contentType())
                 .body(new FileSystemResource(image.path()));
+    }
+
+    @GetMapping("/decks/{deckId}/slides/{slideIndex}/text")
+    public ResponseEntity<String> slideText(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID courseId,
+            @PathVariable UUID deckId,
+            @PathVariable int slideIndex,
+            @RequestParam(name = "t", required = false) String token,
+            @RequestParam(name = "v", required = false) UUID version) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_PLAIN)
+                .cacheControl(CacheControl.noStore())
+                .body(contentService.slideText(user, courseId, deckId, slideIndex, token, version));
     }
 
     @PutMapping("/decks/{deckId}/slides/{slideIndex}/notes")
@@ -182,7 +226,8 @@ public class ContentController {
     }
 
     @GetMapping("/lectures")
-    public List<Lecture> lectures(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID courseId) {
+    public List<Lecture> lectures(
+            @AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID courseId) {
         return contentService.listLectures(user, courseId);
     }
 
@@ -194,8 +239,13 @@ public class ContentController {
             @Valid @RequestBody CreateLectureRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String key) {
         access.requireManage(user, courseId);
-        return commands.execute(user.id(), "POST /courses/" + courseId + "/lectures", key,
-                commands.hash(request), Lecture.class, () -> contentService.createLecture(user, courseId, request));
+        return commands.execute(
+                user.id(),
+                "POST /courses/" + courseId + "/lectures",
+                key,
+                commands.hash(request),
+                Lecture.class,
+                () -> contentService.createLecture(user, courseId, request));
     }
 
     @GetMapping("/lectures/{lectureId}")
@@ -242,7 +292,9 @@ public class ContentController {
         contentService.hardDeleteLecture(user, courseId, lectureId);
     }
 
-    @PostMapping(path = "/lectures/{lectureId}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(
+            path = "/lectures/{lectureId}/attachments",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public Attachment uploadAttachment(
             @AuthenticationPrincipal AuthenticatedUser user,

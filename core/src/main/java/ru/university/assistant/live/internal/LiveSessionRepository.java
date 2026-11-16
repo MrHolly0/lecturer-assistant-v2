@@ -26,7 +26,8 @@ import ru.university.assistant.org.api.StudyGroup;
 @Repository
 class LiveSessionRepository {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
-    private static final TypeReference<List<SessionGroup>> GROUP_LIST_TYPE = new TypeReference<>() {};
+    private static final TypeReference<List<SessionGroup>> GROUP_LIST_TYPE =
+            new TypeReference<>() {};
 
     private final JdbcClient jdbc;
     private final ObjectMapper objectMapper;
@@ -37,7 +38,11 @@ class LiveSessionRepository {
     }
 
     LiveSession create(
-            UUID sessionId, UUID lectureId, UUID createdBy, String joinCode, List<StudyGroup> groups) {
+            UUID sessionId,
+            UUID lectureId,
+            UUID createdBy,
+            String joinCode,
+            List<StudyGroup> groups) {
         jdbc.sql(
                         """
                         insert into live.sessions
@@ -66,55 +71,89 @@ class LiveSessionRepository {
     }
 
     UUID courseId(UUID sessionId) {
-        return jdbc.sql("select l.course_id from live.sessions s join live.lectures l on l.id = s.lecture_id "
-                        + "where s.id = :id")
-                .param("id", sessionId).query(UUID.class).optional().orElseThrow(
-                () -> new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.NOT_FOUND, "Session not found"));
+        return jdbc.sql(
+                        "select l.course_id from live.sessions s join live.lectures l on l.id = s.lecture_id"
+                        + " where s.id = :id")
+                .param("id", sessionId)
+                .query(UUID.class)
+                .optional()
+                .orElseThrow(
+                        () ->
+                                new org.springframework.web.server.ResponseStatusException(
+                                        org.springframework.http.HttpStatus.NOT_FOUND,
+                                        "Session not found"));
     }
 
     void lock(UUID sessionId) {
         jdbc.sql("select id from live.sessions where id = :id for update")
-                .param("id", sessionId).query(UUID.class).optional().orElseThrow(
-                () -> new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.NOT_FOUND, "Session not found"));
+                .param("id", sessionId)
+                .query(UUID.class)
+                .optional()
+                .orElseThrow(
+                        () ->
+                                new org.springframework.web.server.ResponseStatusException(
+                                        org.springframework.http.HttpStatus.NOT_FOUND,
+                                        "Session not found"));
+    }
+
+    void lockForResponse(UUID sessionId) {
+        jdbc.sql("select id from live.sessions where id=:id for share")
+                .param("id", sessionId)
+                .query(UUID.class)
+                .optional()
+                .orElseThrow();
     }
 
     void touchVersion(UUID sessionId) {
         jdbc.sql("update live.sessions set version = version + 1 where id = :id")
-                .param("id", sessionId).update();
+                .param("id", sessionId)
+                .update();
     }
 
     void touchPresenter(UUID sessionId) {
-        jdbc.sql("""
+        jdbc.sql(
+                        """
                 update live.sessions set presenter_seen_at = now()
                 where id = :id and status in ('LIVE', 'PAUSED')
                     and (presenter_seen_at is null or presenter_seen_at <= now() - interval '30 seconds')
-                """).param("id", sessionId).update();
+                """)
+                .param("id", sessionId)
+                .update();
     }
 
     List<UUID> absentPresenterCandidates() {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                 select id from live.sessions
                 where status in ('LIVE', 'PAUSED')
                     and presenter_seen_at <= now() - interval '30 minutes'
                 order by presenter_seen_at, id limit 100
-                """).query(UUID.class).list();
+                """)
+                .query(UUID.class)
+                .list();
     }
 
     boolean lockIfPresenterAbsent(UUID sessionId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                 select id from live.sessions
                 where id = :id and status in ('LIVE', 'PAUSED')
                     and presenter_seen_at <= now() - interval '30 minutes'
                 for update skip locked
-                """).param("id", sessionId).query(UUID.class).optional().isPresent();
+                """)
+                .param("id", sessionId)
+                .query(UUID.class)
+                .optional()
+                .isPresent();
     }
 
     LiveSession projection(UUID courseId, UUID sessionId, boolean showJoinCode) {
-        jdbc.sql("update live.sessions set show_join_code = :show, version = version + 1, "
-                        + "presenter_seen_at = now() where id = :id")
-                .param("show", showJoinCode).param("id", sessionId).update();
+        jdbc.sql(
+                        "update live.sessions set show_join_code = :show, version = version + 1,"
+                        + " presenter_seen_at = now() where id = :id")
+                .param("show", showJoinCode)
+                .param("id", sessionId)
+                .update();
         return findByCourse(courseId, sessionId).orElseThrow();
     }
 
@@ -234,7 +273,8 @@ class LiveSessionRepository {
     }
 
     Optional<String> findActiveJoinCodeForParticipant(UUID personId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         select s.join_code
                         from live.session_participants sp
                         join live.sessions s on s.id = sp.session_id
@@ -250,7 +290,8 @@ class LiveSessionRepository {
     }
 
     Optional<UUID> lectureDeckId(UUID courseId, UUID lectureId) {
-        return jdbc.sql("select deck_id from live.lectures where course_id = :courseId and id = :lectureId")
+        return jdbc.sql(
+                        "select deck_id from live.lectures where course_id = :courseId and id = :lectureId")
                 .param("courseId", courseId)
                 .param("lectureId", lectureId)
                 .query(UUID.class)
@@ -272,7 +313,8 @@ class LiveSessionRepository {
     }
 
     Optional<UUID> lockLectureAndGetDeck(UUID courseId, UUID lectureId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         select deck_id from live.lectures
                         where course_id = :courseId and id = :lectureId
                         for share
@@ -285,16 +327,17 @@ class LiveSessionRepository {
 
     boolean begin(UUID courseId, UUID sessionId) {
         return jdbc.sql(
-                        """
+                                """
                         update live.sessions
                         set status = 'LIVE', version = version + 1, started_at = now(), updated_at = now(),
                             presenter_seen_at = now()
                         where id = :sessionId and status = 'SCHEDULED'
                             and lecture_id in (select id from live.lectures where course_id = :courseId)
                         """)
-                .param("courseId", courseId)
-                .param("sessionId", sessionId)
-                .update() == 1;
+                        .param("courseId", courseId)
+                        .param("sessionId", sessionId)
+                        .update()
+                == 1;
     }
 
     LiveSession updateSlide(UUID courseId, UUID sessionId, int slideIdx) {
@@ -357,7 +400,8 @@ class LiveSessionRepository {
     }
 
     void addSlideLog(UUID sessionId, int slideIdx) {
-        jdbc.sql("insert into live.slide_log (id, session_id, slide_idx) values (:id, :sessionId, :slideIdx)")
+        jdbc.sql(
+                        "insert into live.slide_log (id, session_id, slide_idx) values (:id, :sessionId, :slideIdx)")
                 .param("id", ru.university.assistant.shared.api.UuidV7.generate())
                 .param("sessionId", sessionId)
                 .param("slideIdx", slideIdx)
@@ -401,7 +445,8 @@ class LiveSessionRepository {
     }
 
     Optional<SessionParticipant> lockGuestParticipation(UUID sessionId, UUID personId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         select session_id, person_id, channel_type, display_name,
                                group_id, group_name_snapshot, joined_at, left_at, kicked,
                                name_requested_at, name_submitted_at
@@ -416,16 +461,24 @@ class LiveSessionRepository {
                 .optional();
     }
 
-    /** Bearer proof of the guest token promotes one lecture participation to the signed-in person. */
+    /**
+     * Bearer proof of the guest token promotes one lecture participation to the signed-in person.
+     */
     void claimGuestParticipation(UUID sessionId, UUID guestId, UUID personId, String guestName) {
-        jdbc.sql("""
+        jdbc.sql(
+                        """
                 insert into live.student_delivery_receipts(session_id, person_id, channel_type, last_seen_at)
                 select session_id, :person, channel_type, last_seen_at from live.student_delivery_receipts
                 where session_id = :session and person_id = :guest
                 on conflict (session_id, person_id, channel_type) do update
                     set last_seen_at = greatest(live.student_delivery_receipts.last_seen_at, excluded.last_seen_at)
-                """).param("session", sessionId).param("guest", guestId).param("person", personId).update();
-        jdbc.sql("""
+                """)
+                .param("session", sessionId)
+                .param("guest", guestId)
+                .param("person", personId)
+                .update();
+        jdbc.sql(
+                        """
                         update live.session_participants profile
                         set display_name = case when :guestName like 'Гость %'
                                                 then profile.display_name else :guestName end,
@@ -444,48 +497,81 @@ class LiveSessionRepository {
                 .param("guestName", guestName)
                 .update();
 
-        jdbc.sql("""
+        jdbc.sql(
+                        """
                         delete from feedback.comprehension_signals guest
                         using feedback.comprehension_signals profile
                         where guest.person_id = :guestId and profile.person_id = :personId
                             and profile.session_id = guest.session_id and profile.slide_idx = guest.slide_idx
                         """)
-                .param("guestId", guestId).param("personId", personId).update();
-        jdbc.sql("update feedback.comprehension_signals set person_id = :personId where person_id = :guestId")
-                .param("guestId", guestId).param("personId", personId).update();
+                .param("guestId", guestId)
+                .param("personId", personId)
+                .update();
+        jdbc.sql(
+                        "update feedback.comprehension_signals set person_id = :personId where person_id = :guestId")
+                .param("guestId", guestId)
+                .param("personId", personId)
+                .update();
 
-        jdbc.sql("""
+        jdbc.sql(
+                        """
                         delete from interaction.poll_responses guest
                         using interaction.poll_responses profile
                         where guest.person_id = :guestId and profile.person_id = :personId
                             and profile.poll_id = guest.poll_id
                         """)
-                .param("guestId", guestId).param("personId", personId).update();
-        jdbc.sql("update interaction.poll_responses set person_id = :personId where person_id = :guestId")
-                .param("guestId", guestId).param("personId", personId).update();
+                .param("guestId", guestId)
+                .param("personId", personId)
+                .update();
+        jdbc.sql(
+                        "update interaction.poll_responses set person_id = :personId where person_id = :guestId")
+                .param("guestId", guestId)
+                .param("personId", personId)
+                .update();
 
-        jdbc.sql("""
+        jdbc.sql(
+                        """
                         delete from interaction.activity_responses guest
                         using interaction.activity_responses profile
                         where guest.person_id = :guestId and profile.person_id = :personId
                             and profile.run_id = guest.run_id and profile.question_id = guest.question_id
                         """)
-                .param("guestId", guestId).param("personId", personId).update();
-        jdbc.sql("update interaction.activity_responses set person_id = :personId where person_id = :guestId")
-                .param("guestId", guestId).param("personId", personId).update();
+                .param("guestId", guestId)
+                .param("personId", personId)
+                .update();
+        jdbc.sql(
+                        "update interaction.activity_responses set person_id = :personId where person_id = :guestId")
+                .param("guestId", guestId)
+                .param("personId", personId)
+                .update();
         jdbc.sql("update qa.questions set person_id = :personId where person_id = :guestId")
-                .param("guestId", guestId).param("personId", personId).update();
-        jdbc.sql("update live.student_visit_events set person_id=:personId where person_id=:guestId")
-                .param("guestId", guestId).param("personId", personId).update();
-        jdbc.sql("update analytics.events set actor_person_id = :personId where actor_person_id = :guestId")
-                .param("guestId", guestId).param("personId", personId).update();
-        jdbc.sql("delete from live.web_participant_tokens where session_id = :sessionId and person_id = :guestId")
-                .param("sessionId", sessionId).param("guestId", guestId).update();
-        jdbc.sql("""
+                .param("guestId", guestId)
+                .param("personId", personId)
+                .update();
+        jdbc.sql(
+                        "update live.student_visit_events set person_id=:personId where person_id=:guestId")
+                .param("guestId", guestId)
+                .param("personId", personId)
+                .update();
+        jdbc.sql(
+                        "update analytics.events set actor_person_id = :personId where actor_person_id = :guestId")
+                .param("guestId", guestId)
+                .param("personId", personId)
+                .update();
+        jdbc.sql(
+                        "delete from live.web_participant_tokens where session_id = :sessionId and person_id ="
+                        + " :guestId")
+                .param("sessionId", sessionId)
+                .param("guestId", guestId)
+                .update();
+        jdbc.sql(
+                        """
                         delete from live.session_participants
                         where session_id = :sessionId and person_id = :guestId and channel_type = 'web'
                         """)
-                .param("sessionId", sessionId).param("guestId", guestId).update();
+                .param("sessionId", sessionId)
+                .param("guestId", guestId)
+                .update();
     }
 
     /** Регистрирует человека участником сессии; повторный вызов ничего не дублирует. */
@@ -504,7 +590,9 @@ class LiveSessionRepository {
                 .param("displayName", displayName)
                 .param("groupId", group.id())
                 .param("groupName", group.name())
-                .query((rs, row) -> new JoinOutcome(rs.getBoolean("inserted"), rs.getBoolean("kicked")))
+                .query(
+                        (rs, row) ->
+                                new JoinOutcome(rs.getBoolean("inserted"), rs.getBoolean("kicked")))
                 .single();
     }
 
@@ -523,54 +611,77 @@ class LiveSessionRepository {
     record JoinOutcome(boolean inserted, boolean kicked) {}
 
     boolean voluntarilyLeft(UUID sessionId, UUID personId) {
-        return jdbc.sql("select coalesce(bool_or(voluntarily_left),false) from live.session_participants "
-                + "where session_id=:session and person_id=:person and channel_type='web'")
-                .param("session", sessionId).param("person", personId).query(Boolean.class).single();
+        return jdbc.sql(
+                        "select coalesce(bool_or(voluntarily_left),false) from live.session_participants where"
+                        + " session_id=:session and person_id=:person and channel_type='web'")
+                .param("session", sessionId)
+                .param("person", personId)
+                .query(Boolean.class)
+                .single();
     }
 
     boolean leaveVoluntarily(UUID sessionId, UUID personId) {
-        int updated = jdbc.sql("""
+        int updated =
+                jdbc.sql(
+                                """
                 update live.session_participants set voluntarily_left=true, left_at=coalesce(left_at,now())
                 where session_id=:session and person_id=:person and channel_type='web' and not voluntarily_left
-                """).param("session", sessionId).param("person", personId).update();
+                """)
+                        .param("session", sessionId)
+                        .param("person", personId)
+                        .update();
         if (updated > 0) visitEvent(sessionId, personId, "LEFT");
         return updated > 0;
     }
 
     void returnVoluntarily(UUID sessionId, UUID personId) {
-        int updated = jdbc.sql("""
+        int updated =
+                jdbc.sql(
+                                """
                 update live.session_participants set voluntarily_left=false, left_at=null
                 where session_id=:session and person_id=:person and channel_type='web'
                     and voluntarily_left and not kicked
-                """).param("session", sessionId).param("person", personId).update();
+                """)
+                        .param("session", sessionId)
+                        .param("person", personId)
+                        .update();
         if (updated > 0) visitEvent(sessionId, personId, "RETURNED");
     }
 
     private void visitEvent(UUID sessionId, UUID personId, String type) {
-        jdbc.sql("insert into live.student_visit_events(session_id,person_id,event_type) values (:s,:p,:t)")
-                .param("s", sessionId).param("p", personId).param("t", type).update();
+        jdbc.sql(
+                        "insert into live.student_visit_events(session_id,person_id,event_type) values (:s,:p,:t)")
+                .param("s", sessionId)
+                .param("p", personId)
+                .param("t", type)
+                .update();
     }
 
     void deleteParticipantTokens(UUID sessionId, UUID personId) {
         jdbc.sql("delete from live.web_participant_tokens where session_id=:s and person_id=:p")
-                .param("s", sessionId).param("p", personId).update();
+                .param("s", sessionId)
+                .param("p", personId)
+                .update();
     }
 
     boolean clearKickForRejoin(UUID sessionId, UUID personId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                                """
                         update live.session_participants
                         set kicked = false, left_at = null, joined_at = now(),
                             name_requested_at = null, name_submitted_at = null
                         where session_id = :sessionId and person_id = :personId
                             and channel_type = 'web' and kicked = true
                         """)
-                .param("sessionId", sessionId)
-                .param("personId", personId)
-                .update() == 1;
+                        .param("sessionId", sessionId)
+                        .param("personId", personId)
+                        .update()
+                == 1;
     }
 
     Optional<SessionParticipant> kickParticipant(UUID sessionId, UUID personId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         update live.session_participants
                         set kicked = true, left_at = now(), name_requested_at = null
                         where session_id = :sessionId and person_id = :personId
@@ -586,7 +697,8 @@ class LiveSessionRepository {
     }
 
     Optional<SessionParticipant> requestParticipantName(UUID sessionId, UUID personId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         update live.session_participants
                         set name_requested_at = now(), name_submitted_at = null
                         where session_id = :sessionId and person_id = :personId
@@ -601,8 +713,10 @@ class LiveSessionRepository {
                 .optional();
     }
 
-    Optional<SessionParticipant> submitParticipantName(UUID sessionId, UUID personId, String displayName) {
-        return jdbc.sql("""
+    Optional<SessionParticipant> submitParticipantName(
+            UUID sessionId, UUID personId, String displayName) {
+        return jdbc.sql(
+                        """
                         update live.session_participants
                         set display_name = :displayName, name_submitted_at = now()
                         where session_id = :sessionId and person_id = :personId
@@ -624,7 +738,9 @@ class LiveSessionRepository {
 
     Map<UUID, ParticipationState> participationStates(UUID sessionId, Set<UUID> personIds) {
         if (personIds.isEmpty()) return Map.of();
-        return jdbc.sql("""
+        return jdbc
+                .sql(
+                        """
                         select person_id, kicked, left_at, name_requested_at, name_submitted_at
                         from live.session_participants
                         where session_id = :sessionId and person_id in (:personIds)
@@ -632,21 +748,32 @@ class LiveSessionRepository {
                         """)
                 .param("sessionId", sessionId)
                 .param("personIds", personIds)
-                .query((rs, row) -> new ParticipationState(
-                        rs.getObject("person_id", UUID.class),
-                        rs.getBoolean("kicked"),
-                        rs.getTimestamp("left_at") != null,
-                        rs.getTimestamp("name_requested_at") != null
-                                && rs.getTimestamp("name_submitted_at") == null))
-                .list().stream().collect(Collectors.toMap(ParticipationState::personId, state -> state));
+                .query(
+                        (rs, row) ->
+                                new ParticipationState(
+                                        rs.getObject("person_id", UUID.class),
+                                        rs.getBoolean("kicked"),
+                                        rs.getTimestamp("left_at") != null,
+                                        rs.getTimestamp("name_requested_at") != null
+                                                && rs.getTimestamp("name_submitted_at") == null))
+                .list()
+                .stream()
+                .collect(Collectors.toMap(ParticipationState::personId, state -> state));
     }
 
     record ParticipationState(UUID personId, boolean kicked, boolean left, boolean nameRequested) {
-        boolean active() { return !kicked && !left; }
+        boolean active() {
+            return !kicked && !left;
+        }
     }
 
     WebParticipant createWebToken(
-            UUID id, UUID sessionId, UUID personId, String tokenHash, String displayName, IdentityLevel level) {
+            UUID id,
+            UUID sessionId,
+            UUID personId,
+            String tokenHash,
+            String displayName,
+            IdentityLevel level) {
         jdbc.sql(
                         """
                         insert into live.web_participant_tokens
@@ -681,7 +808,8 @@ class LiveSessionRepository {
     }
 
     void touchWebParticipant(UUID participantId) {
-        jdbc.sql("""
+        jdbc.sql(
+                        """
                         update live.web_participant_tokens set last_seen_at = now()
                         where id = :participantId and last_seen_at < now() - interval '15 seconds'
                         """)
@@ -707,7 +835,8 @@ class LiveSessionRepository {
         if (completed) {
             // The terminal frame can beat the first coalesced ordinary receipt. Its acknowledgement
             // is itself delivery evidence; never require an earlier heartbeat to count it.
-            jdbc.sql("""
+            jdbc.sql(
+                            """
                     insert into live.student_delivery_receipts(session_id, person_id, channel_type, last_seen_at)
                     select s.id, p.person_id, 'web', s.ended_at
                     from live.sessions s join live.session_participants p on p.session_id = s.id
@@ -715,8 +844,12 @@ class LiveSessionRepository {
                         and s.status in ('ENDED', 'ARCHIVED') and s.ended_at is not null
                         and now() <= s.ended_at + interval '2 minutes' and not p.kicked and p.left_at is null
                     on conflict (session_id, person_id, channel_type) do nothing
-                    """).param("session", sessionId).param("person", personId).update();
-            jdbc.sql("""
+                    """)
+                    .param("session", sessionId)
+                    .param("person", personId)
+                    .update();
+            jdbc.sql(
+                            """
                     update live.student_delivery_receipts r set completed_at = s.ended_at
                     from live.sessions s, live.session_participants p
                     where r.session_id = :session and r.person_id = :person and r.channel_type = 'web'
@@ -725,12 +858,16 @@ class LiveSessionRepository {
                         and r.completed_at is null
                         and p.session_id = r.session_id and p.person_id = r.person_id
                         and p.channel_type = 'web' and not p.kicked and p.left_at is null
-                    """).param("session", sessionId).param("person", personId).update();
+                    """)
+                    .param("session", sessionId)
+                    .param("person", personId)
+                    .update();
             return;
         }
         // Shared locks order receipts before a concurrent end/kick without serializing students.
         // The database clock is authoritative; background timers alone never generate receipts.
-        jdbc.sql("""
+        jdbc.sql(
+                        """
                 insert into live.student_delivery_receipts(session_id, person_id, channel_type, last_seen_at)
                 select s.id, p.person_id, 'web', now()
                 from live.sessions s join live.session_participants p on p.session_id = s.id
@@ -739,7 +876,10 @@ class LiveSessionRepository {
                 for share of s, p
                 on conflict (session_id, person_id, channel_type) do update set last_seen_at = excluded.last_seen_at
                 where live.student_delivery_receipts.last_seen_at < now() - interval '20 seconds'
-                """).param("session", sessionId).param("person", personId).update();
+                """)
+                .param("session", sessionId)
+                .param("person", personId)
+                .update();
     }
 
     private LiveSession mapSession(ResultSet rs, int rowNumber) throws SQLException {
@@ -754,11 +894,17 @@ class LiveSessionRepository {
                 rs.getString("join_code"),
                 rs.getInt("current_slide_idx"),
                 readMap(rs.getString("annotations")),
-                rs.getTimestamp("started_at") == null ? null : rs.getTimestamp("started_at").toInstant(),
-                rs.getTimestamp("ended_at") == null ? null : rs.getTimestamp("ended_at").toInstant(),
+                rs.getTimestamp("started_at") == null
+                        ? null
+                        : rs.getTimestamp("started_at").toInstant(),
+                rs.getTimestamp("ended_at") == null
+                        ? null
+                        : rs.getTimestamp("ended_at").toInstant(),
                 Instant.EPOCH,
                 0,
-                0, rs.getLong("version"), rs.getBoolean("show_join_code"));
+                0,
+                rs.getLong("version"),
+                rs.getBoolean("show_join_code"));
     }
 
     private LiveSession withTiming(LiveSession session) {
@@ -791,7 +937,9 @@ class LiveSessionRepository {
                 session.endedAt(),
                 calculatedAt,
                 activeSeconds,
-                slideSeconds, session.version(), session.showJoinCode());
+                slideSeconds,
+                session.version(),
+                session.showJoinCode());
     }
 
     private List<TimingEvent> timingEvents(UUID sessionId) {
@@ -804,7 +952,11 @@ class LiveSessionRepository {
                         order by occurred_at, id
                         """)
                 .param("sessionId", sessionId)
-                .query((rs, row) -> new TimingEvent(rs.getString("verb"), rs.getTimestamp("occurred_at").toInstant()))
+                .query(
+                        (rs, row) ->
+                                new TimingEvent(
+                                        rs.getString("verb"),
+                                        rs.getTimestamp("occurred_at").toInstant()))
                 .list();
     }
 
@@ -843,7 +995,8 @@ class LiveSessionRepository {
         return Math.max(0, totalMillis - pausedMillis) / 1000;
     }
 
-    private long overlapMillis(Instant intervalStart, Instant intervalEnd, Instant from, Instant until) {
+    private long overlapMillis(
+            Instant intervalStart, Instant intervalEnd, Instant from, Instant until) {
         Instant start = intervalStart.isAfter(from) ? intervalStart : from;
         Instant end = intervalEnd.isBefore(until) ? intervalEnd : until;
         return end.isAfter(start) ? Duration.between(start, end).toMillis() : 0;
@@ -855,7 +1008,8 @@ class LiveSessionRepository {
         return mapParticipant(rs, rowNumber, false);
     }
 
-    private SessionParticipant mapParticipant(ResultSet rs, int rowNumber, boolean receipts) throws SQLException {
+    private SessionParticipant mapParticipant(ResultSet rs, int rowNumber, boolean receipts)
+            throws SQLException {
         return new SessionParticipant(
                 rs.getObject("session_id", UUID.class),
                 rs.getObject("person_id", UUID.class),
@@ -866,12 +1020,18 @@ class LiveSessionRepository {
                 rs.getTimestamp("joined_at").toInstant(),
                 rs.getTimestamp("left_at") == null ? null : rs.getTimestamp("left_at").toInstant(),
                 rs.getBoolean("kicked"),
-                rs.getTimestamp("name_requested_at") == null ? null : rs.getTimestamp("name_requested_at").toInstant(),
-                rs.getTimestamp("name_submitted_at") == null ? null : rs.getTimestamp("name_submitted_at").toInstant(),
+                rs.getTimestamp("name_requested_at") == null
+                        ? null
+                        : rs.getTimestamp("name_requested_at").toInstant(),
+                rs.getTimestamp("name_submitted_at") == null
+                        ? null
+                        : rs.getTimestamp("name_submitted_at").toInstant(),
                 !receipts || rs.getTimestamp("last_seen_at") == null
-                        ? null : rs.getTimestamp("last_seen_at").toInstant(),
+                        ? null
+                        : rs.getTimestamp("last_seen_at").toInstant(),
                 !receipts || rs.getTimestamp("completed_at") == null
-                        ? null : rs.getTimestamp("completed_at").toInstant());
+                        ? null
+                        : rs.getTimestamp("completed_at").toInstant());
     }
 
     private WebParticipant mapWebParticipant(ResultSet rs, int rowNumber) throws SQLException {

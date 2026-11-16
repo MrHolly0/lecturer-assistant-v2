@@ -8,6 +8,7 @@
 // в пользу задокументированного, а не предполагаемого поведения. Чистая логика (без сети и
 // без процесса) вынесена в lib.mjs и покрыта тестами в lib.test.mjs.
 import http from "node:http";
+import { DurableInbox, webhookHandler } from "./inbox.mjs";
 import { createDocumentUploader } from "./document-media.mjs";
 import {
   createRateLimiter,
@@ -188,44 +189,28 @@ async function handleMessageCreated(update) {
 }
 
 async function handleUpdate(update) {
-  try {
-    if (update.update_type === "bot_started") {
-      await handleBotStarted(update);
-    } else if (update.update_type === "message_created") {
-      await handleMessageCreated(update);
-    }
-  } catch (error) {
-    console.error(`[max-adapter] failed to handle ${update.update_type}:`, error.message);
+  if (update.update_type === "bot_started") await handleBotStarted(update);
+  else if (update.update_type === "message_created") await handleMessageCreated(update);
+}
+
+const inbox = new DurableInbox(process.env.MAX_INBOX_PATH ?? "/data/max-inbox/inbox.sqlite");
+async function runInbox() {
+  let retentionAt = 0;
+  for (;;) {
+    try {
+      if (Date.now() > retentionAt) { inbox.retain(); retentionAt = Date.now()+60000; }
+      const job = inbox.claim();
+      if (!job) { await sleep(250); continue; }
+      try { await handleUpdate(job.update); inbox.finish(job); }
+      catch (error) { inbox.retry(job); console.error("[max-adapter] inbox retry:", error.message); }
+    } catch (error) { console.error("[max-adapter] inbox unavailable:", error.message); await sleep(3000); }
   }
 }
 
-// ---------- приём событий: вебхук (продакшен) ----------
-
 function startWebhookServer() {
-  const server = http.createServer((request, response) => {
-    if (request.method !== "POST" || request.url !== webhookPath) {
-      response.writeHead(404).end();
-      return;
-    }
-    const secretHeader = request.headers["x-max-bot-api-secret"];
-    if (!timingSafeEqualStrings(String(secretHeader ?? ""), webhookSecret)) {
-      response.writeHead(404).end();
-      return;
-    }
-    let raw = "";
-    request.on("data", (chunk) => (raw += chunk));
-    request.on("end", async () => {
-      response.writeHead(200).end();
-      try {
-        await handleUpdate(JSON.parse(raw));
-      } catch (error) {
-        console.error("[max-adapter] webhook payload error:", error.message);
-      }
-    });
-  });
-  server.listen(webhookPort, () => {
-    console.log(`[max-adapter] webhook listening on :${webhookPort}${webhookPath}`);
-  });
+  const server = http.createServer(webhookHandler({ inbox, path: webhookPath, secret: webhookSecret, equals: timingSafeEqualStrings }));
+  server.requestTimeout = 6000; server.headersTimeout = 6000;
+  server.listen(webhookPort, () => console.log(`[max-adapter] webhook listening on :${webhookPort}`));
 }
 
 async function registerWebhookSubscription() {
@@ -251,7 +236,7 @@ async function runLongPolling() {
     try {
       const response = await maxApi("/updates", { query: { timeout: 25, limit: 100, marker } });
       for (const update of response.updates ?? []) {
-        await handleUpdate(update);
+        inbox.enqueue(update);
       }
       marker = response.marker ?? marker;
       failures = 0;
@@ -327,6 +312,7 @@ function sleep(ms) {
 // ---------- запуск ----------
 
 await registerCapabilities();
+void runInbox();
 
 if (webhookUrl) {
   if (registerWebhookOnStart) await registerWebhookSubscription();

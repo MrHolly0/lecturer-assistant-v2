@@ -61,6 +61,30 @@ jobs:
           tags: ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.component }}
           cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+      - name: Prepare image security scanner
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: json
+          output: initial-image-audit.json
+          exit-code: '0'
+      - name: Scan both architectures and generate software inventories
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          COMPONENT: ${{ matrix.component }}
+        run: |
+          mkdir -p security
+          for architecture in amd64 arm64; do
+            trivy image --platform "linux/$architecture" --format cyclonedx --output "security/$COMPONENT-$architecture.cdx.json" "$IMAGE@$DIGEST"
+            trivy image --platform "linux/$architecture" --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE@$DIGEST"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-${{ matrix.component }}
+          path: |
+            security/
+            initial-image-audit.json
       - name: Immutable image descriptor
         env:
           COMPONENT: ${{ matrix.component }}

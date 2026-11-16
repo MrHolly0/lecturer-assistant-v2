@@ -1,7 +1,7 @@
 package ru.university.assistant.live.internal;
 
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,8 +27,8 @@ import ru.university.assistant.org.api.CourseAccessApi;
 import ru.university.assistant.org.api.CourseMembershipApi;
 import ru.university.assistant.org.api.StudyGroup;
 import ru.university.assistant.shared.api.CodeGenerator;
-import ru.university.assistant.shared.api.UuidV7;
 import ru.university.assistant.shared.api.InstallationGate;
+import ru.university.assistant.shared.api.UuidV7;
 
 @Service
 public class LiveSessionService implements LiveSessionAccessApi {
@@ -48,7 +48,8 @@ public class LiveSessionService implements LiveSessionAccessApi {
             EventBus events,
             LiveSessionPublisher publisher,
             ChannelFanoutApi channelFanout,
-            SessionPollLifecycleApi sessionPollLifecycle, InstallationGate installationGate) {
+            SessionPollLifecycleApi sessionPollLifecycle,
+            InstallationGate installationGate) {
         this.installationGate = installationGate;
         this.courseAccess = courseAccess;
         this.memberships = memberships;
@@ -70,11 +71,20 @@ public class LiveSessionService implements LiveSessionAccessApi {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Lecture not found");
         }
         lockCurrentLectureDeck(courseId, lectureId, deckId);
-        LiveSession session = sessions.create(
-                UuidV7.generate(), lectureId, user.id(), CodeGenerator.readableCode(6), groups);
-        event(user, session, "session.scheduled", Map.of(
-                "joinCode", session.joinCode(),
-                "groupIds", groups.stream().map(StudyGroup::id).toList()));
+        LiveSession session =
+                sessions.create(
+                        UuidV7.generate(),
+                        lectureId,
+                        user.id(),
+                        CodeGenerator.readableCode(6),
+                        groups);
+        event(
+                user,
+                session,
+                "session.scheduled",
+                Map.of(
+                        "joinCode", session.joinCode(),
+                        "groupIds", groups.stream().map(StudyGroup::id).toList()));
         publisher.publish("session.scheduled", session);
         return session;
     }
@@ -86,12 +96,14 @@ public class LiveSessionService implements LiveSessionAccessApi {
         LiveSession current = session(courseId, sessionId);
         if (current.status() == SessionStatus.LIVE || current.status() == SessionStatus.PAUSED) {
             if (current.startedAt() == null) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Started session has no start time");
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT, "Started session has no start time");
             }
             return current;
         }
         if (current.status() != SessionStatus.SCHEDULED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session can no longer be started");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Session can no longer be started");
         }
         if (!sessions.begin(courseId, sessionId)) {
             LiveSession concurrent = session(courseId, sessionId);
@@ -100,7 +112,8 @@ public class LiveSessionService implements LiveSessionAccessApi {
                             || concurrent.status() == SessionStatus.PAUSED)) {
                 return concurrent;
             }
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session can no longer be started");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Session can no longer be started");
         }
         sessions.addSlideLog(sessionId, current.currentSlideIdx());
         LiveSession started = session(courseId, sessionId);
@@ -111,14 +124,20 @@ public class LiveSessionService implements LiveSessionAccessApi {
 
     private List<StudyGroup> resolveGroups(UUID courseId, StartSessionRequest request) {
         if (request == null || request.groups() == null || request.groups().isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one study group is required");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "At least one study group is required");
         }
         LinkedHashMap<UUID, StudyGroup> unique = new LinkedHashMap<>();
         for (StartSessionGroup selection : request.groups()) {
-            StudyGroup group = memberships.resolveSessionGroup(
-                    courseId, selection.groupId(), selection.groupName(), selection.parts());
+            StudyGroup group =
+                    memberships.resolveSessionGroup(
+                            courseId,
+                            selection.groupId(),
+                            selection.groupName(),
+                            selection.parts());
             if (unique.putIfAbsent(group.id(), group) != null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Study groups must be unique");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Study groups must be unique");
             }
         }
         return List.copyOf(unique.values());
@@ -128,18 +147,27 @@ public class LiveSessionService implements LiveSessionAccessApi {
         UUID deckId = initialDeckId;
         while (true) {
             sessions.lockDeckForSession(deckId);
-            UUID observedDeckId = sessions.lectureDeckId(courseId, lectureId)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lecture not found"));
+            UUID observedDeckId =
+                    sessions.lectureDeckId(courseId, lectureId)
+                            .orElseThrow(
+                                    () ->
+                                            new ResponseStatusException(
+                                                    HttpStatus.NOT_FOUND, "Lecture not found"));
             if (!observedDeckId.equals(deckId)) {
                 deckId = observedDeckId;
                 continue;
             }
-            UUID currentDeckId = sessions.lockLectureAndGetDeck(courseId, lectureId)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lecture not found"));
+            UUID currentDeckId =
+                    sessions.lockLectureAndGetDeck(courseId, lectureId)
+                            .orElseThrow(
+                                    () ->
+                                            new ResponseStatusException(
+                                                    HttpStatus.NOT_FOUND, "Lecture not found"));
             if (currentDeckId.equals(deckId)) {
                 return;
             }
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Lecture materials changed; retry session start");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Lecture materials changed; retry session start");
         }
     }
 
@@ -166,23 +194,31 @@ public class LiveSessionService implements LiveSessionAccessApi {
     public boolean endIfPresenterAbsent(UUID sessionId) {
         if (!sessions.lockIfPresenterAbsent(sessionId)) return false;
         LiveSession current = requireSession(sessionId);
-        applyTransition(current, SessionStatus.ENDED, null, Map.of("reason", "presenter_absent_timeout"));
+        applyTransition(
+                current, SessionStatus.ENDED, null, Map.of("reason", "presenter_absent_timeout"));
         return true;
     }
 
-    public List<SessionParticipant> participants(AuthenticatedUser user, UUID courseId, UUID sessionId) {
+    public List<SessionParticipant> participants(
+            AuthenticatedUser user, UUID courseId, UUID sessionId) {
         courseAccess.requireManage(user, courseId);
         session(courseId, sessionId);
         return sessions.listParticipants(sessionId);
     }
 
     @Transactional
-    public SessionParticipant kickParticipant(AuthenticatedUser user, UUID courseId, UUID sessionId, UUID personId) {
+    public SessionParticipant kickParticipant(
+            AuthenticatedUser user, UUID courseId, UUID sessionId, UUID personId) {
         courseAccess.requireManage(user, courseId);
         LiveSession current = session(courseId, sessionId);
         ensureRunning(current);
-        SessionParticipant participant = sessions.kickParticipant(sessionId, personId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Active participant not found"));
+        SessionParticipant participant =
+                sessions.kickParticipant(sessionId, personId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Active participant not found"));
         event(user, current, "participant.kicked", Map.of("personId", personId));
         publisher.participantAccessRevoked(current, personId);
         publisher.publish("participant.kicked", current);
@@ -195,8 +231,13 @@ public class LiveSessionService implements LiveSessionAccessApi {
         courseAccess.requireManage(user, courseId);
         LiveSession current = session(courseId, sessionId);
         ensureRunning(current);
-        SessionParticipant participant = sessions.requestParticipantName(sessionId, personId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Active participant not found"));
+        SessionParticipant participant =
+                sessions.requestParticipantName(sessionId, personId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Active participant not found"));
         event(user, current, "participant.name_requested", Map.of("personId", personId));
         publisher.publish("participant.name_requested", current);
         return participant;
@@ -205,8 +246,12 @@ public class LiveSessionService implements LiveSessionAccessApi {
     @Transactional
     public LiveSession join(AuthenticatedUser user, UUID courseId, JoinSessionRequest request) {
         courseAccess.requireVisible(user, courseId);
-        LiveSession session = sessions.findByJoinCode(courseId, request.joinCode().trim().toUpperCase())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        LiveSession session =
+                sessions.findByJoinCode(courseId, request.joinCode().trim().toUpperCase())
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Session not found"));
         sessions.join(session.id(), user);
         event(user, session, "participant.joined", Map.of("channelType", "web"));
         publisher.publish("participant.joined", session);
@@ -220,15 +265,20 @@ public class LiveSessionService implements LiveSessionAccessApi {
         sessions.lock(sessionId);
         LiveSession before = session(courseId, sessionId);
         ensureLive(before);
-        if (request.slideIdx() < 1 || request.slideIdx() > sessions.deckSlideCount(before.deckId())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Slide index is outside the deck");
+        if (request.slideIdx() < 1
+                || request.slideIdx() > sessions.deckSlideCount(before.deckId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Slide index is outside the deck");
         }
         if (request.slideIdx() == before.currentSlideIdx()) {
             return before;
         }
         requireExpectedVersion(before, request.expectedVersion());
         LiveSession after = sessions.updateSlide(courseId, sessionId, request.slideIdx());
-        event(user, after, "session.slide_changed",
+        event(
+                user,
+                after,
+                "session.slide_changed",
                 Map.of("from", before.currentSlideIdx(), "to", after.currentSlideIdx()));
         channelFanout.sessionSlideChanged(after);
         publisher.publish("session.slide_changed", after);
@@ -247,13 +297,18 @@ public class LiveSessionService implements LiveSessionAccessApi {
         }
         requireExpectedVersion(current, request.expectedVersion());
         LiveSession after = sessions.updateAnnotations(courseId, sessionId, request.annotations());
-        event(user, after, "slide.annotations_updated", Map.of("slideIdx", after.currentSlideIdx()));
+        event(
+                user,
+                after,
+                "slide.annotations_updated",
+                Map.of("slideIdx", after.currentSlideIdx()));
         publisher.publish("slide.annotations_updated", after);
         return after;
     }
 
     @Transactional
-    public LiveSession transition(AuthenticatedUser user, UUID courseId, UUID sessionId, SessionStatus target) {
+    public LiveSession transition(
+            AuthenticatedUser user, UUID courseId, UUID sessionId, SessionStatus target) {
         courseAccess.requireManage(user, courseId);
         sessions.lock(sessionId);
         LiveSession current = session(courseId, sessionId);
@@ -272,13 +327,17 @@ public class LiveSessionService implements LiveSessionAccessApi {
             sessionPollLifecycle.closeOpenForSession(courseId, sessionId, actorId);
         }
         LiveSession after = sessions.updateStatus(courseId, sessionId, target);
-        String verb = switch (target) {
-            case PAUSED -> "session.paused";
-            case LIVE -> "session.resumed";
-            case ENDED -> current.status() == SessionStatus.SCHEDULED ? "session.cancelled" : "session.ended";
-            case ARCHIVED -> "session.archived";
-            case SCHEDULED -> "session.scheduled";
-        };
+        String verb =
+                switch (target) {
+                    case PAUSED -> "session.paused";
+                    case LIVE -> "session.resumed";
+                    case ENDED ->
+                            current.status() == SessionStatus.SCHEDULED
+                                    ? "session.cancelled"
+                                    : "session.ended";
+                    case ARCHIVED -> "session.archived";
+                    case SCHEDULED -> "session.scheduled";
+                };
         Map<String, Object> payload = new LinkedHashMap<>(details);
         payload.put("status", target.name());
         event(actorId, after, verb, payload);
@@ -287,7 +346,8 @@ public class LiveSessionService implements LiveSessionAccessApi {
     }
 
     @Transactional
-    public LiveSession setProjection(AuthenticatedUser user, UUID courseId, UUID sessionId, boolean showJoinCode) {
+    public LiveSession setProjection(
+            AuthenticatedUser user, UUID courseId, UUID sessionId, boolean showJoinCode) {
         courseAccess.requireManage(user, courseId);
         sessions.lock(sessionId);
         LiveSession current = session(courseId, sessionId);
@@ -299,14 +359,18 @@ public class LiveSessionService implements LiveSessionAccessApi {
 
     private void requireExpectedVersion(LiveSession current, Long expectedVersion) {
         if (expectedVersion != null && current.version() != expectedVersion) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
                     "Session changed in another window; refresh before applying this command");
         }
     }
 
     private LiveSession session(UUID courseId, UUID sessionId) {
         return sessions.findByCourse(courseId, sessionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+                .orElseThrow(
+                        () ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Session not found"));
     }
 
     @Override
@@ -317,9 +381,19 @@ public class LiveSessionService implements LiveSessionAccessApi {
     }
 
     @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public LiveSession lockSessionForResponse(UUID sessionId) {
+        sessions.lockForResponse(sessionId);
+        return requireSession(sessionId);
+    }
+
+    @Override
     public LiveSession requireSession(UUID sessionId) {
         return sessions.findById(sessionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+                .orElseThrow(
+                        () ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Session not found"));
     }
 
     @Override
@@ -347,30 +421,41 @@ public class LiveSessionService implements LiveSessionAccessApi {
     }
 
     private void ensureTransition(SessionStatus current, SessionStatus target) {
-        boolean allowed = switch (current) {
-            case SCHEDULED -> target == SessionStatus.ENDED;
-            case LIVE -> target == SessionStatus.PAUSED || target == SessionStatus.ENDED;
-            case PAUSED -> target == SessionStatus.LIVE || target == SessionStatus.ENDED;
-            case ENDED -> target == SessionStatus.ARCHIVED;
-            case ARCHIVED -> false;
-        };
+        boolean allowed =
+                switch (current) {
+                    case SCHEDULED -> target == SessionStatus.ENDED;
+                    case LIVE -> target == SessionStatus.PAUSED || target == SessionStatus.ENDED;
+                    case PAUSED -> target == SessionStatus.LIVE || target == SessionStatus.ENDED;
+                    case ENDED -> target == SessionStatus.ARCHIVED;
+                    case ARCHIVED -> false;
+                };
         if (!allowed) {
             throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "Cannot transition session from " + current + " to " + target);
+                    HttpStatus.CONFLICT,
+                    "Cannot transition session from " + current + " to " + target);
         }
     }
 
-    private void event(AuthenticatedUser user, LiveSession session, String verb, Map<String, Object> payload) {
+    private void event(
+            AuthenticatedUser user, LiveSession session, String verb, Map<String, Object> payload) {
         event(user.id(), session, verb, payload);
     }
 
-    private void event(UUID actorId, LiveSession session, String verb, Map<String, Object> payload) {
-        events.publish(new DomainEvent(
-                "live.session",
-                session.id(),
-                verb,
-                actorId,
-                Map.of("courseId", session.courseId(), "sessionId", session.id(), "lectureId", session.lectureId()),
-                payload));
+    private void event(
+            UUID actorId, LiveSession session, String verb, Map<String, Object> payload) {
+        events.publish(
+                new DomainEvent(
+                        "live.session",
+                        session.id(),
+                        verb,
+                        actorId,
+                        Map.of(
+                                "courseId",
+                                session.courseId(),
+                                "sessionId",
+                                session.id(),
+                                "lectureId",
+                                session.lectureId()),
+                        payload));
     }
 }

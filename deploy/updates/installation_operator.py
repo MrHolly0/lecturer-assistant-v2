@@ -273,8 +273,8 @@ class Kubernetes:
                     self.run(self.base + ['wait', '--for=jsonpath={.status.phase}=Succeeded',
                                          'pod/'+name, '--timeout=180s'], self.config, log, timeout=190)
                 finally:
-                    self.run(self.base + ['delete', 'pod/'+name, '--ignore-not-found', '--wait=false'],
-                             self.config, log, timeout=30)
+                    self.run(self.base + ['delete', 'pod/'+name, '--ignore-not-found', '--wait=true', '--timeout=90s'],
+                             self.config, log, timeout=100)
 
     def backup(self, log):
         if self.config.get('backend') == 'appliance':
@@ -307,6 +307,27 @@ class Kubernetes:
                         self.guard()
                         self.run(self.base + ['delete', 'pod', pod['metadata']['name'], '--wait=true', '--timeout=90s'],
                                  self.config, log, timeout=100)
+                # At most one rolling-update surge may consume the reserved namespace budget.
+                self.wait_ready(target, log)
+
+    def wait_ready(self, target, log):
+        current = decode(self.read(self.base + ['get', target['resource'], '-o', 'json'], self.config))
+        if current['spec'].get('updateStrategy', {}).get('type') == 'OnDelete':
+            desired = current.get('status', {}).get('desiredNumberScheduled', 0)
+            if not desired: raise UpdateError('Media workload has no scheduled nodes')
+            for field in ['updatedNumberScheduled', 'numberReady']:
+                self.run(self.base + ['wait', f'--for=jsonpath={{.status.{field}}}={desired}',
+                                     target['resource'], '--timeout=240s'], self.config, log, timeout=250)
+        else:
+            self.run(self.base + ['rollout','status',target['resource'],'--timeout=240s'], self.config, log, timeout=250)
+        # Deployment availability may precede final deletion of its old pods. Do not
+        # spend the next workload's surge budget while that memory is still charged.
+        deadline=time.monotonic()+240
+        while True:
+            pods=decode(self.read(self.base+['get','pods','-l',self.selector(current),'-o','json'],self.config))
+            if not any(p.get('metadata',{}).get('deletionTimestamp') for p in pods.get('items',[])): break
+            if time.monotonic()>=deadline: raise UpdateError('Old workload pods did not terminate')
+            time.sleep(2)
 
     @staticmethod
     def selector(workload):

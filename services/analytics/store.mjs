@@ -19,11 +19,17 @@ export class AnalyticsStore {
         ON CONFLICT DO NOTHING`, [createHash('sha256').update(bytes).digest('hex')]);
       return false;
     }
+    if (!event.sessionId || event.type === 'summary.opened') return false;
+    if (['feedback.signal_submitted','interaction.poll_answered','session.slide_changed'].includes(event.type)) return false;
     return this.transaction(async db => {
+      if (event.type !== 'session.ended') {
+        const materialized = await db.query('SELECT 1 FROM reports WHERE session_id=$1', [event.sessionId]);
+        if (!materialized.rowCount) return false;
+      }
       const inserted = await db.query('INSERT INTO inbox(event_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING event_id',
         [event.eventId]);
       if (!inserted.rowCount) return false;
-      if (event.sessionId && event.type !== 'summary.opened') await this.enqueue(event.sessionId, db);
+      await this.enqueue(event.sessionId, db);
       return true;
     });
   }

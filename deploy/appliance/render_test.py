@@ -32,6 +32,8 @@ class ApplianceTests(unittest.TestCase):
         config['scaling']['coreMax']=5
         with self.assertRaisesRegex(ValueError, 'surge'): r.validate(config,self.images)
         config['scaling']['databaseConnections']=180
+        config['podMemoryBudgetMi']=13312
+        config['clusterMemoryMi']=16384
         r.validate(config,self.images)
 
     def test_persistent_single_node_storage_and_private_services(self):
@@ -57,6 +59,28 @@ class ApplianceTests(unittest.TestCase):
     def test_mutable_images_and_non_https_origin_rejected(self):
         self.images['web']='example/web:latest'
         with self.assertRaises(ValueError):r.validate(self.config,self.images)
+
+    def test_maximum_and_serial_surge_fit_the_emitted_memory_budget(self):
+        budget=r.resource_budget(self.config,self.images)
+        self.assertEqual(9408,budget['maximumMi'])
+        self.assertLessEqual(budget['maximumMi']+budget['updateSurgeMi'],budget['quotaMi'])
+        self.assertLessEqual(budget['quotaMi']+budget['platformMi'],budget['clusterMi'])
+        for field in ['clusterMemoryMi','platformMemoryMi','clusterCpus']:
+            bad=copy.deepcopy(self.config);bad[field]='1; invalid'
+            with self.assertRaises(ValueError):r.validate(bad,self.images)
+
+    def test_converter_has_only_scratch_and_no_egress(self):
+        items=r.app(self.config,self.images)
+        converter=next(i for i in items if i['kind']=='Deployment' and i['metadata']['name']=='converter')['spec']['template']['spec']
+        self.assertEqual({'conversion','temporary'},set(v['name'] for v in converter['volumes']))
+        self.assertTrue(converter['containers'][0]['securityContext']['runAsNonRoot'])
+        policy=next(i for i in items if i['kind']=='NetworkPolicy' and i['metadata']['name']=='converter-isolation')
+        self.assertEqual([],policy['spec']['egress'])
+        for item in items:
+            if item['kind']=='Deployment' and item['metadata']['name'] in ['realtime','analytics','event-publisher','media-control']:
+                container=item['spec']['template']['spec']['containers'][0]
+                heap=next(e['value'] for e in container['env'] if e['name']=='NODE_OPTIONS')
+                self.assertLess(int(heap.split('=')[-1]),r.site_renderer.mebibytes(container['resources']['limits']['memory'])*.7)
 
 
 if __name__=='__main__':unittest.main()

@@ -12,8 +12,15 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @Profile("content-worker")
 @EnableAutoConfiguration
 @EnableScheduling
-@Import({ContentConfiguration.class, ContentRepository.class, FsBlobStorage.class,
-    SlideImportWorker.class, ContentImportRecovery.class})
+@Import({
+    ContentConfiguration.class,
+    ContentRepository.class,
+    FsBlobStorage.class,
+    BlobBudget.class,
+    ConversionScratch.class,
+    SlideImportWorker.class,
+    ContentImportRecovery.class
+})
 public class ContentWorkerApplication {
     public static void run(String[] args) {
         SpringApplication application = new SpringApplication(ContentWorkerApplication.class);

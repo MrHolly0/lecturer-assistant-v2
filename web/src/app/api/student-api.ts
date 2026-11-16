@@ -13,6 +13,9 @@ export type StudentSessionGroup = components["schemas"]["SessionGroup"];
 export type StudentActivePoll = components["schemas"]["ActivePollView"];
 export type StudentSessionSnapshot = Omit<GeneratedStudentSessionSnapshot, "activePoll"> & {
   activePoll?: StudentActivePoll | null;
+  deliveryMode?: "compact";
+  historyRevision?: string;
+  historyHasMore?: boolean;
 };
 export type StudentJoinResponse = components["schemas"]["StudentJoinResponse"];
 export type SignalAggregate = components["schemas"]["SignalAggregate"];
@@ -85,6 +88,29 @@ export async function getMyStudentActiveSession(): Promise<StudentActiveSessionS
   return response.json() as Promise<StudentActiveSessionSummary>;
 }
 
+export type StudentQuestionHistory = {
+  myQuestions: StudentQuestion[];
+  questionAnswers: StudentQuestionAnswer[];
+  hasMore: boolean;
+};
+export async function getStudentQuestionHistory(
+  joinCode: string,
+  participantToken = "",
+  offset = 0,
+  signal?: AbortSignal
+): Promise<StudentQuestionHistory> {
+  return withRequestDeadline(async (requestSignal) => {
+    const response = await studentFetch(
+      `/student/sessions/${encodeURIComponent(joinCode)}/question-history?offset=${offset}`,
+      {
+        signal: requestSignal,
+        headers: studentParticipantHeaders(participantToken)
+      }
+    );
+    return response.json() as Promise<StudentQuestionHistory>;
+  }, signal);
+}
+
 export async function getStudentSession(
   joinCode: string,
   participantToken = "",
@@ -95,10 +121,13 @@ export async function getStudentSession(
     headers.set("X-Participant-Token", participantToken);
   }
   return withRequestDeadline(async (requestSignal) => {
-    const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}`, {
-      headers,
-      signal: requestSignal
-    });
+    const res = await studentFetch(
+      `/student/sessions/${encodeURIComponent(joinCode)}?includeText=false`,
+      {
+        headers,
+        signal: requestSignal
+      }
+    );
     return res.json() as Promise<StudentSessionSnapshot>;
   }, signal);
 }
@@ -108,9 +137,12 @@ export async function getPublicStudentSession(
   signal?: AbortSignal
 ): Promise<StudentSessionSnapshot> {
   return withRequestDeadline(async (requestSignal) => {
-    const res = await publicFetch(`/student/sessions/${encodeURIComponent(joinCode)}`, {
-      signal: requestSignal
-    });
+    const res = await publicFetch(
+      `/student/sessions/${encodeURIComponent(joinCode)}?includeText=false`,
+      {
+        signal: requestSignal
+      }
+    );
     return res.json() as Promise<StudentSessionSnapshot>;
   }, signal);
 }
@@ -269,8 +301,8 @@ export function connectStudentSession(
   onDelivery?: (snapshot: StudentSessionSnapshot) => void
 ): StudentConnectionControls {
   const eventUrl = participantToken
-    ? `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events?${new URLSearchParams({ participantToken })}`
-    : `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events/public`;
+    ? `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events?${new URLSearchParams({ participantToken, format: "compact-v1" })}`
+    : `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events/public?format=compact-v1`;
   let source: EventSource | null = null;
   let reconnectTimer: number | undefined;
   let pollingTimer: number | undefined;
@@ -379,8 +411,54 @@ export function connectStudentSession(
     pollAbort?.abort();
   };
 
+  let historyRevision: string | undefined;
+  let historyAbort: AbortController | undefined;
+  let historyRetryAt = 0;
   const acceptSnapshot = (snapshot: StudentSessionSnapshot, requestGeneration?: number) => {
     if (stopped) return false;
+    if (snapshot.deliveryMode === "compact") {
+      const previous = snapshotGate.current;
+      const sameHistory =
+        previous?.sessionId === snapshot.sessionId &&
+        previous?.historyRevision === snapshot.historyRevision;
+      snapshot = {
+        ...snapshot,
+        myQuestions: sameHistory ? previous?.myQuestions ?? [] : [],
+        questionAnswers: sameHistory ? previous?.questionAnswers ?? [] : [],
+        historyHasMore: sameHistory ? previous?.historyHasMore : false
+      };
+      const ref = snapshot.historyRevision;
+      if (!snapshot.kicked && ref !== historyRevision && Date.now() >= historyRetryAt) {
+        historyAbort?.abort();
+        const controller = new AbortController();
+        historyAbort = controller;
+        historyRevision = ref;
+        const sessionId = snapshot.sessionId;
+        void getStudentQuestionHistory(joinCode, participantToken, 0, controller.signal)
+          .then((history) => {
+            const latest = snapshotGate.current;
+            if (
+              stopped ||
+              controller.signal.aborted ||
+              latest?.sessionId !== sessionId ||
+              latest.historyRevision !== ref
+            )
+              return;
+            acceptSnapshot({
+              ...latest,
+              ...history,
+              deliveryMode: undefined,
+              historyHasMore: history.hasMore
+            });
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) {
+              historyRevision = undefined;
+              historyRetryAt = Date.now() + 3000 + Math.random() * 3000;
+            }
+          });
+      }
+    }
     const accepted =
       requestGeneration === undefined
         ? snapshotGate.accept(snapshot)
@@ -608,6 +686,7 @@ export function connectStudentSession(
     reconnect,
     disconnect: () => {
       stopped = true;
+      historyAbort?.abort();
       stopInvalidationRead();
       source?.close();
       source = null;

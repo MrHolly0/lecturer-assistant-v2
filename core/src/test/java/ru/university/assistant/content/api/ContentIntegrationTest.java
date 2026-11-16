@@ -4,8 +4,8 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -38,9 +38,9 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -48,8 +48,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.university.assistant.content.internal.BlobStorage;
 import ru.university.assistant.content.internal.ContentImportRecovery;
 import ru.university.assistant.content.internal.ConvertedSlide;
-import ru.university.assistant.content.internal.SlideConversionResult;
 import ru.university.assistant.content.internal.SlideConversionClient;
+import ru.university.assistant.content.internal.SlideConversionResult;
 import ru.university.assistant.content.internal.SlideConversionSink;
 import ru.university.assistant.content.internal.StoredBlob;
 
@@ -58,29 +58,27 @@ import ru.university.assistant.content.internal.StoredBlob;
 @SpringBootTest
 @AutoConfigureMockMvc
 class ContentIntegrationTest {
-    private static final String ADMIN_SETUP_TOKEN = "integration-admin-setup-token-with-enough-length";
+    private static final String ADMIN_SETUP_TOKEN =
+            "integration-admin-setup-token-with-enough-length";
     private static final Path BLOB_ROOT =
-            Path.of(System.getProperty("java.io.tmpdir"), "lecturer-assistant-v2-test-blobs-" + UUID.randomUUID());
+            Path.of(
+                    System.getProperty("java.io.tmpdir"),
+                    "lecturer-assistant-v2-test-blobs-" + UUID.randomUUID());
     private static volatile CountDownLatch converterReadyForBackup = new CountDownLatch(0);
     private static volatile CountDownLatch allowConverterBlobWrite = new CountDownLatch(0);
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
 
-    @Autowired
-    MockMvc mockMvc;
+    @Autowired MockMvc mockMvc;
 
-    @Autowired
-    ObjectMapper objectMapper;
+    @Autowired ObjectMapper objectMapper;
 
-    @Autowired
-    JdbcClient jdbc;
+    @Autowired JdbcClient jdbc;
 
-    @Autowired
-    DataSource dataSource;
+    @Autowired DataSource dataSource;
 
-    @Autowired
-    ContentImportRecovery importRecovery;
+    @Autowired ContentImportRecovery importRecovery;
 
     @DynamicPropertySource
     static void postgresProperties(DynamicPropertyRegistry registry) {
@@ -130,38 +128,50 @@ class ContentIntegrationTest {
     @Test
     void realV1PdfImportCreatesProgressDeckCacheHeadersAndSecondVersion() throws Exception {
         String adminToken = bootstrapAdmin();
-        String lecturerToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        String lecturerToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
 
         JsonNode firstJob = startImport(lecturerToken, courseId, "Golden Deck", pdf);
-        JsonNode completedFirst = waitForCompletedJob(lecturerToken, courseId, firstJob.get("id").asText());
+        JsonNode completedFirst =
+                waitForCompletedJob(lecturerToken, courseId, firstJob.get("id").asText());
         String firstDeckId = completedFirst.get("deckId").asText();
 
-        mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, firstDeckId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, firstDeckId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Golden Deck"))
                 .andExpect(jsonPath("$.version").value(1))
                 .andExpect(jsonPath("$.slides", hasSize(2)));
 
-        mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}/slides/1/image", courseId, firstDeckId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        get(
+                                        "/api/v1/courses/{courseId}/decks/{deckId}/slides/1/image",
+                                        courseId,
+                                        firstDeckId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
-                .andExpect(header().string("Cache-Control", containsString("max-age")));
+                .andExpect(header().string("Cache-Control", containsString("no-cache")));
 
         JsonNode secondJob = startImport(lecturerToken, courseId, "Golden Deck", pdf);
-        JsonNode completedSecond = waitForCompletedJob(lecturerToken, courseId, secondJob.get("id").asText());
+        JsonNode completedSecond =
+                waitForCompletedJob(lecturerToken, courseId, secondJob.get("id").asText());
         String secondDeckId = completedSecond.get("deckId").asText();
 
-        mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, secondDeckId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, secondDeckId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(2));
 
-        mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, firstDeckId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, firstDeckId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(1));
     }
@@ -169,80 +179,113 @@ class ContentIntegrationTest {
     @Test
     void partialImportKeepsRenderedSlidesAvailable() throws Exception {
         String adminToken = bootstrapAdmin();
-        String lecturerToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        String lecturerToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
 
-        JsonNode job = startImport(lecturerToken, courseId, "Partial Deck", "partial-report.pdf", pdf);
-        JsonNode partialJob = waitForJobStatus(lecturerToken, courseId, job.get("id").asText(), "PARTIAL");
+        JsonNode job =
+                startImport(lecturerToken, courseId, "Partial Deck", "partial-report.pdf", pdf);
+        JsonNode partialJob =
+                waitForJobStatus(lecturerToken, courseId, job.get("id").asText(), "PARTIAL");
         String deckId = partialJob.get("deckId").asText();
 
         assertEquals(1, partialJob.get("processedSlides").asInt());
         assertEquals(3, partialJob.get("totalSlides").asInt());
         assertEquals("Импортировано 1 из 3", partialJob.get("warningMessage").asText());
 
-        mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, deckId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, deckId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Partial Deck"))
                 .andExpect(jsonPath("$.slides", hasSize(1)))
-                .andExpect(jsonPath("$.slides[0].textExtract", containsString("Слайд 2: ошибка рендера")));
+                .andExpect(
+                        jsonPath(
+                                "$.slides[0].textExtract",
+                                containsString("Слайд 2: ошибка рендера")));
     }
 
     @Test
     void converterFailureBeforeFirstSlideIsFailed() throws Exception {
         String adminToken = bootstrapAdmin();
-        String lecturerToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        String lecturerToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
 
-        JsonNode job = startImport(lecturerToken, courseId, "Broken Deck", "failed-report.pdf", pdf);
-        JsonNode failed = waitForJobStatus(lecturerToken, courseId, job.get("id").asText(), "FAILED");
+        JsonNode job =
+                startImport(lecturerToken, courseId, "Broken Deck", "failed-report.pdf", pdf);
+        JsonNode failed =
+                waitForJobStatus(lecturerToken, courseId, job.get("id").asText(), "FAILED");
 
         assertEquals(0, failed.get("processedSlides").asInt());
         assertTrue(failed.get("errorMessage").asText().contains("Конвертер не смог открыть файл"));
         assertTrue(failed.get("deckId").isTextual());
 
-        JsonNode retry = json(post("/api/v1/courses/{courseId}/import-jobs/{jobId}/retry",
-                        courseId, job.get("id").asText())
-                .header("Authorization", bearer(lecturerToken)), 202);
+        JsonNode retry =
+                json(
+                        post(
+                                        "/api/v1/courses/{courseId}/import-jobs/{jobId}/retry",
+                                        courseId,
+                                        job.get("id").asText())
+                                .header("Authorization", bearer(lecturerToken)),
+                        202);
         assertNotEquals(job.get("id").asText(), retry.get("id").asText());
         waitForJobStatus(lecturerToken, courseId, retry.get("id").asText(), "FAILED");
-        assertNotEquals(failed.get("deckId").asText(),
-                getImportJob(lecturerToken, courseId, retry.get("id").asText()).get("deckId").asText());
+        assertNotEquals(
+                failed.get("deckId").asText(),
+                getImportJob(lecturerToken, courseId, retry.get("id").asText())
+                        .get("deckId")
+                        .asText());
     }
 
     @Test
     void importBlobWritesWaitForConsistentBackupAndResumeAfterItCompletes() throws Exception {
         String adminToken = bootstrapAdmin();
-        String lecturerToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        String lecturerToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
         converterReadyForBackup = new CountDownLatch(1);
         allowConverterBlobWrite = new CountDownLatch(1);
 
         try {
-            JsonNode job = startImport(lecturerToken, courseId, "Backup overlap", "backup-overlap.pdf", pdf);
-            assertTrue(converterReadyForBackup.await(10, TimeUnit.SECONDS), "Importer should reach conversion");
+            JsonNode job =
+                    startImport(
+                            lecturerToken, courseId, "Backup overlap", "backup-overlap.pdf", pdf);
+            assertTrue(
+                    converterReadyForBackup.await(10, TimeUnit.SECONDS),
+                    "Importer should reach conversion");
 
             try (Connection backupConnection = dataSource.getConnection()) {
-                try (PreparedStatement lock = backupConnection.prepareStatement(
-                        "select pg_advisory_lock(14713, 2525)")) {
+                try (PreparedStatement lock =
+                        backupConnection.prepareStatement("select pg_advisory_lock(14713, 2525)")) {
                     lock.execute();
                 }
                 allowConverterBlobWrite.countDown();
-                assertTrue(waitForBackupLockWaiter(), "Import blob write should wait while the backup holds its lock");
+                assertTrue(
+                        waitForBackupLockWaiter(),
+                        "Import blob write should wait while the backup holds its lock");
 
-                try (PreparedStatement unlock = backupConnection.prepareStatement(
-                        "select pg_advisory_unlock(14713, 2525)")) {
+                try (PreparedStatement unlock =
+                        backupConnection.prepareStatement(
+                                "select pg_advisory_unlock(14713, 2525)")) {
                     unlock.execute();
                 }
             }
 
-            JsonNode completed = waitForCompletedJob(lecturerToken, courseId, job.get("id").asText());
+            JsonNode completed =
+                    waitForCompletedJob(lecturerToken, courseId, job.get("id").asText());
             assertEquals(2, completed.get("processedSlides").asInt());
         } finally {
             allowConverterBlobWrite.countDown();
@@ -254,34 +297,60 @@ class ContentIntegrationTest {
     @Test
     void repeatedMultipartUploadReplaysJobAndChangedBytesConflict() throws Exception {
         String adminToken = bootstrapAdmin();
-        String token = register(createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        String token =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
         UUID course = createCourse(token, "Imports");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
         var title = new MockMultipartFile("title", "", "text/plain", "Once".getBytes());
         var file = new MockMultipartFile("file", "once.pdf", "application/pdf", pdf);
-        var request = multipart("/api/v1/courses/{c}/decks", course).file(title).file(file)
-                .header("Authorization", bearer(token)).header("Idempotency-Key", "upload-once");
-        String response = mockMvc.perform(request).andExpect(status().isAccepted())
-                .andReturn().getResponse().getContentAsString();
-        String retry = mockMvc.perform(request).andExpect(status().isAccepted())
-                .andReturn().getResponse().getContentAsString();
+        var request =
+                multipart("/api/v1/courses/{c}/decks", course)
+                        .file(title)
+                        .file(file)
+                        .header("Authorization", bearer(token))
+                        .header("Idempotency-Key", "upload-once");
+        String response =
+                mockMvc.perform(request)
+                        .andExpect(status().isAccepted())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        String retry =
+                mockMvc.perform(request)
+                        .andExpect(status().isAccepted())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         assertEquals(objectMapper.readTree(response), objectMapper.readTree(retry));
-        assertEquals(1, jdbc.sql("select count(*) from content.import_jobs").query(Integer.class).single());
+        assertEquals(
+                1,
+                jdbc.sql("select count(*) from content.import_jobs").query(Integer.class).single());
         byte[] changed = java.util.Arrays.copyOf(pdf, pdf.length + 1);
-        mockMvc.perform(multipart("/api/v1/courses/{c}/decks", course).file(title)
-                        .file(new MockMultipartFile("file", "once.pdf", "application/pdf", changed))
-                        .header("Authorization", bearer(token)).header("Idempotency-Key", "upload-once"))
+        mockMvc.perform(
+                        multipart("/api/v1/courses/{c}/decks", course)
+                                .file(title)
+                                .file(
+                                        new MockMultipartFile(
+                                                "file", "once.pdf", "application/pdf", changed))
+                                .header("Authorization", bearer(token))
+                                .header("Idempotency-Key", "upload-once"))
                 .andExpect(status().isConflict());
-        assertEquals(1, jdbc.sql("select count(*) from content.import_jobs").query(Integer.class).single());
+        assertEquals(
+                1,
+                jdbc.sql("select count(*) from content.import_jobs").query(Integer.class).single());
         waitForCompletedJob(token, course, objectMapper.readTree(response).get("id").asText());
     }
 
     private boolean waitForBackupLockWaiter() throws InterruptedException {
         for (int attempt = 0; attempt < 100; attempt++) {
-            Integer waitingLocks = jdbc.sql(
-                            "select count(*) from pg_locks where locktype = 'advisory' and not granted")
-                    .query(Integer.class)
-                    .single();
+            Integer waitingLocks =
+                    jdbc.sql(
+                                    "select count(*) from pg_locks where locktype = 'advisory' and not granted")
+                            .query(Integer.class)
+                            .single();
             if (waitingLocks > 0) {
                 return true;
             }
@@ -293,19 +362,28 @@ class ContentIntegrationTest {
     @Test
     void recoveryDoesNotTouchAnotherWorkersLiveLease() throws Exception {
         String adminToken = bootstrapAdmin();
-        String lecturerToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        String lecturerToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
         UUID runningId = UUID.randomUUID();
         insertInterruptedJob(runningId, courseId, "RUNNING", 2);
-        jdbc.sql("update content.import_jobs set lease_until = now() + interval '1 hour' where id = :id")
-                .param("id", runningId).update();
+        jdbc.sql(
+                        "update content.import_jobs set lease_until = now() + interval '1 hour' where id = :id")
+                .param("id", runningId)
+                .update();
         importRecovery.recoverInterruptedJobs();
-        assertEquals("RUNNING", getImportJob(lecturerToken, courseId, runningId.toString()).get("status").asText());
+        assertEquals(
+                "RUNNING",
+                getImportJob(lecturerToken, courseId, runningId.toString()).get("status").asText());
 
-        jdbc.sql("update content.import_jobs set lease_until = now() - interval '1 second',"
-                + " attempts = 3 where id = :id")
-                .param("id", runningId).update();
+        jdbc.sql(
+                        "update content.import_jobs set lease_until = now() - interval '1 second', attempts ="
+                        + " 3 where id = :id")
+                .param("id", runningId)
+                .update();
         importRecovery.recoverInterruptedJobs();
         JsonNode partial = getImportJob(lecturerToken, courseId, runningId.toString());
         assertEquals("PARTIAL", partial.get("status").asText());
@@ -314,7 +392,8 @@ class ContentIntegrationTest {
     }
 
     private void insertInterruptedJob(UUID jobId, UUID courseId, String state, int processed) {
-        jdbc.sql("""
+        jdbc.sql(
+                        """
                         insert into content.import_jobs
                             (id, course_id, status, progress, source_file_ref, source_filename,
                              source_content_type, source_size_bytes, import_title, processed_slides)
@@ -331,38 +410,59 @@ class ContentIntegrationTest {
     @Test
     void archivedDeckNameCanBeReusedAndHardDeleteRemovesBlobs() throws Exception {
         String adminToken = bootstrapAdmin();
-        String lecturerToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        String lecturerToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
 
-        String firstDeckId = waitForCompletedJob(lecturerToken, courseId,
-                        startImport(lecturerToken, courseId, "Reusable Deck", pdf).get("id").asText())
-                .get("deckId")
-                .asText();
+        String firstDeckId =
+                waitForCompletedJob(
+                                lecturerToken,
+                                courseId,
+                                startImport(lecturerToken, courseId, "Reusable Deck", pdf)
+                                        .get("id")
+                                        .asText())
+                        .get("deckId")
+                        .asText();
         List<String> firstBlobRefs = blobRefs(firstDeckId);
         assertFalse(firstBlobRefs.isEmpty());
         for (String ref : firstBlobRefs) {
-            assertTrue(Files.exists(BLOB_ROOT.resolve(ref)), "Blob must exist before hard-delete: " + ref);
+            assertTrue(
+                    Files.exists(BLOB_ROOT.resolve(ref)),
+                    "Blob must exist before hard-delete: " + ref);
         }
 
-        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}", courseId, firstDeckId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        delete("/api/v1/courses/{courseId}/decks/{deckId}", courseId, firstDeckId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isNoContent());
 
-        String secondDeckId = waitForCompletedJob(lecturerToken, courseId,
-                        startImport(lecturerToken, courseId, "Reusable Deck", pdf).get("id").asText())
-                .get("deckId")
-                .asText();
+        String secondDeckId =
+                waitForCompletedJob(
+                                lecturerToken,
+                                courseId,
+                                startImport(lecturerToken, courseId, "Reusable Deck", pdf)
+                                        .get("id")
+                                        .asText())
+                        .get("deckId")
+                        .asText();
 
-        mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, secondDeckId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, secondDeckId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Reusable Deck"))
                 .andExpect(jsonPath("$.version").value(1));
 
-        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}/hard", courseId, firstDeckId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        delete(
+                                        "/api/v1/courses/{courseId}/decks/{deckId}/hard",
+                                        courseId,
+                                        firstDeckId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isNoContent());
 
         for (String ref : firstBlobRefs) {
@@ -373,147 +473,214 @@ class ContentIntegrationTest {
     @Test
     void slideNotesLecturesAttachmentsAndDecksAreCourseScoped() throws Exception {
         String adminToken = bootstrapAdmin();
-        String lecturerToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
-        String foreignToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Other Lecturer", "other@example.test");
+        String lecturerToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
+        String foreignToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Other Lecturer",
+                        "other@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
-        String deckId = waitForCompletedJob(lecturerToken, courseId,
-                        startImport(lecturerToken, courseId, "Lecture Deck", pdf).get("id").asText())
-                .get("deckId")
-                .asText();
+        String deckId =
+                waitForCompletedJob(
+                                lecturerToken,
+                                courseId,
+                                startImport(lecturerToken, courseId, "Lecture Deck", pdf)
+                                        .get("id")
+                                        .asText())
+                        .get("deckId")
+                        .asText();
 
-        mockMvc.perform(put("/api/v1/courses/{courseId}/decks/{deckId}/slides/1/notes", courseId, deckId)
-                        .header("Authorization", bearer(lecturerToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"content\":\"Проверить пример на слайде\"}"))
+        mockMvc.perform(
+                        put(
+                                        "/api/v1/courses/{courseId}/decks/{deckId}/slides/1/notes",
+                                        courseId,
+                                        deckId)
+                                .header("Authorization", bearer(lecturerToken))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"content\":\"Проверить пример на слайде\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").value("Проверить пример на слайде"));
 
-        String lectureResponse = mockMvc.perform(post("/api/v1/courses/{courseId}/lectures", courseId)
-                        .header("Authorization", bearer(lecturerToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        String lectureResponse =
+                mockMvc.perform(
+                                post("/api/v1/courses/{courseId}/lectures", courseId)
+                                        .header("Authorization", bearer(lecturerToken))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
                                 {"title":"Lecture 1","deckId":"%s"}
                                 """
-                                .formatted(deckId)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.title").value("Lecture 1"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                                                        .formatted(deckId)))
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.title").value("Lecture 1"))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         String lectureId = objectMapper.readTree(lectureResponse).get("id").asText();
 
-        MockMultipartFile attachment = new MockMultipartFile(
-                "file", "notes.txt", "text/plain", "extra material".getBytes());
-        mockMvc.perform(multipart("/api/v1/courses/{courseId}/lectures/{lectureId}/attachments", courseId, lectureId)
-                        .file(attachment)
-                        .header("Authorization", bearer(lecturerToken)))
+        MockMultipartFile attachment =
+                new MockMultipartFile(
+                        "file", "notes.txt", "text/plain", "extra material".getBytes());
+        mockMvc.perform(
+                        multipart(
+                                        "/api/v1/courses/{courseId}/lectures/{lectureId}/attachments",
+                                        courseId,
+                                        lectureId)
+                                .file(attachment)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.filename").value("notes.txt"));
 
-        mockMvc.perform(get("/api/v1/courses/{courseId}/lectures/{lectureId}", courseId, lectureId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        get("/api/v1/courses/{courseId}/lectures/{lectureId}", courseId, lectureId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.attachments", hasSize(1)));
 
-        String sessionResponse = mockMvc.perform(post(
-                                "/api/v1/courses/{courseId}/lectures/{lectureId}/sessions", courseId, lectureId)
-                        .header("Authorization", bearer(lecturerToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"groups\":[{\"groupName\":\"Группа А\"}]}"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("SCHEDULED"))
-                .andExpect(jsonPath("$.startedAt").doesNotExist())
-                .andExpect(jsonPath("$.currentSlideIdx").value(1))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String sessionResponse =
+                mockMvc.perform(
+                                post(
+                                                "/api/v1/courses/{courseId}/lectures/{lectureId}/sessions",
+                                                courseId,
+                                                lectureId)
+                                        .header("Authorization", bearer(lecturerToken))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"groups\":[{\"groupName\":\"Группа А\"}]}"))
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.status").value("SCHEDULED"))
+                        .andExpect(jsonPath("$.startedAt").doesNotExist())
+                        .andExpect(jsonPath("$.currentSlideIdx").value(1))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         String sessionId = objectMapper.readTree(sessionResponse).get("id").asText();
 
-        mockMvc.perform(post("/api/v1/courses/{courseId}/sessions/{sessionId}/begin", courseId, sessionId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        post(
+                                        "/api/v1/courses/{courseId}/sessions/{sessionId}/begin",
+                                        courseId,
+                                        sessionId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("LIVE"))
                 .andExpect(jsonPath("$.startedAt").isNotEmpty());
 
-        mockMvc.perform(put("/api/v1/courses/{courseId}/sessions/{sessionId}/slide", courseId, sessionId)
-                        .header("Authorization", bearer(lecturerToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"slideIdx\":2}"))
+        mockMvc.perform(
+                        put(
+                                        "/api/v1/courses/{courseId}/sessions/{sessionId}/slide",
+                                        courseId,
+                                        sessionId)
+                                .header("Authorization", bearer(lecturerToken))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"slideIdx\":2}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.currentSlideIdx").value(2));
 
-        mockMvc.perform(get("/api/v1/courses/{courseId}/sessions/{sessionId}", courseId, sessionId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        get("/api/v1/courses/{courseId}/sessions/{sessionId}", courseId, sessionId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.currentSlideIdx").value(2));
 
-        long events = jdbc.sql(
-                        """
+        long events =
+                jdbc.sql(
+                                """
                         select count(*)
                         from analytics.events
                         where aggregate_id = :sessionId and verb in ('session.started', 'session.slide_changed')
                         """)
-                .param("sessionId", UUID.fromString(sessionId))
-                .query(Long.class)
-                .single();
+                        .param("sessionId", UUID.fromString(sessionId))
+                        .query(Long.class)
+                        .single();
         assertEquals(2, events);
 
-        mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, deckId)
-                        .header("Authorization", bearer(foreignToken)))
+        mockMvc.perform(
+                        get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, deckId)
+                                .header("Authorization", bearer(foreignToken)))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void unusedDeckCanBeReorderedAndTrimmedInPlaceWithoutLosingNotes() throws Exception {
         String adminToken = bootstrapAdmin();
-        String lecturerToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        String lecturerToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
-        String deckId = waitForCompletedJob(lecturerToken, courseId,
-                        startImport(lecturerToken, courseId, "Editable", pdf).get("id").asText())
-                .get("deckId")
-                .asText();
+        String deckId =
+                waitForCompletedJob(
+                                lecturerToken,
+                                courseId,
+                                startImport(lecturerToken, courseId, "Editable", pdf)
+                                        .get("id")
+                                        .asText())
+                        .get("deckId")
+                        .asText();
         JsonNode before = getDeck(lecturerToken, courseId, deckId);
         String firstId = before.at("/slides/0/id").asText();
         String secondId = before.at("/slides/1/id").asText();
         String firstImageBefore = before.at("/slides/0/imageUrl").asText();
-        String secondRef = jdbc.sql("select image_ref from content.slides where id = :id")
-                .param("id", UUID.fromString(secondId))
-                .query(String.class)
-                .single();
+        String secondRef =
+                jdbc.sql("select image_ref from content.slides where id = :id")
+                        .param("id", UUID.fromString(secondId))
+                        .query(String.class)
+                        .single();
 
-        mockMvc.perform(put("/api/v1/courses/{courseId}/decks/{deckId}/slides/1/notes", courseId, deckId)
-                        .header("Authorization", bearer(lecturerToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"content\":\"Keep with slide\"}"))
+        mockMvc.perform(
+                        put(
+                                        "/api/v1/courses/{courseId}/decks/{deckId}/slides/1/notes",
+                                        courseId,
+                                        deckId)
+                                .header("Authorization", bearer(lecturerToken))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"content\":\"Keep with slide\"}"))
                 .andExpect(status().isOk());
 
-        String reorderedResponse = mockMvc.perform(put(
-                                "/api/v1/courses/{courseId}/decks/{deckId}/slides/order", courseId, deckId)
-                        .header("Authorization", bearer(lecturerToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"slideIds\":[\"" + secondId + "\",\"" + firstId + "\"]}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.copyOnWrite").value(false))
-                .andExpect(jsonPath("$.deck.id").value(deckId))
-                .andExpect(jsonPath("$.deck.slides[0].id").value(secondId))
-                .andExpect(jsonPath("$.deck.slides[0].idx").value(1))
-                .andExpect(jsonPath("$.deck.slides[1].id").value(firstId))
-                .andExpect(jsonPath("$.deck.slides[1].note.content").value("Keep with slide"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        String secondImageAfter = objectMapper.readTree(reorderedResponse).at("/deck/slides/0/imageUrl").asText();
+        String reorderedResponse =
+                mockMvc.perform(
+                                put(
+                                                "/api/v1/courses/{courseId}/decks/{deckId}/slides/order",
+                                                courseId,
+                                                deckId)
+                                        .header("Authorization", bearer(lecturerToken))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                "{\"slideIds\":[\""
+                                                        + secondId
+                                                        + "\",\""
+                                                        + firstId
+                                                        + "\"]}"))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.copyOnWrite").value(false))
+                        .andExpect(jsonPath("$.deck.id").value(deckId))
+                        .andExpect(jsonPath("$.deck.slides[0].id").value(secondId))
+                        .andExpect(jsonPath("$.deck.slides[0].idx").value(1))
+                        .andExpect(jsonPath("$.deck.slides[1].id").value(firstId))
+                        .andExpect(
+                                jsonPath("$.deck.slides[1].note.content").value("Keep with slide"))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        String secondImageAfter =
+                objectMapper.readTree(reorderedResponse).at("/deck/slides/0/imageUrl").asText();
         assertTrue(secondImageAfter.contains("&v=" + secondId));
         assertFalse(firstImageBefore.equals(secondImageAfter));
 
-        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
-                                courseId, deckId, secondId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        delete(
+                                        "/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
+                                        courseId,
+                                        deckId,
+                                        secondId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.copyOnWrite").value(false))
                 .andExpect(jsonPath("$.deck.slideCount").value(1))
@@ -521,70 +688,106 @@ class ContentIntegrationTest {
                 .andExpect(jsonPath("$.deck.slides[0].idx").value(1));
         assertFalse(Files.exists(BLOB_ROOT.resolve(secondRef)));
 
-        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
-                                courseId, deckId, firstId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        delete(
+                                        "/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
+                                        courseId,
+                                        deckId,
+                                        firstId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isConflict());
     }
 
     @Test
     void activeDeckIsImmutableAndCompletedSessionUsesOriginalAfterCopyOnWrite() throws Exception {
         String adminToken = bootstrapAdmin();
-        String lecturerToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        String lecturerToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
-        String deckId = waitForCompletedJob(lecturerToken, courseId,
-                        startImport(lecturerToken, courseId, "Historical", pdf).get("id").asText())
-                .get("deckId")
-                .asText();
+        String deckId =
+                waitForCompletedJob(
+                                lecturerToken,
+                                courseId,
+                                startImport(lecturerToken, courseId, "Historical", pdf)
+                                        .get("id")
+                                        .asText())
+                        .get("deckId")
+                        .asText();
         JsonNode before = getDeck(lecturerToken, courseId, deckId);
         String firstId = before.at("/slides/0/id").asText();
         String secondId = before.at("/slides/1/id").asText();
         String lectureId = createLecture(lecturerToken, courseId, deckId);
         JsonNode session = startSession(lecturerToken, courseId, lectureId);
 
-        mockMvc.perform(put("/api/v1/courses/{courseId}/decks/{deckId}/slides/order", courseId, deckId)
-                        .header("Authorization", bearer(lecturerToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"slideIds\":[\"" + secondId + "\",\"" + firstId + "\"]}"))
+        mockMvc.perform(
+                        put(
+                                        "/api/v1/courses/{courseId}/decks/{deckId}/slides/order",
+                                        courseId,
+                                        deckId)
+                                .header("Authorization", bearer(lecturerToken))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"slideIds\":[\""
+                                                + secondId
+                                                + "\",\""
+                                                + firstId
+                                                + "\"]}"))
                 .andExpect(status().isConflict());
 
-        mockMvc.perform(post("/api/v1/courses/{courseId}/sessions/{sessionId}/end",
-                                courseId, session.get("id").asText())
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        post(
+                                        "/api/v1/courses/{courseId}/sessions/{sessionId}/end",
+                                        courseId,
+                                        session.get("id").asText())
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk());
 
-        String editResponse = mockMvc.perform(delete(
-                                "/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
-                                courseId, deckId, firstId)
-                        .header("Authorization", bearer(lecturerToken)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.copyOnWrite").value(true))
-                .andExpect(jsonPath("$.sourceDeckId").value(deckId))
-                .andExpect(jsonPath("$.deck.version").value(2))
-                .andExpect(jsonPath("$.deck.slideCount").value(1))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String editResponse =
+                mockMvc.perform(
+                                delete(
+                                                "/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
+                                                courseId,
+                                                deckId,
+                                                firstId)
+                                        .header("Authorization", bearer(lecturerToken)))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.copyOnWrite").value(true))
+                        .andExpect(jsonPath("$.sourceDeckId").value(deckId))
+                        .andExpect(jsonPath("$.deck.version").value(2))
+                        .andExpect(jsonPath("$.deck.slideCount").value(1))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         String copiedDeckId = objectMapper.readTree(editResponse).at("/deck/id").asText();
 
         assertEquals(2, getDeck(lecturerToken, courseId, deckId).get("slideCount").asInt());
-        String lectureResponse = mockMvc.perform(
-                        get("/api/v1/courses/{courseId}/lectures/{lectureId}", courseId, lectureId)
-                                .header("Authorization", bearer(lecturerToken)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String lectureResponse =
+                mockMvc.perform(
+                                get(
+                                                "/api/v1/courses/{courseId}/lectures/{lectureId}",
+                                                courseId,
+                                                lectureId)
+                                        .header("Authorization", bearer(lecturerToken)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         assertEquals(copiedDeckId, objectMapper.readTree(lectureResponse).get("deckId").asText());
-        String historicalSession = mockMvc.perform(
-                        get("/api/v1/courses/{courseId}/sessions/{sessionId}", courseId, session.get("id").asText())
-                                .header("Authorization", bearer(lecturerToken)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String historicalSession =
+                mockMvc.perform(
+                                get(
+                                                "/api/v1/courses/{courseId}/sessions/{sessionId}",
+                                                courseId,
+                                                session.get("id").asText())
+                                        .header("Authorization", bearer(lecturerToken)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         assertEquals(deckId, objectMapper.readTree(historicalSession).get("deckId").asText());
         assertEquals(1, getDeck(lecturerToken, courseId, copiedDeckId).get("slideCount").asInt());
     }
@@ -592,36 +795,54 @@ class ContentIntegrationTest {
     @Test
     void deletingCopyOnWriteDeckKeepsBlobsReferencedBySourceDeck() throws Exception {
         String adminToken = bootstrapAdmin();
-        String lecturerToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        String lecturerToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
-        String sourceDeckId = waitForCompletedJob(lecturerToken, courseId,
-                        startImport(lecturerToken, courseId, "Shared blobs", pdf).get("id").asText())
-                .get("deckId")
-                .asText();
+        String sourceDeckId =
+                waitForCompletedJob(
+                                lecturerToken,
+                                courseId,
+                                startImport(lecturerToken, courseId, "Shared blobs", pdf)
+                                        .get("id")
+                                        .asText())
+                        .get("deckId")
+                        .asText();
         JsonNode source = getDeck(lecturerToken, courseId, sourceDeckId);
         List<String> sourceRefs = blobRefs(sourceDeckId);
 
-        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}", courseId, sourceDeckId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        delete("/api/v1/courses/{courseId}/decks/{deckId}", courseId, sourceDeckId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isNoContent());
-        String editResponse = mockMvc.perform(delete(
-                                "/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
-                                courseId, sourceDeckId, source.at("/slides/0/id").asText())
-                        .header("Authorization", bearer(lecturerToken)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.copyOnWrite").value(true))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String editResponse =
+                mockMvc.perform(
+                                delete(
+                                                "/api/v1/courses/{courseId}/decks/{deckId}/slides/{slideId}",
+                                                courseId,
+                                                sourceDeckId,
+                                                source.at("/slides/0/id").asText())
+                                        .header("Authorization", bearer(lecturerToken)))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.copyOnWrite").value(true))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         String copiedDeckId = objectMapper.readTree(editResponse).at("/deck/id").asText();
 
-        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}", courseId, copiedDeckId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        delete("/api/v1/courses/{courseId}/decks/{deckId}", courseId, copiedDeckId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isNoContent());
-        mockMvc.perform(delete("/api/v1/courses/{courseId}/decks/{deckId}/hard", courseId, copiedDeckId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        delete(
+                                        "/api/v1/courses/{courseId}/decks/{deckId}/hard",
+                                        courseId,
+                                        copiedDeckId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isNoContent());
 
         for (String ref : sourceRefs) {
@@ -632,87 +853,115 @@ class ContentIntegrationTest {
     @Test
     void webStudentChannelJoinsSignalsQuestionsAndAppearsInPresenterEngagement() throws Exception {
         String adminToken = bootstrapAdmin();
-        String lecturerToken = register(
-                createAdminInvitation(adminToken, "LECTURER"), "Lecturer", "lecturer@example.test");
+        String lecturerToken =
+                register(
+                        createAdminInvitation(adminToken, "LECTURER"),
+                        "Lecturer",
+                        "lecturer@example.test");
         UUID courseId = createCourse(lecturerToken, "Algorithms");
         byte[] pdf = Files.readAllBytes(Path.of("src/test/resources/golden/content/v1-report.pdf"));
-        String deckId = waitForCompletedJob(lecturerToken, courseId,
-                        startImport(lecturerToken, courseId, "Live Deck", pdf).get("id").asText())
-                .get("deckId")
-                .asText();
+        String deckId =
+                waitForCompletedJob(
+                                lecturerToken,
+                                courseId,
+                                startImport(lecturerToken, courseId, "Live Deck", pdf)
+                                        .get("id")
+                                        .asText())
+                        .get("deckId")
+                        .asText();
         String lectureId = createLecture(lecturerToken, courseId, deckId);
         JsonNode session = startSession(lecturerToken, courseId, lectureId);
         String sessionId = session.get("id").asText();
         String joinCode = session.get("joinCode").asText();
 
-        String snapshotResponse = mockMvc.perform(get("/api/v1/student/sessions/{joinCode}", joinCode))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.joinCode").value(joinCode))
-                .andExpect(jsonPath("$.currentSlide.imageUrl", containsString("?t=")))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        String signedSlideUrl = objectMapper.readTree(snapshotResponse).get("currentSlide").get("imageUrl").asText();
+        String snapshotResponse =
+                mockMvc.perform(get("/api/v1/student/sessions/{joinCode}", joinCode))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.joinCode").value(joinCode))
+                        .andExpect(jsonPath("$.currentSlide.imageUrl", containsString("?t=")))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        String signedSlideUrl =
+                objectMapper
+                        .readTree(snapshotResponse)
+                        .get("currentSlide")
+                        .get("imageUrl")
+                        .asText();
 
         mockMvc.perform(get(signedSlideUrl))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", "image/png"));
 
-        String joinResponse = mockMvc.perform(post("/api/v1/student/sessions/{joinCode}/join", joinCode)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"displayName\":\"Web Student\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.identityLevel").value("EPHEMERAL"))
-                .andExpect(jsonPath("$.participantToken").isNotEmpty())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        String participantToken = objectMapper.readTree(joinResponse).get("participantToken").asText();
+        String joinResponse =
+                mockMvc.perform(
+                                post("/api/v1/student/sessions/{joinCode}/join", joinCode)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"displayName\":\"Web Student\"}"))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.identityLevel").value("EPHEMERAL"))
+                        .andExpect(jsonPath("$.participantToken").isNotEmpty())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        String participantToken =
+                objectMapper.readTree(joinResponse).get("participantToken").asText();
 
-        mockMvc.perform(post("/api/v1/student/sessions/{joinCode}/signals", joinCode)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        mockMvc.perform(
+                        post("/api/v1/student/sessions/{joinCode}/signals", joinCode)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
                                 {"participantToken":"%s","value":"GREEN"}
                                 """
-                                .formatted(participantToken)))
+                                                .formatted(participantToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.green").value(1))
                 .andExpect(jsonPath("$.total").value(1));
 
-        mockMvc.perform(post("/api/v1/student/sessions/{joinCode}/signals", joinCode)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        mockMvc.perform(
+                        post("/api/v1/student/sessions/{joinCode}/signals", joinCode)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
                                 {"participantToken":"%s","value":"YELLOW"}
                                 """
-                                .formatted(participantToken)))
+                                                .formatted(participantToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.green").value(0))
                 .andExpect(jsonPath("$.yellow").value(1))
                 .andExpect(jsonPath("$.total").value(1));
 
-        long signalRows = jdbc.sql(
-                        """
+        long signalRows =
+                jdbc.sql(
+                                """
                         select count(*)
                         from feedback.comprehension_signals
                         where session_id = :sessionId
                         """)
-                .param("sessionId", UUID.fromString(sessionId))
-                .query(Long.class)
-                .single();
+                        .param("sessionId", UUID.fromString(sessionId))
+                        .query(Long.class)
+                        .single();
         assertEquals(1, signalRows);
 
-        mockMvc.perform(post("/api/v1/student/sessions/{joinCode}/questions", joinCode)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        mockMvc.perform(
+                        post("/api/v1/student/sessions/{joinCode}/questions", joinCode)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
                                 {"participantToken":"%s","text":"Почему сложность O(n)?"}
                                 """
-                                .formatted(participantToken)))
+                                                .formatted(participantToken)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.displayName").value("Web Student"))
                 .andExpect(jsonPath("$.status").value("OPEN"));
 
-        mockMvc.perform(get("/api/v1/courses/{courseId}/sessions/{sessionId}/engagement", courseId, sessionId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        get(
+                                        "/api/v1/courses/{courseId}/sessions/{sessionId}/engagement",
+                                        courseId,
+                                        sessionId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.signalAggregate.green").value(0))
                 .andExpect(jsonPath("$.signalAggregate.yellow").value(1))
@@ -720,71 +969,90 @@ class ContentIntegrationTest {
                 .andExpect(jsonPath("$.questions", hasSize(1)))
                 .andExpect(jsonPath("$.questions[0].text").value("Почему сложность O(n)?"));
 
-        mockMvc.perform(get("/api/v1/courses/{courseId}/sessions/{sessionId}/participants", courseId, sessionId)
-                        .header("Authorization", bearer(lecturerToken)))
+        mockMvc.perform(
+                        get(
+                                        "/api/v1/courses/{courseId}/sessions/{sessionId}/participants",
+                                        courseId,
+                                        sessionId)
+                                .header("Authorization", bearer(lecturerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].displayName").value("Web Student"))
                 .andExpect(jsonPath("$[0].channelType").value("web"));
 
-        long events = jdbc.sql(
-                        """
+        long events =
+                jdbc.sql(
+                                """
                         select count(*)
                         from analytics.events
                         where verb in ('participant.joined', 'feedback.signal_submitted', 'qa.question_asked')
                         """)
-                .query(Long.class)
-                .single();
+                        .query(Long.class)
+                        .single();
         assertEquals(4, events);
     }
 
-    private JsonNode startImport(String token, UUID courseId, String title, byte[] bytes) throws Exception {
+    private JsonNode startImport(String token, UUID courseId, String title, byte[] bytes)
+            throws Exception {
         return startImport(token, courseId, title, "v1-report.pdf", bytes);
     }
 
     private JsonNode getDeck(String token, UUID courseId, String deckId) throws Exception {
-        String response = mockMvc.perform(get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, deckId)
-                        .header("Authorization", bearer(token)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String response =
+                mockMvc.perform(
+                                get("/api/v1/courses/{courseId}/decks/{deckId}", courseId, deckId)
+                                        .header("Authorization", bearer(token)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         return objectMapper.readTree(response);
     }
 
     private JsonNode startImport(
-            String token, UUID courseId, String title, String filename, byte[] bytes) throws Exception {
-        MockMultipartFile titlePart = new MockMultipartFile("title", "", "text/plain", title.getBytes());
-        MockMultipartFile filePart = new MockMultipartFile("file", filename, "application/pdf", bytes);
-        String response = mockMvc.perform(multipart("/api/v1/courses/{courseId}/decks", courseId)
-                        .file(titlePart)
-                        .file(filePart)
-                        .header("Authorization", bearer(token)))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.status").value("PENDING"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+            String token, UUID courseId, String title, String filename, byte[] bytes)
+            throws Exception {
+        MockMultipartFile titlePart =
+                new MockMultipartFile("title", "", "text/plain", title.getBytes());
+        MockMultipartFile filePart =
+                new MockMultipartFile("file", filename, "application/pdf", bytes);
+        String response =
+                mockMvc.perform(
+                                multipart("/api/v1/courses/{courseId}/decks", courseId)
+                                        .file(titlePart)
+                                        .file(filePart)
+                                        .header("Authorization", bearer(token)))
+                        .andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.status").value("PENDING"))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         return objectMapper.readTree(response);
     }
 
-    private JsonNode waitForCompletedJob(String token, UUID courseId, String jobId) throws Exception {
+    private JsonNode waitForCompletedJob(String token, UUID courseId, String jobId)
+            throws Exception {
         JsonNode job = waitForJobStatus(token, courseId, jobId, "COMPLETED");
         assertEquals(100, job.get("progressPercent").asInt());
         assertNotNull(job.get("deckId").asText());
         return job;
     }
 
-    private JsonNode waitForJobStatus(String token, UUID courseId, String jobId, String expectedStatus)
-            throws Exception {
+    private JsonNode waitForJobStatus(
+            String token, UUID courseId, String jobId, String expectedStatus) throws Exception {
         JsonNode job = null;
         for (int attempt = 0; attempt < 50; attempt++) {
-            String response = mockMvc.perform(get("/api/v1/courses/{courseId}/import-jobs/{jobId}", courseId, jobId)
-                            .header("Authorization", bearer(token)))
-                    .andExpect(status().isOk())
-                    .andReturn()
-                    .getResponse()
-                    .getContentAsString();
+            String response =
+                    mockMvc.perform(
+                                    get(
+                                                    "/api/v1/courses/{courseId}/import-jobs/{jobId}",
+                                                    courseId,
+                                                    jobId)
+                                            .header("Authorization", bearer(token)))
+                            .andExpect(status().isOk())
+                            .andReturn()
+                            .getResponse()
+                            .getContentAsString();
             job = objectMapper.readTree(response);
             if (expectedStatus.equals(job.get("status").asText())) {
                 return job;
@@ -795,114 +1063,142 @@ class ContentIntegrationTest {
     }
 
     private JsonNode getImportJob(String token, UUID courseId, String jobId) throws Exception {
-        String response = mockMvc.perform(get("/api/v1/courses/{courseId}/import-jobs/{jobId}", courseId, jobId)
-                        .header("Authorization", bearer(token)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String response =
+                mockMvc.perform(
+                                get(
+                                                "/api/v1/courses/{courseId}/import-jobs/{jobId}",
+                                                courseId,
+                                                jobId)
+                                        .header("Authorization", bearer(token)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         return objectMapper.readTree(response);
     }
 
     private JsonNode json(
-            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request, int status)
+            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request,
+            int status)
             throws Exception {
-        String response = mockMvc.perform(request)
-                .andExpect(status().is(status))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String response =
+                mockMvc.perform(request)
+                        .andExpect(status().is(status))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         return objectMapper.readTree(response);
     }
 
     private String bootstrapAdmin() throws Exception {
-        String response = mockMvc.perform(post("/api/v1/auth/bootstrap-admin")
-                        .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        String response =
+                mockMvc.perform(
+                                post("/api/v1/auth/bootstrap-admin")
+                                        .header("X-Admin-Setup-Token", ADMIN_SETUP_TOKEN)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
                                 {"displayName":"Admin","email":"admin@example.test","password":"password-123"}
                                 """))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         return tokenFrom(response);
     }
 
     private String createAdminInvitation(String token, String role) throws Exception {
-        String response = mockMvc.perform(post("/api/v1/admin/invitations")
-                        .header("Authorization", bearer(token))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"role\":\"" + role + "\"}"))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String response =
+                mockMvc.perform(
+                                post("/api/v1/admin/invitations")
+                                        .header("Authorization", bearer(token))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"role\":\"" + role + "\"}"))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         return objectMapper.readTree(response).get("code").asText();
     }
 
     private String register(String inviteCode, String displayName, String email) throws Exception {
-        String response = mockMvc.perform(post("/api/v1/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        String response =
+                mockMvc.perform(
+                                post("/api/v1/auth/register")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
                                 {"invitationCode":"%s","displayName":"%s","email":"%s","password":"password-123"}
                                 """
-                                .formatted(inviteCode, displayName, email)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                                                        .formatted(inviteCode, displayName, email)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         JsonNode json = objectMapper.readTree(response);
         assertFalse(json.has("refreshToken"));
         return json.get("accessToken").asText();
     }
 
     private UUID createCourse(String token, String title) throws Exception {
-        String response = mockMvc.perform(post("/api/v1/courses")
-                        .header("Authorization", bearer(token))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\":\"" + title + "\"}"))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String response =
+                mockMvc.perform(
+                                post("/api/v1/courses")
+                                        .header("Authorization", bearer(token))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"title\":\"" + title + "\"}"))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         return UUID.fromString(objectMapper.readTree(response).get("id").asText());
     }
 
     private String createLecture(String token, UUID courseId, String deckId) throws Exception {
-        String response = mockMvc.perform(post("/api/v1/courses/{courseId}/lectures", courseId)
-                        .header("Authorization", bearer(token))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+        String response =
+                mockMvc.perform(
+                                post("/api/v1/courses/{courseId}/lectures", courseId)
+                                        .header("Authorization", bearer(token))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
                                 {"title":"Lecture 1","deckId":"%s"}
                                 """
-                                .formatted(deckId)))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                                                        .formatted(deckId)))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         return objectMapper.readTree(response).get("id").asText();
     }
 
     private JsonNode startSession(String token, UUID courseId, String lectureId) throws Exception {
-        String response = mockMvc.perform(post(
-                                "/api/v1/courses/{courseId}/lectures/{lectureId}/sessions", courseId, lectureId)
-                        .header("Authorization", bearer(token))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"groups\":[{\"groupName\":\"Группа А\"}]}"))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String response =
+                mockMvc.perform(
+                                post(
+                                                "/api/v1/courses/{courseId}/lectures/{lectureId}/sessions",
+                                                courseId,
+                                                lectureId)
+                                        .header("Authorization", bearer(token))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"groups\":[{\"groupName\":\"Группа А\"}]}"))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         JsonNode scheduled = objectMapper.readTree(response);
         String sessionId = scheduled.get("id").asText();
-        String started = mockMvc.perform(
-                        post("/api/v1/courses/{courseId}/sessions/{sessionId}/begin", courseId, sessionId)
-                                .header("Authorization", bearer(token)))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String started =
+                mockMvc.perform(
+                                post(
+                                                "/api/v1/courses/{courseId}/sessions/{sessionId}/begin",
+                                                courseId,
+                                                sessionId)
+                                        .header("Authorization", bearer(token)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
         return objectMapper.readTree(started);
     }
 
@@ -938,36 +1234,54 @@ class ContentIntegrationTest {
             return new SlideConversionClient() {
                 @Override
                 public SlideConversionResult convert(
-                        StoredBlob source, String outputPrefix, UUID jobId, SlideConversionSink sink) {
+                        StoredBlob source,
+                        String outputPrefix,
+                        UUID jobId,
+                        SlideConversionSink sink) {
                     try {
                         if (source.filename().contains("backup-overlap")) {
                             converterReadyForBackup.countDown();
                             if (!allowConverterBlobWrite.await(10, TimeUnit.SECONDS)) {
-                                throw new IllegalStateException("Backup overlap test was not released");
+                                throw new IllegalStateException(
+                                        "Backup overlap test was not released");
                             }
                         }
-                        byte[] png = java.util.Base64.getDecoder().decode(
-                                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/"
-                                        + "lQ5yYwAAAABJRU5ErkJggg==");
+                        byte[] png =
+                                java.util.Base64.getDecoder()
+                                        .decode(
+                                                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlE"
+                                                + "QVR42mP8z8BQDwAFgwJ/"
+                                                        + "lQ5yYwAAAABJRU5ErkJggg==");
                         if (source.filename().contains("failed-report")) {
-                            return new SlideConversionResult(0, 0, false, null,
-                                    "Конвертер не смог открыть файл");
+                            return new SlideConversionResult(
+                                    0, 0, false, null, "Конвертер не смог открыть файл");
                         }
                         String first = storage.storeBytes(png, "slide-1.png", "image/png").ref();
                         if (source.filename().contains("partial")) {
                             sink.metadata(3, 3, "RENDERING 0/3", "Импортировано 1 из 3");
-                            sink.slide(new ConvertedSlide(1, first, "Слайд 2: ошибка рендера", true), 1, 3);
+                            sink.slide(
+                                    new ConvertedSlide(1, first, "Слайд 2: ошибка рендера", true),
+                                    1,
+                                    3);
                             return new SlideConversionResult(
                                     3, 1, true, "Импортировано 1 из 3", "Слайд 2: ошибка рендера");
                         }
                         String second = storage.storeBytes(png, "slide-2.png", "image/png").ref();
                         sink.metadata(2, 2, "RENDERING 0/2", null);
-                        sink.slide(new ConvertedSlide(1, first, "V1 golden: " + source.filename(), false), 1, 2);
-                        sink.slide(new ConvertedSlide(2, second, "Second rendered slide", false), 2, 2);
+                        sink.slide(
+                                new ConvertedSlide(
+                                        1, first, "V1 golden: " + source.filename(), false),
+                                1,
+                                2);
+                        sink.slide(
+                                new ConvertedSlide(2, second, "Second rendered slide", false),
+                                2,
+                                2);
                         return new SlideConversionResult(2, 2, false, null, null);
                     } catch (InterruptedException exception) {
                         Thread.currentThread().interrupt();
-                        throw new IllegalStateException("Backup overlap test interrupted", exception);
+                        throw new IllegalStateException(
+                                "Backup overlap test interrupted", exception);
                     } catch (java.io.IOException exception) {
                         throw new IllegalStateException(exception);
                     }

@@ -5,15 +5,24 @@ import java.util.UUID;
 
 public interface QuestionApi {
     QuestionAuthorModeration moderateAuthor(
-            UUID sessionId, UUID questionId, UUID actorPersonId, boolean muted, boolean hideQuestions);
+            UUID sessionId,
+            UUID questionId,
+            UUID actorPersonId,
+            boolean muted,
+            boolean hideQuestions);
 
     java.util.Set<UUID> mutedAuthors(UUID sessionId, java.util.Set<UUID> personIds);
 
     void transferAuthorMute(UUID sessionId, UUID guestId, UUID personId);
 
     StudentQuestion ask(
-            UUID sessionId, UUID personId, String displayName, String channelType, String text,
-            boolean anonymous, Integer slideIdx);
+            UUID sessionId,
+            UUID personId,
+            String displayName,
+            String channelType,
+            String text,
+            boolean anonymous,
+            Integer slideIdx);
 
     List<StudentQuestion> openQuestions(UUID sessionId);
 
@@ -23,7 +32,12 @@ public interface QuestionApi {
 
     List<QuestionAnswerAudience> answeredQuestions(UUID sessionId);
 
-    java.util.Map<UUID, List<StudentQuestion>> personalQuestions(UUID sessionId, java.util.Set<UUID> personIds);
+    java.util.Map<UUID, List<StudentQuestion>> personalQuestions(
+            UUID sessionId, java.util.Set<UUID> personIds);
+
+    StudentQuestionHistory history(UUID sessionId, UUID viewer, int offset);
+
+    java.util.Map<UUID, Long> historyRevisions(UUID sessionId, java.util.Set<UUID> viewers);
 
     ResolvedQuestion resolve(
             UUID sessionId,

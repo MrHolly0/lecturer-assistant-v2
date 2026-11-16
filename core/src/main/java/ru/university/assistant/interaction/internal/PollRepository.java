@@ -11,8 +11,8 @@ import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import ru.university.assistant.interaction.api.PollStatus;
-import ru.university.assistant.interaction.api.QuickPoll;
 import ru.university.assistant.interaction.api.QuestionType;
+import ru.university.assistant.interaction.api.QuickPoll;
 import ru.university.assistant.interaction.api.TextPollResponse;
 
 @Repository
@@ -34,9 +34,11 @@ class PollRepository {
             UUID sourceQuestionId,
             String questionText,
             List<String> options,
-            Integer correctOptionIdx, QuestionType questionType) {
+            Integer correctOptionIdx,
+            QuestionType questionType) {
         String optionsJson = toJson(options);
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         insert into interaction.quick_polls
                             (id, session_id, source_question_id, question_text, options, status, question_type,
                              correct_option_idx, created_by)
@@ -59,7 +61,8 @@ class PollRepository {
     }
 
     Optional<QuickPoll> findOpenForSession(UUID sessionId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         select id, session_id, source_question_id, question_text, options, status, question_type,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
@@ -73,7 +76,8 @@ class PollRepository {
     }
 
     List<QuickPoll> findAllOpenForSession(UUID sessionId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         select id, session_id, source_question_id, question_text, options, status, question_type,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
@@ -87,7 +91,8 @@ class PollRepository {
 
     /** Открытый опрос важнее закрытого; если открытого нет, берётся последний закрытый. */
     Optional<QuickPoll> findLatestForSession(UUID sessionId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         select id, session_id, source_question_id, question_text, options, status, question_type,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
@@ -101,7 +106,8 @@ class PollRepository {
     }
 
     List<QuickPoll> findClosedForSession(UUID sessionId, int limit, int offset) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         select id, session_id, source_question_id, question_text, options, status, question_type,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
@@ -117,7 +123,8 @@ class PollRepository {
     }
 
     long countClosedForSession(UUID sessionId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         select count(*)
                         from interaction.quick_polls
                         where session_id = :sessionId and status = 'CLOSED'
@@ -128,8 +135,9 @@ class PollRepository {
     }
 
     Optional<Integer> findVote(UUID pollId, UUID personId) {
-        return jdbc.sql("select option_idx from interaction.poll_responses "
-                        + "where poll_id = :pollId and person_id = :personId and option_idx is not null")
+        return jdbc.sql(
+                        "select option_idx from interaction.poll_responses where poll_id = :pollId and"
+                        + " person_id = :personId and option_idx is not null")
                 .param("pollId", pollId)
                 .param("personId", personId)
                 .query(Integer.class)
@@ -138,13 +146,27 @@ class PollRepository {
 
     void lock(UUID pollId) {
         jdbc.sql("select id from interaction.quick_polls where id = :id for update")
-                .param("id", pollId).query(UUID.class).optional().orElseThrow(
-                        () -> new org.springframework.web.server.ResponseStatusException(
-                                org.springframework.http.HttpStatus.NOT_FOUND, "Poll not found"));
+                .param("id", pollId)
+                .query(UUID.class)
+                .optional()
+                .orElseThrow(
+                        () ->
+                                new org.springframework.web.server.ResponseStatusException(
+                                        org.springframework.http.HttpStatus.NOT_FOUND,
+                                        "Poll not found"));
+    }
+
+    void lockForResponse(UUID pollId) {
+        jdbc.sql("select id from interaction.quick_polls where id=:id for share")
+                .param("id", pollId)
+                .query(UUID.class)
+                .optional()
+                .orElseThrow();
     }
 
     Optional<QuickPoll> findById(UUID pollId) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         select id, session_id, source_question_id, question_text, options, status, question_type,
                                correct_option_idx, created_at, closed_at
                         from interaction.quick_polls
@@ -156,7 +178,8 @@ class PollRepository {
     }
 
     QuickPoll close(UUID pollId, Integer correctOptionIdx) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         update interaction.quick_polls
                         set status = 'CLOSED',
                             correct_option_idx = coalesce(:correct, correct_option_idx),
@@ -172,7 +195,8 @@ class PollRepository {
     }
 
     Optional<QuickPoll> setCorrectOption(UUID pollId, Integer correctOptionIdx) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         update interaction.quick_polls
                         set correct_option_idx = :correctOptionIdx
                         where id = :id and status = 'OPEN'
@@ -186,49 +210,70 @@ class PollRepository {
     }
 
     boolean respond(UUID id, UUID pollId, UUID personId, int optionIdx) {
-        int rows = jdbc.sql("""
+        int rows =
+                jdbc.sql(
+                                """
                         insert into interaction.poll_responses (id, poll_id, person_id, option_idx)
                         values (:id, :pollId, :personId, :optionIdx)
                         on conflict (poll_id, person_id) do nothing
                         """)
-                .param("id", id)
-                .param("pollId", pollId)
-                .param("personId", personId)
-                .param("optionIdx", optionIdx)
-                .update();
+                        .param("id", id)
+                        .param("pollId", pollId)
+                        .param("personId", personId)
+                        .param("optionIdx", optionIdx)
+                        .update();
         return rows > 0;
     }
 
     Optional<String> findTextAnswer(UUID pollId, UUID personId) {
-        return jdbc.sql("select text_answer from interaction.poll_responses "
-                        + "where poll_id = :pollId and person_id = :personId and text_answer is not null")
-                .param("pollId", pollId).param("personId", personId).query(String.class).optional();
+        return jdbc.sql(
+                        "select text_answer from interaction.poll_responses where poll_id = :pollId and"
+                        + " person_id = :personId and text_answer is not null")
+                .param("pollId", pollId)
+                .param("personId", personId)
+                .query(String.class)
+                .optional();
     }
 
     boolean respondText(UUID id, UUID pollId, UUID personId, String text) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                                """
                         insert into interaction.poll_responses (id, poll_id, person_id, text_answer)
                         values (:id, :pollId, :personId, :text)
                         on conflict (poll_id, person_id) do nothing
                         """)
-                .param("id", id).param("pollId", pollId).param("personId", personId)
-                .param("text", text).update() > 0;
+                        .param("id", id)
+                        .param("pollId", pollId)
+                        .param("personId", personId)
+                        .param("text", text)
+                        .update()
+                > 0;
     }
 
     long countResponses(UUID pollId) {
         return jdbc.sql("select count(*) from interaction.poll_responses where poll_id = :pollId")
-                .param("pollId", pollId).query(Long.class).single();
+                .param("pollId", pollId)
+                .query(Long.class)
+                .single();
     }
 
     List<TextPollResponse> textResponses(UUID pollId, int limit, int offset) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
                         select id, text_answer, answered_at from interaction.poll_responses
                         where poll_id = :pollId and text_answer is not null
                         order by answered_at, id limit :limit offset :offset
                         """)
-                .param("pollId", pollId).param("limit", limit).param("offset", offset)
-                .query((rs, row) -> new TextPollResponse(rs.getObject("id", UUID.class),
-                        rs.getString("text_answer"), rs.getTimestamp("answered_at").toInstant())).list();
+                .param("pollId", pollId)
+                .param("limit", limit)
+                .param("offset", offset)
+                .query(
+                        (rs, row) ->
+                                new TextPollResponse(
+                                        rs.getObject("id", UUID.class),
+                                        rs.getString("text_answer"),
+                                        rs.getTimestamp("answered_at").toInstant()))
+                .list();
     }
 
     List<Integer> voteCounts(UUID pollId, int optionCount) {
@@ -236,21 +281,23 @@ class PollRepository {
         for (int i = 0; i < optionCount; i++) {
             counts.add(0);
         }
-        jdbc.sql("""
+        jdbc.sql(
+                        """
                         select option_idx, count(*)::int as cnt
                         from interaction.poll_responses
                         where poll_id = :pollId
                         group by option_idx
                         """)
                 .param("pollId", pollId)
-                .query((rs, rowNum) -> {
-                    int idx = rs.getInt("option_idx");
-                    int cnt = rs.getInt("cnt");
-                    if (idx >= 0 && idx < counts.size()) {
-                        counts.set(idx, cnt);
-                    }
-                    return null;
-                })
+                .query(
+                        (rs, rowNum) -> {
+                            int idx = rs.getInt("option_idx");
+                            int cnt = rs.getInt("cnt");
+                            if (idx >= 0 && idx < counts.size()) {
+                                counts.set(idx, cnt);
+                            }
+                            return null;
+                        })
                 .list();
         return counts;
     }
@@ -266,7 +313,9 @@ class PollRepository {
                 PollStatus.valueOf(rs.getString("status")),
                 (Integer) rs.getObject("correct_option_idx"),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("closed_at") != null ? rs.getTimestamp("closed_at").toInstant() : null,
+                rs.getTimestamp("closed_at") != null
+                        ? rs.getTimestamp("closed_at").toInstant()
+                        : null,
                 QuestionType.valueOf(rs.getString("question_type")));
     }
 

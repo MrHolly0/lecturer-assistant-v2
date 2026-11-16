@@ -22,7 +22,9 @@ class DeploymentTest(unittest.TestCase):
             self.assertFalse(pod['automountServiceAccountToken'])
             self.assertEqual(pod['topologySpreadConstraints'][0]['whenUnsatisfiable'], 'DoNotSchedule')
             self.assertEqual(item['spec']['strategy']['rollingUpdate']['maxUnavailable'], 0)
-        for name in ['core', 'content-worker', 'converter']:
+        converter=deployments['converter']['spec']['template']['spec']
+        self.assertEqual({'conversion','temporary'},set(v['name'] for v in converter['volumes']))
+        for name in ['core', 'content-worker']:
             self.assertEqual(deployments[name]['spec']['template']['spec']['volumes'][0]
                              ['persistentVolumeClaim']['claimName'], 'lecturer-blobs')
         for name in ['edge', 'authority', 'web']:
@@ -40,6 +42,8 @@ class DeploymentTest(unittest.TestCase):
         self.assertIn('server web.lecturer.svc.cluster.local:8088 resolve', edge['edge.nginx.conf'])
         self.assertNotRegex(edge['edge.nginx.conf'], r'server (core|realtime|web|media-control|max-adapter):')
         self.assertIn('kube-dns.kube-system.svc.cluster.local', edge['nginx-main.conf'])
+        converter=deployments['converter']['spec']['template']['spec']
+        self.assertEqual({'conversion','temporary'},set(v['name'] for v in converter['volumes']))
         for name in ['core', 'content-worker']:
             container = deployments[name]['spec']['template']['spec']['containers'][0]
             self.assertEqual(container['livenessProbe']['httpGet']['path'], '/actuator/health/liveness')
