@@ -47,6 +47,35 @@ class IntegrationServicesTest extends LiveFlowTestBase {
     }
 
     @Test
+    void presenterUpgradeTicketIsShortLivedScopedAndRequiresManagePermission() throws Exception {
+        String route = "/api/v1/sessions/" + sessionId + "/realtime-ticket";
+        JsonNode issued = json(post(route).header("Authorization", "Bearer " + lecturerToken), 200);
+        assertEquals("ticket", issued.get("transport").asText());
+        String[] token = issued.get("ticket").asText().split("\\.");
+        var mac = javax.crypto.Mac.getInstance("HmacSHA256");
+        mac.init(
+                new javax.crypto.spec.SecretKeySpec(
+                        REALTIME.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+        String expected =
+                java.util.Base64.getUrlEncoder()
+                        .withoutPadding()
+                        .encodeToString(
+                                mac.doFinal(
+                                        ("presenter-upgrade-v1." + token[0])
+                                                .getBytes(
+                                                        java.nio.charset.StandardCharsets.UTF_8)));
+        assertEquals(expected, token[1]);
+        JsonNode claim = objectMapper.readTree(java.util.Base64.getUrlDecoder().decode(token[0]));
+        assertEquals(sessionId.toString(), claim.get("session").asText());
+        assertEquals(personIdOf(lecturerToken), claim.get("person").asText());
+        assertTrue(claim.get("expires").asLong() > System.currentTimeMillis());
+        assertTrue(claim.get("expires").asLong() <= System.currentTimeMillis() + 20000);
+        mockMvc.perform(post(route)).andExpect(status().isUnauthorized());
+        mockMvc.perform(post(route).header("Authorization", "Bearer " + maxLogin(990000001L)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void rolledBackBusinessCommandLeavesNoEventOrBudgetReservation() {
         assertThrows(
                 IllegalStateException.class,

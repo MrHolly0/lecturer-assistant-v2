@@ -101,6 +101,17 @@ jobs:
           python3 deploy/scalable/init-local.py
           docker compose --env-file deploy/scalable/.env -f deploy/scalable/compose.yml config --quiet
 
+      - name: Verify appliance ingress
+        run: python3 e2e/proxy-chain-drill.py --pull --output "$RUNNER_TEMP/proxy-chain-check.json"
+
+      - name: Save appliance ingress result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appliance-ingress-check
+          path: ${{ runner.temp }}/proxy-chain-check.*
+          if-no-files-found: ignore
+
       - name: Check optional adapter syntax
         run: |
           node --check adapters/telegram/telegram-adapter.mjs

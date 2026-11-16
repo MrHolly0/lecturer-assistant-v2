@@ -3078,6 +3078,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/sessions/{sessionId}/realtime-ticket": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Issue a short-lived transport credential for a permitted presenter */
+    post: operations["createPresenterRealtimeTicket"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4399,6 +4416,17 @@ export interface components {
     };
     /** @enum {string} */
     QuestionAnswerVisibility: "AUTHOR" | "SESSION";
+    PresenterRealtimeTicket: {
+      /** @enum {string} */
+      transport: "legacy" | "ticket";
+      /** @description Present once in Sec-WebSocket-Protocol after the lecturer.v1 protocol, prefixed with ticket. */
+      ticket?: string;
+      /**
+       * Format: int64
+       * @description Expiry in milliseconds since the Unix epoch
+       */
+      expiresAt?: number;
+    };
     StudentQuestionHistory: {
       myQuestions: components["schemas"]["StudentQuestion"][];
       questionAnswers: components["schemas"]["StudentQuestionAnswer"][];
@@ -10486,6 +10514,56 @@ export interface operations {
       };
       /** @description Delivery cooldown or capacity limit. */
       429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createPresenterRealtimeTicket: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sessionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Transport mode; ticket mode returns a single-use credential, never an access token. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PresenterRealtimeTicket"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course management permission required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Realtime transport is not configured */
+      503: {
         headers: {
           [name: string]: unknown;
         };

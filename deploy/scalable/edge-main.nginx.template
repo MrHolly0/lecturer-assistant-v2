@@ -1,0 +1,53 @@
+worker_processes 2;
+worker_rlimit_nofile 65536;
+pid /tmp/nginx.pid;
+# Routine proxy errors include query-string bearer tokens in nginx diagnostics.
+error_log /dev/stderr crit;
+events { worker_connections 16384; }
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    access_log off;
+    client_body_temp_path /tmp/client_body;
+    proxy_temp_path /tmp/proxy;
+    fastcgi_temp_path /tmp/fastcgi;
+    uwsgi_temp_path /tmp/uwsgi;
+    scgi_temp_path /tmp/scgi;
+    client_max_body_size 64k;
+    proxy_request_buffering off;
+    map "" $lecturer_proxy_key { default "${TRUSTED_PROXY_KEY}"; }
+    map "$http_x_lecturer_proxy_key:$http_x_lecturer_client_ip" $lecturer_client_ip {
+        default $remote_addr;
+        "~^${TRUSTED_PROXY_KEY}:(?<trusted_client_address>[0-9A-Fa-f:.]{2,45})$" $trusted_client_address;
+    }
+    map $uri $password_installation_key {
+        default "";
+        ~^/api/v1/auth/(login|register)$ installation;
+    }
+    limit_req_zone $password_installation_key zone=password_total:1m rate=100r/s;
+    limit_req_zone $lecturer_client_ip zone=public_open:2m rate=10r/s;
+    limit_req_zone $lecturer_client_ip zone=websocket_open:2m rate=100r/s;
+    limit_req_zone $lecturer_client_ip zone=password_open:2m rate=20r/s;
+    map $request_method $upload_slot { default ""; POST "installation"; }
+    limit_conn_zone $upload_slot zone=uploads_total:1m;
+    limit_req_status 429;
+    limit_conn_status 429;
+    client_header_timeout 10s;
+    client_body_timeout 30s;
+    keepalive_timeout 30s;
+    send_timeout 15s;
+    server_tokens off;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $lecturer_client_ip;
+    proxy_set_header X-Lecturer-Client-IP $lecturer_client_ip;
+    proxy_set_header X-Lecturer-Proxy-Key $lecturer_proxy_key;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 30s;
+    proxy_send_timeout 15s;
+    proxy_max_temp_file_size 0;
+    resolver 127.0.0.11 valid=5s ipv6=off;
+    include /etc/nginx/conf.d/*.conf;
+}

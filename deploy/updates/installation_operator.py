@@ -62,7 +62,7 @@ def atomic_json(path, value):
             os.unlink(temporary)
 
 
-def validate_release(envelope, public_key, release_id=None, openssl='openssl'):
+def validate_release(envelope, public_key, release_id=None, openssl='openssl', topology=''):
     payload = envelope['payload']
     if not isinstance(payload, str) or len(payload.encode()) > 262144:
         raise UpdateError('Catalog size exceeded')
@@ -90,7 +90,11 @@ def validate_release(envelope, public_key, release_id=None, openssl='openssl'):
         if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}', identifier) or identifier in ids:
             raise UpdateError('Invalid release ID')
         ids.add(identifier)
-        if not re.fullmatch(r'[a-f0-9]{40}', release['commit']) or release.get('backwardCompatible') is not True:
+        required = release.get('requiredTopology', '')
+        matched = bool(topology) and required == topology
+        compatible = release.get('backwardCompatible')
+        if not re.fullmatch(r'[a-f0-9]{40}', release['commit']) or type(compatible) is not bool or \
+                (not compatible and not matched) or ((required or topology) and not matched):
             raise UpdateError('Only backward-compatible application releases are supported')
         images = release['images']
         if not isinstance(images, dict) or not {'core', 'web'} <= images.keys() or len(images) > 12:
@@ -409,7 +413,8 @@ class Worker:
         if len(raw) > 524288:
             raise UpdateError('Catalog size exceeded')
         envelope = decode(raw)
-        validate_release(envelope, self.config['publicKey'], openssl=self.config.get('openssl', 'openssl'))
+        validate_release(envelope, self.config['publicKey'], openssl=self.config.get('openssl', 'openssl'),
+                         topology=self.config.get('topologyGeneration', ''))
         self.api.post('/catalog', {'kind': self.config['kind'], **envelope})
 
     def execute(self, assignment):
@@ -430,7 +435,8 @@ class Worker:
         self.driver.guard = lambda: self.rpc(job, 'heartbeat')
         try:
             release = validate_release(assignment['catalog'], self.config['publicKey'], job['releaseId'],
-                                       openssl=self.config.get('openssl', 'openssl'))
+                                       openssl=self.config.get('openssl', 'openssl'),
+                                       topology=self.config.get('topologyGeneration', ''))
             if self.journal.exists():
                 prior = decode(self.journal.read_text())
                 if prior.get('active') == job['id']:

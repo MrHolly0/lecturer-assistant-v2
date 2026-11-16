@@ -17,7 +17,7 @@ import tempfile
 import time
 import urllib.request
 
-from render import NS, IMAGE_KEYS, site_renderer, validate, app, data, secrets as secret_items, scaling, monitoring, resource_budget
+from render import NS, IMAGE_KEYS, site_renderer, validate, app, data, secrets as secret_items, scaling, monitoring, resource_budget, front_proxy, TOPOLOGY_GENERATION
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE = Path(os.environ.get('APPLIANCE_STATE', '/state'))
@@ -121,7 +121,7 @@ def init():
         raise RuntimeError('tlsMode must be proxy or automatic')
     atomic(STATE/'secrets.json', json.dumps(values))
     atomic(STATE/'registries.yaml', json.dumps(config.get('registries', {})))
-    caddy = f'{domain} {{\n  reverse_proxy k3s:30080\n  encode zstd gzip\n}}\n'
+    caddy = front_proxy(config, values)
     atomic(STATE/'Caddyfile', caddy)
     atomic(STATE/'runtime.env', f'CLUSTER_MEMORY={config.get("clusterMemoryMi",13312)}m\nCLUSTER_CPUS={config.get("clusterCpus",8)}\n')
     print('Initialized. Credentials are private in the state directory; no administrator exists yet.')
@@ -236,7 +236,7 @@ def raw_backup(destination):
         with blob_lock() as held:
             materials=int(kc('-n',NS,'exec','deployment/core','--','du','-sb','/data/blobs').decode().split()[0])
             databases=sum(int(sql(db,'select pg_database_size(current_database())')) for db in ['lecturer','analytics'])
-            required=int((materials+databases+128*1024**2)*1.3)+2*1024**3
+            required=int((materials+databases+256*1024**2)*1.3)+2*1024**3
             if shutil.disk_usage(destination).free < required:
                 raise RuntimeError('Not enough free staging space for a backup and the disk reserve')
             # Capture the inbox first: every DONE event must precede the later SQL snapshot.
@@ -347,6 +347,7 @@ def operator_config():
          ('max-adapter','max-adapter'), ('sfu','sfu')]:
         bindings[component].append({'resource':('daemonset/' if name=='sfu' else 'deployment/')+name, 'container':name})
     result = {'kind':'kubernetes', 'backend':'appliance', 'namespace':NS, 'repo':str(ROOT),
+              'topologyGeneration':TOPOLOGY_GENERATION,
               'kubeconfig':str(KUBE), 'imagesFile':str(STATE/'images.json'), 'stateDir':str(STATE/'operator'),
               'apiUrl':'http://k3s:30080', 'healthUrl':'http://k3s:30080/health',
               'operatorKey':values['INSTALLATION_OPERATOR_KEY'], 'catalogUrl':updates['catalogUrl'],

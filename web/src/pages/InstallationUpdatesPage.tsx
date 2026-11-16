@@ -1,6 +1,6 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, RefreshCw } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, PackageOpen, RefreshCw, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 import {
   acknowledgeInstallationUpdate,
@@ -76,32 +76,23 @@ export function InstallationUpdatesPage() {
     onSuccess: refresh,
     onError: (error) => toast.error(userErrorMessage(error, "Не удалось завершить проверку"))
   });
+  const [checking, setChecking] = useState(false);
+  const checkStatus = async () => {
+    setChecking(true);
+    try {
+      await query.refetch();
+    } finally {
+      setChecking(false);
+    }
+  };
   const data = query.data;
-  if (query.isLoading)
-    return (
-      <div className="page" role="status">
-        Проверяем установку…
-      </div>
-    );
-  if (!data)
-    return (
-      <div className="page">
-        <h1>Обновления приложения</h1>
-        <p className="form-error" role="alert">
-          Не удалось получить состояние установки.
-        </p>
-        <Button variant="outline" onClick={() => void query.refetch()}>
-          Повторить
-        </Button>
-      </div>
-    );
-  const current = data.jobs.find((job) =>
+  const current = data?.jobs.find((job) =>
     ["QUEUED", "RUNNING", "NEEDS_ATTENTION"].includes(job.status)
   );
   const online = Boolean(
-    data.operatorSeenAt && Date.now() - Date.parse(data.operatorSeenAt) < 90_000
+    data?.operatorSeenAt && Date.now() - Date.parse(data.operatorSeenAt) < 90_000
   );
-  const lastSuccess = data.jobs.find((job) => job.status === "SUCCEEDED");
+  const lastSuccess = data?.jobs.find((job) => job.status === "SUCCEEDED");
   return (
     <div className="page installation-updates-page">
       <div className="page-header">
@@ -109,44 +100,93 @@ export function InstallationUpdatesPage() {
           <h1>Обновления приложения</h1>
           <p className="muted">Версии и обслуживание установки учреждения</p>
         </div>
-        <Button variant="outline" onClick={() => void query.refetch()}>
-          <RefreshCw aria-hidden="true" /> Проверить состояние
+        <Button
+          variant="outline"
+          disabled={checking || query.isLoading}
+          onClick={() => void checkStatus()}
+        >
+          <RefreshCw aria-hidden="true" />
+          {checking || query.isLoading ? "Проверяем…" : "Проверить состояние"}
         </Button>
       </div>
-      {query.isError && (
+      {query.isError && data && (
         <p className="installation-update-notice" role="status">
           Сервер временно недоступен. Показываем последнее состояние; проверка продолжится
           автоматически.
         </p>
       )}
-      {!data.enabled ? (
-        <section>
-          <h2>Настройка обновлений</h2>
-          <p>
-            Системному администратору нужно один раз подключить оператор установки и доверенный ключ
-            релизов. После этого обновления можно запускать здесь.
-          </p>
-          <p className="muted">
-            Поддерживаются установки Docker Compose и Kubernetes. GitLab не требуется.
-          </p>
+      {query.isLoading ? (
+        <section className="installation-loading" role="status">
+          <span>Проверяем установку…</span>
+          <div aria-hidden="true" />
+          <div aria-hidden="true" />
+        </section>
+      ) : !data ? (
+        <section className="installation-setup installation-load-error" role="alert">
+          <AlertCircle className="installation-setup__icon" aria-hidden="true" />
+          <div>
+            <h2>Не удалось проверить установку</h2>
+            <p>
+              Повторите проверку. Если ошибка сохранится, обратитесь к системному администратору.
+            </p>
+            <Button
+              variant="outline"
+              disabled={checking || query.isLoading}
+              onClick={() => void checkStatus()}
+            >
+              Повторить
+            </Button>
+          </div>
+        </section>
+      ) : !data.enabled ? (
+        <section className="installation-setup" aria-labelledby="installation-setup-title">
+          <PackageOpen className="installation-setup__icon" aria-hidden="true" />
+          <div>
+            <span className="installation-state-label">Нужна настройка</span>
+            <h2 id="installation-setup-title">Подключите обновления</h2>
+            <p>
+              Попросите системного администратора настроить установку. После этого новые версии
+              приложения можно будет устанавливать прямо здесь.
+            </p>
+            <details className="installation-setup__details">
+              <summary>Что нужно настроить</summary>
+              <p>
+                Подключить службу обновлений и доверенный ключ релизов. Для новой установки
+                используется единый пакет Docker с Kubernetes внутри.
+              </p>
+            </details>
+            <p className="installation-setup__footnote muted">
+              Перед обновлением система дождётся завершения занятий и создаст резервную копию.
+            </p>
+          </div>
         </section>
       ) : (
         <>
           <div className="installation-update-status">
             <div>
-              <strong>
-                {data.operatorKind === "kubernetes"
-                  ? "Kubernetes"
-                  : data.operatorKind === "compose"
-                    ? "Docker Compose"
-                    : "Оператор не подключён"}
+              <span className="installation-status-caption">Служба обновлений</span>
+              <strong className="installation-connection">
+                {online ? <CheckCircle2 aria-hidden="true" /> : <WifiOff aria-hidden="true" />}
+                {online ? "На связи" : "Нет связи"}
               </strong>
               <p className="muted">
-                {online ? "Оператор на связи" : `Последняя связь: ${time(data.operatorSeenAt)}`}
+                {data.operatorSeenAt
+                  ? `Последняя связь: ${time(data.operatorSeenAt)}`
+                  : "Ожидаем подключения"}
+                {data.operatorKind === "kubernetes"
+                  ? " · Kubernetes"
+                  : data.operatorKind === "compose"
+                    ? " · Docker Compose"
+                    : ""}
               </p>
             </div>
             <div>
-              <strong>Текущих занятий: {data.activeLessons}</strong>
+              <span className="installation-status-caption">Занятия сейчас</span>
+              <strong>
+                {data.activeLessons
+                  ? `Идут занятия: ${data.activeLessons}`
+                  : "Активных занятий нет"}
+              </strong>
               <p className="muted">Установка начнётся, когда все занятия завершатся.</p>
             </div>
           </div>
@@ -218,6 +258,11 @@ export function InstallationUpdatesPage() {
                 {data.catalogError}
               </p>
             )}
+            {!online && data.releases.length > 0 && (
+              <p className="installation-update-notice">
+                Установка станет доступна, когда служба обновлений снова выйдет на связь.
+              </p>
+            )}
             {!data.releases.length && (
               <p className="muted">
                 Проверенных релизов пока нет. Каталог обновляется оператором автоматически.
@@ -225,7 +270,7 @@ export function InstallationUpdatesPage() {
             )}
             {data.releases.map((release) => (
               <article className="installation-release" key={release.id}>
-                <div>
+                <div className="installation-release__content">
                   <h3>{release.version}</h3>
                   <p className="installation-release__notes">{release.notes}</p>
                   <span className="muted">
@@ -235,20 +280,34 @@ export function InstallationUpdatesPage() {
                       : ""}
                   </span>
                 </div>
-                <Button
-                  disabled={
-                    !online ||
-                    Boolean(current) ||
-                    start.isPending ||
-                    lastSuccess?.releaseId === release.id ||
-                    data.databaseVersion < release.databaseMin ||
-                    data.databaseVersion > release.databaseMax
-                  }
-                  onClick={() => start.mutate(release.id)}
-                >
-                  <Download aria-hidden="true" />
-                  {data.activeLessons ? "Обновить после занятий" : "Установить обновление"}
-                </Button>
+                <div className="installation-release__action">
+                  <Button
+                    disabled={
+                      !online ||
+                      Boolean(current) ||
+                      start.isPending ||
+                      lastSuccess?.releaseId === release.id ||
+                      data.databaseVersion < release.databaseMin ||
+                      data.databaseVersion > release.databaseMax
+                    }
+                    onClick={() => start.mutate(release.id)}
+                  >
+                    {lastSuccess?.releaseId === release.id ? (
+                      <CheckCircle2 aria-hidden="true" />
+                    ) : (
+                      <Download aria-hidden="true" />
+                    )}
+                    {lastSuccess?.releaseId === release.id
+                      ? "Установлено"
+                      : data.activeLessons
+                        ? "Обновить после занятий"
+                        : "Установить обновление"}
+                  </Button>
+                  {(data.databaseVersion < release.databaseMin ||
+                    data.databaseVersion > release.databaseMax) && (
+                    <span className="muted">Нужна проверка совместимости администратором</span>
+                  )}
+                </div>
               </article>
             ))}
           </section>
@@ -262,7 +321,7 @@ export function InstallationUpdatesPage() {
                       <strong>{job.releaseId}</strong>
                       <p className="muted">{time(job.createdAt)}</p>
                     </div>
-                    <span>
+                    <span className="installation-state-label">
                       {STAGES[job.status === "RUNNING" ? job.stage : job.status] ?? job.status}
                     </span>
                   </li>

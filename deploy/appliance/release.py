@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import re
 import sys
-from render import IMAGE_KEYS
+from render import IMAGE_KEYS, TOPOLOGY_GENERATION
 
 source, output = map(Path, sys.argv[1:])
 images = {}
@@ -29,6 +29,6 @@ output.mkdir(parents=True,exist_ok=True)
 (output/'images.json').write_text(json.dumps(images,indent=2)+'\n')
 (output/'controller-image.txt').write_text(controller+'\n')
 release={'id':version,'version':version,'notes':notes,'commit':commit,'databaseMin':minimum,
-         'databaseMax':maximum,'backwardCompatible':True,'images':images}
+         'databaseMax':maximum,'backwardCompatible':False,'requiredTopology':TOPOLOGY_GENERATION,'images':images}
 (output/'releases.json').write_text(json.dumps([release],ensure_ascii=False)+'\n')
 (output/'notes.txt').write_text(notes+'\n\nCatalog expires in 30 days. Publish catalog.json unchanged at the institution\'s configured HTTPS endpoint (without redirects); refresh its signature before expiry.\n')

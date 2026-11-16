@@ -3,7 +3,7 @@
 ARG SERVICE_NODE_IMAGE=node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8
 FROM ${SERVICE_NODE_IMAGE}
 WORKDIR /app
-COPY adapters/max/inbox-snapshot.mjs adapters/max/inbox.mjs adapters/max/lib.mjs adapters/max/document-media.mjs adapters/max/max-adapter.mjs ./
+COPY adapters/max/inbox-admin.mjs adapters/max/inbox-snapshot.mjs adapters/max/inbox.mjs adapters/max/lib.mjs adapters/max/document-media.mjs adapters/max/max-adapter.mjs ./
 
 # Сертификат platform-api2.max.ru выдан Russian Trusted Sub CA (Минцифры), корня которого
 # нет в хранилище Node: без него любой запрос к MAX API падает с

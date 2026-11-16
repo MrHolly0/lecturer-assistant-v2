@@ -39,6 +39,7 @@ def render(prometheus_image):
     items = [{'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS}}]
     secret = {'CORE_URL': f'http://{ip("authority")}:80',
               'SERVICE_REALTIME_KEY': settings['SERVICE_REALTIME_KEY'],
+              'TRUSTED_PROXY_KEY': settings['TRUSTED_PROXY_KEY'],
               'AMQP_URL': ','.join(f'amqp://lecturer:{quote(settings["RABBITMQ_PASSWORD"], safe="")}@{ip(s)}:5672?heartbeat=10'
                                    for s in ['rabbit-a', 'rabbit-b', 'rabbit-c'])}
     items.append({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'gateway'}, 'stringData': secret})

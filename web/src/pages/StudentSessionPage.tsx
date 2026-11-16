@@ -83,6 +83,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   );
   const autoJoinRequested = useRef(false);
   const reconnectRef = useRef<() => void>(() => undefined);
+  const retryHistoryRef = useRef<() => void>(() => undefined);
   const [displayName, setDisplayName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -472,8 +473,10 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       delivery.received
     );
     reconnectRef.current = connection.reconnect;
+    retryHistoryRef.current = connection.retryHistory;
     return () => {
       reconnectRef.current = () => undefined;
+      retryHistoryRef.current = () => undefined;
       connection.disconnect();
       delivery.stop();
     };
@@ -704,6 +707,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           <StudentFeedbackControls
             historyKey={JSON.stringify([scope, current.historyRevision])}
             historyHasMore={current.historyHasMore}
+            initialHistoryError={current.historyError}
+            onRetryHistory={current.historyCanRetry ? () => retryHistoryRef.current() : undefined}
             loadHistory={(offset) =>
               getStudentQuestionHistory(normalizedCode, participantToken, offset)
             }
@@ -782,6 +787,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           <StudentFeedbackControls
             historyKey={JSON.stringify([scope, current.historyRevision])}
             historyHasMore={current.historyHasMore}
+            initialHistoryError={current.historyError}
+            onRetryHistory={current.historyCanRetry ? () => retryHistoryRef.current() : undefined}
             loadHistory={(offset) =>
               getStudentQuestionHistory(normalizedCode, participantToken, offset)
             }

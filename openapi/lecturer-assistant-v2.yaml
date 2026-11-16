@@ -4353,6 +4353,27 @@ paths:
         '429':
           description: Delivery cooldown or capacity limit.
 
+  /api/v1/sessions/{sessionId}/realtime-ticket:
+    post:
+      operationId: createPresenterRealtimeTicket
+      summary: Issue a short-lived transport credential for a permitted presenter
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Transport mode; ticket mode returns a single-use credential, never an access token.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PresenterRealtimeTicket'}
+        '401': {description: Authentication required}
+        '403': {description: Course management permission required}
+        '404': {description: Session not found}
+        '503': {description: Realtime transport is not configured}
 components:
   securitySchemes:
     installationOperatorKey:
@@ -7191,6 +7212,16 @@ components:
     QuestionAnswerVisibility:
       type: string
       enum: [AUTHOR, SESSION]
+    PresenterRealtimeTicket:
+      type: object
+      required: [transport]
+      properties:
+        transport: {type: string, enum: [legacy, ticket]}
+        ticket:
+          type: string
+          maxLength: 1024
+          description: Present once in Sec-WebSocket-Protocol after the lecturer.v1 protocol, prefixed with ticket.
+        expiresAt: {type: integer, format: int64, description: Expiry in milliseconds since the Unix epoch}
     StudentQuestionHistory:
       type: object
       required: [myQuestions, questionAnswers, hasMore]

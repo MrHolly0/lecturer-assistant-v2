@@ -57,6 +57,7 @@ server:
 
 app:
   installation:
+    topology-generation: ${INSTALLATION_TOPOLOGY_GENERATION:}
     enabled: ${INSTALLATION_UPDATES_ENABLED:false}
     operator-key: ${INSTALLATION_OPERATOR_KEY:}
     release-public-key: ${INSTALLATION_RELEASE_PUBLIC_KEY:}
@@ -116,7 +117,8 @@ app:
       concurrent-requests: ${API_CONCURRENT_REQUESTS:128}
       concurrent-analytics: ${API_CONCURRENT_ANALYTICS:8}
     rate-limit:
-      auth-max-per-minute: ${RATE_LIMIT_AUTH_MAX_PER_MINUTE:3000}
+      auth-max-per-minute: ${RATE_LIMIT_AUTH_MAX_PER_MINUTE:12000}
+      auth-installation-per-minute: ${RATE_LIMIT_AUTH_INSTALLATION_PER_MINUTE:24000}
       signal-per-minute: ${RATE_LIMIT_SIGNAL_PER_MINUTE:6000}
   content:
     blob-root: ${BLOB_ROOT:./data/blobs}

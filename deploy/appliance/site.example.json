@@ -1,6 +1,7 @@
 {
   "publicOrigin": "https://lecturer.example.edu",
   "tlsMode": "proxy",
+  "trustedProxyCidrs": [],
   "mediaPublicIp": "192.0.2.10",
   "maxBotName": "institution_bot",
   "registerMaxWebhook": true,

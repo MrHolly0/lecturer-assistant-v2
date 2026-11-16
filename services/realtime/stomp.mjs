@@ -1,6 +1,6 @@
 const SESSION = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function attachStomp(socket, sessionId, hub) {
+export function attachStomp(socket, sessionId, hub, admission = {}) {
   if (!SESSION.test(sessionId)) { socket.close(1008); return; }
   let client, buffer = Buffer.alloc(0), queuedBytes = 0, queuedFrames = 0;
   let serial = Promise.resolve(), connecting = false, closed = false, windowStart = hub.now(), messages = 0;
@@ -43,9 +43,10 @@ export function attachStomp(socket, sessionId, hub) {
           connecting = true;
           const auth = headers.Authorization ?? headers.authorization ?? '';
           if (!auth.startsWith('Bearer ') || auth.length > 8192) throw new Error('Missing token');
-          client = await hub.addPresenter(sessionId, auth.slice(7), socket);
+          client = await hub.addPresenter(sessionId, auth.slice(7), socket, admission.personId);
           if (closed) { hub.remove(client); return; }
           if (!client) return;
+          admission.authorized?.();
           clearTimeout(handshake);
           socket.send('CONNECTED\nversion:1.2\nheart-beat:10000,10000\n\n\0');
         } else if (!client || !hub.valid(client)) throw new Error('Not authorized');

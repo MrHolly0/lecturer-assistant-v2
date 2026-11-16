@@ -36,6 +36,8 @@ interface StudentFeedbackControlsProps {
     offset: number
   ) => Promise<import("../app/api/student-api").StudentQuestionHistory>;
   historyHasMore?: boolean;
+  initialHistoryError?: string;
+  onRetryHistory?: () => void;
   readOnly?: boolean;
   isLive: boolean;
   isSignalPending: boolean;
@@ -537,6 +539,16 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
           </p>
         )}
       </details>
+      {props.initialHistoryError && (
+        <div role="status" className="muted">
+          <p>{props.initialHistoryError}</p>
+          {props.onRetryHistory && (
+            <Button type="button" variant="outline" onClick={props.onRetryHistory}>
+              Повторить загрузку истории
+            </Button>
+          )}
+        </div>
+      )}
     </>
   );
 }

@@ -2,8 +2,8 @@
   max-width: 1100px;
 }
 .installation-update-status {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   justify-content: space-between;
   gap: 24px;
   padding-block: 24px;
@@ -14,8 +14,11 @@
 }
 .installation-current-job {
   margin-top: 24px;
-  border-left: 3px solid var(--brand-orange, #ff6b00);
-  padding: 8px 0 12px 24px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 35%, var(--card));
+  overflow-wrap: anywhere;
 }
 .installation-current-job h2 {
   margin-top: 8px;
@@ -35,7 +38,8 @@
   padding: 24px 0;
   border-top: 1px solid var(--border);
 }
-.installation-release > div {
+.installation-release__content {
+  flex: 1;
   min-width: 0;
 }
 .installation-release h3 {
@@ -69,10 +73,197 @@
   .installation-release {
     flex-direction: column;
   }
-  .installation-release > button {
+  .installation-release__action,
+  .installation-release__action > button {
     width: 100%;
   }
-  .installation-current-job {
-    padding-left: 16px;
+}
+
+.page.installation-updates-page > .page-header {
+  align-items: start;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+.installation-updates-page > .page-header > div {
+  flex: 1;
+  min-width: 0;
+}
+.page.installation-updates-page > .page-header h1 {
+  font-size: 32px;
+  letter-spacing: -0.8px;
+}
+.installation-updates-page > .page-header > button {
+  flex-shrink: 0;
+}
+.installation-updates-page p {
+  max-width: 72ch;
+  line-height: 1.5;
+}
+.installation-setup {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+.installation-setup__icon {
+  box-sizing: border-box;
+  width: 48px;
+  height: 48px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--muted-foreground);
+}
+.installation-setup h2 {
+  margin: 12px 0;
+}
+.installation-load-error h2 {
+  margin-top: 0;
+}
+.installation-state-label {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--accent);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.installation-setup__details {
+  max-width: 65ch;
+  margin-top: 20px;
+  font-size: 14px;
+}
+.installation-setup__details summary {
+  width: fit-content;
+  padding-block: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.installation-setup__details summary:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.installation-setup__details summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+.installation-setup__details p {
+  margin: 4px 0 0;
+  color: var(--muted-foreground);
+}
+.installation-setup .installation-setup__footnote {
+  margin: 24px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+.installation-status-caption {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+.installation-connection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.installation-connection svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.installation-update-status p {
+  font-size: 14px;
+}
+.installation-current-job h2 {
+  margin: 8px 0 12px;
+}
+.installation-current-job > p:first-child {
+  font-size: 14px;
+}
+.installation-releases > h2,
+.installation-history > h2 {
+  margin-bottom: 8px;
+}
+.installation-release h3 {
+  margin: 0 0 8px;
+}
+.installation-release__notes {
+  margin-bottom: 12px;
+}
+.installation-release__content > .muted {
+  font-size: 14px;
+}
+.installation-release__action {
+  display: grid;
+  gap: 8px;
+  flex-shrink: 0;
+  max-width: 280px;
+}
+.installation-release__action > .muted,
+.installation-update-notice {
+  font-size: 14px;
+}
+.installation-history ol {
+  margin: 20px 0 0;
+}
+.installation-history li > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.installation-history li > span {
+  flex-shrink: 0;
+}
+.installation-history li p {
+  font-size: 14px;
+}
+.installation-loading {
+  display: grid;
+  gap: 16px;
+  padding: 32px;
+  min-height: 220px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--muted-foreground);
+}
+.installation-loading > div {
+  width: 80%;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--accent);
+}
+.installation-loading > div:last-child {
+  width: 55%;
+}
+@media (max-width: 720px) {
+  .page.installation-updates-page > .page-header h1 {
+    font-size: 28px;
+    letter-spacing: -0.5px;
+  }
+  .installation-setup {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    padding: 24px;
+  }
+  .installation-update-status {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .installation-history li {
+    flex-direction: column;
+    align-items: start;
+    gap: 16px;
+  }
+  .installation-release__action {
+    width: 100%;
+    max-width: none;
   }
 }

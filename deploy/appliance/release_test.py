@@ -21,4 +21,5 @@ class ReleaseCompatibilityTest(unittest.TestCase):
             env['DATABASE_MIN']='56'
             subprocess.run([sys.executable,str(script),str(source),str(root/'new')],env=env,check=True,capture_output=True)
             release=json.loads((root/'new/releases.json').read_text())[0]
-            self.assertEqual(56,release['databaseMin']);self.assertTrue(release['backwardCompatible'])
+            self.assertEqual(56,release['databaseMin']);self.assertFalse(release['backwardCompatible'])
+            self.assertEqual('single-vm-v2',release['requiredTopology'])

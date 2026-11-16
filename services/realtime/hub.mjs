@@ -108,7 +108,7 @@ export class RealtimeHub {
     }
   }
 
-  async addPresenter(sessionId, accessToken, socket) {
+  async addPresenter(sessionId, accessToken, socket, expectedPerson) {
     this.admit(); this.pendingGrants++;
     try {
       let grant;
@@ -118,6 +118,8 @@ export class RealtimeHub {
         throw Object.assign(new Error('Authority temporarily unavailable'), { status: 503 });
       }
       if (socket.readyState !== 1 || this.closed) return;
+      if (expectedPerson && grant.personId !== expectedPerson)
+        throw Object.assign(new Error('Ticket subject differs'), { status: 403 });
       if (!this.accepting) throw Object.assign(new Error('Gateway draining'), { status: 503 });
       const expiresAt = lease(grant, this.now());
       if (expiresAt <= this.now()) throw Object.assign(new Error('Expired grant'), { status: 503 });
