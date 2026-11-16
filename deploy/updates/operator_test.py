@@ -136,8 +136,14 @@ class OperatorTests(unittest.TestCase):
         state = self.root/'state';state.mkdir()
         actual = {'core': 'old-core', 'web':'old-web'};calls=[]
         def read(argv, config):
+            if argv[argv.index('get')+1] == 'pods':
+                name = argv[argv.index('-l')+1].split('=')[1]
+                return json.dumps({'items':[{'metadata':{'name':name+'-pod'},
+                    'spec':{'containers':[{'name':name,'image':actual[name]}]},
+                    'status':{'conditions':[{'type':'Ready','status':'True'}]}}]})
             name = argv[argv.index('get')+1].split('/')[1]
-            return json.dumps({'spec':{'template':{'spec':{'containers':[{'name':name,'image':actual[name]}]}}}})
+            return json.dumps({'spec':{'selector':{'matchLabels':{'component':name}},
+                'template':{'spec':{'containers':[{'name':name,'image':actual[name]}]}}}})
         def run(argv, config, log, **options):
             calls.append(argv)
             if 'set' in argv:
@@ -151,6 +157,53 @@ class OperatorTests(unittest.TestCase):
         self.assertEqual(actual,descriptor)
         actual['core']='other-image'
         with self.assertRaises(operator.UpdateError):driver.verify(self.release,io.StringIO())
+
+    def test_on_delete_media_replaces_pods_and_checks_actual_pod_digest(self):
+        image = 'registry.example/sfu@sha256:'+'d'*64
+        config = {**self.config, 'kind':'kubernetes', 'namespace':'lecturer',
+                  'bindings':{'sfu':[{'resource':'daemonset/sfu','container':'sfu'}]}}
+        state=self.root/'media';state.mkdir()
+        calls=[];actual={'template':'old','pod':'old','ready':False}
+        def read(argv, config):
+            if argv[argv.index('get')+1]=='pods':
+                return json.dumps({'items':[{'metadata':{'name':'sfu-test'},
+                    'spec':{'containers':[{'name':'sfu','image':actual['pod']}]},
+                    'status':{'conditions':[{'type':'Ready','status':'True' if actual['ready'] else 'False'}]}}]})
+            return json.dumps({'spec':{'updateStrategy':{'type':'OnDelete'},
+                'selector':{'matchLabels':{'component':'sfu'}},
+                'template':{'spec':{'containers':[{'name':'sfu','image':actual['template']}]}}},
+                'status':{'desiredNumberScheduled':1}})
+        def run(argv, config, log, **kwargs):
+            calls.append(argv)
+            if 'set' in argv:actual['template']=image
+            if 'delete' in argv:actual.update(pod=image,ready=True)
+        driver=operator.Kubernetes(config,state,run=run,read=read)
+        guards=[];driver.guard=lambda:guards.append(True)
+        release={'images':{'sfu':image}}
+        driver.apply(release,io.StringIO());driver.verify(release,io.StringIO())
+        self.assertEqual(2,len(guards))
+        self.assertTrue(any('delete' in c and 'sfu-test' in c for c in calls))
+        self.assertFalse(any('rollout' in c for c in calls))
+        actual['pod']='old'
+        with self.assertRaises(operator.UpdateError):driver.verify(release,io.StringIO())
+        actual.update(pod=image,ready=False)
+        with self.assertRaises(operator.UpdateError):driver.verify(release,io.StringIO())
+
+    def test_appliance_pull_failure_cleans_up_before_any_maintenance_mutation(self):
+        config={**self.config,'kind':'kubernetes','backend':'appliance','namespace':'lecturer',
+                'kubeconfig':str(self.root/'kubeconfig'), 'minFreeBytes':0,
+                'bindings':{'core':[{'resource':'deployment/core','container':'core'}],
+                            'web':[{'resource':'deployment/web','container':'web'}]}}
+        state=self.root/'preflight';state.mkdir();calls=[]
+        def run(argv,config,log,**kwargs):
+            calls.append(argv)
+            if 'wait' in argv:raise operator.UpdateError('Image not available')
+        driver=operator.Kubernetes(config,state,run=run)
+        guards=[];driver.guard=lambda:guards.append(True)
+        with self.assertRaises(operator.UpdateError):driver.preflight(self.release,io.StringIO())
+        self.assertTrue(any('delete' in c and '--ignore-not-found' in c for c in calls))
+        self.assertFalse(guards)
+        self.assertFalse(any('set' in c or 'scale' in c for c in calls))
 
 
 if __name__ == '__main__': unittest.main()

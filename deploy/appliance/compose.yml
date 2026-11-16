@@ -1,0 +1,82 @@
+name: ${APPLIANCE_PROJECT:-lecturer-appliance}
+x-logging: &logs
+  driver: local
+  options: {max-size: "10m", max-file: "3"}
+services:
+  k3s:
+    image: ${K3S_IMAGE:-rancher/k3s:v1.35.10-k3s1@sha256:8262ca99a558dca0c0437443421986480b2359f9118f2371359f88a41514522f}
+    privileged: true
+    restart: unless-stopped
+    hostname: lecturer-node
+    command:
+      - server
+      - --disable=traefik,servicelb
+      - --tls-san=k3s
+      - --secrets-encryption
+      - --write-kubeconfig=/output/kubeconfig.yaml
+      - --write-kubeconfig-mode=600
+      - --node-label=lecturer.media=true
+      - --kubelet-arg=image-gc-high-threshold=80
+      - --kubelet-arg=image-gc-low-threshold=65
+    tmpfs: [/run, /var/run]
+    ulimits:
+      nproc: 65535
+      nofile: {soft: 65535, hard: 65535}
+    mem_limit: ${CLUSTER_MEMORY:-12g}
+    cpus: ${CLUSTER_CPUS:-8}
+    volumes:
+      - cluster:/var/lib/rancher/k3s
+      - kubeconfig:/output
+      - ${APPLIANCE_STATE:?Run init first}/registries.yaml:/etc/rancher/k3s/registries.yaml:ro
+    ports:
+      - "${MEDIA_BIND:-0.0.0.0}:7881:7881/tcp"
+      - "${MEDIA_BIND:-0.0.0.0}:7882:7882/udp"
+    healthcheck:
+      test: [CMD, kubectl, get, --raw=/readyz]
+      interval: 10s
+      timeout: 8s
+      retries: 30
+      start_period: 30s
+    logging: *logs
+  controller:
+    image: ${CONTROLLER_IMAGE:?Set the released controller image}
+    build: {context: ../.., dockerfile: deploy/appliance/Dockerfile}
+    restart: unless-stopped
+    init: true
+    mem_limit: 256m
+    cpus: 0.5
+    environment:
+      APPLIANCE_STATE: /state
+      KUBECONFIG: /state/kubeconfig.yaml
+    volumes:
+      - kubeconfig:/cluster:ro
+      - ${APPLIANCE_STATE}:/state
+      - ${APPLIANCE_BACKUPS:?Set an independent backup directory}:/backups
+    depends_on: {k3s: {condition: service_healthy}}
+    logging: *logs
+  edge:
+    image: caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
+    volumes:
+      - ${APPLIANCE_STATE}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - certificates:/data
+    ports:
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-18094}:80"
+      - "${HTTPS_BIND:-127.0.0.1}:${HTTPS_PORT:-18494}:443"
+    depends_on: {k3s: {condition: service_started}}
+    logging: *logs
+  registry:
+    image: registry:3.1.2
+    profiles: [build]
+    restart: "no"
+    mem_limit: 128m
+    volumes: [registry:/var/lib/registry]
+    ports: ["127.0.0.1:${REGISTRY_PORT:-19094}:5000"]
+    logging: *logs
+volumes:
+  cluster: {}
+  kubeconfig: {}
+  certificates: {}
+  registry: {}

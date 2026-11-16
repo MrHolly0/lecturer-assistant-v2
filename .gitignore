@@ -42,3 +42,7 @@ deploy/k8s/.state/
 # Local installation operator state and private configuration.
 deploy/updates/.state/
 deploy/updates/operator.local.json
+
+# Private single-VM installation state and backup sets
+deploy/appliance/.state/
+deploy/appliance/.backups/

@@ -1,6 +1,7 @@
 # Устройство и сопровождение Lecturer Assistant
 
-Установка для Compose и Kubernetes: [deploy/cloud](../deploy/cloud/README.md),
+Основной пакет одной Docker-ВМ: [deploy/appliance](../deploy/appliance/README.md).
+Другие варианты Compose и Kubernetes: [deploy/cloud](../deploy/cloud/README.md),
 [deploy/k8s](../deploy/k8s/README.md). Требования к управляемым обновлениям из
 интерфейса и границы текущей реализации: [installation-updates.md](installation-updates.md).
 
@@ -211,3 +212,12 @@ AbandonedSessionCleanup раз в минуту выбирает до 100 LIVE/PA
 lifecycle, закрывает poll и после commit уведомляет клиентов. Системное событие
 имеет nullable actor и причину `presenter_absent_timeout`. SCHEDULED и старые
 неотслеживаемые записи с NULL не входят в очистку.
+
+## Установка учреждения на одной ВМ
+
+Основной пакет: [deploy/appliance/README.md](../deploy/appliance/README.md).
+K3s работает в Docker, приложение и данные — внутри него. Он не требует Lima,
+SSH/systemd-установки K3s, NFS или готового Kubernetes у учреждения. Подключение
+к существующему кластеру и несколько физических серверов остаются отдельным вариантом.
+Обновления приложения используют тот же подписанный каталог и серверный барьер занятий.
+Максимумы HPA/KEDA не означают подтверждённую ёмкость ВМ; видеонагрузку измерять отдельно.

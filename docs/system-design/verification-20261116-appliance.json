@@ -1,0 +1,86 @@
+{
+  "testedAt": "2026-11-16T16:43:48.364632+00:00",
+  "branch": "feature/single-vm-docker",
+  "baseCommit": "b9e94fca1f0c8d4e23653def24d73f85827e54a4",
+  "platform": "macOS arm64 / Docker Desktop, isolated project",
+  "cluster": {
+    "version": "v1.35.10+k3s1",
+    "outerDockerMemoryLimitGiB": 5,
+    "outerDockerCpuLimit": 5,
+    "dataPlaneInsideKubernetes": true
+  },
+  "functional": {
+    "passed": true,
+    "importWorker": true,
+    "deliveryMs": 138,
+    "sseSnapshots": 3,
+    "stompMessages": 3,
+    "sfuGrants": true,
+    "privateAnswer": true,
+    "internalBlocked": true,
+    "analytics": false
+  },
+  "autoscaling": {
+    "phases": [
+      {
+        "label": "baseline-one",
+        "ms": 89
+      },
+      {
+        "label": "all-connected",
+        "ms": 2001
+      },
+      {
+        "label": "scaled-to-three",
+        "ms": 27759
+      },
+      {
+        "label": "scaled-back-to-one",
+        "ms": 25600
+      }
+    ],
+    "connections": 35,
+    "initialSnapshots": 35,
+    "passed": true
+  },
+  "update": {
+    "uiQueued": true,
+    "waitedForLiveLesson": true,
+    "stages": [
+      "WAITING",
+      "BACKING_UP",
+      "APPLYING",
+      "VERIFYING",
+      "SUCCEEDED"
+    ],
+    "passed": true,
+    "realSfuReplaced": true,
+    "blobPreserved": true,
+    "coursePreserved": true,
+    "databaseVersion": 54,
+    "analytics": true
+  },
+  "containerRecreation": {
+    "passed": true,
+    "databaseVersion": 54,
+    "courseCount": 1,
+    "lastUpdateStatus": "SUCCEEDED"
+  },
+  "restore": {
+    "passed": true,
+    "newCluster": true,
+    "databaseVersion": 53,
+    "coursePreserved": true,
+    "blobFilesVerified": 6,
+    "oldJobFenced": true,
+    "manualReviewAcknowledged": true,
+    "noSourceMount": true
+  },
+  "limits": [
+    "Functional small-scale acceptance, not a 10000-student qualification",
+    "No multi-host failover on one VM",
+    "Video tickets checked; mass browser video traffic not qualified",
+    "Release publication workflow prepared, not executed against a public channel",
+    "Institution provides its own MAX bot, TLS domain, registry access and independent backups"
+  ]
+}

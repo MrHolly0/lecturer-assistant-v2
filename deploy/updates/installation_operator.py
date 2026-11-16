@@ -120,7 +120,8 @@ class Api:
         parsed = urllib.parse.urlparse(self.url)
         if parsed.username or parsed.password or parsed.query or parsed.fragment \
                 or (parsed.scheme != 'https' and not (parsed.scheme == 'http'
-                    and parsed.hostname in ['127.0.0.1', 'localhost', '::1'])):
+                    and (parsed.hostname in ['127.0.0.1', 'localhost', '::1'] or
+                         (config.get('backend') == 'appliance' and self.url == 'http://k3s:30080')))):
             raise UpdateError('API requires HTTPS or a local loopback address')
         self.key = config['operatorKey']
         if len(self.key) < 32 or self.key.startswith("REPLACE"):
@@ -238,6 +239,8 @@ class Kubernetes:
             raise UpdateError('Invalid Kubernetes namespace')
         self.base = ['env', f'LECTURER_K8S_NAMESPACE={config["namespace"]}', 'sh',
                      str(Path(config['repo']) / 'deploy/k8s/lecturer-k8s.sh'), 'kubectl', '-n', config['namespace']]
+        if config.get('backend') == 'appliance':
+            self.base = ['kubectl', '--kubeconfig', config['kubeconfig'], '-n', config['namespace']]
         for mappings in self.bindings.values():
             for mapping in mappings:
                 if not RESOURCE.fullmatch(mapping['resource']) or not re.fullmatch(r'[a-z0-9][a-z0-9.-]*', mapping['container']):
@@ -249,8 +252,35 @@ class Kubernetes:
         for component in release['images']:
             for target in self.bindings[component]:
                 self.run(self.base + ['get', target['resource'], '-o', 'name'], self.config, log, timeout=30)
+        if self.config.get('backend') == 'appliance':
+            if shutil.disk_usage(self.state).free < self.config.get('minFreeBytes', 2*1024**3):
+                raise UpdateError('Insufficient free space for update')
+            # Pull every digest BEFORE claiming the maintenance barrier or changing workloads.
+            # On this one-node topology a completed utility pod warms the exact node cache.
+            for component, image in release['images'].items():
+                name = 'release-pull-' + uuid.uuid4().hex[:20]
+                manifest = self.state / 'preflight-pod.json'
+                atomic_json(manifest, {'apiVersion': 'v1', 'kind': 'Pod', 'metadata': {
+                    'name': name, 'namespace': self.config['namespace']}, 'spec': {
+                    'restartPolicy': 'Never', 'automountServiceAccountToken': False,
+                    'containers': [{'name': 'pull', 'image': image, 'imagePullPolicy': 'IfNotPresent',
+                        'command': ['/bin/true'], 'securityContext': {'runAsUser': 65534, 'runAsNonRoot': True,
+                            'allowPrivilegeEscalation': False, 'capabilities': {'drop': ['ALL']}},
+                        'resources': {'requests': {'cpu': '5m', 'memory': '8Mi'},
+                                      'limits': {'cpu': '100m', 'memory': '32Mi'}}}]}})
+                try:
+                    self.run(self.base + ['apply', '-f', str(manifest)], self.config, log, timeout=30)
+                    self.run(self.base + ['wait', '--for=jsonpath={.status.phase}=Succeeded',
+                                         'pod/'+name, '--timeout=180s'], self.config, log, timeout=190)
+                finally:
+                    self.run(self.base + ['delete', 'pod/'+name, '--ignore-not-found', '--wait=false'],
+                             self.config, log, timeout=30)
 
     def backup(self, log):
+        if self.config.get('backend') == 'appliance':
+            self.run(['python3', str(Path(self.config['repo']) / 'deploy/appliance/control.py'),
+                      'backup'], self.config, log)
+            return
         self.run(['env', f'LECTURER_K8S_NAMESPACE={self.config["namespace"]}', 'sh',
                   str(Path(self.config['repo']) / 'deploy/k8s/lecturer-k8s.sh'), 'backup'], self.config, log)
 
@@ -267,17 +297,53 @@ class Kubernetes:
                 self.guard()
                 self.run(self.base + ['set', 'image', target['resource'], f'{target["container"]}={image}'],
                          self.config, log, timeout=60)
+                # OnDelete is intentional for live media. The admission barrier has already
+                # excluded active/scheduled lessons; now replace only this workload's pods.
+                current = decode(self.read(self.base + ['get', target['resource'], '-o', 'json'], self.config))
+                if target['resource'].startswith('daemonset/') and current['spec'].get('updateStrategy', {}).get('type') == 'OnDelete':
+                    selector = self.selector(current)
+                    pods = decode(self.read(self.base + ['get', 'pods', '-l', selector, '-o', 'json'], self.config))
+                    for pod in pods['items']:
+                        self.guard()
+                        self.run(self.base + ['delete', 'pod', pod['metadata']['name'], '--wait=true', '--timeout=90s'],
+                                 self.config, log, timeout=100)
+
+    @staticmethod
+    def selector(workload):
+        labels = workload['spec']['selector'].get('matchLabels', {})
+        if not labels or workload['spec']['selector'].get('matchExpressions'):
+            raise UpdateError('Workload needs an explicit label selector')
+        return ','.join(f'{key}={value}' for key, value in sorted(labels.items()))
 
     def verify(self, release, log):
         for component in release['images']:
             for target in self.bindings[component]:
-                self.run(self.base + ['rollout', 'status', target['resource'], '--timeout=240s'],
-                         self.config, log, timeout=250)
                 current = decode(self.read(self.base + ['get', target['resource'], '-o', 'json'], self.config))
+                if current['spec'].get('updateStrategy', {}).get('type') == 'OnDelete':
+                    desired = current.get('status', {}).get('desiredNumberScheduled', 0)
+                    if not desired:
+                        raise UpdateError('Media workload has no scheduled nodes')
+                    for field in ['updatedNumberScheduled', 'numberReady']:
+                        self.run(self.base + ['wait', f'--for=jsonpath={{.status.{field}}}={desired}',
+                                             target['resource'], '--timeout=240s'], self.config, log, timeout=250)
+                else:
+                    self.run(self.base + ['rollout', 'status', target['resource'], '--timeout=240s'],
+                             self.config, log, timeout=250)
                 actual = {c['name']: c['image'] for c in current['spec']['template']['spec']['containers']}
                 if actual.get(target['container']) != release['images'][component]:
                     raise UpdateError('Running Kubernetes image does not match the approved digest')
-        descriptor = Path(self.config['repo']) / 'deploy/k8s/.state/images.json'
+                selector = self.selector(current)
+                pods = decode(self.read(self.base + ['get', 'pods', '-l', selector, '-o', 'json'], self.config))['items']
+                running = [pod for pod in pods if not pod['metadata'].get('deletionTimestamp')]
+                if not running:
+                    raise UpdateError('Updated workload has no running pods')
+                for pod in running:
+                    containers = {c['name']: c['image'] for c in pod['spec']['containers']}
+                    ready = any(c.get('type') == 'Ready' and c.get('status') == 'True'
+                                for c in pod.get('status', {}).get('conditions', []))
+                    if containers.get(target['container']) != release['images'][component] or not ready:
+                        raise UpdateError('Actual pod digest/readiness does not match the approved release')
+        descriptor = Path(self.config.get('imagesFile', Path(self.config['repo']) / 'deploy/k8s/.state/images.json'))
         previous = decode(descriptor.read_text()) if descriptor.exists() else {}
         atomic_json(self.state / 'previous-descriptor.json', previous)
         atomic_json(descriptor, {**previous, **release['images']})
@@ -286,7 +352,8 @@ class Kubernetes:
 def health(config):
     url = config['healthUrl']
     parsed = urllib.parse.urlparse(url)
-    if parsed.scheme != 'https' and parsed.hostname not in ['127.0.0.1', 'localhost', '::1']:
+    if (parsed.scheme != 'https' and parsed.hostname not in ['127.0.0.1', 'localhost', '::1']
+            and not (config.get('backend') == 'appliance' and url == 'http://k3s:30080/health')):
         raise UpdateError('Health endpoint requires HTTPS')
     with urllib.request.build_opener(NoRedirect).open(url, timeout=8) as response:
         data = decode(response.read(65536))

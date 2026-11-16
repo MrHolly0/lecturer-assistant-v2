@@ -1,0 +1,112 @@
+name: Publish installation release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Reviewed release identifier (for example 2.1.0-rc.1)'
+        required: true
+      database_min:
+        description: 'Oldest compatible existing Flyway schema'
+        required: true
+      database_max:
+        description: 'Newest compatible existing Flyway schema'
+        required: true
+      notes:
+        description: 'Administrator-facing release notes'
+        required: true
+permissions:
+  contents: read
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+  images:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {component: core, dockerfile: core/Dockerfile}
+          - {component: web, dockerfile: web/Dockerfile}
+          - {component: services, dockerfile: services/Dockerfile}
+          - {component: sfu, dockerfile: services/Dockerfile.sfu}
+          - {component: converter, dockerfile: deploy/converter/Dockerfile}
+          - {component: max-adapter, dockerfile: adapters/max/Dockerfile}
+          - {component: authority, dockerfile: deploy/appliance/Dockerfile.authority}
+          - {component: controller, dockerfile: deploy/appliance/Dockerfile}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image repository
+        env:
+          REPOSITORY: ${{ github.repository }}
+          COMPONENT: ${{ matrix.component }}
+        run: echo "IMAGE=ghcr.io/${REPOSITORY,,}-${COMPONENT}" >> "$GITHUB_ENV"
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+      - name: Immutable image descriptor
+        env:
+          COMPONENT: ${{ matrix.component }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p descriptors
+          python3 -c 'import json,os,pathlib; pathlib.Path("descriptors/"+os.environ["COMPONENT"]+".json").write_text(json.dumps({os.environ["COMPONENT"]:os.environ["IMAGE"]+"@"+os.environ["DIGEST"]}))'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: descriptor-${{ matrix.component }}
+          path: descriptors/*.json
+  sign:
+    needs: images
+    runs-on: ubuntu-latest
+    # Configure required reviewers and the Ed25519 key in this protected environment.
+    environment: installation-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: descriptor-*
+          path: descriptors
+          merge-multiple: true
+      - name: Prepare reviewed release and sign catalog
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          DATABASE_MIN: ${{ inputs.database_min }}
+          DATABASE_MAX: ${{ inputs.database_max }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          umask 077
+          python3 deploy/appliance/release.py descriptors release
+          printf '%s' "$RELEASE_SIGNING_KEY" > signing.pem
+          trap 'rm -f signing.pem' EXIT
+          openssl pkey -in signing.pem -pubout -out release/release.pub.pem
+          python3 deploy/updates/publish-catalog.py --releases release/releases.json --private-key signing.pem --output release/catalog.json --valid-hours 720
+          mkdir -p release/package
+          cp -R deploy release/package/
+          cp release/images.json release/controller-image.txt release/release.pub.pem release/package/
+          tar -czf release/installation.tar.gz -C release/package .
+          (cd release && sha256sum images.json controller-image.txt release.pub.pem catalog.json installation.tar.gz > SHA256SUMS)
+      - name: Publish reviewable prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: gh release create "installation-$RELEASE_VERSION" release/installation.tar.gz release/images.json release/controller-image.txt release/release.pub.pem release/catalog.json release/SHA256SUMS --target "$GITHUB_SHA" --prerelease --title "Installation $RELEASE_VERSION" --notes-file release/notes.txt

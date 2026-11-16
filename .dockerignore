@@ -39,3 +39,7 @@ out
 deploy/scalable/livekit.local.yaml
 !.env.example
 deploy/k8s/.state
+deploy/appliance/.state
+deploy/appliance/.backups
+deploy/updates/.state
+deploy/cloud/.state

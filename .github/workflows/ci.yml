@@ -4,6 +4,7 @@ on:
   push:
     branches: ["main", "master", "v2/**", "release/**", "feature/**", "fix/**"]
   workflow_dispatch:
+  workflow_call:
   pull_request:
     branches: ["main", "master", "release/hackathon-max"]
 
@@ -84,6 +85,9 @@ jobs:
           python3 -m unittest discover -s deploy/k8s -p '*_test.py'
           python3 -m unittest discover -s deploy/cloud -p '*_test.py'
           python3 -m unittest discover -s deploy/updates -p '*_test.py'
+          python3 -m unittest discover -s deploy/appliance -p '*_test.py'
+          python3 deploy/appliance/control.py --help
+          sh -n deploy/appliance/lecturer.sh
           python3 deploy/updates/installation_operator.py --help
           python3 deploy/updates/publish-catalog.py --help
           sh -n deploy/cloud/lecturer.sh
