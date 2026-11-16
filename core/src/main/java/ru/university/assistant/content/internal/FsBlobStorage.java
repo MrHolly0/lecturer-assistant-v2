@@ -9,6 +9,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.Collection;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import ru.university.assistant.shared.api.UuidV7;
@@ -74,6 +76,20 @@ class FsBlobStorage implements BlobStorage {
             Files.deleteIfExists(target);
             throw failure;
         }
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status != STATUS_ROLLED_BACK) return;
+                        try {
+                            Files.deleteIfExists(target);
+                            Files.deleteIfExists(target.getParent());
+                        } catch (IOException failure) {
+                            org.slf4j.LoggerFactory.getLogger(FsBlobStorage.class)
+                                    .warn("Cannot remove rolled back blob", failure);
+                        }
+                    }
+                });
         String safeContentType = contentType == null ? "application/octet-stream" : contentType;
         return new StoredBlob(ref, cleanName, safeContentType, sizeBytes);
     }

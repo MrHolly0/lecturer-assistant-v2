@@ -12,7 +12,8 @@
       "tests": 421,
       "failures": 0,
       "errors": 0,
-      "skipped": 0
+      "skipped": 0,
+      "additionalRollbackRegressionPassed": true
     },
     "web": {
       "passed": 142,

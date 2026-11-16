@@ -249,6 +249,38 @@ class StorageBudgetIntegrationTest {
     }
 
     @Test
+    void outerBusinessRollbackRemovesTheFileAlongWithItsReservation() throws Exception {
+        long before =
+                jdbc.sql("select bytes from content.storage_budget where singleton")
+                        .query(Long.class)
+                        .single();
+        java.util.concurrent.atomic.AtomicReference<StoredBlob> created =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        transactions.executeWithoutResult(
+                status -> {
+                    try {
+                        created.set(
+                                storage.storeForCourse(
+                                        UUID.randomUUID(),
+                                        new ByteArrayInputStream(new byte[8]),
+                                        "attachment.bin",
+                                        null,
+                                        8));
+                        assertTrue(Files.exists(root.resolve(created.get().ref())));
+                        status.setRollbackOnly();
+                    } catch (java.io.IOException error) {
+                        throw new java.io.UncheckedIOException(error);
+                    }
+                });
+        assertFalse(Files.exists(root.resolve(created.get().ref())));
+        assertEquals(
+                before,
+                jdbc.sql("select bytes from content.storage_budget where singleton")
+                        .query(Long.class)
+                        .single());
+    }
+
+    @Test
     void spoofedLengthRollsBackAndLowDiskReserveFailsBeforeWriting() throws Exception {
         long before =
                 jdbc.sql("select bytes from content.storage_budget where singleton")
