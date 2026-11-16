@@ -96,7 +96,7 @@ class PresenterPresenceIntegrationTest extends LiveFlowTestBase {
                 .path("id").asText());
         presence(lecturerToken, otherCourse, 404);
         assertEquals(absentSince, seenAt());
-        assertTrue(lifecycle.endIfPresenterAbsent(sessionId));
+        assertTrue(completeWhenUnlocked(), "Cleanup retries a row briefly locked by participant delivery");
     }
 
     @Test
@@ -148,6 +148,15 @@ class PresenterPresenceIntegrationTest extends LiveFlowTestBase {
     private void presence(String token, UUID course, int expected) throws Exception {
         json(post("/api/v1/courses/{c}/sessions/{s}/presenter-presence", course, sessionId)
                 .header("Authorization", "Bearer " + token), expected);
+    }
+
+    private boolean completeWhenUnlocked() throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (System.nanoTime() < deadline) {
+            if (lifecycle.endIfPresenterAbsent(sessionId)) return true;
+            TimeUnit.MILLISECONDS.sleep(20);
+        }
+        return false;
     }
 
     private void agePresence(String interval) {
