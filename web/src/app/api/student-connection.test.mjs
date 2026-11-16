@@ -364,14 +364,14 @@ test("cancelled account or route scopes cannot start or complete a snapshot read
   assert.equal(timers.size, 0);
 });
 
-test("compact ticks keep history cached and fetch only a changed scoped history reference", async () => {
+test("compact history caches ticks, restores after REST fallback and refreshes visibility", async () => {
+  let visible = true;
   globalThis.fetch = async (url, init) => {
     requests.push({ url, init, at: time });
     return new Response(
       JSON.stringify({
         myQuestions: [],
-        questionAnswers:
-          requests.length === 1 ? [{ questionId: "answer", answerText: "Personal answer" }] : [],
+        questionAnswers: visible ? [{ questionId: "answer", answerText: "Personal answer" }] : [],
         hasMore: true
       })
     );
@@ -395,6 +395,23 @@ test("compact ticks keep history cached and fetch only a changed scoped history 
   await settle();
   assert.equal(requests.length, 1);
   assert.equal(snapshots.at(-1).questionAnswers.length, 1);
+  source.snapshot({
+    sessionId: "session",
+    version: 15,
+    status: "LIVE",
+    myQuestions: [],
+    questionAnswers: []
+  });
+  source.snapshot({ ...compact, version: 16 });
+  await settle();
+  await settle();
+  assert.equal(
+    requests.length,
+    2,
+    "resuming compact after a REST fallback restores its scoped history"
+  );
+  assert.equal(snapshots.at(-1).questionAnswers.length, 1);
+  visible = false;
   source.snapshot({ ...compact, version: 20, historyRevision: "0.2" });
   assert.equal(
     snapshots.at(-1).questionAnswers.length,
@@ -403,6 +420,6 @@ test("compact ticks keep history cached and fetch only a changed scoped history 
   );
   await settle();
   await settle();
-  assert.equal(requests.length, 2);
+  assert.equal(requests.length, 3);
   assert.equal(snapshots.at(-1).questionAnswers.length, 0);
 });

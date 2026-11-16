@@ -428,7 +428,11 @@ export function connectStudentSession(
         historyHasMore: sameHistory ? previous?.historyHasMore : false
       };
       const ref = snapshot.historyRevision;
-      if (!snapshot.kicked && ref !== historyRevision && Date.now() >= historyRetryAt) {
+      if (
+        !snapshot.kicked &&
+        (!sameHistory || ref !== historyRevision) &&
+        Date.now() >= historyRetryAt
+      ) {
         historyAbort?.abort();
         const controller = new AbortController();
         historyAbort = controller;
