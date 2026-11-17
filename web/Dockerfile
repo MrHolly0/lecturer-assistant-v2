@@ -3,6 +3,7 @@ WORKDIR /workspace/web
 ARG VITE_MAX_BOT_NAME=
 ENV VITE_MAX_BOT_NAME=${VITE_MAX_BOT_NAME}
 COPY web/package*.json ./
+COPY web/vendor ./vendor
 RUN npm ci
 COPY openapi /workspace/openapi
 COPY web /workspace/web
