@@ -4,6 +4,7 @@ on:
   push:
     branches: ["main", "master", "v2/**", "release/**", "feature/**", "fix/**"]
   workflow_dispatch:
+  workflow_call:
   pull_request:
     branches: ["main", "master", "release/hackathon-max"]
 
@@ -54,9 +55,7 @@ jobs:
           npm run lint
           npm run format
           npm run build
-
-      - name: Verify MAX adapter
-        run: node --test adapters/max/*.test.mjs
+          npm audit --audit-level=high
 
       - name: Set up Node 24 LTS for distributed services
         uses: actions/setup-node@v4
@@ -65,6 +64,9 @@ jobs:
           cache: npm
           cache-dependency-path: services/package-lock.json
 
+      - name: Verify MAX adapter on Node 24
+        run: node --test adapters/max/*.test.mjs
+
       - name: Verify distributed services
         working-directory: services
         env:
@@ -72,6 +74,7 @@ jobs:
         run: |
           npm ci
           npm test
+          npm audit --omit=dev --audit-level=high
 
       - name: Verify capacity client socket isolation
         run: node --test e2e/http-client.test.mjs
@@ -84,6 +87,10 @@ jobs:
           python3 -m unittest discover -s deploy/k8s -p '*_test.py'
           python3 -m unittest discover -s deploy/cloud -p '*_test.py'
           python3 -m unittest discover -s deploy/updates -p '*_test.py'
+          python3 -m unittest discover -s deploy/appliance -p '*_test.py'
+          python3 -m unittest discover -s deploy/converter -p '*_test.py'
+          python3 deploy/appliance/control.py --help
+          sh -n deploy/appliance/lecturer.sh
           python3 deploy/updates/installation_operator.py --help
           python3 deploy/updates/publish-catalog.py --help
           sh -n deploy/cloud/lecturer.sh
@@ -94,6 +101,17 @@ jobs:
           python3 deploy/scalable/init-local.py
           docker compose --env-file deploy/scalable/.env -f deploy/scalable/compose.yml config --quiet
 
+      - name: Verify appliance ingress
+        run: python3 e2e/proxy-chain-drill.py --pull --output "$RUNNER_TEMP/proxy-chain-check.json"
+
+      - name: Save appliance ingress result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appliance-ingress-check
+          path: ${{ runner.temp }}/proxy-chain-check.*
+          if-no-files-found: ignore
+
       - name: Check optional adapter syntax
         run: |
           node --check adapters/telegram/telegram-adapter.mjs
@@ -102,10 +120,9 @@ jobs:
       - name: Check backup scripts
         run: sh -n deploy/stand/backup/*.sh
 
-      - name: Verify converter admission
-        run: python3 -m unittest discover -s deploy/converter -p '*_test.py'
-
       - name: Validate compose
+        env:
+          CONVERTER_API_KEY: isolated_ci_converter_key_only
         run: docker compose config --quiet
 
       - name: Build core image
@@ -116,6 +133,11 @@ jobs:
 
       - name: Build services image
         run: docker build -f services/Dockerfile -t lecturer-assistant-services:ci .
+
+      - name: Verify single-VM container package
+        run: |
+          docker build -f deploy/appliance/Dockerfile -t lecturer-appliance-controller:ci .
+          APPLIANCE_STATE="$RUNNER_TEMP/appliance-state" APPLIANCE_BACKUPS="$RUNNER_TEMP/appliance-backups" CLUSTER_MEMORY=13312m CLUSTER_CPUS=8 CONTROLLER_IMAGE=lecturer-appliance-controller:ci docker compose -f deploy/appliance/compose.yml config --quiet
 
       - name: Verify and build SFU image
         run: docker build -f services/Dockerfile.sfu -t lecturer-assistant-sfu:ci .

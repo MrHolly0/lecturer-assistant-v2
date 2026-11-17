@@ -13,6 +13,11 @@ export type StudentSessionGroup = components["schemas"]["SessionGroup"];
 export type StudentActivePoll = components["schemas"]["ActivePollView"];
 export type StudentSessionSnapshot = Omit<GeneratedStudentSessionSnapshot, "activePoll"> & {
   activePoll?: StudentActivePoll | null;
+  deliveryMode?: "compact";
+  historyRevision?: string;
+  historyHasMore?: boolean;
+  historyError?: string;
+  historyCanRetry?: boolean;
 };
 export type StudentJoinResponse = components["schemas"]["StudentJoinResponse"];
 export type SignalAggregate = components["schemas"]["SignalAggregate"];
@@ -35,6 +40,7 @@ export type StudentConnectionState =
 export interface StudentConnectionControls {
   disconnect: () => void;
   reconnect: () => void;
+  retryHistory: () => void;
 }
 
 export async function publicFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -85,6 +91,29 @@ export async function getMyStudentActiveSession(): Promise<StudentActiveSessionS
   return response.json() as Promise<StudentActiveSessionSummary>;
 }
 
+export type StudentQuestionHistory = {
+  myQuestions: StudentQuestion[];
+  questionAnswers: StudentQuestionAnswer[];
+  hasMore: boolean;
+};
+export async function getStudentQuestionHistory(
+  joinCode: string,
+  participantToken = "",
+  offset = 0,
+  signal?: AbortSignal
+): Promise<StudentQuestionHistory> {
+  return withRequestDeadline(async (requestSignal) => {
+    const response = await studentFetch(
+      `/student/sessions/${encodeURIComponent(joinCode)}/question-history?offset=${offset}`,
+      {
+        signal: requestSignal,
+        headers: studentParticipantHeaders(participantToken)
+      }
+    );
+    return response.json() as Promise<StudentQuestionHistory>;
+  }, signal);
+}
+
 export async function getStudentSession(
   joinCode: string,
   participantToken = "",
@@ -95,10 +124,13 @@ export async function getStudentSession(
     headers.set("X-Participant-Token", participantToken);
   }
   return withRequestDeadline(async (requestSignal) => {
-    const res = await studentFetch(`/student/sessions/${encodeURIComponent(joinCode)}`, {
-      headers,
-      signal: requestSignal
-    });
+    const res = await studentFetch(
+      `/student/sessions/${encodeURIComponent(joinCode)}?includeText=false`,
+      {
+        headers,
+        signal: requestSignal
+      }
+    );
     return res.json() as Promise<StudentSessionSnapshot>;
   }, signal);
 }
@@ -108,9 +140,12 @@ export async function getPublicStudentSession(
   signal?: AbortSignal
 ): Promise<StudentSessionSnapshot> {
   return withRequestDeadline(async (requestSignal) => {
-    const res = await publicFetch(`/student/sessions/${encodeURIComponent(joinCode)}`, {
-      signal: requestSignal
-    });
+    const res = await publicFetch(
+      `/student/sessions/${encodeURIComponent(joinCode)}?includeText=false`,
+      {
+        signal: requestSignal
+      }
+    );
     return res.json() as Promise<StudentSessionSnapshot>;
   }, signal);
 }
@@ -269,8 +304,8 @@ export function connectStudentSession(
   onDelivery?: (snapshot: StudentSessionSnapshot) => void
 ): StudentConnectionControls {
   const eventUrl = participantToken
-    ? `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events?${new URLSearchParams({ participantToken })}`
-    : `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events/public`;
+    ? `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events?${new URLSearchParams({ participantToken, format: "compact-v1" })}`
+    : `/api/v1/student/sessions/${encodeURIComponent(joinCode)}/events/public?format=compact-v1`;
   let source: EventSource | null = null;
   let reconnectTimer: number | undefined;
   let pollingTimer: number | undefined;
@@ -379,8 +414,164 @@ export function connectStudentSession(
     pollAbort?.abort();
   };
 
+  let historyRevision: string | undefined;
+  let historyScope: { sessionId: string; revision: string } | null = null;
+  let historyAbort: AbortController | undefined;
+  let historyTimer: number | undefined;
+  let historyFailures = 0;
+  let historyDenied = false;
+
+  function stopHistory() {
+    if (historyTimer !== undefined) window.clearTimeout(historyTimer);
+    historyTimer = undefined;
+    historyAbort?.abort();
+    historyAbort = undefined;
+  }
+
+  function publishHistoryError(message: string, canRetry: boolean) {
+    const latest = snapshotGate.current;
+    if (
+      !stopped &&
+      latest &&
+      !latest.kicked &&
+      historyScope &&
+      latest.sessionId === historyScope.sessionId &&
+      latest.historyRevision === historyScope.revision
+    )
+      acceptSnapshot({
+        ...latest,
+        deliveryMode: undefined,
+        historyError: message,
+        historyCanRetry: canRetry
+      });
+  }
+
+  function loadHistory() {
+    if (
+      stopped ||
+      !navigator.onLine ||
+      !historyScope ||
+      historyAbort ||
+      historyDenied ||
+      historyFailures > 5 ||
+      historyRevision === historyScope.revision
+    )
+      return;
+    const expected = historyScope;
+    const controller = new AbortController();
+    historyAbort = controller;
+    void getStudentQuestionHistory(joinCode, participantToken, 0, controller.signal)
+      .then((history) => {
+        const latest = snapshotGate.current;
+        if (
+          stopped ||
+          controller.signal.aborted ||
+          historyScope !== expected ||
+          !latest ||
+          latest.kicked ||
+          latest.sessionId !== expected.sessionId ||
+          latest.historyRevision !== expected.revision
+        )
+          return;
+        historyRevision = expected.revision;
+        historyFailures = 0;
+        acceptSnapshot({
+          ...latest,
+          ...history,
+          deliveryMode: undefined,
+          historyHasMore: history.hasMore,
+          historyError: undefined,
+          historyCanRetry: false
+        });
+      })
+      .catch((error) => {
+        if (stopped || controller.signal.aborted || historyScope !== expected) return;
+        historyRevision = undefined;
+        historyDenied = !isRetryableError(error);
+        historyFailures++;
+        if (!historyDenied && historyFailures <= 5) {
+          historyTimer = window.setTimeout(
+            () => {
+              historyTimer = undefined;
+              if (historyScope === expected) loadHistory();
+            },
+            retryDelayMs(historyFailures - 1, { baseMs: 1000, maxMs: 30000, error })
+          );
+        }
+        publishHistoryError(
+          historyDenied ? "История вопросов недоступна." : "Не удалось загрузить историю вопросов.",
+          !historyDenied
+        );
+      })
+      .finally(() => {
+        if (historyAbort === controller) historyAbort = undefined;
+      });
+  }
+
+  function syncHistory(snapshot: StudentSessionSnapshot, sameHistory: boolean) {
+    if (snapshot.kicked) {
+      stopHistory();
+      historyScope = null;
+      historyRevision = undefined;
+      return;
+    }
+    const revision = snapshot.historyRevision;
+    if (snapshot.deliveryMode !== "compact" || typeof revision !== "string") {
+      if (
+        historyScope &&
+        (snapshot.sessionId !== historyScope.sessionId || revision !== historyScope.revision)
+      ) {
+        stopHistory();
+        historyScope = null;
+        historyRevision = undefined;
+      }
+      return;
+    }
+    if (
+      !sameHistory ||
+      snapshot.sessionId !== historyScope?.sessionId ||
+      revision !== historyScope?.revision
+    ) {
+      stopHistory();
+      historyScope = { sessionId: snapshot.sessionId, revision };
+      historyRevision = undefined;
+      historyFailures = 0;
+      historyDenied = false;
+    }
+    if (
+      historyRevision !== revision &&
+      !historyAbort &&
+      historyTimer === undefined &&
+      historyFailures <= 5
+    )
+      loadHistory();
+  }
+
+  const retryHistory = () => {
+    if (stopped || historyDenied || !historyScope || historyAbort) return;
+    if (historyTimer !== undefined) window.clearTimeout(historyTimer);
+    historyTimer = undefined;
+    historyFailures = 0;
+    historyRevision = undefined;
+    loadHistory();
+  };
   const acceptSnapshot = (snapshot: StudentSessionSnapshot, requestGeneration?: number) => {
     if (stopped) return false;
+    const previous = snapshotGate.current;
+    const sameHistory =
+      !snapshot.kicked &&
+      previous?.sessionId === snapshot.sessionId &&
+      previous?.historyRevision === snapshot.historyRevision;
+    if (snapshot.deliveryMode === "compact") {
+      snapshot = {
+        ...snapshot,
+        myQuestions: sameHistory ? previous?.myQuestions ?? [] : [],
+        questionAnswers: sameHistory ? previous?.questionAnswers ?? [] : [],
+        historyHasMore: sameHistory ? previous?.historyHasMore : false,
+        historyError: sameHistory ? previous?.historyError : undefined,
+        historyCanRetry: sameHistory ? previous?.historyCanRetry : false
+      };
+    }
     const accepted =
       requestGeneration === undefined
         ? snapshotGate.accept(snapshot)
@@ -388,6 +579,7 @@ export function connectStudentSession(
     if (!accepted) return false;
     onDelivery?.(snapshot);
     onSnapshot(snapshot);
+    syncHistory(snapshot, sameHistory);
     if (snapshot.status !== "ENDED" && snapshot.status !== "ARCHIVED") return true;
     ended = true;
     stopInvalidationRead();
@@ -569,8 +761,12 @@ export function connectStudentSession(
     // Even an online/resume burst preserves accumulated failure backoff.
     scheduleReconnect();
   };
-  const handleOnline = () => reconnect();
+  const handleOnline = () => {
+    loadHistory();
+    reconnect();
+  };
   const handleOffline = () => {
+    stopHistory();
     stopInvalidationRead();
     source?.close();
     source = null;
@@ -606,8 +802,11 @@ export function connectStudentSession(
 
   return {
     reconnect,
+    retryHistory,
     disconnect: () => {
       stopped = true;
+      stopHistory();
+      historyScope = null;
       stopInvalidationRead();
       source?.close();
       source = null;

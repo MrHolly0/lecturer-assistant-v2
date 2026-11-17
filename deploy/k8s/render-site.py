@@ -388,6 +388,17 @@ def app_items(site, images):
          'spec': {'accessModes': ['ReadWriteMany'], 'storageClassName': '', 'volumeName': f'{ns}-blobs',
                   'resources': {'requests': {'storage': '50Gi'}}}},
     ]
+    items += [
+        {'apiVersion': 'v1', 'kind': 'PersistentVolume', 'metadata': {'name': f'{ns}-conversion'},
+         'spec': {'capacity': {'storage': '8Gi'}, 'accessModes': ['ReadWriteMany'],
+                  'persistentVolumeReclaimPolicy': 'Retain', 'storageClassName': '',
+                  'mountOptions': ['nfsvers=4.2', 'hard'],
+                  'claimRef': {'namespace': ns, 'name': 'conversion-scratch'},
+                  'nfs': {'server': site.nfs_server, 'path': '/srv/nfs/lecturer-conversion'}}},
+        {'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim', 'metadata': meta('conversion-scratch', ns),
+         'spec': {'accessModes': ['ReadWriteMany'], 'storageClassName': '', 'volumeName': f'{ns}-conversion',
+                  'resources': {'requests': {'storage': '8Gi'}}}},
+    ]
     items += public_items(site) + redis_items(site) + max_adapter_items(site, images)
     return items
 
@@ -453,9 +464,15 @@ def max_adapter_items(site, images):
             {'name': 'MAX_BOT_TOKEN', 'valueFrom': secret('MAX_BOT_TOKEN', optional=True)}],
         'ports': [{'name': 'http', 'containerPort': 8090}],
         'resources': {'requests': {'cpu': '50m', 'memory': '128Mi'}, 'limits': {'cpu': '500m', 'memory': '256Mi'}}})
-    # One poller/webhook owner per bot token: never two copies at once.
-    return [deployment('max-adapter', site.namespace, container, strategy={'type': 'Recreate'}),
-            service('max-adapter', site.namespace, 8090)]
+    container['volumeMounts'] = [{'name': 'inbox', 'mountPath': '/data/max-inbox'}]
+    owner = deployment('max-adapter', site.namespace, container, strategy={'type': 'Recreate'})
+    owner['spec']['template']['spec'].update(
+        securityContext={'fsGroup': 1000},
+        volumes=[{'name': 'inbox', 'persistentVolumeClaim': {'claimName': 'max-inbox'}}])
+    return [owner, service('max-adapter', site.namespace, 8090),
+            {'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim', 'metadata': meta('max-inbox', site.namespace),
+             'spec': {'accessModes': ['ReadWriteOnce'], 'resources': {'requests': {'storage': '1Gi'}}}}]
+
 
 
 def autoscaling_items(site, images):
@@ -468,7 +485,7 @@ def autoscaling_items(site, images):
 
 RUNTIME_KEYS = ['JWT_SECRET', 'SLIDE_IMAGE_URL_SECRET', 'CHANNEL_INTERNAL_API_KEY', 'SERVICE_EVENTS_KEY',
                 'SERVICE_REALTIME_KEY', 'SERVICE_ANALYTICS_KEY', 'SERVICE_MEDIA_KEY', 'ADMIN_SETUP_TOKEN',
-                'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'MAX_WEBHOOK_SECRET', 'MAX_WEBHOOK_PATH']
+                'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET', 'MAX_WEBHOOK_SECRET', 'MAX_WEBHOOK_PATH', 'CONVERTER_API_KEY', 'TRUSTED_PROXY_KEY']
 
 
 def secret(name, namespace, data, secret_type='Opaque'):
@@ -485,7 +502,7 @@ def livekit_config(site, values):
     if site.media_ip:
         rtc.append(f'  node_ip: {site.media_ip}')
     return '\n'.join([
-        'port: 7880', 'bind_addresses: ["0.0.0.0"]', *rtc,
+        'port: 7880', 'prometheus_port: 6789', 'bind_addresses: ["0.0.0.0"]', *rtc,
         'redis:', f'  address: {redis_host}', f'  password: "{values["REDIS_PASSWORD"]}"',
         'keys:', f'  {values["LIVEKIT_API_KEY"]}: {values["LIVEKIT_API_SECRET"]}',
         'room:', '  max_participants: 1500', '  empty_timeout: 60', '  departure_timeout: 10',

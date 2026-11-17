@@ -64,7 +64,9 @@ try {
     })());
   }
   const messages = [];
-  ws = new WebSocket(new URL(`/ws/session/${session.id}`, base.replace('http:', 'ws:')));
+  const upgrade = await api('POST', `/sessions/${session.id}/realtime-ticket`);
+  ws = new WebSocket(new URL(`/ws/session/${session.id}`, base.replace('http:', 'ws:')),
+    upgrade.transport === 'ticket' ? ['lecturer.v1', 'ticket.' + upgrade.ticket] : undefined);
   ws.on('message', bytes => {
     const text = bytes.toString();
     if (text.startsWith('CONNECTED')) ws.send(`SUBSCRIBE\nid:session\ndestination:/topic/session/${session.id}\n\n\0`);

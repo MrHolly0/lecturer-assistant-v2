@@ -9,6 +9,8 @@ import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import ru.university.assistant.iam.api.PersonRole;
+import ru.university.assistant.iam.api.InvitationApi.StaffAssignment;
+import ru.university.assistant.org.api.OrganizationModels.UnitRole;
 
 @Repository
 class InvitationRepository {
@@ -20,13 +22,16 @@ class InvitationRepository {
 
     InvitationRecord create(
             UUID id, String code, PersonRole role, UUID courseId, UUID groupId, UUID organizationUnitId,
-            UUID createdBy, Instant expiresAt) {
+            UnitRole organizationUnitRole, UUID createdBy, Instant expiresAt) {
         return jdbc.sql(
                         """
                         insert into iam.invitations
-                            (id, code, role, course_id, group_id, organization_unit_id, created_by, expires_at)
-                        values (:id, :code, :role, :courseId, :groupId, :organizationUnitId, :createdBy, :expiresAt)
-                        returning id, code, role, course_id, group_id, organization_unit_id, expires_at
+                            (id, code, role, course_id, group_id, organization_unit_id, organization_unit_role,
+                             created_by, expires_at)
+                        values (:id, :code, :role, :courseId, :groupId, :organizationUnitId, :organizationUnitRole,
+                                :createdBy, :expiresAt)
+                        returning id, code, role, course_id, group_id, organization_unit_id, organization_unit_role,
+                                  expires_at
                         """)
                 .param("id", id)
                 .param("code", code)
@@ -34,6 +39,7 @@ class InvitationRepository {
                 .param("courseId", courseId)
                 .param("groupId", groupId)
                 .param("organizationUnitId", organizationUnitId)
+                .param("organizationUnitRole", organizationUnitRole.name())
                 .param("createdBy", createdBy)
                 .param("expiresAt", Timestamp.from(expiresAt))
                 .query(this::mapInvitation)
@@ -43,7 +49,8 @@ class InvitationRepository {
     Optional<InvitationRecord> findUsable(String code) {
         return jdbc.sql(
                         """
-                        select id, code, role, course_id, group_id, organization_unit_id, expires_at
+                        select id, code, role, course_id, group_id, organization_unit_id,
+                               organization_unit_role, expires_at
                         from iam.invitations
                         where code = :code and used_at is null and expires_at > now()
                         """)
@@ -52,10 +59,14 @@ class InvitationRepository {
                 .optional();
     }
 
-    Optional<UUID> organizationUnit(UUID invitationId) {
-        return jdbc.sql("select organization_unit_id from iam.invitations where id = :invitationId")
+    Optional<StaffAssignment> staffAssignment(UUID invitationId) {
+        return jdbc.sql("""
+                        select organization_unit_id, organization_unit_role from iam.invitations
+                        where id = :invitationId and organization_unit_id is not null
+                        """)
                 .param("invitationId", invitationId)
-                .query((rs, row) -> rs.getObject("organization_unit_id", UUID.class))
+                .query((rs, row) -> new StaffAssignment(rs.getObject("organization_unit_id", UUID.class),
+                        UnitRole.valueOf(rs.getString("organization_unit_role"))))
                 .optional();
     }
 
@@ -76,6 +87,7 @@ class InvitationRepository {
                 resultSet.getObject("course_id", UUID.class),
                 resultSet.getObject("group_id", UUID.class),
                 resultSet.getObject("organization_unit_id", UUID.class),
+                UnitRole.valueOf(resultSet.getString("organization_unit_role")),
                 resultSet.getTimestamp("expires_at").toInstant());
     }
 }

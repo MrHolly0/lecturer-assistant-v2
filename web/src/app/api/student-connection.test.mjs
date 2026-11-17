@@ -77,8 +77,10 @@ function focus() {
 }
 
 test("gateway invalidations coalesce HTTP reads while preserving healthy stream", async () => {
-  const source = start(); source.open();
-  for (let i = 0; i < 100; i++) source.dispatchEvent(new MessageEvent("invalidate", { data: "{}" }));
+  const source = start();
+  source.open();
+  for (let i = 0; i < 100; i++)
+    source.dispatchEvent(new MessageEvent("invalidate", { data: "{}" }));
   await advance(300);
   assert.equal(requests.length, 1);
   assert.equal(states.at(-1), "CONNECTED");
@@ -162,8 +164,14 @@ test("focus bursts preserve a healthy or connecting SSE without extra HTTP reads
 
 test("named keepalive delivers contact on an unchanged slide without replacing UI snapshots", async () => {
   const deliveries = [];
-  const connection = connectStudentSession("FIXTURE", "token", (s) => snapshots.push(s),
-    () => undefined, undefined, (s) => deliveries.push(s));
+  const connection = connectStudentSession(
+    "FIXTURE",
+    "token",
+    (s) => snapshots.push(s),
+    () => undefined,
+    undefined,
+    (s) => deliveries.push(s)
+  );
   cleanup.push(connection);
   const source = sources.at(-1);
   source.open();
@@ -354,4 +362,242 @@ test("cancelled account or route scopes cannot start or complete a snapshot read
   );
   assert.equal(requests.length, 0);
   assert.equal(timers.size, 0);
+});
+
+test("compact history caches ticks, restores after REST fallback and refreshes visibility", async () => {
+  let visible = true;
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url, init, at: time });
+    return new Response(
+      JSON.stringify({
+        myQuestions: [],
+        questionAnswers: visible ? [{ questionId: "answer", answerText: "Personal answer" }] : [],
+        hasMore: true
+      })
+    );
+  };
+  const source = start();
+  source.open();
+  const compact = {
+    sessionId: "session",
+    version: 1,
+    status: "LIVE",
+    deliveryMode: "compact",
+    historyRevision: "0.1"
+  };
+  source.snapshot(compact);
+  await settle();
+  await settle();
+  assert.equal(requests.length, 1);
+  assert.match(requests[0].url, /question-history/);
+  assert.equal(snapshots.at(-1).questionAnswers[0].answerText, "Personal answer");
+  for (let i = 0; i < 10; i++) source.snapshot({ ...compact, version: i + 2 });
+  await settle();
+  assert.equal(requests.length, 1);
+  assert.equal(snapshots.at(-1).questionAnswers.length, 1);
+  source.snapshot({
+    sessionId: "session",
+    version: 15,
+    status: "LIVE",
+    myQuestions: [],
+    questionAnswers: []
+  });
+  source.snapshot({ ...compact, version: 16 });
+  await settle();
+  await settle();
+  assert.equal(
+    requests.length,
+    2,
+    "resuming compact after a REST fallback restores its scoped history"
+  );
+  assert.equal(snapshots.at(-1).questionAnswers.length, 1);
+  visible = false;
+  source.snapshot({ ...compact, version: 20, historyRevision: "0.2" });
+  assert.equal(
+    snapshots.at(-1).questionAnswers.length,
+    0,
+    "changed visibility drops cached answers immediately"
+  );
+  await settle();
+  await settle();
+  assert.equal(requests.length, 3);
+  assert.equal(snapshots.at(-1).questionAnswers.length, 0);
+});
+
+for (const status of ["LIVE", "ENDED", "ARCHIVED"]) {
+  test(`history retries independently of snapshots in ${status}`, async () => {
+    let attempts = 0;
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url, init, at: time });
+      if (++attempts === 1) return new Response("busy", { status: 503 });
+      return Response.json({
+        myQuestions: [],
+        questionAnswers: [{ questionId: "saved", answerText: "Recovered" }],
+        hasMore: false
+      });
+    };
+    const source = start();
+    source.open();
+    source.snapshot({
+      sessionId: "session",
+      version: 1,
+      status,
+      deliveryMode: "compact",
+      historyRevision: "0.1"
+    });
+    await settle();
+    await settle();
+    assert.ok(snapshots.at(-1).historyError);
+    await advance(60000);
+    assert.equal(attempts, 2);
+    assert.equal(snapshots.at(-1).questionAnswers[0].answerText, "Recovered");
+    assert.equal(snapshots.at(-1).historyError, undefined);
+    if (status !== "LIVE") assert.equal(sources.length, 1);
+  });
+}
+
+for (const status of [401, 403, 404]) {
+  test(`history stops automatic retries on ${status}`, async () => {
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url, init, at: time });
+      return Response.json({ error: "denied" }, { status });
+    };
+    const source = start();
+    source.open();
+    source.snapshot({
+      sessionId: "session",
+      version: 1,
+      status: "LIVE",
+      deliveryMode: "compact",
+      historyRevision: "0.1"
+    });
+    await settle();
+    await settle();
+    await advance(60000);
+    cleanup.at(-1).retryHistory();
+    await settle();
+    assert.equal(requests.length, 1);
+    assert.equal(snapshots.at(-1).historyCanRetry, false);
+  });
+}
+
+test("history retry is bounded, can be requested manually, and disconnect cancels its timer", async () => {
+  let broken = true;
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url, init, at: time });
+    return broken
+      ? new Response("busy", { status: 503 })
+      : Response.json({ myQuestions: [], questionAnswers: [], hasMore: false });
+  };
+  const source = start();
+  source.open();
+  source.snapshot({
+    sessionId: "session",
+    version: 1,
+    status: "ENDED",
+    deliveryMode: "compact",
+    historyRevision: "0.1"
+  });
+  await settle();
+  await settle();
+  await advance(300000);
+  assert.equal(requests.length, 6);
+  assert.equal(snapshots.at(-1).historyCanRetry, true);
+  broken = false;
+  cleanup.at(-1).retryHistory();
+  await settle();
+  await settle();
+  assert.equal(requests.length, 7);
+  assert.equal(snapshots.at(-1).historyError, undefined);
+  broken = true;
+  cleanup.at(-1).retryHistory();
+  await settle();
+  await settle();
+  const count = requests.length;
+  cleanup.at(-1).disconnect();
+  await advance(60000);
+  assert.equal(requests.length, count);
+  assert.equal(timers.size, 0);
+});
+
+test("a visibility revision aborts old history and late results cannot restore hidden answers", async () => {
+  let release;
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url, init, at: time });
+    if (requests.length === 1)
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    return Response.json({ myQuestions: [], questionAnswers: [], hasMore: false });
+  };
+  const source = start();
+  source.open();
+  const compact = {
+    sessionId: "session",
+    version: 1,
+    status: "LIVE",
+    deliveryMode: "compact",
+    historyRevision: "0.1"
+  };
+  source.snapshot(compact);
+  await settle();
+  source.snapshot({ ...compact, version: 2, historyRevision: "0.2" });
+  await settle();
+  await settle();
+  assert.equal(requests[0].init.signal.aborted, true);
+  release(
+    Response.json({
+      myQuestions: [],
+      questionAnswers: [{ questionId: "hidden", answerText: "Old" }],
+      hasMore: false
+    })
+  );
+  await settle();
+  await settle();
+  await advance(60000);
+  assert.equal(requests.length, 2);
+  assert.deepEqual(snapshots.at(-1).questionAnswers, []);
+});
+
+test("account scope disconnect discards an older account's pending history response", async () => {
+  let release;
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url, init, at: time });
+    if (requests.length === 1)
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    return Response.json({
+      myQuestions: [],
+      questionAnswers: [{ questionId: "new", answerText: "New account" }],
+      hasMore: false
+    });
+  };
+  const compact = {
+    sessionId: "session",
+    version: 1,
+    status: "LIVE",
+    deliveryMode: "compact",
+    historyRevision: "0.1"
+  };
+  const first = start("first-account");
+  first.open();
+  first.snapshot(compact);
+  await settle();
+  cleanup.at(-1).disconnect();
+  const second = start("second-account");
+  second.open();
+  second.snapshot(compact);
+  await settle();
+  await settle();
+  release(
+    Response.json({
+      myQuestions: [],
+      questionAnswers: [{ questionId: "old", answerText: "Old account" }],
+      hasMore: false
+    })
+  );
+  await settle();
+  await settle();
+  assert.equal(snapshots.at(-1).questionAnswers[0].answerText, "New account");
 });

@@ -1,4 +1,3 @@
-import { InstallationUpdatesPage } from "../pages/InstallationUpdatesPage";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -433,8 +432,7 @@ const router = createHashRouter([
             element: <RequireRole roles={["ADMIN"]} />,
             children: [
               { path: "/admin/users", element: <AdminUsersPage /> },
-              { path: "/admin/group-format", element: <GroupFormatPage /> },
-              { path: "/admin/installation", element: <InstallationUpdatesPage /> }
+              { path: "/admin/group-format", element: <GroupFormatPage /> }
             ]
           }
         ]

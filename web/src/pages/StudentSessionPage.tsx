@@ -15,6 +15,7 @@ import {
 } from "../app/studentResume";
 import {
   acknowledgeStudentDelivery,
+  getStudentQuestionHistory,
   askStudentQuestion,
   connectStudentSession,
   getStudentSession,
@@ -82,6 +83,7 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
   );
   const autoJoinRequested = useRef(false);
   const reconnectRef = useRef<() => void>(() => undefined);
+  const retryHistoryRef = useRef<() => void>(() => undefined);
   const [displayName, setDisplayName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -471,8 +473,10 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
       delivery.received
     );
     reconnectRef.current = connection.reconnect;
+    retryHistoryRef.current = connection.retryHistory;
     return () => {
       reconnectRef.current = () => undefined;
+      retryHistoryRef.current = () => undefined;
       connection.disconnect();
       delivery.stop();
     };
@@ -572,6 +576,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           {isJoined && !isTerminalSession ? (
             <Button
               variant="outline"
+              className="student-leave"
+              aria-label={leaving ? "Выходим…" : "Покинуть занятие"}
               disabled={leaving}
               onClick={() => {
                 setLeaving(true);
@@ -581,7 +587,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
               }}
             >
               <LogOut aria-hidden="true" />
-              {leaving ? "Выходим…" : "Покинуть занятие"}
+              <span className="student-leave__full">
+                {leaving ? "Выходим…" : "Покинуть занятие"}
+              </span>
+              <span className="student-leave__short" aria-hidden="true">
+                {leaving ? "Выходим…" : "Выйти"}
+              </span>
             </Button>
           ) : (
             <LinkButton to={user ? "/home" : "/student/join"} variant="outline">
@@ -701,6 +712,13 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             />
           )}
           <StudentFeedbackControls
+            historyKey={JSON.stringify([scope, current.historyRevision])}
+            historyHasMore={current.historyHasMore}
+            initialHistoryError={current.historyError}
+            onRetryHistory={current.historyCanRetry ? () => retryHistoryRef.current() : undefined}
+            loadHistory={(offset) =>
+              getStudentQuestionHistory(normalizedCode, participantToken, offset)
+            }
             readOnly
             isLive={false}
             isSignalPending={false}
@@ -774,6 +792,13 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
             />
           )}
           <StudentFeedbackControls
+            historyKey={JSON.stringify([scope, current.historyRevision])}
+            historyHasMore={current.historyHasMore}
+            initialHistoryError={current.historyError}
+            onRetryHistory={current.historyCanRetry ? () => retryHistoryRef.current() : undefined}
+            loadHistory={(offset) =>
+              getStudentQuestionHistory(normalizedCode, participantToken, offset)
+            }
             isLive={commandsReady}
             restoreFocusOnClose={!current.nameRequested}
             unavailableMessage={feedbackUnavailableMessage}

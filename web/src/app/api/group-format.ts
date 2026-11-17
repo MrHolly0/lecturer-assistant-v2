@@ -41,6 +41,17 @@ export async function previewGroup(input: {
     await apiFetch("/group-format/preview", { method: "POST", body: JSON.stringify(input) })
   ).json();
 }
+export async function previewGroupDraft(
+  policy: GroupFormatPolicy,
+  name: string
+): Promise<GroupPreview> {
+  return (
+    await apiFetch("/admin/group-format/preview", {
+      method: "POST",
+      body: JSON.stringify({ policy, name })
+    })
+  ).json();
+}
 export async function saveGroupFormat(policy: GroupFormatPolicy): Promise<GroupFormatPolicy> {
   return (
     await apiFetch("/admin/group-format", { method: "PUT", body: JSON.stringify(policy) })

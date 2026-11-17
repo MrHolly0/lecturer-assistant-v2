@@ -1,427 +1,289 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   exampleGroupFormat,
   getGroupFormat,
-  previewGroup,
+  previewGroupDraft,
   reconcileGroups,
   saveGroupFormat,
   type GroupField,
   type GroupFormatPolicy
 } from "../app/api/group-format";
-import { userErrorMessage } from "../app/api/errors";
+import { ApiError, userErrorMessage } from "../app/api/errors";
 import { Button } from "../shared/ui/button";
 import { Input } from "../shared/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../shared/ui/select";
+import { GroupFormatField } from "./GroupFormatField";
+
+function cleanPolicy(policy: GroupFormatPolicy) {
+  return {
+    ...policy,
+    fields: policy.fields.map((field) => ({
+      ...field,
+      choices: (field.choices ?? []).map((choice) => ({
+        ...choice,
+        aliases: (choice.aliases ?? []).map((alias) => alias.trim()).filter(Boolean)
+      }))
+    }))
+  };
+}
+
+function examplePart(field: GroupField) {
+  if (field.kind === "CHOICE") return field.defaultValue || field.choices[0]?.code || "…";
+  if (field.kind === "NUMBER") return "4".padStart(field.width, "0");
+  return field.width === 2 ? "23" : String(field.yearBase + 23);
+}
 
 export function GroupFormatPage() {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["group-format"], queryFn: getGroupFormat });
-  const [draft, setDraft] = useState<GroupFormatPolicy | null>(null);
+  const [edited, setEdited] = useState<GroupFormatPolicy | null>(null);
+  const [newId, setNewId] = useState("");
   const [sample, setSample] = useState("");
-  const [sampleResult, setSampleResult] = useState("");
-  useEffect(() => {
-    if (query.data) setDraft(query.data);
-  }, [query.data]);
+  const draft = edited ?? query.data;
   const save = useMutation({
     mutationFn: saveGroupFormat,
     onSuccess: (value) => {
       qc.setQueryData(["group-format"], value);
-      setDraft(value);
-      setSampleResult("");
+      setEdited(null);
       toast.success("Формат групп сохранён");
-    },
-    onError: (error) => toast.error(userErrorMessage(error, "Не удалось сохранить формат"))
+    }
   });
-  const reconcile = useMutation({
-    mutationFn: () => reconcileGroups(query.data!.revision),
-    onSuccess: (result) => {
-      toast.success(
-        `Распознано групп: ${result.matched}. Требуют проверки: ${result.unrecognized}.${result.hasMore ? " Остались группы для следующей проверки." : ""}`
-      );
-    },
-    onError: (error) => toast.error(userErrorMessage(error, "Не удалось проверить группы"))
-  });
+  const reconcile = useMutation({ mutationFn: reconcileGroups });
   const preview = useMutation({
-    mutationFn: () => previewGroup({ name: sample }),
-    onSuccess: (result) => {
-      setSampleResult(
-        result.valid
-          ? `Будет сохранено: ${result.name}`
-          : result.message ?? "Нужно уточнить группу по шагам"
-      );
-    },
-    onError: (error) => setSampleResult(userErrorMessage(error, "Не удалось проверить пример"))
+    mutationFn: ({ policy, name }: { policy: GroupFormatPolicy; name: string }) =>
+      previewGroupDraft(cleanPolicy(policy), name)
   });
-  const changeField = (index: number, change: Partial<GroupField>) =>
-    setDraft(
-      (old) =>
-        old && {
-          ...old,
-          fields: old.fields.map((field, i) => (i === index ? { ...field, ...change } : field))
-        }
-    );
-  const move = (index: number, delta: number) =>
-    setDraft((old) => {
-      if (!old) return old;
-      const fields = [...old.fields];
-      [fields[index], fields[index + delta]] = [fields[index + delta], fields[index]];
-      return { ...old, fields };
-    });
-  if (query.isLoading)
-    return (
-      <div className="page" role="status">
-        Загружаем формат групп…
-      </div>
-    );
   if (!draft)
     return (
       <div className="page">
-        <p role="alert">Не удалось получить настройки.</p>
-        <Button onClick={() => void query.refetch()}>Повторить</Button>
+        {query.isLoading ? (
+          <p role="status">Загружаем формат групп…</p>
+        ) : (
+          <>
+            <p role="alert">Не удалось получить настройки.</p>
+            <Button onClick={() => void query.refetch()}>Повторить</Button>
+          </>
+        )}
       </div>
     );
-  const dirty = JSON.stringify(draft) !== JSON.stringify(query.data);
+  const dirty = Boolean(edited) && JSON.stringify(draft) !== JSON.stringify(query.data);
+  const update = (next: GroupFormatPolicy) => {
+    preview.reset();
+    save.reset();
+    reconcile.reset();
+    setEdited(next);
+  };
+  const addField = () => {
+    const id =
+      "field_" +
+      Array.from(crypto.getRandomValues(new Uint8Array(6)), (n) =>
+        n.toString(16).padStart(2, "0")
+      ).join("");
+    setNewId(id);
+    update({
+      ...draft,
+      fields: [
+        ...draft.fields,
+        {
+          id,
+          label: "",
+          kind: "NUMBER",
+          prefix: "",
+          width: 1,
+          yearBase: 2000,
+          defaultValue: null,
+          choices: []
+        }
+      ]
+    });
+  };
+  const hasPreview = preview.variables?.policy === draft && preview.variables.name === sample;
   return (
     <div className="page group-format-page">
-      <div className="page-header">
+      <header className="page-header">
         <div>
           <h1>Формат учебных групп</h1>
-          <p className="muted">Единое название группы для всех преподавателей учреждения.</p>
+          <p className="muted">Задайте единое написание групп для вашего учреждения.</p>
         </div>
-      </div>
-      <p>
-        Преподаватель вводит название одной строкой. Если оно не распознано, приложение предложит
-        короткую форму по вашим правилам.
-      </p>
+      </header>
       <form
-        className="group-format-editor"
         onSubmit={(event) => {
           event.preventDefault();
-          save.mutate({
-            ...draft,
-            fields: draft.fields.map((field) => ({
-              ...field,
-              choices: field.choices.map((choice) => ({
-                ...choice,
-                aliases: choice.aliases.map((alias) => alias.trim()).filter(Boolean)
-              }))
-            }))
-          });
+          save.mutate(cleanPolicy(draft));
         }}
       >
-        <label className="group-format-toggle">
-          <input
-            type="checkbox"
-            checked={draft.enabled}
-            onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-          />{" "}
-          Проверять новые группы по формату учреждения
-        </label>
-        <div className="group-format-toolbar">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setDraft(exampleGroupFormat(draft.revision))}
-          >
-            Взять за основу бИСТ-234
-          </Button>
-          <span className="muted">Уровень → направление → год поступления → номер</span>
-        </div>
-        {draft.fields.map((field, index) => (
-          <fieldset className="group-format-field" key={field.id}>
-            <legend>
-              Часть {index + 1}: {field.label || "Новое поле"}
-            </legend>
-            <div className="group-format-field__heading">
-              <label className="field">
-                <span>Название поля</span>
-                <Input
-                  value={field.label}
-                  maxLength={80}
-                  required
-                  onChange={(event) => changeField(index, { label: event.target.value })}
-                />
-              </label>
-              <label className="field">
-                <span>Что вводит преподаватель</span>
-                <Select
-                  value={field.kind}
-                  onValueChange={(kind) =>
-                    changeField(index, {
-                      kind: kind as GroupField["kind"],
-                      width: kind === "YEAR" ? 2 : 1,
-                      yearBase: 2000,
-                      defaultValue: null,
-                      choices: kind === "CHOICE" ? [{ code: "", label: "", aliases: [] }] : []
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CHOICE">Вариант из списка</SelectItem>
-                    <SelectItem value="YEAR">Год</SelectItem>
-                    <SelectItem value="NUMBER">Номер</SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-              <div className="group-format-field__actions">
-                <Button
-                  type="button"
-                  variant="outline"
-                  aria-label={`Выше: ${field.label}`}
-                  disabled={index === 0}
-                  onClick={() => move(index, -1)}
-                >
-                  <ArrowUp />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  aria-label={`Ниже: ${field.label}`}
-                  disabled={index === draft.fields.length - 1}
-                  onClick={() => move(index, 1)}
-                >
-                  <ArrowDown />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  aria-label={`Удалить поле ${field.label}`}
-                  onClick={() =>
-                    setDraft({ ...draft, fields: draft.fields.filter((_, i) => i !== index) })
-                  }
-                >
-                  <Trash2 />
-                </Button>
-              </div>
-            </div>
-            <div className="group-format-field__settings">
-              <label className="field">
-                <span>Разделитель перед этой частью</span>
-                <Input
-                  value={field.prefix}
-                  maxLength={8}
-                  placeholder="Без разделителя"
-                  onChange={(event) => changeField(index, { prefix: event.target.value })}
-                />
-              </label>
-              {field.kind !== "CHOICE" && (
-                <label className="field">
-                  <span>Цифр в названии</span>
-                  <Input
-                    type="number"
-                    min={field.kind === "YEAR" ? 2 : 1}
-                    max={field.kind === "YEAR" ? 4 : 6}
-                    step={field.kind === "YEAR" ? 2 : 1}
-                    value={field.width}
-                    onChange={(event) => changeField(index, { width: Number(event.target.value) })}
-                  />
-                </label>
-              )}
-              {field.kind === "YEAR" && (
-                <label className="field">
-                  <span>Начало столетия</span>
-                  <Input
-                    type="number"
-                    min={1900}
-                    max={2200}
-                    step={100}
-                    value={field.yearBase}
-                    onChange={(event) =>
-                      changeField(index, { yearBase: Number(event.target.value) })
-                    }
-                  />
-                </label>
-              )}
-            </div>
-            {field.kind === "CHOICE" && (
-              <div className="group-format-choices">
-                <p className="muted">
-                  Обозначение попадёт в название. Допустимые написания можно перечислить через
-                  запятую.
-                </p>
-                {field.choices.map((choice, choiceIndex) => (
-                  <div className="group-format-choice" key={choiceIndex}>
-                    <label className="field">
-                      <span>Обозначение</span>
-                      <Input
-                        value={choice.code}
-                        required
-                        maxLength={24}
-                        placeholder="б"
-                        onChange={(event) =>
-                          changeField(index, {
-                            choices: field.choices.map((c, n) =>
-                              n === choiceIndex ? { ...c, code: event.target.value } : c
-                            ),
-                            defaultValue:
-                              field.defaultValue === choice.code
-                                ? event.target.value
-                                : field.defaultValue
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Полное название</span>
-                      <Input
-                        value={choice.label}
-                        maxLength={160}
-                        placeholder="Бакалавриат"
-                        onChange={(event) =>
-                          changeField(index, {
-                            choices: field.choices.map((c, n) =>
-                              n === choiceIndex ? { ...c, label: event.target.value } : c
-                            )
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Другие написания</span>
-                      <Input
-                        value={choice.aliases.join(",")}
-                        placeholder="Например, B"
-                        onChange={(event) =>
-                          changeField(index, {
-                            choices: field.choices.map((c, n) =>
-                              n === choiceIndex
-                                ? { ...c, aliases: event.target.value.split(",").filter(Boolean) }
-                                : c
-                            )
-                          })
-                        }
-                      />
-                    </label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      aria-label={`Удалить вариант ${choice.label || choiceIndex + 1}`}
-                      disabled={field.choices.length === 1}
-                      onClick={() =>
-                        changeField(index, {
-                          choices: field.choices.filter((_, n) => n !== choiceIndex),
-                          defaultValue:
-                            field.defaultValue === choice.code ? null : field.defaultValue
-                        })
-                      }
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={field.choices.length >= 128}
-                  onClick={() =>
-                    changeField(index, {
-                      choices: [...field.choices, { code: "", label: "", aliases: [] }]
-                    })
-                  }
-                >
-                  <Plus /> Добавить вариант
-                </Button>
-                <label className="field">
-                  <span>Если эту часть пропустили</span>
-                  <select
-                    value={field.defaultValue || ""}
-                    onChange={(event) =>
-                      changeField(index, { defaultValue: event.target.value || null })
-                    }
-                  >
-                    <option value="">Попросить уточнить</option>
-                    {field.choices
-                      .filter((c) => c.code)
-                      .map((choice, n) => (
-                        <option key={n} value={choice.code}>
-                          Подставить: {choice.label || choice.code}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              </div>
+        <fieldset
+          className="group-format-editor"
+          disabled={save.isPending}
+          onInvalidCapture={(event) => {
+            const details = (event.target as HTMLElement).closest("details");
+            if (details) details.open = true;
+          }}
+        >
+          <label className="group-format-toggle">
+            <input
+              type="checkbox"
+              checked={draft.enabled}
+              onChange={(e) => update({ ...draft, enabled: e.target.checked })}
+            />
+            <span>
+              <strong>Проверять названия групп</strong>
+              <small>Если название не распознано, преподаватель заполнит его по частям.</small>
+            </span>
+          </label>
+          <section className="group-format-parts">
+            <h2>Части названия</h2>
+            {draft.fields.length > 0 ? (
+              <p className="group-format-example">
+                Пример названия{" "}
+                <strong>
+                  {draft.fields.map((field) => field.prefix + examplePart(field)).join("")}
+                </strong>
+              </p>
+            ) : (
+              <p className="muted">
+                Начните с шаблона «бИСТ-234» или добавьте первую часть своего формата.
+              </p>
             )}
-          </fieldset>
-        ))}
-        <div className="group-format-toolbar">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={draft.fields.length >= 8}
-            onClick={() =>
-              setDraft({
-                ...draft,
-                fields: [
-                  ...draft.fields,
-                  {
-                    id: `field_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`,
-                    label: "",
-                    kind: "NUMBER",
-                    prefix: "-",
-                    width: 1,
-                    yearBase: 2000,
-                    defaultValue: null,
-                    choices: []
-                  }
-                ]
-              })
-            }
-          >
-            <Plus /> Добавить часть
-          </Button>
-          <Button type="submit" disabled={save.isPending || !dirty}>
-            {save.isPending ? "Сохраняем…" : "Сохранить формат"}
-          </Button>
-        </div>
-        {save.isError && (
-          <p className="form-error" role="alert">
-            {userErrorMessage(save.error, "Не удалось сохранить формат")}
-          </p>
-        )}
+            {draft.fields.map((field, index) => (
+              <GroupFormatField
+                key={field.id}
+                field={field}
+                count={draft.fields.length}
+                index={index}
+                initiallyOpen={field.id === newId}
+                changeField={(change) =>
+                  update({
+                    ...draft,
+                    fields: draft.fields.map((f, i) => (i === index ? { ...f, ...change } : f))
+                  })
+                }
+                onRemove={() =>
+                  update({ ...draft, fields: draft.fields.filter((_, i) => i !== index) })
+                }
+                onMove={(delta) => {
+                  const fields = [...draft.fields];
+                  [fields[index], fields[index + delta]] = [fields[index + delta], fields[index]];
+                  update({ ...draft, fields });
+                }}
+              />
+            ))}
+            <div className="group-format-toolbar">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => update(exampleGroupFormat(draft.revision))}
+              >
+                {draft.fields.length
+                  ? "Заменить шаблоном бИСТ-234"
+                  : "Использовать шаблон бИСТ-234"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={draft.fields.length >= 8}
+                onClick={addField}
+              >
+                <Plus />
+                Добавить часть
+              </Button>
+            </div>
+          </section>
+          <div className="group-format-toolbar">
+            <Button type="submit" disabled={!dirty || (draft.enabled && !draft.fields.length)}>
+              {save.isPending ? "Сохраняем…" : "Сохранить формат"}
+            </Button>
+            {dirty && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setEdited(null);
+                  save.reset();
+                  preview.reset();
+                  void query.refetch();
+                }}
+              >
+                Отменить изменения
+              </Button>
+            )}
+          </div>
+          {save.isError && (
+            <p className="form-error" role="alert">
+              {userErrorMessage(save.error, "Не удалось сохранить формат")}
+              {save.error instanceof ApiError &&
+                save.error.status === 409 &&
+                " Отмените изменения, чтобы загрузить актуальные правила."}
+            </p>
+          )}
+        </fieldset>
       </form>
       <section className="group-format-check">
-        <h2>Проверить ввод</h2>
+        <h2>Проверить название</h2>
         <p className="muted">
-          Проверка использует сохранённый формат. Старые группы сохранят названия и историю.
+          Введите группу как преподаватель. Проверка учитывает даже несохранённые изменения.
         </p>
         <form
-          className="inline-form"
           onSubmit={(event) => {
             event.preventDefault();
-            preview.mutate();
+            preview.mutate({ policy: draft, name: sample });
           }}
         >
           <Input
             aria-label="Название для проверки"
+            placeholder="Например, ИСТ234"
             value={sample}
-            onChange={(event) => setSample(event.target.value)}
-            placeholder="БИСТ234"
             maxLength={120}
+            onChange={(e) => {
+              setSample(e.target.value);
+              preview.reset();
+            }}
           />
-          <Button variant="outline" disabled={dirty || !sample || preview.isPending}>
-            Проверить
+          <Button variant="outline" disabled={!sample.trim() || preview.isPending}>
+            {preview.isPending ? "Проверяем…" : "Проверить"}
           </Button>
         </form>
-        {dirty && <p className="muted">Сначала сохраните изменения формата.</p>}
-        {sampleResult && <p role="status">{sampleResult}</p>}
-        <h3>Связать существующие группы</h3>
+        {hasPreview && preview.data && (
+          <p role="status">
+            {preview.data.valid ? "Название группы: " + preview.data.name : preview.data.message}
+          </p>
+        )}
+        {hasPreview && preview.isError && (
+          <p className="form-error" role="alert">
+            {userErrorMessage(preview.error, "Не удалось проверить пример")}
+          </p>
+        )}
+      </section>
+      <section className="group-format-check">
+        <h2>Существующие группы</h2>
         <p className="muted">
-          Распознанные группы получат общую структуру для поиска занятий между курсами. Названия,
-          составы и история не изменятся. Неоднозначные названия останутся для ручной проверки.
+          Свяжите группы со схожим написанием для поиска занятий между курсами. Их названия, состав
+          и история сохранятся.
         </p>
         <Button
           variant="outline"
           disabled={dirty || !query.data?.enabled || reconcile.isPending}
-          onClick={() => reconcile.mutate()}
+          onClick={() => reconcile.mutate(draft.revision)}
         >
           {reconcile.isPending ? "Проверяем…" : "Проверить существующие группы"}
         </Button>
+        {(dirty || !query.data?.enabled) && (
+          <p className="muted">
+            {dirty ? "Сначала сохраните формат." : "Для проверки включите формат и сохраните его."}
+          </p>
+        )}
+        {reconcile.data && (
+          <p role="status">
+            Распознано групп: {reconcile.data.matched}. Требуют проверки:{" "}
+            {reconcile.data.unrecognized}.
+            {reconcile.data.hasMore && " Запустите проверку ещё раз для следующих групп."}
+          </p>
+        )}
+        {reconcile.isError && (
+          <p role="alert">{userErrorMessage(reconcile.error, "Не удалось проверить группы")}</p>
+        )}
       </section>
     </div>
   );

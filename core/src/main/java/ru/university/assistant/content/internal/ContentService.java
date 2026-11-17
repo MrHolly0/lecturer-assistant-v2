@@ -3,8 +3,8 @@ package ru.university.assistant.content.internal;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -38,6 +38,12 @@ public class ContentService implements StudentDeckApi {
     private final BlobStorage blobStorage;
     private final ContentProperties properties;
     private final SignedSlideUrlService signedUrls;
+    private final java.util.concurrent.ConcurrentHashMap<String, CachedImage> images =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private final Object[] imageLoads =
+            java.util.stream.IntStream.range(0, 64).mapToObj(i -> new Object()).toArray();
+
+    private record CachedImage(SlideRecord slide, long until) {}
 
     ContentService(
             CourseAccessApi courseAccess,
@@ -53,24 +59,32 @@ public class ContentService implements StudentDeckApi {
     }
 
     @Transactional
-    public ImportJob startDeckImport(AuthenticatedUser user, UUID courseId, String title, MultipartFile file) {
+    public ImportJob startDeckImport(
+            AuthenticatedUser user, UUID courseId, String title, MultipartFile file) {
         courseAccess.requireManage(user, courseId);
         if (file.isEmpty() || file.getSize() > properties.maxUploadBytes()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid upload size");
         }
-        String cleanTitle = title == null || title.isBlank()
-                ? filenameWithoutExtension(file.getOriginalFilename())
-                : title.trim();
+        String cleanTitle =
+                title == null || title.isBlank()
+                        ? filenameWithoutExtension(file.getOriginalFilename())
+                        : title.trim();
         repository.requireImportCapacity(Math.max(1, properties.importMaxQueuedJobs()));
         try {
             validateMagic(file.getOriginalFilename(), readHeader(file), file.getSize());
-            StoredBlob source = blobStorage.store(
-                    file.getInputStream(), file.getOriginalFilename(), file.getContentType(), file.getSize());
+            StoredBlob source =
+                    blobStorage.storeForCourse(
+                            courseId,
+                            file.getInputStream(),
+                            file.getOriginalFilename(),
+                            file.getContentType(),
+                            file.getSize());
             deleteSourceOnRollback(source);
             ImportJob job = repository.createJob(UuidV7.generate(), courseId, source, cleanTitle);
             return job;
         } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot store uploaded file", exception);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Cannot store uploaded file", exception);
         }
     }
 
@@ -78,55 +92,106 @@ public class ContentService implements StudentDeckApi {
     public ImportJob retryDeckImport(AuthenticatedUser user, UUID courseId, UUID jobId) {
         courseAccess.requireManage(user, courseId);
         repository.requireImportCapacity(Math.max(1, properties.importMaxQueuedJobs()));
-        ContentRepository.ImportRetrySource source = repository.lockRetrySource(courseId, jobId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Import job not found"));
-        if (source.status() != ImportJobStatus.FAILED && source.status() != ImportJobStatus.PARTIAL) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only failed or partial imports can be retried");
+        ContentRepository.ImportRetrySource source =
+                repository
+                        .lockRetrySource(courseId, jobId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Import job not found"));
+        if (source.status() != ImportJobStatus.FAILED
+                && source.status() != ImportJobStatus.PARTIAL) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Only failed or partial imports can be retried");
         }
         if (repository.hasActiveRetry(jobId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Import already has an active retry");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Import already has an active retry");
         }
-        if (!Files.isRegularFile(blobStorage.resource(source.source().ref(), source.source().contentType()).path())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Import source file is no longer available");
+        if (!Files.isRegularFile(
+                blobStorage
+                        .resource(source.source().ref(), source.source().contentType())
+                        .path())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Import source file is no longer available");
         }
-        String title = source.title() == null || source.title().isBlank()
-                ? filenameWithoutExtension(source.source().filename())
-                : source.title();
-        ContentRepository.ImportRetrySource titledSource = new ContentRepository.ImportRetrySource(
-                source.id(), source.status(), source.progress(), source.processedSlides(), title, source.source());
+        String title =
+                source.title() == null || source.title().isBlank()
+                        ? filenameWithoutExtension(source.source().filename())
+                        : source.title();
+        ContentRepository.ImportRetrySource titledSource =
+                new ContentRepository.ImportRetrySource(
+                        source.id(),
+                        source.status(),
+                        source.progress(),
+                        source.processedSlides(),
+                        title,
+                        source.source());
         ImportJob retry = repository.createRetryJob(UuidV7.generate(), courseId, titledSource);
         return retry;
     }
 
     public ImportJob getImportJob(AuthenticatedUser user, UUID courseId, UUID jobId) {
         courseAccess.requireVisible(user, courseId);
-        return repository.findJob(courseId, jobId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Import job not found"));
+        return repository
+                .findJob(courseId, jobId)
+                .orElseThrow(
+                        () ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Import job not found"));
     }
 
     public List<SlideDeck> listDecks(AuthenticatedUser user, UUID courseId) {
         courseAccess.requireVisible(user, courseId);
         var thumbnails = repository.deckThumbnails(courseId);
-        return repository.listDecks(courseId).stream().map(deck -> {
-            var thumbnail = thumbnails.get(deck.id());
-            String url = thumbnail == null ? null : signedUrls.slideImageUrl(courseId, deck.id(),
-                    thumbnail.slideId(), thumbnail.idx(), signedUrls.token(courseId, deck.id()));
-            return new SlideDeck(deck.id(), deck.courseId(), deck.title(), deck.version(), deck.slideCount(),
-                    deck.archived(), deck.sourceFilename(), deck.createdAt(), url);
-        }).toList();
+        return repository.listDecks(courseId).stream()
+                .map(
+                        deck -> {
+                            var thumbnail = thumbnails.get(deck.id());
+                            String url =
+                                    thumbnail == null
+                                            ? null
+                                            : signedUrls.slideImageUrl(
+                                                    courseId,
+                                                    deck.id(),
+                                                    thumbnail.slideId(),
+                                                    thumbnail.idx(),
+                                                    signedUrls.token(courseId, deck.id()));
+                            return new SlideDeck(
+                                    deck.id(),
+                                    deck.courseId(),
+                                    deck.title(),
+                                    deck.version(),
+                                    deck.slideCount(),
+                                    deck.archived(),
+                                    deck.sourceFilename(),
+                                    deck.createdAt(),
+                                    url);
+                        })
+                .toList();
     }
 
     public SlideDeckDetails getDeck(AuthenticatedUser user, UUID courseId, UUID deckId) {
         courseAccess.requireVisible(user, courseId);
-        SlideDeckDetails deck = repository.findDeck(courseId, deckId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
+        SlideDeckDetails deck =
+                repository
+                        .findDeck(courseId, deckId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Deck not found"));
         return signDeck(deck);
     }
 
     @Override
     public SlideDeckDetails getDeckForStudent(UUID courseId, UUID deckId) {
-        SlideDeckDetails deck = repository.findDeck(courseId, deckId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
+        SlideDeckDetails deck =
+                repository
+                        .findDeck(courseId, deckId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Deck not found"));
         return signDeck(deck);
     }
 
@@ -137,42 +202,138 @@ public class ContentService implements StudentDeckApi {
 
     @Override
     public String slideImageUrlForDelivery(UUID courseId, UUID deckId, int slideIdx) {
-        SlideDeckDetails deck = repository.findDeck(courseId, deckId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
-        Slide slide = deck.slides().stream()
-                .filter(item -> item.idx() == slideIdx)
-                .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Slide not found"));
-        return signedUrls.slideImageUrl(courseId, deckId, slide.id(), slideIdx,
-                signedUrls.deliveryToken(courseId, deckId));
+        SlideDeckDetails deck =
+                repository
+                        .findDeck(courseId, deckId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Deck not found"));
+        Slide slide =
+                deck.slides().stream()
+                        .filter(item -> item.idx() == slideIdx)
+                        .findFirst()
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Slide not found"));
+        return signedUrls.slideImageUrl(
+                courseId, deckId, slide.id(), slideIdx, signedUrls.deliveryToken(courseId, deckId));
     }
 
     public BlobResource getSlideImage(
             AuthenticatedUser user, UUID courseId, UUID deckId, int slideIndex, String token) {
+        return getSlideImage(user, courseId, deckId, slideIndex, token, null);
+    }
+
+    public BlobResource getSlideImage(
+            AuthenticatedUser user,
+            UUID courseId,
+            UUID deckId,
+            int slideIndex,
+            String token,
+            UUID version) {
         if (!signedUrls.isValid(token, courseId, deckId)) {
             if (user == null) {
-                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Signed slide URL is required");
+                throw new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED, "Signed slide URL is required");
             }
             courseAccess.requireVisible(user, courseId);
         }
-        SlideRecord slide = repository.findSlideRecord(courseId, deckId, slideIndex)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Slide not found"));
+        SlideRecord slide;
+        // Authorization and URL expiry are checked above on every request. Only immutable
+        // image metadata is shared, with a short bound for deletion/reorder propagation.
+        String key = courseId + ":" + deckId + ":" + slideIndex;
+        CachedImage cached = images.get(key);
+        if (cached != null && cached.until() > System.nanoTime()) slide = cached.slide();
+        else
+            synchronized (imageLoads[key.hashCode() & 63]) {
+                cached = images.get(key);
+                if (cached != null && cached.until() > System.nanoTime()) slide = cached.slide();
+                else {
+                    slide =
+                            repository
+                                    .findSlideRecord(courseId, deckId, slideIndex)
+                                    .orElseThrow(
+                                            () ->
+                                                    new ResponseStatusException(
+                                                            HttpStatus.NOT_FOUND,
+                                                            "Slide not found"));
+                    if (images.size() >= 4096) {
+                        var iterator = images.keySet().iterator();
+                        if (iterator.hasNext()) images.remove(iterator.next());
+                    }
+                    images.put(
+                            key,
+                            new CachedImage(
+                                    new SlideRecord(
+                                            slide.id(),
+                                            slide.deckId(),
+                                            slide.index(),
+                                            slide.imageRef(),
+                                            null),
+                                    System.nanoTime() + 2_000_000_000L));
+                }
+            }
+        if (version != null && !version.equals(slide.id()))
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Slide URL refers to an older ordering");
         return blobStorage.resource(slide.imageRef(), "image/png");
     }
 
+    public String slideText(
+            AuthenticatedUser user, UUID course, UUID deck, int index, String token, UUID version) {
+        getSlideImage(user, course, deck, index, token, version);
+        var slide =
+                repository
+                        .findSlideRecord(course, deck, index)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Slide not found"));
+        if (version != null && !version.equals(slide.id()))
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Slide ordering changed");
+        return slide.textExtract();
+    }
+
+    public String imageInternalPath(BlobResource image) {
+        var root = blobStorage.root();
+        if (!image.path().normalize().startsWith(root))
+            throw new IllegalArgumentException("Invalid image path");
+        String ref = root.relativize(image.path().normalize()).toString().replace('\\', '/');
+        if (!ref.matches("[A-Za-z0-9._/-]+") || ref.contains(".."))
+            throw new IllegalArgumentException("Invalid image reference");
+        return "/__lecturer_blob/" + ref;
+    }
+
     public SlideNote saveSlideNote(
-            AuthenticatedUser user, UUID courseId, UUID deckId, int slideIndex, SaveSlideNoteRequest request) {
+            AuthenticatedUser user,
+            UUID courseId,
+            UUID deckId,
+            int slideIndex,
+            SaveSlideNoteRequest request) {
         courseAccess.requireManage(user, courseId);
-        SlideRecord slide = repository.findSlideRecord(courseId, deckId, slideIndex)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Slide not found"));
+        SlideRecord slide =
+                repository
+                        .findSlideRecord(courseId, deckId, slideIndex)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Slide not found"));
         return repository.saveNote(slide.id(), request.content().trim());
     }
 
     @Transactional
-    public void deleteSlideNote(AuthenticatedUser user, UUID courseId, UUID deckId, int slideIndex) {
+    public void deleteSlideNote(
+            AuthenticatedUser user, UUID courseId, UUID deckId, int slideIndex) {
         courseAccess.requireManage(user, courseId);
-        SlideRecord slide = repository.findSlideRecord(courseId, deckId, slideIndex)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Slide not found"));
+        SlideRecord slide =
+                repository
+                        .findSlideRecord(courseId, deckId, slideIndex)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Slide not found"));
         repository.deleteNote(slide.id());
     }
 
@@ -185,13 +346,21 @@ public class ContentService implements StudentDeckApi {
     @Transactional
     public void restoreDeck(AuthenticatedUser user, UUID courseId, UUID deckId) {
         courseAccess.requireManage(user, courseId);
-        SlideDeckDetails deck = repository.findDeck(courseId, deckId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
+        SlideDeckDetails deck =
+                repository
+                        .findDeck(courseId, deckId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Deck not found"));
         if (repository.activeDeckVersionExists(courseId, deck.title(), deck.version(), deckId)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Нельзя восстановить: уже есть активная презентация \""
-                            + deck.title() + "\" v" + deck.version() + ".");
+                            + deck.title()
+                            + "\" v"
+                            + deck.version()
+                            + ".");
         }
         repository.restoreDeck(courseId, deckId);
     }
@@ -199,17 +368,24 @@ public class ContentService implements StudentDeckApi {
     @Transactional
     public void hardDeleteDeck(AuthenticatedUser user, UUID courseId, UUID deckId) {
         courseAccess.requireManage(user, courseId);
-        SlideDeckDetails deck = repository.findDeck(courseId, deckId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Deck not found"));
+        SlideDeckDetails deck =
+                repository
+                        .findDeck(courseId, deckId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Deck not found"));
         if (!deck.archived()) {
             throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "Сначала отправьте презентацию в архив, потом удаляйте навсегда.");
+                    HttpStatus.CONFLICT,
+                    "Сначала отправьте презентацию в архив, потом удаляйте навсегда.");
         }
         List<String> linkedLectures = repository.lectureTitlesForDeck(deckId);
         if (!linkedLectures.isEmpty()) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "Презентация используется в лекциях: " + String.join(", ", linkedLectures)
+                    "Презентация используется в лекциях: "
+                            + String.join(", ", linkedLectures)
                             + ". Удалите эти лекции, прежде чем удалять презентацию.");
         }
         if (repository.deckHasSessionHistory(deckId)) {
@@ -218,9 +394,8 @@ public class ContentService implements StudentDeckApi {
         }
         List<String> blobRefs = repository.blobRefsForDeck(courseId, deckId);
         repository.deleteDeck(courseId, deckId);
-        List<String> unreferencedBlobRefs = blobRefs.stream()
-                .filter(ref -> !repository.blobRefIsUsed(ref))
-                .toList();
+        List<String> unreferencedBlobRefs =
+                blobRefs.stream().filter(ref -> !repository.blobRefIsUsed(ref)).toList();
         deleteBlobsAfterCommit(unreferencedBlobRefs);
     }
 
@@ -230,7 +405,8 @@ public class ContentService implements StudentDeckApi {
     }
 
     @Transactional
-    public Lecture createLecture(AuthenticatedUser user, UUID courseId, CreateLectureRequest request) {
+    public Lecture createLecture(
+            AuthenticatedUser user, UUID courseId, CreateLectureRequest request) {
         courseAccess.requireManage(user, courseId);
         lockDeckForReference(courseId, request.deckId());
         return repository.createLecture(
@@ -239,15 +415,21 @@ public class ContentService implements StudentDeckApi {
 
     public LectureDetails getLecture(AuthenticatedUser user, UUID courseId, UUID lectureId) {
         courseAccess.requireVisible(user, courseId);
-        return repository.findLecture(courseId, lectureId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lecture not found"));
+        return repository
+                .findLecture(courseId, lectureId)
+                .orElseThrow(
+                        () ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "Lecture not found"));
     }
 
     @Transactional
-    public Lecture updateLecture(AuthenticatedUser user, UUID courseId, UUID lectureId, CreateLectureRequest request) {
+    public Lecture updateLecture(
+            AuthenticatedUser user, UUID courseId, UUID lectureId, CreateLectureRequest request) {
         courseAccess.requireManage(user, courseId);
         lockDeckForReference(courseId, request.deckId());
-        return repository.updateLecture(courseId, lectureId, request.title().trim(), request.deckId());
+        return repository.updateLecture(
+                courseId, lectureId, request.title().trim(), request.deckId());
     }
 
     @Transactional
@@ -265,94 +447,130 @@ public class ContentService implements StudentDeckApi {
     @Transactional
     public void hardDeleteLecture(AuthenticatedUser user, UUID courseId, UUID lectureId) {
         courseAccess.requireManage(user, courseId);
-        LectureDetails lecture = repository.findLecture(courseId, lectureId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lecture not found"));
+        LectureDetails lecture =
+                repository
+                        .findLecture(courseId, lectureId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Lecture not found"));
         if (!lecture.archived()) {
             throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "Сначала отправьте лекцию в архив, потом удаляйте навсегда.");
+                    HttpStatus.CONFLICT,
+                    "Сначала отправьте лекцию в архив, потом удаляйте навсегда.");
         }
         repository.deleteLecture(courseId, lectureId);
     }
 
     @Transactional
-    public Attachment addAttachment(AuthenticatedUser user, UUID courseId, UUID lectureId, MultipartFile file) {
+    public Attachment addAttachment(
+            AuthenticatedUser user, UUID courseId, UUID lectureId, MultipartFile file) {
         courseAccess.requireManage(user, courseId);
         getLecture(user, courseId, lectureId);
         if (file.isEmpty() || file.getSize() > properties.maxUploadBytes()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid upload size");
         }
         try {
-            StoredBlob blob = blobStorage.store(
-                    file.getInputStream(), file.getOriginalFilename(), file.getContentType(), file.getSize());
+            StoredBlob blob =
+                    blobStorage.storeForCourse(
+                            courseId,
+                            file.getInputStream(),
+                            file.getOriginalFilename(),
+                            file.getContentType(),
+                            file.getSize());
             return repository.addAttachment(UuidV7.generate(), lectureId, blob);
         } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot store attachment", exception);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Cannot store attachment", exception);
         }
     }
 
     @Transactional
-    public void deleteAttachment(AuthenticatedUser user, UUID courseId, UUID lectureId, UUID attachmentId) {
+    public void deleteAttachment(
+            AuthenticatedUser user, UUID courseId, UUID lectureId, UUID attachmentId) {
         courseAccess.requireManage(user, courseId);
         repository.deleteAttachment(courseId, lectureId, attachmentId);
     }
 
     private SlideDeckDetails signDeck(SlideDeckDetails deck) {
         String token = signedUrls.token(deck.courseId(), deck.id());
-        List<Slide> slides = deck.slides().stream()
-                .map(slide -> new Slide(
-                        slide.id(),
-                        slide.deckId(),
-                        slide.idx(),
-                        signedUrls.slideImageUrl(deck.courseId(), deck.id(), slide.id(), slide.idx(), token),
-                        slide.textExtract(),
-                        slide.note()))
-                .toList();
+        List<Slide> slides =
+                deck.slides().stream()
+                        .map(
+                                slide ->
+                                        new Slide(
+                                                slide.id(),
+                                                slide.deckId(),
+                                                slide.idx(),
+                                                signedUrls.slideImageUrl(
+                                                        deck.courseId(),
+                                                        deck.id(),
+                                                        slide.id(),
+                                                        slide.idx(),
+                                                        token),
+                                                slide.textExtract(),
+                                                slide.note()))
+                        .toList();
         return new SlideDeckDetails(
-                deck.id(), deck.courseId(), deck.title(), deck.version(),
-                deck.slideCount(), deck.archived(), deck.sourceFilename(), deck.createdAt(), token, slides);
+                deck.id(),
+                deck.courseId(),
+                deck.title(),
+                deck.version(),
+                deck.slideCount(),
+                deck.archived(),
+                deck.sourceFilename(),
+                deck.createdAt(),
+                token,
+                slides);
     }
 
     private void lockDeckForReference(UUID courseId, UUID deckId) {
         if (!repository.lockDeckForReference(courseId, deckId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Deck does not belong to course");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Deck does not belong to course");
         }
     }
 
     private void deleteSourceOnRollback(StoredBlob source) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) return;
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCompletion(int status) {
-                if (status == STATUS_ROLLED_BACK) {
-                    try {
-                        blobStorage.deleteAll(List.of(source.ref()));
-                    } catch (IOException exception) {
-                        org.slf4j.LoggerFactory.getLogger(ContentService.class)
-                                .warn("Cannot clean up rolled back import source", exception);
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status == STATUS_ROLLED_BACK) {
+                            try {
+                                blobStorage.deleteAll(List.of(source.ref()));
+                            } catch (IOException exception) {
+                                org.slf4j.LoggerFactory.getLogger(ContentService.class)
+                                        .warn(
+                                                "Cannot clean up rolled back import source",
+                                                exception);
+                            }
+                        }
                     }
-                }
-            }
-        });
+                });
     }
 
     private void deleteBlobsAfterCommit(List<String> refs) {
-        Runnable delete = () -> {
-            try {
-                blobStorage.deleteAll(refs);
-            } catch (IOException exception) {
-                throw new UncheckedIOException("Cannot delete deck blobs", exception);
-            }
-        };
+        Runnable delete =
+                () -> {
+                    try {
+                        blobStorage.deleteAll(refs);
+                    } catch (IOException exception) {
+                        throw new UncheckedIOException("Cannot delete deck blobs", exception);
+                    }
+                };
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             delete.run();
             return;
         }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                delete.run();
-            }
-        });
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        delete.run();
+                    }
+                });
     }
 
     private String filenameWithoutExtension(String filename) {
@@ -376,21 +594,23 @@ public class ContentService implements StudentDeckApi {
         String extension = extension(filename);
         boolean pdf = startsWith(header, "%PDF".getBytes(StandardCharsets.US_ASCII));
         boolean zip = header[0] == 'P' && header[1] == 'K';
-        boolean ole = header.length >= 8
-                && (header[0] & 0xff) == 0xd0
-                && (header[1] & 0xff) == 0xcf
-                && (header[2] & 0xff) == 0x11
-                && (header[3] & 0xff) == 0xe0
-                && (header[4] & 0xff) == 0xa1
-                && (header[5] & 0xff) == 0xb1
-                && (header[6] & 0xff) == 0x1a
-                && (header[7] & 0xff) == 0xe1;
-        boolean supported = switch (extension) {
-            case ".pdf" -> pdf;
-            case ".pptx", ".odp" -> zip;
-            case ".ppt" -> ole;
-            default -> false;
-        };
+        boolean ole =
+                header.length >= 8
+                        && (header[0] & 0xff) == 0xd0
+                        && (header[1] & 0xff) == 0xcf
+                        && (header[2] & 0xff) == 0x11
+                        && (header[3] & 0xff) == 0xe0
+                        && (header[4] & 0xff) == 0xa1
+                        && (header[5] & 0xff) == 0xb1
+                        && (header[6] & 0xff) == 0x1a
+                        && (header[7] & 0xff) == 0xe1;
+        boolean supported =
+                switch (extension) {
+                    case ".pdf" -> pdf;
+                    case ".pptx", ".odp" -> zip;
+                    case ".ppt" -> ole;
+                    default -> false;
+                };
         if (!supported) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,

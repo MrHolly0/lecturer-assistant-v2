@@ -77,7 +77,8 @@ export const StudyGroupInput = forwardRef<
         );
         setParts(nextParts);
         setStructured(true);
-        const missing = current.data.fields.findIndex((f) => !nextParts[f.id]);
+        const recognized = structured ? result.parts : nextParts;
+        const missing = current.data.fields.findIndex((f) => !recognized[f.id]);
         setStep(missing < 0 ? 0 : missing);
       }
       setMessage(result.message ?? "Проверьте название группы");
@@ -158,7 +159,8 @@ export const StudyGroupInput = forwardRef<
                 placeholder={field.kind === "YEAR" ? "Например, 2023" : "Например, 4"}
                 maxLength={field.kind === "YEAR" ? 4 : field.width}
                 onChange={(event) => {
-                  setParts((old) => ({ ...old, [field.id]: event.target.value }));
+                  const value = event.currentTarget.value;
+                  setParts((old) => ({ ...old, [field.id]: value }));
                   setMessage("");
                 }}
               />

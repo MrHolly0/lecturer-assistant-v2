@@ -41,7 +41,7 @@ function fixture(options = {}) {
       session: { id: sessionId, joinCode: 'ABCDEF', version } };
     return {};
   };
-  const hub = new RealtimeHub(rpc, { now: () => time, ...options });
+  const hub = new RealtimeHub(rpc, { presenterReserve: 0, now: () => time, ...options });
   return { hub, calls, advance: ms => { time += ms; }, change: () => { version++; },
     revoke: () => { allowed = false; }, outage: () => { unavailable = true; },
     restore: () => { unavailable = false; } };
@@ -66,7 +66,7 @@ test('6,000 connections share batched authority reads and preserve personal answ
 test('connection burst cannot consume unbounded authority work reserved for renewals', async () => {
   let release;
   const rpc = async () => new Promise(resolve => { release = resolve; });
-  const hub = new RealtimeHub(rpc, { grantConcurrency: 1 });
+  const hub = new RealtimeHub(rpc, { presenterReserve: 0, grantConcurrency: 1 });
   const pending = hub.addStudent('ABCDEF', '', new Output(), true);
   await assert.rejects(hub.addStudent('ABCDEF', '', new Output(), true), { status: 503 });
   assert.equal(hub.pendingGrants, 1);
@@ -162,7 +162,7 @@ test('slow authority work schedules the next renewal before the actual lease dea
     now += 1800;
     return { permissionDeadline, allowed: ['person'], oversized: [], overlays: {} };
   };
-  const hub = new RealtimeHub(rpc, { now: () => now });
+  const hub = new RealtimeHub(rpc, { presenterReserve: 0, now: () => now });
   const client = await hub.addStudent('ABCDEF', 'token', new Output());
   client.room.dirty = false; client.room.lastSnapshot = now;
   hub.tick(); await settle();

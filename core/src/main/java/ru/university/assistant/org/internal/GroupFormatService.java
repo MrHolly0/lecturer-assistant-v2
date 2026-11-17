@@ -58,6 +58,15 @@ public class GroupFormatService {
         }
     }
 
+    public GroupFormatPreview previewDraft(AuthenticatedUser actor, GroupFormatPolicy draft, String name) {
+        admin(actor);
+        if (draft == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Укажите формат групп");
+        try { return GroupFormatEngine.parse(draft, name); }
+        catch (IllegalArgumentException error) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, error.getMessage());
+        }
+    }
+
     GroupFormatPreview normalize(String name, Map<String, String> parts) {
         jdbc.sql("select singleton from org.group_format_policy where singleton for share")
                 .query(Boolean.class).single();

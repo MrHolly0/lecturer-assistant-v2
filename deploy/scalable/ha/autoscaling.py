@@ -73,7 +73,7 @@ def gateway_scaler(namespace, prometheus, minimum=3, maximum=6, target=2500,
     return scaled_object(namespace, 'realtime', trigger, minimum, maximum, down_seconds, polling)
 
 
-def postgres_scaler(namespace, name, secret, query, target, maximum):
+def postgres_scaler(namespace, name, secret, query, target, maximum, minimum=2):
     # The secret holds a dedicated read-only connection; no application password enters manifests.
     auth = {'apiVersion': 'keda.sh/v1alpha1', 'kind': 'TriggerAuthentication',
             'metadata': {'name': name + '-scaling', 'namespace': namespace},
@@ -81,7 +81,7 @@ def postgres_scaler(namespace, name, secret, query, target, maximum):
     trigger = {'type': 'postgresql', 'metricType': 'AverageValue',
                'authenticationRef': {'name': name + '-scaling'},
                'metadata': {'query': query, 'targetQueryValue': str(target)}}
-    return [auth, scaled_object(namespace, name, trigger, 2, maximum)]
+    return [auth, scaled_object(namespace, name, trigger, minimum, maximum)]
 
 
 def cpu_hpa(namespace, name, minimum, maximum):
@@ -98,6 +98,9 @@ def render(config, items):
     if not settings.get('enabled', False):
         return []
     namespace = config.get('namespace', 'lecturer')
+    single_node = settings.get('singleNode', False)
+    minimum = 1 if single_node else 2
+    gateway_minimum = 1 if single_node else 3
     limits = {key: settings.get(key, default) for key, default in [
         ('coreMax', 6), ('realtimeMax', 6), ('contentMax', 4), ('converterMax', 4),
         ('analyticsMax', 4), ('databaseConnections', 180), ('reservedConnections', 30),
@@ -105,7 +108,8 @@ def render(config, items):
     if any(type(value) is not int or value < 1 for value in limits.values()):
         raise ValueError('Scaling budgets must be positive integers')
     if any(limits[k] < floor or limits[k] > 16 for k, floor in [
-        ('coreMax', 2), ('realtimeMax', 3), ('contentMax', 2), ('converterMax', 2), ('analyticsMax', 2)]):
+        ('coreMax', minimum), ('realtimeMax', gateway_minimum), ('contentMax', minimum),
+        ('converterMax', minimum), ('analyticsMax', minimum)]):
         raise ValueError('Scaling bounds violate minimum HA or maximum replica limits')
     # Match the actual Hikari pools in the rendered deployments, not just their initial replicas.
     needed = limits['coreMax'] * (12 + 4) + limits['contentMax'] * 4 + limits['reservedConnections']
@@ -117,15 +121,16 @@ def render(config, items):
     if not address:
         raise ValueError('Configure autoscaling.prometheusAddress and deploy a scraper for realtime pods')
     budgets = local_budgets(settings, limits['coreMax'])
-    result = [gateway_scaler(namespace, address, maximum=limits['realtimeMax']),
-              cpu_hpa(namespace, 'core', 2, limits['coreMax']),
-              cpu_hpa(namespace, 'converter', 2, limits['converterMax'])]
+    result = [gateway_scaler(namespace, address, minimum=gateway_minimum, maximum=limits['realtimeMax'],
+                             target=settings.get('connectionsPerReplica', 2500)),
+              cpu_hpa(namespace, 'core', minimum, limits['coreMax']),
+              cpu_hpa(namespace, 'converter', minimum, limits['converterMax'])]
     result += postgres_scaler(namespace, 'content-worker', 'lecturer-scaling-content',
         "SELECT count(*) FROM content.import_jobs WHERE (status='PENDING' AND available_at<=now()) "
-        "OR status='RUNNING'", 2, limits['contentMax'])
+        "OR status='RUNNING'", 2, limits['contentMax'], minimum)
     result += postgres_scaler(namespace, 'analytics', 'lecturer-scaling-analytics',
         'SELECT count(*) FROM report_jobs WHERE NOT dead AND (next_attempt_at<=now() OR lease_until>now())',
-        8, limits['analyticsMax'])
+        8, limits['analyticsMax'], minimum)
     for item in items:
         if item['kind'] != 'Deployment':
             continue

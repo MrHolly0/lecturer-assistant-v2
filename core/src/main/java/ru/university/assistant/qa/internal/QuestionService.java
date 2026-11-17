@@ -9,10 +9,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ru.university.assistant.analytics.api.DomainEvent;
 import ru.university.assistant.analytics.api.EventBus;
-import ru.university.assistant.qa.api.QuestionApi;
-import ru.university.assistant.qa.api.QuestionAuthorModeration;
 import ru.university.assistant.qa.api.QuestionAnswerAudience;
 import ru.university.assistant.qa.api.QuestionAnswerVisibility;
+import ru.university.assistant.qa.api.QuestionApi;
+import ru.university.assistant.qa.api.QuestionAuthorModeration;
 import ru.university.assistant.qa.api.QuestionPage;
 import ru.university.assistant.qa.api.QuestionStatus;
 import ru.university.assistant.qa.api.ResolvedQuestion;
@@ -44,17 +44,33 @@ class QuestionService implements QuestionApi {
     @Override
     @Transactional
     public QuestionAuthorModeration moderateAuthor(
-            UUID sessionId, UUID questionId, UUID actorPersonId, boolean muted, boolean hideQuestions) {
-        UUID author = repository.authorPersonId(sessionId, questionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found"));
+            UUID sessionId,
+            UUID questionId,
+            UUID actorPersonId,
+            boolean muted,
+            boolean hideQuestions) {
+        UUID author =
+                repository
+                        .authorPersonId(sessionId, questionId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Question not found"));
         boolean changed = repository.setAuthorMuted(sessionId, author, muted);
-        var hidden = hideQuestions ? repository.hideAuthorQuestions(sessionId, author)
-                : new QuestionRepository.HiddenQuestions(0, "[]");
+        var hidden =
+                hideQuestions
+                        ? repository.hideAuthorQuestions(sessionId, author)
+                        : new QuestionRepository.HiddenQuestions(0, "[]");
         if (changed || hidden.count() > 0) {
             repository.logModeration(sessionId, questionId, actorPersonId, muted, hidden);
-            events.publish(new DomainEvent("qa.question", questionId, "qa.author_moderated", actorPersonId,
-                    Map.of("sessionId", sessionId, "questionId", questionId),
-                    Map.of("muted", muted, "hiddenQuestions", hidden.count())));
+            events.publish(
+                    new DomainEvent(
+                            "qa.question",
+                            questionId,
+                            "qa.author_moderated",
+                            actorPersonId,
+                            Map.of("sessionId", sessionId, "questionId", questionId),
+                            Map.of("muted", muted, "hiddenQuestions", hidden.count())));
         }
         return new QuestionAuthorModeration(muted, hidden.count());
     }
@@ -62,22 +78,38 @@ class QuestionService implements QuestionApi {
     @Override
     @Transactional
     public StudentQuestion ask(
-            UUID sessionId, UUID personId, String displayName, String channelType, String text,
-            boolean anonymous, Integer slideIdx) {
+            UUID sessionId,
+            UUID personId,
+            String displayName,
+            String channelType,
+            String text,
+            boolean anonymous,
+            Integer slideIdx) {
         if (!repository.mutedAuthors(sessionId, java.util.Set.of(personId)).isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
                     "Преподаватель запретил отправку вопросов до конца занятия.");
         }
-        StudentQuestion question = repository.create(UuidV7.generate(), sessionId, personId,
-                displayName, channelType, text.trim(), anonymous, slideIdx);
-        events.publish(new DomainEvent(
-                "qa.question",
-                question.id(),
-                "qa.question_asked",
-                anonymous ? null : personId,
-                Map.of("sessionId", sessionId),
-                slideIdx == null ? Map.of("channelType", channelType)
-                        : Map.of("channelType", channelType, "slideIdx", slideIdx)));
+        StudentQuestion question =
+                repository.create(
+                        UuidV7.generate(),
+                        sessionId,
+                        personId,
+                        displayName,
+                        channelType,
+                        text.trim(),
+                        anonymous,
+                        slideIdx);
+        events.publish(
+                new DomainEvent(
+                        "qa.question",
+                        question.id(),
+                        "qa.question_asked",
+                        anonymous ? null : personId,
+                        Map.of("sessionId", sessionId),
+                        slideIdx == null
+                                ? Map.of("channelType", channelType)
+                                : Map.of("channelType", channelType, "slideIdx", slideIdx)));
         return question;
     }
 
@@ -94,7 +126,8 @@ class QuestionService implements QuestionApi {
 
     @Override
     @Transactional(readOnly = true)
-    public QuestionPage list(UUID sessionId, QuestionStatus status, int limit, int offset, String query) {
+    public QuestionPage list(
+            UUID sessionId, QuestionStatus status, int limit, int offset, String query) {
         return repository.list(sessionId, status, limit, offset, query);
     }
 
@@ -102,6 +135,20 @@ class QuestionService implements QuestionApi {
     public java.util.Map<UUID, List<StudentQuestion>> personalQuestions(
             UUID sessionId, java.util.Set<UUID> personIds) {
         return repository.personalQuestions(sessionId, personIds);
+    }
+
+    @Override
+    public ru.university.assistant.qa.api.StudentQuestionHistory history(
+            UUID session, UUID viewer, int offset) {
+        if (offset < 0 || offset > 100000)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Invalid history offset");
+        return repository.history(session, viewer, offset);
+    }
+
+    @Override
+    public java.util.Map<UUID, Long> historyRevisions(UUID session, java.util.Set<UUID> viewers) {
+        return repository.historyRevisions(session, viewers);
     }
 
     @Override
@@ -119,33 +166,51 @@ class QuestionService implements QuestionApi {
             String answerText,
             QuestionAnswerVisibility answerVisibility) {
         if (status == QuestionStatus.OPEN) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Question can only be answered or dismissed");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Question can only be answered or dismissed");
         }
         String normalizedAnswer = normalizeAnswer(answerText);
         validateResolution(status, normalizedAnswer, answerVisibility);
-        StudentQuestion current = repository.find(sessionId, questionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found"));
+        StudentQuestion current =
+                repository
+                        .find(sessionId, questionId)
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "Question not found"));
         if (current.status() != QuestionStatus.OPEN) {
             return resolution(
                     sessionId,
                     idempotentOrConflict(current, status, normalizedAnswer, answerVisibility),
                     false);
         }
-        StudentQuestion resolved = repository.resolve(sessionId, questionId, status, normalizedAnswer, answerVisibility)
-                .orElse(null);
+        StudentQuestion resolved =
+                repository
+                        .resolve(sessionId, questionId, status, normalizedAnswer, answerVisibility)
+                        .orElse(null);
         if (resolved == null) {
-            return repository.find(sessionId, questionId)
-                    .map(found -> idempotentOrConflict(found, status, normalizedAnswer, answerVisibility))
+            return repository
+                    .find(sessionId, questionId)
+                    .map(
+                            found ->
+                                    idempotentOrConflict(
+                                            found, status, normalizedAnswer, answerVisibility))
                     .map(found -> resolution(sessionId, found, false))
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Question not found"));
+                    .orElseThrow(
+                            () ->
+                                    new ResponseStatusException(
+                                            HttpStatus.NOT_FOUND, "Question not found"));
         }
-        events.publish(new DomainEvent(
-                "qa.question",
-                resolved.id(),
-                status == QuestionStatus.ANSWERED ? "qa.question_answered" : "qa.question_dismissed",
-                actorPersonId,
-                Map.of("sessionId", sessionId, "questionId", questionId),
-                eventPayload(status, answerVisibility)));
+        events.publish(
+                new DomainEvent(
+                        "qa.question",
+                        resolved.id(),
+                        status == QuestionStatus.ANSWERED
+                                ? "qa.question_answered"
+                                : "qa.question_dismissed",
+                        actorPersonId,
+                        Map.of("sessionId", sessionId, "questionId", questionId),
+                        eventPayload(status, answerVisibility)));
         return resolution(sessionId, resolved, true);
     }
 
@@ -166,9 +231,11 @@ class QuestionService implements QuestionApi {
             QuestionStatus status, String answerText, QuestionAnswerVisibility answerVisibility) {
         if (status == QuestionStatus.ANSWERED && (answerText == null || answerVisibility == null)) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "Answered question requires text and answer visibility");
+                    HttpStatus.BAD_REQUEST,
+                    "Answered question requires text and answer visibility");
         }
-        if (status == QuestionStatus.DISMISSED && (answerText != null || answerVisibility != null)) {
+        if (status == QuestionStatus.DISMISSED
+                && (answerText != null || answerVisibility != null)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Dismissed question cannot contain an answer");
         }
@@ -187,15 +254,16 @@ class QuestionService implements QuestionApi {
 
     private ResolvedQuestion resolution(UUID sessionId, StudentQuestion question, boolean changed) {
         UUID authorPersonId = repository.authorPersonId(sessionId, question.id()).orElse(null);
-        StudentQuestionAnswer answer = question.status() == QuestionStatus.ANSWERED
-                ? new StudentQuestionAnswer(
-                        question.id(),
-                        question.text(),
-                        question.answerText(),
-                        question.answerVisibility(),
-                        question.answeredAt(),
-                        question.slideIdx())
-                : null;
+        StudentQuestionAnswer answer =
+                question.status() == QuestionStatus.ANSWERED
+                        ? new StudentQuestionAnswer(
+                                question.id(),
+                                question.text(),
+                                question.answerText(),
+                                question.answerVisibility(),
+                                question.answeredAt(),
+                                question.slideIdx())
+                        : null;
         return new ResolvedQuestion(question, authorPersonId, answer, changed);
     }
 

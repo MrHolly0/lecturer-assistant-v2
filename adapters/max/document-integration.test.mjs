@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import http from "node:http";
-import { test } from "node:test";
+import { after, test } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+const inboxRoot = mkdtempSync(join(tmpdir(), "max-document-integration-"));
+after(() => rmSync(inboxRoot, { recursive: true, force: true }));
 
 test("outbox frame is privately fetched, uploaded and delivered to its own MAX recipient as a file", async () => {
   const jpeg = Buffer.from([255, 216, 0, 1, 2, 3, 255, 217]);
@@ -51,6 +56,7 @@ test("outbox frame is privately fetched, uploaded and delivered to its own MAX r
   const child = spawn(process.execPath, [fileURLToPath(new URL("./max-adapter.mjs", import.meta.url))], {
     env: { ...process.env, CORE_URL: `http://127.0.0.1:${corePort}`, CHANNEL_INTERNAL_API_KEY: "isolated-adapter-key",
       MAX_API_BASE: `http://127.0.0.1:${maxPort}`, MAX_BOT_TOKEN: "isolated-bot-token",
+      MAX_INBOX_PATH: join(inboxRoot, "inbox.sqlite"),
       MAX_WEBAPP_URL: "https://app.example/mini", MAX_RATE_LIMIT_RPS: "100", MAX_WEBHOOK_URL: "" },
     stdio: ["ignore", "ignore", "pipe"],
   });

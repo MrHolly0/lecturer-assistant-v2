@@ -3,6 +3,7 @@ import { Maximize2, Minimize2, Minus, PictureInPicture2, Play, Plus, RotateCw } 
 import { Button } from "../shared/ui/button";
 
 type Props = {
+  onVideoElement?: (element: HTMLVideoElement | null) => void;
   stream: MediaStream | null;
   videoUrl?: string | null;
   frameUrl: string | null;
@@ -37,6 +38,7 @@ export function ScreenSharePresentation({
   projection = false,
   sourceId = null,
   onRetry,
+  onVideoElement,
   onFrameToChat,
   frameToChatPending = false,
   frameToChatMessage
@@ -68,6 +70,10 @@ export function ScreenSharePresentation({
   const hasVideo = Boolean(stream || videoUrl);
   const hasImage = !hasVideo && Boolean(frameUrl);
   const sourceAvailable = !paused && !error && (hasVideo || hasImage);
+  useEffect(() => {
+    onVideoElement?.(videoRef.current);
+    return () => onVideoElement?.(null);
+  }, [onVideoElement, sourceAvailable, hasVideo]);
   const sourceIdentity = sourceAvailable
     ? `${sourceId ?? "unkeyed"}:${hasVideo ? "video" : "image"}`
     : null;

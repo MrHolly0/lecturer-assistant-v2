@@ -71,6 +71,14 @@ public class OrganizationController {
         organization.moveMembers(user, request);
     }
 
+    @PostMapping("/units/{unitId}/invitations")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ru.university.assistant.iam.api.InvitationResponse invite(
+            @AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID unitId,
+            @Valid @RequestBody OrganizationModels.InviteStaffRequest request) {
+        return organization.invite(user, unitId, request);
+    }
+
     @PutMapping("/members/{personId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void assign(

@@ -1,4 +1,11 @@
-const configuredBotName = import.meta.env.VITE_MAX_BOT_NAME?.trim() ?? "";
+declare global {
+  interface Window {
+    __LECTURER_CONFIG__?: { maxBotName?: string };
+  }
+}
+
+const configuredBotName =
+  (window.__LECTURER_CONFIG__?.maxBotName ?? import.meta.env.VITE_MAX_BOT_NAME)?.trim() ?? "";
 
 export function buildMaxJoinUrl(joinCode: string): string | null {
   return buildMaxStartUrl(joinCode);

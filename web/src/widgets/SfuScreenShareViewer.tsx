@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from "react";
-import type { Room } from "livekit-client";
+import { useEffect, useState, useRef, useCallback } from "react";
+import type { Room, RemoteTrackPublication } from "livekit-client";
 import { viewerSfuTicket } from "../app/api/share-api";
 import { retryDelayMs, isRetryableError } from "../app/api/retry";
 import { ScreenSharePresentation } from "./ScreenSharePresentation";
@@ -12,6 +12,53 @@ export function SfuScreenShareViewer({
   paused = false,
   children
 }: ScreenShareViewerProps) {
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+  const publication = useRef<RemoteTrackPublication | null>(null);
+  const updateQuality = useCallback(() => {
+    const track = publication.current;
+    if (!track || !video) return;
+    const pip =
+      document.pictureInPictureElement === video ||
+      Boolean(
+        (video as HTMLVideoElement & { webkitPresentationMode?: string }).webkitPresentationMode ===
+          "picture-in-picture"
+      );
+    const visible = projectionViewToken || document.visibilityState !== "hidden" || pip;
+    track.setEnabled(Boolean(visible));
+    if (visible) {
+      const size = video.getBoundingClientRect();
+      const scale = window.devicePixelRatio || 1;
+      track.setVideoDimensions({
+        width: projectionViewToken || pip ? 3840 : Math.max(640, size.width * scale),
+        height: projectionViewToken || pip ? 2160 : Math.max(360, size.height * scale)
+      });
+    }
+  }, [video, projectionViewToken]);
+  const qualityRef = useRef(updateQuality);
+  qualityRef.current = updateQuality;
+  useEffect(() => {
+    if (!video) return;
+    const observer = new ResizeObserver(updateQuality);
+    observer.observe(video);
+    for (const event of [
+      "enterpictureinpicture",
+      "leavepictureinpicture",
+      "webkitpresentationmodechanged"
+    ])
+      video.addEventListener(event, updateQuality);
+    document.addEventListener("visibilitychange", updateQuality);
+    updateQuality();
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", updateQuality);
+      for (const event of [
+        "enterpictureinpicture",
+        "leavepictureinpicture",
+        "webkitpresentationmodechanged"
+      ])
+        video.removeEventListener(event, updateQuality);
+    };
+  }, [video, updateQuality]);
   const [state, setState] = useState({
     active: false,
     paused: false,
@@ -32,6 +79,7 @@ export function SfuScreenShareViewer({
     const disconnect = () => {
       const previous = room;
       room = null;
+      publication.current = null;
       previous?.removeAllListeners();
       if (previous) void previous.disconnect();
     };
@@ -70,7 +118,11 @@ export function SfuScreenShareViewer({
             const current = new Room({ adaptiveStream: false, dynacast: false });
             room = current;
             setState({ active: true, paused: false, error: false, sourceId, stream: null });
-            current.on(RoomEvent.TrackSubscribed, (track) => {
+            current.on(RoomEvent.TrackSubscribed, (track, remotePublication) => {
+              if (track.kind === Track.Kind.Video) {
+                publication.current = remotePublication;
+                qualityRef.current();
+              }
               if (alive && room === current && track.kind === Track.Kind.Video)
                 setState((s) => ({
                   ...s,
@@ -121,6 +173,7 @@ export function SfuScreenShareViewer({
   if (!state.active) return <>{children}</>;
   return (
     <ScreenSharePresentation
+      onVideoElement={setVideo}
       stream={state.stream}
       frameUrl={null}
       sourceId={state.sourceId}

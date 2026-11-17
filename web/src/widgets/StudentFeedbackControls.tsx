@@ -31,6 +31,13 @@ const SIGNALS: Array<{ value: SignalValue; label: string; icon: typeof Smile }> 
 ];
 
 interface StudentFeedbackControlsProps {
+  historyKey?: string;
+  loadHistory?: (
+    offset: number
+  ) => Promise<import("../app/api/student-api").StudentQuestionHistory>;
+  historyHasMore?: boolean;
+  initialHistoryError?: string;
+  onRetryHistory?: () => void;
   readOnly?: boolean;
   isLive: boolean;
   isSignalPending: boolean;
@@ -60,6 +67,51 @@ interface VisualViewportMetrics {
 
 export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
   const [questionOpen, setQuestionOpen] = useState(false);
+  const [older, setOlder] = useState({
+    key: props.historyKey,
+    questions: [] as StudentQuestion[],
+    answers: [] as StudentQuestionAnswer[],
+    offset: 20,
+    more: true
+  });
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const currentHistoryKey = useRef(props.historyKey);
+  currentHistoryKey.current = props.historyKey;
+  const matching = older.key === props.historyKey;
+  const allQuestions = [
+    ...new Map(
+      [...(matching ? older.questions : []), ...props.questions].map((q) => [q.id, q])
+    ).values()
+  ];
+  const allAnswers = [
+    ...new Map(
+      [...(matching ? older.answers : []), ...props.answers].map((q) => [q.questionId, q])
+    ).values()
+  ];
+  const loadOlder = async () => {
+    if (!props.loadHistory || loadingHistory) return;
+    const key = props.historyKey;
+    setLoadingHistory(true);
+    setHistoryError("");
+    try {
+      const page = await props.loadHistory(matching ? older.offset : 20);
+      if (currentHistoryKey.current !== key) return;
+      setOlder({
+        key,
+        questions: [...(matching ? older.questions : []), ...page.myQuestions],
+        answers: [...(matching ? older.answers : []), ...page.questionAnswers],
+        offset: (matching ? older.offset : 20) + 20,
+        more: page.hasMore
+      });
+    } catch {
+      if (currentHistoryKey.current === key)
+        setHistoryError("Не удалось загрузить историю. Попробуйте ещё раз.");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   const [viewportMetrics, setViewportMetrics] = useState<VisualViewportMetrics | null>(null);
   const [unreadAnswerCount, setUnreadAnswerCount] = useState(0);
   const [answerAnnouncement, setAnswerAnnouncement] = useState("");
@@ -137,12 +189,12 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
       toast.info(message);
     }
   }, [props.answers]);
-  const unansweredQuestions = props.questions.filter(
+  const unansweredQuestions = allQuestions.filter(
     (question) =>
       question.status === "OPEN" &&
       !props.answers.some((answer) => answer.questionId === question.id)
   );
-  const hiddenQuestionsCount = props.questions.filter(
+  const hiddenQuestionsCount = allQuestions.filter(
     (question) => question.status === "DISMISSED"
   ).length;
   function submitQuestion(event: FormEvent) {
@@ -424,13 +476,13 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
           <ChevronRight className="student-my-questions__arrow" size={20} aria-hidden="true" />
           <span className="student-my-questions__summary-meta" aria-live="polite">
             <span>
-              {props.questions.length}{" "}
-              {pluralizeRu(props.questions.length, "вопрос", "вопроса", "вопросов")}
+              {allQuestions.length}{" "}
+              {pluralizeRu(allQuestions.length, "вопрос", "вопроса", "вопросов")}
             </span>
             <span>
-              {props.answers.length}{" "}
+              {allAnswers.length}{" "}
               {pluralizeRu(
-                props.answers.length,
+                allAnswers.length,
                 "ответ преподавателя",
                 "ответа преподавателя",
                 "ответов преподавателя"
@@ -444,7 +496,7 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
         <p className="student-my-questions__announcement" role="status" aria-live="polite">
           {answerAnnouncement}
         </p>
-        <StudentQuestionAnswers answers={props.answers} />
+        <StudentQuestionAnswers answers={allAnswers} />
         {unansweredQuestions.length > 0 ? (
           <section className="student-pending-questions" aria-labelledby="student-pending-title">
             <h3 id="student-pending-title">
@@ -463,13 +515,40 @@ export function StudentFeedbackControls(props: StudentFeedbackControlsProps) {
               ))}
             </ul>
           </section>
-        ) : props.answers.length === 0 && hiddenQuestionsCount === 0 ? (
+        ) : allAnswers.length === 0 && hiddenQuestionsCount === 0 ? (
           <p className="muted">Отправленные вопросы и ответы преподавателя появятся здесь.</p>
         ) : null}
         {hiddenQuestionsCount > 0 && (
           <p className="muted">Скрытые преподавателем вопросы: {hiddenQuestionsCount}</p>
         )}
+        {props.loadHistory &&
+          (props.historyHasMore ?? (props.questions.length >= 20 || props.answers.length >= 20)) &&
+          (!matching || older.more) && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void loadOlder()}
+              disabled={loadingHistory}
+            >
+              {loadingHistory ? "Загрузка истории…" : "Показать более ранние вопросы и ответы"}
+            </Button>
+          )}
+        {historyError && (
+          <p role="status" className="muted">
+            {historyError}
+          </p>
+        )}
       </details>
+      {props.initialHistoryError && (
+        <div role="status" className="muted">
+          <p>{props.initialHistoryError}</p>
+          {props.onRetryHistory && (
+            <Button type="button" variant="outline" onClick={props.onRetryHistory}>
+              Повторить загрузку истории
+            </Button>
+          )}
+        </div>
+      )}
     </>
   );
 }

@@ -1,6 +1,7 @@
 package ru.university.assistant.content.internal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import javax.sql.DataSource;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -8,7 +9,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.client.RestClient;
-import javax.sql.DataSource;
 
 @Configuration
 @EnableConfigurationProperties(ContentProperties.class)
@@ -25,8 +25,20 @@ class ContentConfiguration {
             ContentProperties properties,
             RestClient.Builder builder,
             ObjectMapper objectMapper,
-            DataSource dataSource) {
-        return new HttpSlideConversionClient(blobStorage, properties, builder, objectMapper, dataSource);
+            DataSource dataSource,
+            @org.springframework.beans.factory.annotation.Value(
+                            "${app.content.conversion-root:/data/conversion}")
+                    java.nio.file.Path conversionRoot,
+            @org.springframework.beans.factory.annotation.Value("${CONVERTER_API_KEY:}")
+                    String converterKey) {
+        return new HttpSlideConversionClient(
+                blobStorage,
+                properties,
+                builder,
+                objectMapper,
+                dataSource,
+                conversionRoot,
+                converterKey);
     }
 
     @Bean
@@ -40,7 +52,8 @@ class ContentConfiguration {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(properties.importMaxPoolSize());
         executor.setMaxPoolSize(properties.importMaxPoolSize());
-        // Claims remain capped at max workers; a tiny handoff queue covers a thread finishing its prior task.
+        // Claims remain capped at max workers; a tiny handoff queue covers a thread finishing its
+        // prior task.
         executor.setQueueCapacity(properties.importMaxPoolSize());
         executor.setThreadNamePrefix("content-import-");
         executor.setWaitForTasksToCompleteOnShutdown(true);

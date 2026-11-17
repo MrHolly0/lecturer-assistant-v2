@@ -1,4 +1,9 @@
 import json
+import hmac
+import re
+import signal
+import time
+import uuid
 import os
 import shutil
 import subprocess
@@ -27,6 +32,12 @@ ZIP_BOMB_RATIO = int(os.environ.get("CONVERTER_ZIP_BOMB_RATIO", "120"))
 ZIP_BOMB_UNCOMPRESSED_BYTES = int(os.environ.get("CONVERTER_ZIP_BOMB_UNCOMPRESSED_BYTES", str(350 * 1024 * 1024)))
 SUPPORTED_EXTENSIONS = {".pdf", ".ppt", ".pptx", ".odp"}
 SOFFICE_SEMAPHORE = threading.BoundedSemaphore(max(1, SOFFICE_CONCURRENCY))
+CONVERSION_ROOT = Path(os.environ.get("CONVERSION_ROOT", "/data/conversion")).resolve()
+CONVERTER_KEY = os.environ.get("CONVERTER_API_KEY", "")
+DOCUMENT_TIMEOUT = max(10, min(600, int(os.environ.get("CONVERTER_DOCUMENT_TIMEOUT_SECONDS", "300"))))
+MAX_OUTPUT_BYTES = int(os.environ.get("CONVERTER_MAX_OUTPUT_BYTES", str(128 * 1024 * 1024)))
+MAX_TEMP_BYTES = int(os.environ.get("CONVERTER_MAX_TEMP_BYTES", str(256 * 1024 * 1024)))
+BUDGET = threading.local()
 CONVERSION_SEMAPHORE = threading.BoundedSemaphore(MAX_CONVERSIONS)
 
 
@@ -74,6 +85,9 @@ class ConvertHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/convert":
             self.send_error(404)
+            return
+        if not CONVERTER_KEY or not hmac.compare_digest(self.headers.get("X-Converter-Key", ""), CONVERTER_KEY):
+            self.send_error(403)
             return
         if not CONVERSION_SEMAPHORE.acquire(blocking=False):
             self.send_response(503)
@@ -138,13 +152,23 @@ class ConvertHandler(BaseHTTPRequestHandler):
 
 
 def stream_convert(job_id: str, source: Path, output_dir: Path, output_prefix: str, emit):
-    ensure_under(source, output_dir)
+    source, output_dir = source.resolve(), output_dir.resolve()
+    uuid.UUID(job_id)
+    expected = CONVERSION_ROOT / job_id
+    if output_dir != expected or source.parent != expected or output_prefix != "output":
+        raise ValueError("conversion paths must belong to the assigned job")
+    ensure_under(output_dir, CONVERSION_ROOT)
+    if source.is_symlink() or expected.is_symlink():
+        raise ValueError("conversion symlinks are forbidden")
+    BUDGET.deadline = time.monotonic() + DOCUMENT_TIMEOUT
+    BUDGET.output = 0
     if not source.exists() or source.stat().st_size == 0:
         raise ValueError("Файл пустой или не найден")
     validate_source(source)
     with tempfile.TemporaryDirectory() as tmp_raw:
         tmp = Path(tmp_raw)
         pdf = source if source.suffix.lower() == ".pdf" else office_to_pdf(source, tmp, job_id)
+        BUDGET.temp = tmp
         page_count = pdf_page_count(pdf)
         if page_count <= 0:
             raise RuntimeError("PDF не содержит страниц")
@@ -165,6 +189,7 @@ def stream_convert(job_id: str, source: Path, output_dir: Path, output_prefix: s
 
         processed = 0
         for index in range(1, render_count + 1):
+            remaining_budget()
             target = target_dir / f"slide-{index}.png"
             placeholder = False
             render_error = None
@@ -175,12 +200,18 @@ def stream_convert(job_id: str, source: Path, output_dir: Path, output_prefix: s
                 write_placeholder_png(target, render_error)
             else:
                 shutil.copyfile(image, target)
+            BUDGET.output += target.stat().st_size
+            if BUDGET.output > MAX_OUTPUT_BYTES:
+                target.unlink(missing_ok=True)
+                raise ValueError("Document output exceeds the byte budget")
             text = page_text(pdf, index, tmp)
             if text.endswith(TEXT_TRUNCATED_MARKER):
                 note = "Извлечённый текст страницы сокращён до 256 КиБ; изображение слайда сохранено полностью."
                 warning = (warning + " " + note) if warning and note not in warning else warning or note
             if render_error:
                 text = (text + "\n\n" if text else "") + render_error
+            if image is not None: image.unlink(missing_ok=True)
+            (tmp / f"slide-{index}.txt").unlink(missing_ok=True)
             processed = index
             emit({
                 "type": "slide",
@@ -247,7 +278,7 @@ def warning_message(page_count: int, render_count: int, dpi: int):
 def office_to_pdf(source: Path, tmp: Path, job_id: str):
     profile = Path(tempfile.gettempdir()) / f"lo-{job_id}"
     profile.mkdir(parents=True, exist_ok=True)
-    if not SOFFICE_SEMAPHORE.acquire(timeout=OFFICE_QUEUE_TIMEOUT_SECONDS):
+    if not SOFFICE_SEMAPHORE.acquire(timeout=min(OFFICE_QUEUE_TIMEOUT_SECONDS, remaining_budget())):
         raise TimeoutError("Очередь LibreOffice переполнена. Попробуйте импорт позже.")
     try:
         run([
@@ -307,6 +338,8 @@ def render_page(pdf: Path, page: int, tmp: Path, dpi: int):
             str(pdf),
             str(prefix),
         ], timeout=PAGE_TIMEOUT_SECONDS)
+    except (TimeoutError, subprocess.TimeoutExpired):
+        raise
     except Exception:
         return None
     image = prefix.with_suffix(".png")
@@ -341,18 +374,42 @@ def page_text(pdf: Path, page: int, tmp: Path):
             str(text_file),
         ], timeout=PAGE_TIMEOUT_SECONDS)
         return bounded_page_text(text_file)
+    except (TimeoutError, subprocess.TimeoutExpired):
+        raise
     except Exception:
         return ""
 
 
+def remaining_budget():
+    remaining = getattr(BUDGET, "deadline", time.monotonic() + DOCUMENT_TIMEOUT) - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("Превышен общий срок конвертации документа")
+    temp = getattr(BUDGET, "temp", None)
+    if temp and sum(p.stat().st_size for p in temp.rglob("*") if p.is_file()) > MAX_TEMP_BYTES:
+        raise ValueError("Document temporary files exceed the byte budget")
+    return remaining
+
+
 def run(args, timeout):
-    return subprocess.run(
-        args,
-        check=True,
-        timeout=timeout,
-        text=True,
-        capture_output=True,
-    )
+    deadline = time.monotonic() + min(timeout, remaining_budget())
+    # Output is a bounded diagnostic tail; the whole descendant group dies on timeout,
+    # including LibreOffice's detached renderer children in the same session.
+    with tempfile.TemporaryFile() as log:
+        process = subprocess.Popen(args, stdout=log, stderr=log, start_new_session=True)
+        try:
+            while process.poll() is None:
+                if time.monotonic() >= deadline: raise subprocess.TimeoutExpired(args, timeout)
+                remaining_budget()
+                if log.tell() > 1024 * 1024: raise ValueError("Converter process log exceeds byte budget")
+                time.sleep(.05)
+            log.seek(0)
+            output = log.read(1024 * 1024).decode("utf-8", errors="replace")
+            if process.returncode: raise subprocess.CalledProcessError(process.returncode, args, output, "")
+            return subprocess.CompletedProcess(args, 0, output, "")
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=5)
 
 
 def human_error(exc: Exception):

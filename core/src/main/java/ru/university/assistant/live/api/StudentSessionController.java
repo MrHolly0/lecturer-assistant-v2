@@ -9,11 +9,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.university.assistant.feedback.api.SignalAggregate;
@@ -24,8 +24,8 @@ import ru.university.assistant.interaction.api.PollVote;
 import ru.university.assistant.interaction.api.SubmitActivityResponseRequest;
 import ru.university.assistant.live.internal.StudentSseBroadcaster;
 import ru.university.assistant.live.internal.StudentWebSessionService;
-import ru.university.assistant.qa.api.QuestionPage;
 import ru.university.assistant.qa.api.QuestionAuthorModeration;
+import ru.university.assistant.qa.api.QuestionPage;
 import ru.university.assistant.qa.api.QuestionStatus;
 import ru.university.assistant.qa.api.StudentQuestion;
 
@@ -35,7 +35,8 @@ class StudentSessionController {
     private final StudentSseBroadcaster broadcaster;
     private final ru.university.assistant.live.internal.StudentCabinetService cabinet;
 
-    StudentSessionController(StudentWebSessionService studentSessions,
+    StudentSessionController(
+            StudentWebSessionService studentSessions,
             org.springframework.beans.factory.ObjectProvider<StudentSseBroadcaster> broadcaster,
             ru.university.assistant.live.internal.StudentCabinetService cabinet) {
         this.studentSessions = studentSessions;
@@ -44,14 +45,18 @@ class StudentSessionController {
     }
 
     @GetMapping("/api/v1/me/student-cabinet")
-    public StudentCabinet cabinet(@AuthenticationPrincipal AuthenticatedUser user,
-            @RequestParam(defaultValue = "20") int limit, @RequestParam(defaultValue = "0") int offset) {
+    public StudentCabinet cabinet(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(defaultValue = "0") int offset) {
         return cabinet.cabinet(user, limit, offset);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/leave")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void leave(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String joinCode,
+    public void leave(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String joinCode,
             @RequestHeader(value = "X-Participant-Token", required = false) String token) {
         studentSessions.leave(joinCode, user, token);
     }
@@ -59,7 +64,8 @@ class StudentSessionController {
     @GetMapping("/api/v1/me/student-active-session")
     public ResponseEntity<StudentActiveSessionSummary> activeStudentSession(
             @AuthenticationPrincipal AuthenticatedUser user) {
-        return studentSessions.activeJoinCodeFor(user)
+        return studentSessions
+                .activeJoinCodeFor(user)
                 .map(code -> ResponseEntity.ok(new StudentActiveSessionSummary(code)))
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
@@ -96,22 +102,35 @@ class StudentSessionController {
         return studentSessions.updateQuestion(user, courseId, sessionId, questionId, request);
     }
 
-    @PutMapping("/api/v1/courses/{courseId}/sessions/{sessionId}/questions/{questionId}/author-moderation")
+    @PutMapping(
+            "/api/v1/courses/{courseId}/sessions/{sessionId}/questions/{questionId}/author-moderation")
     public QuestionAuthorModeration moderateQuestionAuthor(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID courseId,
             @PathVariable UUID sessionId,
             @PathVariable UUID questionId,
             @Valid @RequestBody ModerateQuestionAuthorRequest request) {
-        return studentSessions.moderateQuestionAuthor(user, courseId, sessionId, questionId, request);
+        return studentSessions.moderateQuestionAuthor(
+                user, courseId, sessionId, questionId, request);
+    }
+
+    @GetMapping("/api/v1/student/sessions/{joinCode}/question-history")
+    public ru.university.assistant.qa.api.StudentQuestionHistory history(
+            @PathVariable String joinCode,
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestHeader(value = "X-Participant-Token", required = false) String token,
+            @RequestParam(defaultValue = "0") int offset) {
+        return studentSessions.questionHistory(joinCode, user, token, offset);
     }
 
     @GetMapping("/api/v1/student/sessions/{joinCode}")
     public StudentSessionSnapshot snapshot(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
-            @RequestHeader(value = "X-Participant-Token", required = false) String participantToken) {
-        return studentSessions.snapshot(joinCode, user, participantToken);
+            @RequestHeader(value = "X-Participant-Token", required = false) String participantToken,
+            @RequestParam(defaultValue = "true") boolean includeText) {
+        var snapshot = studentSessions.snapshot(joinCode, user, participantToken);
+        return includeText ? snapshot : snapshot.withoutSlideText();
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/join")
@@ -145,11 +164,14 @@ class StudentSessionController {
     public void sendCurrentSlideToChat(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String joinCode,
-            @RequestHeader(value = "X-Participant-Token", required = false) String participantToken) {
+            @RequestHeader(value = "X-Participant-Token", required = false)
+                    String participantToken) {
         studentSessions.sendCurrentSlideToChat(joinCode, participantToken, user);
     }
 
-    @GetMapping(path = "/api/v1/student/sessions/{joinCode}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @GetMapping(
+            path = "/api/v1/student/sessions/{joinCode}/events",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter events(@PathVariable String joinCode, @RequestParam String participantToken) {
         requireLegacyTransport();
         UUID viewerPersonId = studentSessions.participantPersonId(joinCode, participantToken);
@@ -170,8 +192,9 @@ class StudentSessionController {
     }
 
     private void requireLegacyTransport() {
-        if (broadcaster == null) throw new org.springframework.web.server.ResponseStatusException(
-                HttpStatus.SERVICE_UNAVAILABLE, "Use the realtime gateway for streaming");
+        if (broadcaster == null)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE, "Use the realtime gateway for streaming");
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/signals")
@@ -198,8 +221,13 @@ class StudentSessionController {
             @PathVariable String joinCode,
             @PathVariable UUID pollId,
             @Valid @RequestBody PollResponseRequest request) {
-        return studentSessions.pollRespond(joinCode, pollId, request.participantToken(),
-                request.optionIdx(), request.textAnswer(), user);
+        return studentSessions.pollRespond(
+                joinCode,
+                pollId,
+                request.participantToken(),
+                request.optionIdx(),
+                request.textAnswer(),
+                user);
     }
 
     @PostMapping("/api/v1/student/sessions/{joinCode}/activity-runs/{runId}/respond")

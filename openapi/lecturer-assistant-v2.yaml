@@ -220,6 +220,33 @@ paths:
                 $ref: '#/components/schemas/GroupFormatPolicy'
         '409':
           description: Another administrator changed the policy.
+  /admin/group-format/preview:
+    post:
+      operationId: previewGroupFormatDraft
+      summary: Test an unsaved naming policy without changing institution settings. ADMIN only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [policy, name]
+              properties:
+                policy:
+                  $ref: '#/components/schemas/GroupFormatPolicy'
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Recognition result for this draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupFormatPreview'
+        '400':
+          description: Invalid naming policy.
+        '403':
+          description: Administrator role required.
   /admin/group-format/reconcile:
     post:
       operationId: reconcileGroupFormats
@@ -1730,12 +1757,16 @@ paths:
           description: Short-lived HMAC token scoped to the course and deck.
           schema:
             type: string
+        - name: v
+          in: query
+          description: Immutable slide ID; a stale ordering is rejected instead of serving another slide.
+          schema: {type: string, format: uuid}
       responses:
         "200":
           description: Slide image.
           headers:
             Cache-Control:
-              description: Long-lived immutable cache header.
+              description: Private cache with authorization and expiry revalidation.
               schema:
                 type: string
           content:
@@ -1743,6 +1774,23 @@ paths:
               schema:
                 type: string
                 format: binary
+  /courses/{courseId}/decks/{deckId}/slides/{slideIndex}/text:
+    get:
+      operationId: getSlideText
+      summary: Read extracted slide text separately from live updates.
+      tags: [content]
+      parameters:
+        - $ref: "#/components/parameters/CourseId"
+        - $ref: "#/components/parameters/DeckId"
+        - $ref: "#/components/parameters/SlideIndex"
+        - {name: t, in: query, schema: {type: string}}
+        - {name: v, in: query, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Extracted text with the same authorization and immutable slide identity checks as the image.
+          content:
+            text/plain:
+              schema: {type: string}
   /courses/{courseId}/decks/{deckId}/slides/{slideIndex}/notes:
     put:
       operationId: saveSlideNote
@@ -2495,7 +2543,7 @@ paths:
       description: >
         Personal fields (myVote and AUTHOR question answers) are filled when the request is identified
         by a Bearer JWT or by the X-Participant-Token header. Without identification only SESSION
-        question answers are returned.
+        question answers are returned. History is limited to the latest 20 entries per list; use question-history to load older pages.
       tags: [student]
       security: []
       parameters:
@@ -2505,6 +2553,10 @@ paths:
           required: false
           schema:
             type: string
+        - name: includeText
+          in: query
+          description: Legacy extracted slide text; current live clients use false and request text separately.
+          schema: {type: boolean, default: true}
       responses:
         "200":
           description: Student session snapshot.
@@ -2512,6 +2564,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StudentSessionSnapshot"
+  /student/sessions/{joinCode}/question-history:
+    get:
+      operationId: getStudentQuestionHistory
+      summary: Read a bounded page of public answers and the viewer's own questions.
+      tags: [student]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/JoinCode"
+        - name: X-Participant-Token
+          in: header
+          schema: {type: string}
+        - name: offset
+          in: query
+          schema: {type: integer, minimum: 0, maximum: 100000, default: 0}
+      responses:
+        "200":
+          description: Up to 20 entries per list. AUTHOR answers are visible only to their author.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentQuestionHistory"
   /student/sessions/{joinCode}/join:
     post:
       operationId: joinStudentSession
@@ -3393,6 +3466,35 @@ paths:
           description: Organization unit or staff member not found
         '409':
           description: Duplicate sibling name
+  /organization/units/{unitId}/invitations:
+    post:
+      operationId: createOrganizationInvitation
+      summary: Invite an employee into a managed staff group.
+      tags: [organization]
+      parameters:
+        - name: unitId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteOrganizationStaffRequest"
+      responses:
+        "201":
+          description: Scoped invitation created; group managers can grant MEMBER access only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+        "400":
+          description: Invalid staff role.
+        "403":
+          description: Group outside managed scope or management access cannot be granted.
+        "404":
+          description: Staff group not found.
   /organization/units/{unitId}:
     put:
       tags:
@@ -4307,6 +4409,27 @@ paths:
         '429':
           description: Delivery cooldown or capacity limit.
 
+  /api/v1/sessions/{sessionId}/realtime-ticket:
+    post:
+      operationId: createPresenterRealtimeTicket
+      summary: Issue a short-lived transport credential for a permitted presenter
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Transport mode; ticket mode returns a single-use credential, never an access token.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PresenterRealtimeTicket'}
+        '401': {description: Authentication required}
+        '403': {description: Course management permission required}
+        '404': {description: Session not found}
+        '503': {description: Realtime transport is not configured}
 components:
   securitySchemes:
     installationOperatorKey:
@@ -5633,6 +5756,20 @@ components:
         status:
           type: string
           enum: [ACTIVE, DISABLED]
+    InviteOrganizationStaffRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [LECTURER, ASSISTANT]
+        ttlHours:
+          type: integer
+          minimum: 1
+        unitRole:
+          type: string
+          enum: [MEMBER, MANAGER]
+          description: Defaults to MEMBER. Only a system administrator can grant MANAGER.
     CreateInvitationRequest:
       type: object
       required: [role]
@@ -5648,6 +5785,10 @@ components:
           type: string
           format: uuid
           nullable: true
+        organizationUnitRole:
+          type: string
+          enum: [MEMBER, MANAGER]
+          description: По умолчанию MEMBER. Доступ в группе сотрудников. MANAGER — администратор группы; при создании требует organizationUnitId и роль LECTURER или ASSISTANT.
     CreateCourseInvitationRequest:
       type: object
       required: [role]
@@ -5687,6 +5828,10 @@ components:
         expiresAt:
           type: string
           format: date-time
+        organizationUnitRole:
+          type: string
+          enum: [MEMBER, MANAGER]
+          description: По умолчанию MEMBER. Доступ в группе сотрудников. MANAGER — администратор группы; при создании требует organizationUnitId и роль LECTURER или ASSISTANT.
     IdentityLinkCode:
       type: object
       required: [code, expiresAt]
@@ -7145,6 +7290,27 @@ components:
     QuestionAnswerVisibility:
       type: string
       enum: [AUTHOR, SESSION]
+    PresenterRealtimeTicket:
+      type: object
+      required: [transport]
+      properties:
+        transport: {type: string, enum: [legacy, ticket]}
+        ticket:
+          type: string
+          maxLength: 1024
+          description: Present once in Sec-WebSocket-Protocol after the lecturer.v1 protocol, prefixed with ticket.
+        expiresAt: {type: integer, format: int64, description: Expiry in milliseconds since the Unix epoch}
+    StudentQuestionHistory:
+      type: object
+      required: [myQuestions, questionAnswers, hasMore]
+      properties:
+        myQuestions:
+          type: array
+          items: {$ref: "#/components/schemas/StudentQuestion"}
+        questionAnswers:
+          type: array
+          items: {$ref: "#/components/schemas/StudentQuestionAnswer"}
+        hasMore: {type: boolean}
     StudentQuestionAnswer:
       type: object
       required: [questionId, questionText, answerText, answerVisibility, answeredAt]

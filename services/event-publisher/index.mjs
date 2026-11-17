@@ -28,7 +28,7 @@ while (!shutdown.signal.aborted) {
         status = await rpc('/internal/v1/events/outbox/status', {}); statusAt = Date.now();
       }
       ready = true; failures = 0;
-      if (!batch.items.length) { await sleep(100, shutdown.signal); continue; }
+      if (!batch.items.length) { await sleep(status.activeSessions > 0 ? 100 : 750+Math.random()*250, shutdown.signal); continue; }
       // A stalled confirmation cannot hold an infinite set of claimed events.
       let timer;
       const timeout = new Promise((_, reject) => {

@@ -170,3 +170,22 @@
   background: color-mix(in srgb, #c54456 22%, var(--background));
   border-color: color-mix(in srgb, #ff9aa6 38%, var(--border));
 }
+
+.student-leave__short {
+  display: none;
+}
+@media (max-width: 540px) {
+  .student-session-shell .student-session-topbar {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+  .student-leave__full {
+    display: none;
+  }
+  .student-leave__short {
+    display: inline;
+  }
+  .student-session-topbar .student-leave {
+    padding-inline: 10px;
+  }
+}

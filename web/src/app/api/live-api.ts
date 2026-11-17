@@ -212,6 +212,7 @@ export function connectLiveSession(
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const url = `${protocol}://${window.location.host}/ws/session/${sessionId}`;
   let socket: WebSocket | null = null;
+  let ticketAbort: AbortController | null = null;
   let reconnectTimer: number | undefined;
   let stopped = false;
   let attempt = 0;
@@ -228,8 +229,8 @@ export function connectLiveSession(
     receiveTimeout = 0;
   }
 
-  function connect() {
-    if (stopped) return;
+  async function connect() {
+    if (stopped || ticketAbort || (socket && socket.readyState < WebSocket.CLOSING)) return;
     if (!navigator.onLine) {
       onStateChange?.("offline");
       scheduleReconnect();
@@ -241,12 +242,29 @@ export function connectLiveSession(
     let connectedTimer: number | undefined;
     let stableTimer: number | undefined;
     let currentSocket: WebSocket;
+    const controller = new AbortController();
+    ticketAbort = controller;
     try {
-      currentSocket = new WebSocket(url);
+      const response = await apiFetch(
+        `/sessions/${encodeURIComponent(sessionId)}/realtime-ticket`,
+        {
+          method: "POST",
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)])
+        }
+      );
+      const credential = (await response.json()) as { transport: string; ticket?: string };
+      if (stopped || controller.signal.aborted) return;
+      if (credential.transport === "ticket" && credential.ticket)
+        currentSocket = new WebSocket(url, ["lecturer.v1", `ticket.${credential.ticket}`]);
+      else if (credential.transport === "legacy") currentSocket = new WebSocket(url);
+      else throw new Error("Unknown realtime transport");
     } catch {
+      if (stopped || controller.signal.aborted) return;
       onStateChange?.("reconnecting");
       scheduleReconnect();
       return;
+    } finally {
+      if (ticketAbort === controller) ticketAbort = null;
     }
     socket = currentSocket;
     // Includes TCP/TLS and the STOMP handshake, not only time after `open`.
@@ -421,6 +439,7 @@ export function connectLiveSession(
 
   return () => {
     stopped = true;
+    ticketAbort?.abort();
     if (reconnectTimer) window.clearTimeout(reconnectTimer);
     if (resumeTimer) window.clearTimeout(resumeTimer);
     clearHeartbeat();

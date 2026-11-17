@@ -20,11 +20,11 @@ export class SfuPublisher {
     const generation = this.generation;
     let room: Room | null = null;
     try {
-      const { Room, Track } = await import("livekit-client");
+      const { Room, Track, ScreenSharePresets } = await import("livekit-client");
       if (generation !== this.generation) return;
       room = new Room({
         adaptiveStream: false,
-        dynacast: false,
+        dynacast: true,
         disconnectOnPageLeave: true,
         stopLocalTrackOnUnpublish: false
       });
@@ -42,7 +42,8 @@ export class SfuPublisher {
       const settings = track.getSettings();
       await room.localParticipant.publishTrack(track, {
         source: Track.Source.ScreenShare,
-        simulcast: false,
+        simulcast: true,
+        screenShareSimulcastLayers: [ScreenSharePresets.h360fps15, ScreenSharePresets.h720fps15],
         videoCodec: "vp8",
         degradationPreference: "maintain-resolution",
         videoEncoding: {

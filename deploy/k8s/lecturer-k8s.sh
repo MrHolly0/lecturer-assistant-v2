@@ -166,7 +166,7 @@ NODE_DISK_GIB=60 BUILDER_CPUS=4 BUILDER_MEMORY_GIB=4 BUILDER_DISK_GIB=60 EDGE_PO
 
   for key in JWT_SECRET SLIDE_IMAGE_URL_SECRET CHANNEL_INTERNAL_API_KEY SERVICE_EVENTS_KEY SERVICE_REALTIME_KEY \
       SERVICE_ANALYTICS_KEY SERVICE_MEDIA_KEY ADMIN_SETUP_TOKEN LIVEKIT_API_SECRET REDIS_PASSWORD \
-      CONTENT_DB_PASSWORD CONTENT_SCALER_PASSWORD ANALYTICS_SCALER_PASSWORD MAX_WEBHOOK_SECRET; do
+      CONVERTER_API_KEY TRUSTED_PROXY_KEY CONTENT_DB_PASSWORD CONTENT_SCALER_PASSWORD ANALYTICS_SCALER_PASSWORD MAX_WEBHOOK_SECRET; do
     grep -q "^$key=" "$SECRETS" 2>/dev/null || set_value "$SECRETS" "$key" "$(openssl rand -hex 32)"
   done
   grep -q '^LIVEKIT_API_KEY=' "$SECRETS" || set_value "$SECRETS" LIVEKIT_API_KEY "API$(openssl rand -hex 24)"
@@ -269,6 +269,7 @@ cmd_cluster() {
   # NFS-сервер для общей папки с файлами презентаций (ReadWriteMany), доступ только из сети узлов.
   apt_install 1 exportfs nfs-kernel-server
   on_node 1 sudo sh -c "test -f /etc/exports.d/lecturer.exports || { subnet=\$(ip -o -4 route show dev $iface scope link | awk '{print \$1}' | head -1) && mkdir -p /srv/nfs/lecturer-blobs /etc/exports.d && chmod 0777 /srv/nfs/lecturer-blobs && echo \"/srv/nfs/lecturer-blobs \$subnet(rw,sync,no_subtree_check,no_root_squash)\" > /etc/exports.d/lecturer.exports && exportfs -ra; }"
+  on_node 1 sudo sh -c "test -f /etc/exports.d/lecturer-conversion.exports || { subnet=\$(ip -o -4 route show dev $iface scope link | awk '{print \$1}' | head -1) && mkdir -p /srv/nfs/lecturer-conversion && chmod 0777 /srv/nfs/lecturer-conversion && echo \"/srv/nfs/lecturer-conversion \$subnet(rw,sync,no_subtree_check,root_squash)\" > /etc/exports.d/lecturer-conversion.exports && exportfs -ra; }"
   on_node 1 sh -c "test -x /usr/local/bin/k3s || curl -sfL https://get.k3s.io | sudo INSTALL_K3S_VERSION='$K3S_VERSION' INSTALL_K3S_EXEC='server --write-kubeconfig-mode 600 --tls-san 127.0.0.1 --node-ip $server_ip --flannel-iface $iface $k3s_extra' sh - >/dev/null"
   i=0
   until kc get --raw /readyz >/dev/null 2>&1; do

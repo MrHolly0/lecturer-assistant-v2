@@ -29,57 +29,79 @@ class SecurityConfig {
             JwtAuthenticationFilter jwtAuthenticationFilter,
             RateLimitFilter rateLimitFilter,
             JsonBodyBudgetFilter jsonBodyBudgetFilter,
+            UploadAdmissionFilter uploadAdmissionFilter,
             CorsConfigurationSource corsConfigurationSource)
             throws Exception {
         return http.csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
-                .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) -> {
-                    response.setStatus(401);
-                    response.setContentType("application/json;charset=UTF-8");
-                    response.getWriter().write("{\"error\":\"Authentication required\"}");
-                }))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(requests -> requests
-                        .requestMatchers(HttpMethod.GET, "/api/v1/system/info", "/api/v1/media/capabilities")
-                        .permitAll()
-                        .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/info")
-                        .permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/courses/*/decks/*/slides/*/image")
-                        .permitAll()
-                        .requestMatchers("/api/v1/student/**")
-                        .permitAll()
-                        // Separate, opaque helper credential is checked by ProjectionAgentController.
-                        .requestMatchers("/api/v1/projection/agent/**")
-                        .permitAll()
-                        // The external updater authenticates with its own opaque service credential.
-                        .requestMatchers("/api/v1/installation-operator/**")
-                        .permitAll()
-                        .requestMatchers(
-                                HttpMethod.POST,
-                                "/api/v1/auth/bootstrap-admin",
-                                "/api/v1/auth/register",
-                                "/api/v1/auth/login",
-                                "/api/v1/auth/max",
-                                "/api/v1/auth/max/link-preview",
-                                "/api/v1/auth/max/link-confirm",
-                                "/api/v1/auth/refresh",
-                                "/api/v1/identity/link")
-                        .permitAll()
-                        .requestMatchers("/api/v1/admin/**")
-                        .hasRole("ADMIN")
-                        .requestMatchers("/api/v1/**")
-                        .authenticated()
-                        .requestMatchers("/internal/v1/channels/**")
-                        .permitAll()
-                        .requestMatchers("/ws/**")
-                        .permitAll()
-                        .anyRequest()
-                        .permitAll())
+                .exceptionHandling(
+                        errors ->
+                                errors.authenticationEntryPoint(
+                                        (request, response, exception) -> {
+                                            response.setStatus(401);
+                                            response.setContentType(
+                                                    "application/json;charset=UTF-8");
+                                            response.getWriter()
+                                                    .write(
+                                                            "{\"error\":\"Authentication required\"}");
+                                        }))
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(
+                        requests ->
+                                requests.requestMatchers(
+                                                HttpMethod.GET,
+                                                "/api/v1/system/info",
+                                                "/api/v1/media/capabilities")
+                                        .permitAll()
+                                        .requestMatchers(
+                                                HttpMethod.GET,
+                                                "/actuator/health",
+                                                "/actuator/info")
+                                        .permitAll()
+                                        .requestMatchers(
+                                                HttpMethod.GET,
+                                                "/api/v1/courses/*/decks/*/slides/*/image",
+                                                "/api/v1/courses/*/decks/*/slides/*/text")
+                                        .permitAll()
+                                        .requestMatchers("/api/v1/student/**")
+                                        .permitAll()
+                                        // Separate, opaque helper credential is checked by
+                                        // ProjectionAgentController.
+                                        .requestMatchers("/api/v1/projection/agent/**")
+                                        .permitAll()
+                                        // The external updater authenticates with its own opaque
+                                        // service credential.
+                                        .requestMatchers("/api/v1/installation-operator/**")
+                                        .permitAll()
+                                        .requestMatchers(
+                                                HttpMethod.POST,
+                                                "/api/v1/auth/bootstrap-admin",
+                                                "/api/v1/auth/register",
+                                                "/api/v1/auth/login",
+                                                "/api/v1/auth/max",
+                                                "/api/v1/auth/max/link-preview",
+                                                "/api/v1/auth/max/link-confirm",
+                                                "/api/v1/auth/refresh",
+                                                "/api/v1/identity/link")
+                                        .permitAll()
+                                        .requestMatchers("/api/v1/admin/**")
+                                        .hasRole("ADMIN")
+                                        .requestMatchers("/api/v1/**")
+                                        .authenticated()
+                                        .requestMatchers("/internal/v1/channels/**")
+                                        .permitAll()
+                                        .requestMatchers("/ws/**")
+                                        .permitAll()
+                                        .anyRequest()
+                                        .permitAll())
                 // Ограничитель частоты — до разбора JWT: незачем тратить его на запросы,
                 // которые всё равно будут отклонены.
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(
+                        jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(jsonBodyBudgetFilter, JwtAuthenticationFilter.class)
+                .addFilterAfter(uploadAdmissionFilter, JwtAuthenticationFilter.class)
                 .build();
     }
 
@@ -93,9 +115,14 @@ class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(OriginList.parse(allowedOrigins));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of(
-                "Authorization", "Content-Type", "X-Participant-Token", "X-Projection-View-Token",
-                "X-Lecture-Control-Token", "X-Auth-Channel"));
+        configuration.setAllowedHeaders(
+                List.of(
+                        "Authorization",
+                        "Content-Type",
+                        "X-Participant-Token",
+                        "X-Projection-View-Token",
+                        "X-Lecture-Control-Token",
+                        "X-Auth-Channel"));
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

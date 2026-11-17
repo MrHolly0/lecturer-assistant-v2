@@ -21,7 +21,10 @@ public record StudentSessionSnapshot(
         Map<String, Object> annotations,
         SignalAggregate signalAggregate,
         ActivePollView activePoll,
-        /** Выбор текущего студента в опросе; заполняется только в GET-снапшоте с идентификацией, в SSE — null. */
+        /**
+         * Выбор текущего студента в опросе; заполняется только в GET-снапшоте с идентификацией, в
+         * SSE — null.
+         */
         Integer myVote,
         List<StudentQuestionAnswer> questionAnswers,
         boolean kicked,
@@ -31,16 +34,32 @@ public record StudentSessionSnapshot(
         List<ru.university.assistant.qa.api.StudentQuestion> myQuestions,
         String myTextAnswer,
         boolean questionPostingMuted) {
-    public StudentSessionSnapshot(
-            UUID sessionId, UUID courseId, String courseTitle, String lectureTitle, List<SessionGroup> groups,
-            SessionStatus status, String joinCode, int currentSlideIdx, int slideCount, StudentSlide currentSlide,
-            Map<String, Object> annotations, SignalAggregate signalAggregate, ActivePollView activePoll,
-            Integer myVote, List<StudentQuestionAnswer> questionAnswers, boolean kicked, boolean nameRequested,
-            long version, boolean showJoinCode,
-            List<ru.university.assistant.qa.api.StudentQuestion> myQuestions, String myTextAnswer) {
-        this(sessionId, courseId, courseTitle, lectureTitle, groups, status, joinCode, currentSlideIdx, slideCount,
-                currentSlide, annotations, signalAggregate, activePoll, myVote, questionAnswers, kicked,
-                nameRequested, version, showJoinCode, myQuestions, myTextAnswer, false);
+    public StudentSessionSnapshot withoutSlideText() {
+        return new StudentSessionSnapshot(
+                sessionId,
+                courseId,
+                courseTitle,
+                lectureTitle,
+                groups,
+                status,
+                joinCode,
+                currentSlideIdx,
+                slideCount,
+                currentSlide == null
+                        ? null
+                        : new StudentSlide(currentSlide.idx(), currentSlide.imageUrl(), ""),
+                annotations,
+                signalAggregate,
+                activePoll,
+                myVote,
+                questionAnswers,
+                kicked,
+                nameRequested,
+                version,
+                showJoinCode,
+                myQuestions,
+                myTextAnswer,
+                questionPostingMuted);
     }
 
     public StudentSessionSnapshot(
@@ -57,7 +76,57 @@ public record StudentSessionSnapshot(
             Map<String, Object> annotations,
             SignalAggregate signalAggregate,
             ActivePollView activePoll,
-            /** Выбор текущего студента в опросе; заполняется только в GET-снапшоте с идентификацией, в SSE — null. */
+            Integer myVote,
+            List<StudentQuestionAnswer> questionAnswers,
+            boolean kicked,
+            boolean nameRequested,
+            long version,
+            boolean showJoinCode,
+            List<ru.university.assistant.qa.api.StudentQuestion> myQuestions,
+            String myTextAnswer) {
+        this(
+                sessionId,
+                courseId,
+                courseTitle,
+                lectureTitle,
+                groups,
+                status,
+                joinCode,
+                currentSlideIdx,
+                slideCount,
+                currentSlide,
+                annotations,
+                signalAggregate,
+                activePoll,
+                myVote,
+                questionAnswers,
+                kicked,
+                nameRequested,
+                version,
+                showJoinCode,
+                myQuestions,
+                myTextAnswer,
+                false);
+    }
+
+    public StudentSessionSnapshot(
+            UUID sessionId,
+            UUID courseId,
+            String courseTitle,
+            String lectureTitle,
+            List<SessionGroup> groups,
+            SessionStatus status,
+            String joinCode,
+            int currentSlideIdx,
+            int slideCount,
+            StudentSlide currentSlide,
+            Map<String, Object> annotations,
+            SignalAggregate signalAggregate,
+            ActivePollView activePoll,
+            /**
+             * Выбор текущего студента в опросе; заполняется только в GET-снапшоте с идентификацией,
+             * в SSE — null.
+             */
             Integer myVote,
             List<StudentQuestionAnswer> questionAnswers,
             boolean kicked,
@@ -65,13 +134,32 @@ public record StudentSessionSnapshot(
             long version,
             boolean showJoinCode,
             List<ru.university.assistant.qa.api.StudentQuestion> myQuestions) {
-        this(sessionId,
-                courseId, courseTitle, lectureTitle, groups, status, joinCode, currentSlideIdx, slideCount,
-                currentSlide, annotations, signalAggregate, activePoll, myVote, questionAnswers, kicked,
-                nameRequested, version, showJoinCode, myQuestions, null);
+        this(
+                sessionId,
+                courseId,
+                courseTitle,
+                lectureTitle,
+                groups,
+                status,
+                joinCode,
+                currentSlideIdx,
+                slideCount,
+                currentSlide,
+                annotations,
+                signalAggregate,
+                activePoll,
+                myVote,
+                questionAnswers,
+                kicked,
+                nameRequested,
+                version,
+                showJoinCode,
+                myQuestions,
+                null);
     }
 
-    public StudentSessionSnapshot(UUID sessionId,
+    public StudentSessionSnapshot(
+            UUID sessionId,
             UUID courseId,
             String courseTitle,
             String lectureTitle,
@@ -88,8 +176,26 @@ public record StudentSessionSnapshot(
             List<StudentQuestionAnswer> questionAnswers,
             boolean kicked,
             boolean nameRequested) {
-        this(sessionId, courseId, courseTitle, lectureTitle, groups, status, joinCode, currentSlideIdx,
-                slideCount, currentSlide, annotations, signalAggregate, activePoll, myVote,
-                questionAnswers, kicked, nameRequested, 0, false, List.of());
+        this(
+                sessionId,
+                courseId,
+                courseTitle,
+                lectureTitle,
+                groups,
+                status,
+                joinCode,
+                currentSlideIdx,
+                slideCount,
+                currentSlide,
+                annotations,
+                signalAggregate,
+                activePoll,
+                myVote,
+                questionAnswers,
+                kicked,
+                nameRequested,
+                0,
+                false,
+                List.of());
     }
 }

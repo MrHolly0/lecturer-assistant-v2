@@ -6,12 +6,18 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import http from "node:http";
-import { test } from "node:test";
+import { after, test } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { webhookPathFor } from "./lib.mjs";
 
 const ADAPTER_PATH = fileURLToPath(new URL("./max-adapter.mjs", import.meta.url));
 const BOT_TOKEN = "integration-test-token";
+const inboxRoot = mkdtempSync(join(tmpdir(), "max-integration-"));
+let inboxSequence = 0;
+after(() => rmSync(inboxRoot, { recursive: true, force: true }));
 
 function startFakeCore(outboxMessages = []) {
   const calls = [];
@@ -55,6 +61,7 @@ test("requested slide is sent to MAX as an image attachment", async () => {
       CORE_URL: `http://127.0.0.1:${corePort}`,
       MAX_API_BASE: `http://127.0.0.1:${maxPort}`,
       MAX_BOT_TOKEN: BOT_TOKEN,
+      MAX_INBOX_PATH: join(inboxRoot, String(++inboxSequence), "inbox.sqlite"),
       MAX_WEBAPP_URL: "https://app.example/mini",
       MAX_RATE_LIMIT_RPS: "50"
     },
@@ -168,6 +175,7 @@ test("bot_started via long polling replies with an open_app button carrying the 
       CORE_URL: `http://127.0.0.1:${corePort}`,
       MAX_API_BASE: `http://127.0.0.1:${maxPort}`,
       MAX_BOT_TOKEN: BOT_TOKEN,
+      MAX_INBOX_PATH: join(inboxRoot, String(++inboxSequence), "inbox.sqlite"),
       MAX_WEBAPP_URL: "https://app.example/mini",
       MAX_RATE_LIMIT_RPS: "50",
     },
@@ -208,6 +216,7 @@ for (const registerOnStart of [true, false]) test(`webhook mode checks credentia
       CORE_URL: `http://127.0.0.1:${corePort}`,
       MAX_API_BASE: `http://127.0.0.1:${maxPort}`,
       MAX_BOT_TOKEN: BOT_TOKEN,
+      MAX_INBOX_PATH: join(inboxRoot, String(++inboxSequence), "inbox.sqlite"),
       MAX_WEBAPP_URL: "https://app.example/mini",
       MAX_WEBHOOK_URL: "https://stand.example/webhook",
       MAX_WEBHOOK_SECRET: secret,

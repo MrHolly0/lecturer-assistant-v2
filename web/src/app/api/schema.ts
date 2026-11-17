@@ -136,6 +136,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/group-format/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Test an unsaved naming policy without changing institution settings. ADMIN only. */
+    post: operations["previewGroupFormatDraft"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/group-format/reconcile": {
     parameters: {
       query?: never;
@@ -1201,6 +1218,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/courses/{courseId}/decks/{deckId}/slides/{slideIndex}/text": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read extracted slide text separately from live updates. */
+    get: operations["getSlideText"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/courses/{courseId}/decks/{deckId}/slides/{slideIndex}/notes": {
     parameters: {
       query?: never;
@@ -1737,9 +1771,26 @@ export interface paths {
     };
     /**
      * Read student session snapshot by join code.
-     * @description Personal fields (myVote and AUTHOR question answers) are filled when the request is identified by a Bearer JWT or by the X-Participant-Token header. Without identification only SESSION question answers are returned.
+     * @description Personal fields (myVote and AUTHOR question answers) are filled when the request is identified by a Bearer JWT or by the X-Participant-Token header. Without identification only SESSION question answers are returned. History is limited to the latest 20 entries per list; use question-history to load older pages.
      */
     get: operations["getStudentSession"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/student/sessions/{joinCode}/question-history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read a bounded page of public answers and the viewer's own questions. */
+    get: operations["getStudentQuestionHistory"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2470,6 +2521,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/organization/units/{unitId}/invitations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Invite an employee into a managed staff group. */
+    post: operations["createOrganizationInvitation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/organization/units/{unitId}": {
     parameters: {
       query?: never;
@@ -3044,6 +3112,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/sessions/{sessionId}/realtime-ticket": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Issue a short-lived transport credential for a permitted presenter */
+    post: operations["createPresenterRealtimeTicket"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3590,6 +3675,16 @@ export interface components {
       /** @enum {string} */
       status: "ACTIVE" | "DISABLED";
     };
+    InviteOrganizationStaffRequest: {
+      /** @enum {string} */
+      role: "LECTURER" | "ASSISTANT";
+      ttlHours?: number;
+      /**
+       * @description Defaults to MEMBER. Only a system administrator can grant MANAGER.
+       * @enum {string}
+       */
+      unitRole?: "MEMBER" | "MANAGER";
+    };
     CreateInvitationRequest: {
       /** @enum {string} */
       role: "ADMIN" | "LECTURER" | "ASSISTANT";
@@ -3597,6 +3692,11 @@ export interface components {
       ttlHours: number;
       /** Format: uuid */
       organizationUnitId?: string | null;
+      /**
+       * @description По умолчанию MEMBER. Доступ в группе сотрудников. MANAGER — администратор группы; при создании требует organizationUnitId и роль LECTURER или ASSISTANT.
+       * @enum {string}
+       */
+      organizationUnitRole?: "MEMBER" | "MANAGER";
     };
     CreateCourseInvitationRequest: {
       /** @enum {string} */
@@ -3620,6 +3720,11 @@ export interface components {
       organizationUnitId?: string | null;
       /** Format: date-time */
       expiresAt: string;
+      /**
+       * @description По умолчанию MEMBER. Доступ в группе сотрудников. MANAGER — администратор группы; при создании требует organizationUnitId и роль LECTURER или ASSISTANT.
+       * @enum {string}
+       */
+      organizationUnitRole?: "MEMBER" | "MANAGER";
     };
     IdentityLinkCode: {
       code: string;
@@ -4365,6 +4470,22 @@ export interface components {
     };
     /** @enum {string} */
     QuestionAnswerVisibility: "AUTHOR" | "SESSION";
+    PresenterRealtimeTicket: {
+      /** @enum {string} */
+      transport: "legacy" | "ticket";
+      /** @description Present once in Sec-WebSocket-Protocol after the lecturer.v1 protocol, prefixed with ticket. */
+      ticket?: string;
+      /**
+       * Format: int64
+       * @description Expiry in milliseconds since the Unix epoch
+       */
+      expiresAt?: number;
+    };
+    StudentQuestionHistory: {
+      myQuestions: components["schemas"]["StudentQuestion"][];
+      questionAnswers: components["schemas"]["StudentQuestionAnswer"][];
+      hasMore: boolean;
+    };
     /** @description Student-safe answer without the question author's identity. */
     StudentQuestionAnswer: {
       /** @description Slide of the original question, preserved when the teacher answers after navigation. */
@@ -4799,6 +4920,47 @@ export interface operations {
       };
       /** @description Another administrator changed the policy. */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  previewGroupFormatDraft: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          policy: components["schemas"]["GroupFormatPolicy"];
+          name: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Recognition result for this draft. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GroupFormatPreview"];
+        };
+      };
+      /** @description Invalid naming policy. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Administrator role required. */
+      403: {
         headers: {
           [name: string]: unknown;
         };
@@ -6938,6 +7100,8 @@ export interface operations {
       query?: {
         /** @description Short-lived HMAC token scoped to the course and deck. */
         t?: string;
+        /** @description Immutable slide ID; a stale ordering is rejected instead of serving another slide. */
+        v?: string;
       };
       header?: never;
       path: {
@@ -6952,12 +7116,39 @@ export interface operations {
       /** @description Slide image. */
       200: {
         headers: {
-          /** @description Long-lived immutable cache header. */
+          /** @description Private cache with authorization and expiry revalidation. */
           "Cache-Control"?: string;
           [name: string]: unknown;
         };
         content: {
           "image/png": string;
+        };
+      };
+    };
+  };
+  getSlideText: {
+    parameters: {
+      query?: {
+        t?: string;
+        v?: string;
+      };
+      header?: never;
+      path: {
+        courseId: components["parameters"]["CourseId"];
+        deckId: components["parameters"]["DeckId"];
+        slideIndex: components["parameters"]["SlideIndex"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Extracted text with the same authorization and immutable slide identity checks as the image. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/plain": string;
         };
       };
     };
@@ -8036,7 +8227,10 @@ export interface operations {
   };
   getStudentSession: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Legacy extracted slide text; current live clients use false and request text separately. */
+        includeText?: boolean;
+      };
       header?: {
         "X-Participant-Token"?: string;
       };
@@ -8054,6 +8248,32 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["StudentSessionSnapshot"];
+        };
+      };
+    };
+  };
+  getStudentQuestionHistory: {
+    parameters: {
+      query?: {
+        offset?: number;
+      };
+      header?: {
+        "X-Participant-Token"?: string;
+      };
+      path: {
+        joinCode: components["parameters"]["JoinCode"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Up to 20 entries per list. AUTHOR answers are visible only to their author. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StudentQuestionHistory"];
         };
       };
     };
@@ -9269,6 +9489,53 @@ export interface operations {
       };
     };
   };
+  createOrganizationInvitation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        unitId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InviteOrganizationStaffRequest"];
+      };
+    };
+    responses: {
+      /** @description Scoped invitation created; group managers can grant MEMBER access only. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Invitation"];
+        };
+      };
+      /** @description Invalid staff role. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Group outside managed scope or management access cannot be granted. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Staff group not found. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   getProjectionSettings: {
     parameters: {
       query?: never;
@@ -10389,6 +10656,56 @@ export interface operations {
       };
       /** @description Delivery cooldown or capacity limit. */
       429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  createPresenterRealtimeTicket: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sessionId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Transport mode; ticket mode returns a single-use credential, never an access token. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PresenterRealtimeTicket"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Course management permission required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Realtime transport is not configured */
+      503: {
         headers: {
           [name: string]: unknown;
         };

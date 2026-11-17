@@ -27,6 +27,14 @@ class GroupFormatController {
         return service.preview(request.name(), request.parts());
     }
 
+    @PostMapping("/api/v1/admin/group-format/preview")
+    public GroupFormatPreview previewDraft(@AuthenticationPrincipal AuthenticatedUser actor,
+            @RequestBody DraftPreviewRequest request) {
+        return service.previewDraft(actor, request.policy(), request.name());
+    }
+
+    public record DraftPreviewRequest(GroupFormatPolicy policy, String name) {}
+
     @PostMapping("/api/v1/admin/group-format/reconcile")
     public GroupFormatService.ReconcileResult reconcile(@AuthenticationPrincipal AuthenticatedUser actor,
             @RequestBody ReconcileRequest request) { return service.reconcile(actor, request.revision()); }

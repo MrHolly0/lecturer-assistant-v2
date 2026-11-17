@@ -1,0 +1,9 @@
+{
+  "name": "@lecturer-assistant/build-picomatch",
+  "version": "4.0.7",
+  "private": true,
+  "description": "Build-only picomatch with repeated extglobs disabled.",
+  "license": "MIT",
+  "main": "index.js",
+  "sideEffects": false
+}

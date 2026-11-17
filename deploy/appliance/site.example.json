@@ -1,0 +1,27 @@
+{
+  "publicOrigin": "https://lecturer.example.edu",
+  "tlsMode": "proxy",
+  "trustedProxyCidrs": [],
+  "mediaPublicIp": "192.0.2.10",
+  "maxBotName": "institution_bot",
+  "registerMaxWebhook": true,
+  "scaling": {
+    "coreMax": 2,
+    "realtimeMax": 3,
+    "contentMax": 2,
+    "converterMax": 2,
+    "analyticsMax": 2,
+    "databaseConnections": 120,
+    "connectionsPerReplica": 2000
+  },
+  "updates": null,
+  "clusterMemoryMi": 13312,
+  "platformMemoryMi": 3072,
+  "clusterCpus": 8,
+  "backups": {
+    "owner": "",
+    "offVmConfirmed": false,
+    "intervalSeconds": 86400,
+    "retentionDays": 14
+  }
+}

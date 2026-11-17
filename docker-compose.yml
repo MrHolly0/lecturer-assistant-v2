@@ -121,13 +121,16 @@ services:
       SHARE_VIDEO_BUFFER_BYTES: ${SHARE_VIDEO_BUFFER_BYTES:-67108864}
       SHARE_VIDEO_ROOM_BYTES: ${SHARE_VIDEO_ROOM_BYTES:-8388608}
       APP_VERSION: ${APP_VERSION:-0.0.1-SNAPSHOT}
+      CONVERTER_API_KEY: ${CONVERTER_API_KEY:?set a random converter key}
       APP_CONTENT_CONVERTER_URL: http://converter:8000
       HTTP_SOCKET_IDLE_TIMEOUT: ${HTTP_SOCKET_IDLE_TIMEOUT:-10s}
       SERVER_PORT: 8080
     ports:
       - "127.0.0.1:${CORE_PORT:-8080}:8080"
+    networks: [default, conversion]
     volumes:
       - blob-data:/data/blobs
+      - conversion-scratch:/data/conversion
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
       interval: 10s
@@ -147,13 +150,17 @@ services:
     pids_limit: 128
     init: true
     environment:
+      CONVERTER_API_KEY: ${CONVERTER_API_KEY:?set a random converter key}
       CONVERTER_MAX_CONVERSIONS: ${CONVERTER_MAX_CONVERSIONS:-2}
       CONVERTER_MAX_HTTP_WORKERS: ${CONVERTER_MAX_HTTP_WORKERS:-16}
+    networks: [conversion]
+    read_only: true
+    tmpfs: [/tmp:rw,size=268435456,mode=1777]
     build:
       context: .
       dockerfile: deploy/converter/Dockerfile
     volumes:
-      - blob-data:/data/blobs
+      - conversion-scratch:/data/conversion
     # healthcheck задан в deploy/converter/Dockerfile (GET /health)
 
   web:
@@ -202,6 +209,7 @@ services:
       MAX_REGISTER_WEBHOOK_ON_START: ${MAX_REGISTER_WEBHOOK_ON_START:-true}
       MAX_RATE_LIMIT_RPS: ${MAX_RATE_LIMIT_RPS:-15}
       NODE_OPTIONS: --max-old-space-size=128
+    volumes: [max-inbox:/data/max-inbox]
     depends_on:
       core:
         condition: service_healthy
@@ -243,5 +251,10 @@ services:
         condition: service_healthy
 
 volumes:
+  max-inbox:
+  conversion-scratch:
   postgres-data:
   blob-data:
+
+networks:
+  conversion: {internal: true}
