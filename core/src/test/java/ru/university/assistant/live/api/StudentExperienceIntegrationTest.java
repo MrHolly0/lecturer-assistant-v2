@@ -161,6 +161,13 @@ class StudentExperienceIntegrationTest extends LiveFlowTestBase {
         long revision = jdbc.sql("select revision from org.group_format_policy").query(Long.class).single();
         var policy = new GroupFormatPolicy(revision, true, List.of(
                 new Field("number", "Номер", "NUMBER", "", 3, 0, null, List.of())));
+        String draft = objectMapper.writeValueAsString(Map.of("policy", policy, "name", "234"));
+        String previewUrl = "/api/v1/admin/group-format/preview";
+        assertTrue(json(post(previewUrl).header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON).content(draft), 200).path("valid").asBoolean());
+        mockMvc.perform(post(previewUrl).header("Authorization", "Bearer " + lecturerToken)
+                .contentType(MediaType.APPLICATION_JSON).content(draft)).andExpect(status().isForbidden());
+        assertEquals(revision, jdbc.sql("select revision from org.group_format_policy").query(Long.class).single());
         String body = objectMapper.writeValueAsString(policy);
         json(put("/api/v1/admin/group-format").header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON).content(body), 200);

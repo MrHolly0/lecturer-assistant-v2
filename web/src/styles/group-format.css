@@ -39,84 +39,148 @@
 .start-session-new-group {
   align-items: start;
 }
-.group-format-page {
-  max-width: 1100px;
+.page.group-format-page {
+  max-width: 1000px;
 }
 .group-format-editor {
   display: grid;
   gap: 24px;
-  margin-top: 28px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
 }
 .group-format-toggle {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-weight: 600;
+  gap: 14px;
+  padding: 16px 20px;
+  background: var(--muted);
+  border-radius: 10px;
+  cursor: pointer;
 }
 .group-format-toggle input {
   width: 20px;
-  accent-color: var(--brand-orange, #ff6b00);
+  height: 20px;
+  min-height: 0;
+  flex: none;
+  accent-color: var(--brand);
+}
+.group-format-toggle small {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.group-format-page h2 {
+  font-size: 22px;
+  margin: 0;
+}
+.group-format-parts > p,
+.group-format-check > p {
+  margin: 8px 0 16px;
+  line-height: 1.5;
+}
+.group-format-example {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--muted-foreground);
+}
+.group-format-example strong {
+  color: var(--foreground);
+  overflow-wrap: anywhere;
 }
 .group-format-toolbar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.group-format-parts > .group-format-toolbar {
+  margin-top: 16px;
 }
 .group-format-field {
-  border: 1px solid var(--border);
-  padding: 24px;
-  border-radius: 10px;
   min-width: 0;
+  border-top: 1px solid var(--border);
 }
-.group-format-field legend {
-  font-weight: 600;
-  padding: 0 8px;
+.group-format-field:last-of-type {
+  border-bottom: 1px solid var(--border);
 }
-.group-format-field__heading {
+.group-format-field summary {
+  padding: 16px 4px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.group-format-field summary strong {
+  margin-inline: 6px 12px;
+}
+.group-format-field summary span {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+.group-format-field__body {
+  padding: 4px 4px 24px;
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
   gap: 16px;
+}
+.group-format-field__heading,
+.group-format-field__settings,
+.group-format-choice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px;
   align-items: end;
+}
+.group-format-field__settings {
+  grid-template-columns: repeat(auto-fit, minmax(min(175px, 100%), 1fr));
 }
 .group-format-field__actions {
   display: flex;
-  gap: 6px;
-}
-.group-format-field__actions button {
-  padding-inline: 12px;
-}
-.group-format-field__settings {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-  margin-top: 20px;
+  gap: 4px;
 }
 .group-format-choices {
   display: grid;
   gap: 16px;
-  margin-top: 20px;
+}
+.group-format-choices > p {
+  margin: 0;
+  line-height: 1.5;
 }
 .group-format-choice {
-  display: grid;
-  grid-template-columns: 1fr 2fr 1.5fr auto;
-  gap: 12px;
-  align-items: end;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr) minmax(0, 1.3fr) auto;
+}
+.group-format-choices > button {
+  justify-self: start;
 }
 .group-format-editor select {
-  border: 1px solid var(--border);
-  padding: 8px 12px;
+  width: 100%;
+  border: 1px solid var(--input);
   border-radius: 8px;
+  padding-inline: 12px;
   background: var(--background);
   color: var(--foreground);
 }
 .group-format-check {
-  margin-top: 40px;
+  margin-top: 28px;
   padding-top: 24px;
   border-top: 1px solid var(--border);
 }
-.group-format-check h3 {
-  margin-top: 32px;
+.group-format-check form {
+  display: flex;
+  gap: 8px;
+  max-width: 520px;
+  align-items: center;
+}
+.group-format-check form input {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+}
+.group-format-editor .field {
+  margin: 0;
 }
 .student-cabinet-sessions {
   display: grid;
@@ -162,19 +226,17 @@
   margin-top: 16px;
 }
 @media (max-width: 720px) {
-  .group-format-field {
-    padding: 16px;
-  }
   .group-format-field__heading,
   .group-format-choice {
     grid-template-columns: 1fr;
   }
   .group-format-choice {
-    padding-bottom: 16px;
+    padding-bottom: 12px;
     border-bottom: 1px solid var(--border);
   }
-  .group-format-field__actions {
-    justify-content: flex-end;
+  .group-format-field__actions,
+  .group-format-choice > button {
+    justify-self: end;
   }
   .student-cabinet-session {
     align-items: stretch;
@@ -184,11 +246,5 @@
   .student-cabinet-pagination {
     justify-content: space-between;
     gap: 8px;
-  }
-  .student-session-topbar {
-    flex-wrap: wrap;
-  }
-  .student-session-topbar__actions {
-    margin-left: auto;
   }
 }

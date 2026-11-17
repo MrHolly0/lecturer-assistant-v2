@@ -2,8 +2,8 @@
 
 Основной пакет одной Docker-ВМ: [deploy/appliance](../deploy/appliance/README.md).
 Другие варианты Compose и Kubernetes: [deploy/cloud](../deploy/cloud/README.md),
-[deploy/k8s](../deploy/k8s/README.md). Требования к управляемым обновлениям из
-интерфейса и границы текущей реализации: [installation-updates.md](installation-updates.md).
+[deploy/k8s](../deploy/k8s/README.md). Требования к управляемым обновлениям через
+оператор и границы текущей реализации: [installation-updates.md](installation-updates.md).
 
 Функциональная основа — `feature/final-preparation`; переработка интерфейса от 18 октября 2026 года — в `feature/redesign-20261018`. Сданный хакатонный релиз `f66057f57374c162aca2fd2c5520249255b22709` сохранён отдельно. Перед выпуском фиксируются SHA, образы и версия Flyway; исторические нагрузочные отчёты не подтверждают ёмкость новой сборки.
 

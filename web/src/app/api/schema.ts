@@ -136,6 +136,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/group-format/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Test an unsaved naming policy without changing institution settings. ADMIN only. */
+    post: operations["previewGroupFormatDraft"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/group-format/reconcile": {
     parameters: {
       query?: never;
@@ -4903,6 +4920,47 @@ export interface operations {
       };
       /** @description Another administrator changed the policy. */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  previewGroupFormatDraft: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          policy: components["schemas"]["GroupFormatPolicy"];
+          name: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Recognition result for this draft. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GroupFormatPreview"];
+        };
+      };
+      /** @description Invalid naming policy. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Administrator role required. */
+      403: {
         headers: {
           [name: string]: unknown;
         };

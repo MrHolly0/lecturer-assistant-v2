@@ -220,6 +220,33 @@ paths:
                 $ref: '#/components/schemas/GroupFormatPolicy'
         '409':
           description: Another administrator changed the policy.
+  /admin/group-format/preview:
+    post:
+      operationId: previewGroupFormatDraft
+      summary: Test an unsaved naming policy without changing institution settings. ADMIN only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [policy, name]
+              properties:
+                policy:
+                  $ref: '#/components/schemas/GroupFormatPolicy'
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Recognition result for this draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupFormatPreview'
+        '400':
+          description: Invalid naming policy.
+        '403':
+          description: Administrator role required.
   /admin/group-format/reconcile:
     post:
       operationId: reconcileGroupFormats

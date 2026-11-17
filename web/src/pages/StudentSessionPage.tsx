@@ -576,6 +576,8 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
           {isJoined && !isTerminalSession ? (
             <Button
               variant="outline"
+              className="student-leave"
+              aria-label={leaving ? "Выходим…" : "Покинуть занятие"}
               disabled={leaving}
               onClick={() => {
                 setLeaving(true);
@@ -585,7 +587,12 @@ export function StudentSessionPage({ joinCode }: StudentSessionPageProps) {
               }}
             >
               <LogOut aria-hidden="true" />
-              {leaving ? "Выходим…" : "Покинуть занятие"}
+              <span className="student-leave__full">
+                {leaving ? "Выходим…" : "Покинуть занятие"}
+              </span>
+              <span className="student-leave__short" aria-hidden="true">
+                {leaving ? "Выходим…" : "Выйти"}
+              </span>
             </Button>
           ) : (
             <LinkButton to={user ? "/home" : "/student/join"} variant="outline">

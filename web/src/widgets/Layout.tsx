@@ -14,7 +14,7 @@ import {
   Menu,
   MoreHorizontal,
   QrCode,
-  RefreshCw,
+  ListTree,
   Shield,
   UserRound,
   Users
@@ -58,13 +58,12 @@ const navItems = [
   },
   { path: "/admin/users", icon: Shield, label: "Учётные записи", roles: ["ADMIN"], more: true },
   {
-    path: "/admin/installation",
-    icon: RefreshCw,
-    label: "Обновления",
+    path: "/admin/group-format",
+    icon: ListTree,
+    label: "Формат групп",
     roles: ["ADMIN"],
     more: true
-  },
-  { path: "/admin/group-format", icon: Users, label: "Формат групп", roles: ["ADMIN"], more: true }
+  }
 ];
 const roleLabels: Record<string, string> = {
   ADMIN: "Администратор",
